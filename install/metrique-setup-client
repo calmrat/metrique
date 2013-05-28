@@ -1,0 +1,25 @@
+#!/usr/bin/env python
+# Author: "Chris Ward <cward@redhat.com>
+
+from functools import partial
+from pprint import PrettyPrinter
+pp = PrettyPrinter(indent=2)
+
+from metrique.client import pyclient
+
+prompter = lambda x: raw_input(x)
+
+c = pyclient()
+
+c.config._autosave = False
+
+pp.pprint(c.config._config)
+
+_p = "Metrique Host: "
+c.config.setup_basic('metrique_http_host', partial(prompter, _p))
+
+pp.pprint(c.config._config)
+
+a = c.config._yes_no_prompt('Save? ')
+if a:
+    c.config.save()

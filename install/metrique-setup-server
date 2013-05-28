@@ -1,0 +1,36 @@
+#!/usr/bin/env python
+# Author: "Chris Ward <cward@redhat.com>
+
+from functools import partial
+from pprint import PrettyPrinter
+pp = PrettyPrinter(indent=2)
+
+from metrique.server.tornado.http import HTTPServer
+
+prompter = lambda x: raw_input(x)
+
+s = HTTPServer()
+
+s.metrique_config._autosave = False
+
+pp.pprint(s.metrique_config._config)
+
+_p = "Metrique Hostname/IP (ie, this server): "
+s.metrique_config.setup_basic('http_host', partial(prompter, _p))
+
+_p = "MongoDB Host: "
+s.mongodb_config.setup_basic('host', partial(prompter, _p))
+
+_p = "MongoDB Admin password: "
+s.mongodb_config.setup_basic('admin_password', partial(prompter, _p))
+
+_p = "MongoDB Data password: "
+s.mongodb_config.setup_basic('data_password', partial(prompter, _p))
+
+print 'Metrique: %s' % pp.pprint(s.metrique_config._config)
+print 'MongoDB:  %s' % pp.pprint(s.metrique_config._config)
+
+a = s.metrique_config._yes_no_prompt('Save? ')
+if a:
+    s.metrique_config.save()
+    s.mongodb_config.save()

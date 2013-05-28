@@ -1,0 +1,51 @@
+#!/bin/sh
+#
+### BEGIN INIT INFO
+# Provides: metriqued
+# Required-Start: $local_fs
+# Required-Stop:
+# Default-Start: 3 4 5
+# Default-Stop: 0 1 2 6
+# Short-Description: startup script for metrique-server (RPC)
+# Description: Manage metrique-server rpc daemon
+### END INIT INFO
+
+# Source function library.      
+# This creates the operating environment for the process to be started
+. /etc/rc.d/init.d/functions
+
+source="metrique-server"
+sourcepath="/usr/bin/"
+pid_file="/home/metrique/.metrique/server.pid"
+
+export PATH="$PATH:$sourcepath"
+
+case "$1" in
+  start)
+        echo -n "Starting Metrique Server: "
+        daemon --user metrique ${sourcepath}${source} start
+        if [ -e $pid_file ]; then
+            success
+        else
+            failure
+        fi
+        echo
+        ;;
+  stop)
+        echo -n "Shutting down Metrique Server! pid: $pid"
+        killproc -p $pid_file ${source}
+        echo
+        ;;
+  status)
+        status -p $pid_file ${source}
+        ;;
+  restart)
+        $0 stop
+        $0 start
+        ;;
+  *)
+        echo "Usage: $0 {start|stop|restart|status}"
+        exit 1
+esac
+
+exit 0
