@@ -156,6 +156,8 @@ def _activity_import(cube, ids):
     t = c.get_collection(timeline=True, admin=True)
     time_docs = t.find({'id': {'$in': ids}},
                        sort=[('id', 1), ('start', 1)])
+    act_docs = h.find({'id': {'$in': ids}}, sort=[('id', 1), ('when', -1)])
+    act_docs_iter = iter(act_docs)
 
     # Dictionary of field_id: field_name
     fieldmap = defaultdict(lambda: '')
@@ -164,15 +166,25 @@ def _activity_import(cube, ids):
         if field_id is not None:
             fieldmap[field_id[1]] = field
 
+    aid = -1
     last_doc_id = -1
+    activities = []
     for time_doc in time_docs:
         tid = time_doc['id']
         if tid != last_doc_id:
             last_doc_id = tid
             # we want to update only the oldest version of the object
-            activities = h.find({'id': tid}, sort=[('when', -1)])
+            while aid <= tid:
+                try:
+                    act_doc = act_docs_iter.next()
+                    aid = act_doc['id']
+                    activities.append(act_doc)
+                except StopIteration:
+                    break
             batch_updates = [time_doc]
             for act in activities:
+                if act['id'] != tid:
+                    continue
                 # We want to consider only activities that happend before
                 # the oldest version of the object from the timeline.
                 when = act['when']
@@ -247,6 +259,7 @@ def _activity_import(cube, ids):
                 for doc in batch_updates[1:]:
                     t.insert(doc)
                 #logger.warn('Imported: %s' % doc['id'])
+            activities = [act for act in activities if act['id'] != tid]
 
 
 def activity_import(cube):
@@ -257,8 +270,8 @@ def activity_import(cube):
     t = c.get_collection(timeline=True, admin=True)
     t.ensure_index([('id', 1), ('start', 1)])
     h.ensure_index([('id', 1)])
-    h.ensure_index([('when', -1)])
-    _activity_import(cube, range(800000, 802000))
+    h.ensure_index([('id', 1), ('when', -1)])
+    _activity_import(cube, range(800000, 900000))
 
 
 def index_timeline(cube):
