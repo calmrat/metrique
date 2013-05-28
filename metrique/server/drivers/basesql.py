@@ -40,30 +40,6 @@ class BaseSql(BaseDriver):
     def proxy(self):
         raise NotImplementedError("BaseSql has not defined a proxy")
 
-    def delta_activity(self, field):
-        '''
-        '''
-        table = self.get_field_property('table', field)
-
-        # activity 'when' field should always be the same across drivers
-        cmp_field_lookup = self.get_field_property('lookup', 'when')
-
-        last_update_dt = last_known_warehouse_mtime(self.name, field)
-        if not last_update_dt:
-            logger.debug('... This field has not yet completed a successful run')
-            sql = None
-        else:
-            # NOTE: TEIID unable to parse miliseconds
-            last_update = last_update_dt.strftime('%Y-%m-%d %H:%M:%S %z')
-
-            # FIXME: let driver override dt_format
-            dt_format = "yyyy-MM-dd HH:mm:ss z"
-            sql = "%s.%s >= parseTimestamp('%s', '%s')" % (table,
-                                                           cmp_field_lookup,
-                                                           last_update,
-                                                           dt_format)
-        return sql
-
     def delta_mtime(self, field):
         '''
         '''
@@ -110,61 +86,6 @@ class BaseSql(BaseDriver):
                            table, lookup,
                            last_update_dt,
                            dt_format)
-        return sql
-
-    def delta_history(self, field):
-        '''
-        '''
-        logger.debug('Delta History')
-        # return None tells ETL to ignore this filter
-        # this is the field id that maps field name to activity history 'field affected' id
-        last_update_dt = last_known_warehouse_mtime(self.name, field)
-        if not last_update_dt:
-            logger.debug('... This field has not yet completed a successful run')
-            return None
-
-        # Expecting a tuple with driver and the _id column
-        cube, _column = self.get_field_property('delta_history', field)
-        driver = drivermap[cube]
-
-        logger.debug("Delta driver: %s" % driver)
-        logger.debug("Delta driver.column: %s" % _column)
-
-        # this is the activity driver's table
-        table = driver.get_field_property('table')
-
-        # this is the activity driver's when lookup column
-        when = driver.get_field_property('lookup', 'when')
-        # this is the activity driver's what lookup column
-        f_what = self.get_field_property('what', field)
-
-        # FIXME: TEIID SQL unable to parse miliseconds
-        last_update_dt = last_update_dt.strftime('%Y-%m-%d %H:%M:%S %z')
-        # FIXME: let driver override dt_format
-        dt_format = "yyyy-MM-dd HH:mm:ss z"
-
-        f_what_sql = ["%s.%s >= parseTimestamp('%s', '%s')" % (table, when, last_update_dt, dt_format)]
-        if f_what:
-            # this is the activity driver's what lookup column
-            what = driver.get_field_property('lookup', 'what')
-
-            trash, f_what = f_what
-            try:  # wrap in quotes, if not an number
-                int(f_what)
-            except (TypeError, ValueError):
-                f_what = "'%s'" % f_what
-
-            f_what_sql.append('%s.%s = %s' % (table, what, f_what))
-
-        # this is the activity driver's db
-        db = driver.get_field_property('db')
-        f_table = self.get_field_property('table', field)
-        f_column = self.get_field_property('column', field)
-
-        sql = """(%s.%s IN (SELECT DISTINCT %s.%s
-                            FROM %s.%s
-                            WHERE %s))""" % (f_table, f_column, table, _column,
-                                             db, table, ' AND '.join(f_what_sql))
         return sql
 
     def _sql_fetchall(self, sql, start, field, row_limit):
@@ -315,23 +236,11 @@ def _extract_func(cube, **kwargs):
                         last_id_sql = "(%s > '%s')" % (table_column, last_id)
                     delta_filter.append(last_id_sql)
 
-                    # activity history driver's self check for updates
-                    if c.get_field_property('delta_activity', field):
-                        pda_sql = c.delta_activity(field)
-                        if pda_sql:
-                            delta_filter.append(pda_sql)
-
                     # driver can find changes by checking mtime field
                     if c.get_field_property('delta_mtime', field):
                         pmt_sql = c.delta_mtime(field)
                         if pmt_sql:
                             delta_filter.append(pmt_sql)
-
-                    # field check if new history added
-                    if c.get_field_property('delta_history', field):
-                        pdh_sql = c.delta_history(field)
-                        if pdh_sql:
-                            delta_filter.append(pdh_sql)
 
         if delta_filter:
             delta_filter_sql = ' OR '.join(delta_filter)
@@ -408,23 +317,11 @@ def _extract_func(cube, **kwargs):
                         last_id_sql = "(%s > '%s')" % (table_column, last_id)
                     delta_filter.append(last_id_sql)
 
-                    # activity history driver's self check for updates
-                    if c.get_field_property('delta_activity', field):
-                        pda_sql = c.delta_activity(field)
-                        if pda_sql:
-                            delta_filter.append(pda_sql)
-
                     # driver can find changes by checking mtime field
                     if c.get_field_property('delta_mtime', field):
                         pmt_sql = c.delta_mtime(field)
                         if pmt_sql:
                             delta_filter.append(pmt_sql)
-
-                    # field check if new history added
-                    if c.get_field_property('delta_history', field):
-                        pdh_sql = c.delta_history(field)
-                        if pdh_sql:
-                            delta_filter.append(pdh_sql)
 
         if delta_filter:
             delta_filter_sql = ' OR '.join(delta_filter)
