@@ -186,6 +186,13 @@ class ETLSnapshotHandler(MetriqueInitialized):
         return self.proxy.admin.etl.snapshot(cube=cube)
 
 
+class ETLActivityImportHandler(MetriqueInitialized):
+    @async
+    def get(self):
+        cube = self.get_argument('cube')
+        return self.proxy.admin.etl.activity_import(cube=cube)
+
+
 class CubesHandler(MetriqueInitialized):
     @async
     def get(self):

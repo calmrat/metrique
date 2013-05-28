@@ -7,7 +7,6 @@ logger = logging.getLogger(__name__)
 
 from bson.objectid import ObjectId
 from datetime import datetime
-from time import time
 from copy import deepcopy
 from collections import defaultdict
 
@@ -82,7 +81,7 @@ def save_object(cube, obj, _id=None):
     return 1
 
 
-def snapshot_docs(cube, ids):
+def _snapshot(cube, ids):
     c = get_cube(cube)
     w = c.get_collection(admin=False, timeline=False)
     t = c.get_collection(admin=True, timeline=True)
@@ -90,11 +89,13 @@ def snapshot_docs(cube, ids):
     time_docs = t.find({'current': True, 'id': {'$in': ids}},
                        sort=[('id', 1)])
     time_docs_iter = iter(time_docs)
-    tid = 0
+    tid = -1
 
     for doc in docs:
         _id = doc.pop('_id')
         _mtime = doc.pop('_mtime')
+
+        # get timeline document with matching id:
         while tid < _id:
             try:
                 time_doc = time_docs_iter.next()
@@ -122,42 +123,39 @@ def snapshot_docs(cube, ids):
             t.insert(new_doc)
 
 
-def snapshot(cube):
+def snapshot(cube, ids=None):
     logger.debug('Running snapshot')
-    c = get_cube(cube)
-    start_time = time()
-    w = c.get_collection(admin=False, timeline=False)
-    t = c.get_collection(admin=True, timeline=True)
-    t.ensure_index([('id', 1)])
-    docs = w.find(fields=['_id'])
-    logger.debug('Found %s docs' % docs.count())
+    if ids is None:
+        # Run on all the ids
+        c = get_cube(cube)
+        w = c.get_collection(admin=False, timeline=False)
+        docs = w.find(fields=['_id'])
+        logger.debug('Found %s docs' % docs.count())
 
-    ids_to_snapshot = []
-    for done, doc in enumerate(docs):
-        ids_to_snapshot.append(doc['_id'])
-        if done % 100000 == 0:
-            logger.debug(' ... %s req' % done)
-            snapshot_docs(cube, ids_to_snapshot)
-            ids_to_snapshot = []
-            logger.debug(' ... %s done' % done)
-    snapshot_docs(cube, ids_to_snapshot)
+        ids_to_snapshot = []
+        for done, doc in enumerate(docs):
+            ids_to_snapshot.append(doc['_id'])
+            if done % 100000 == 0:
+                _snapshot(cube, ids_to_snapshot)
+                ids_to_snapshot = []
+                logger.debug(' ... %s done' % done)
+        _snapshot(cube, ids_to_snapshot)
+    elif type(ids) is list:
+        _snapshot(cube, ids)
+    elif isinstance(ids, basestring):
+        ids = map(int, ids.split(','))
+        _snapshot(cube, ids)
 
-    end_time = time() - start_time
     logger.debug(' ... %s done' % done)
-    logger.debug('Snapshot finished in %.2f seconds.' % end_time)
 
 
-def activity_history_import(cube):
-    logger.debug('Running activity history import')
+def _activity_import(cube, ids):
     c = get_cube(cube)
-    start_time = time()
     h = c.get_collection(timeline=False, admin=False,
                          cube='%s_activity' % c.name)
     t = c.get_collection(timeline=True, admin=True)
-    t.ensure_index([('id', 1), ('start', 1)])
-    time_docs = t.find({'id': {'$gte': 800000}},
+    time_docs = t.find({'id': {'$in': ids}},
                        sort=[('id', 1), ('start', 1)])
-    logger.debug('Found %s docs in timeline.' % time_docs.count())
 
     # Dictionary of field_id: field_name
     fieldmap = defaultdict(lambda: '')
@@ -250,19 +248,28 @@ def activity_history_import(cube):
                     t.insert(doc)
                 #logger.warn('Imported: %s' % doc['id'])
 
-    end_time = time() - start_time
-    logger.debug('Import finished in %.2f seconds.' % end_time)
+
+def activity_import(cube):
+    logger.debug('Running activity history import')
+    c = get_cube(cube)
+    h = c.get_collection(timeline=False, admin=True,
+                         cube='%s_activity' % c.name)
+    t = c.get_collection(timeline=True, admin=True)
+    t.ensure_index([('id', 1), ('start', 1)])
+    h.ensure_index([('id', 1)])
+    h.ensure_index([('when', -1)])
+    _activity_import(cube, range(800000, 802000))
 
 
 def index_timeline(cube):
     logger.debug(" ... Indexing Timeline)")
     c = get_cube(cube)
-    _cube = c.get_collection(timeline=True, admin=True)
-    keys = [('field', 1), ('id', -1), ('mtime', -1)]
+    t = c.get_collection(timeline=True, admin=True)
+    keys = [('id', 1)]
     result = {}
     for tup in keys:
         name, direction = tup
-        result = _cube.ensure_index(tup, name=name)
+        result = t.ensure_index(tup, name=name)
         result.update({name: result})
     return result
 
