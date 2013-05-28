@@ -22,7 +22,7 @@ class BaseTEIID(BaseSql):
 
     @property
     def proxy(self):
-        self._proxy = Postgresql(vdb=self.vdb, db=self.db, host=self.host,
-                                 port=self.port, username=self.username,
-                                 password=self.password)
+        self._proxy = TEIID(vdb=self.vdb, db=self.db, host=self.host,
+                            port=self.port, username=self.username,
+                            password=self.password)
         return self._proxy
