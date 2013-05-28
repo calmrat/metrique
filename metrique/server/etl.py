@@ -95,7 +95,8 @@ def _snapshot(cube, ids):
         _id = doc.pop('_id')
         _mtime = doc.pop('_mtime')
 
-        # get timeline document with matching id:
+        # time_doc will contain first doc that has id >= _id,
+        # it might be a document where id > _id
         while tid < _id:
             try:
                 time_doc = time_docs_iter.next()
@@ -146,7 +147,92 @@ def snapshot(cube, ids=None):
         ids = map(int, ids.split(','))
         _snapshot(cube, ids)
 
-    logger.debug(' ... %s done' % done)
+    logger.debug(' ... %s done' % (done + 1))
+
+
+def _activity_batch_update(c, batch_updates, activity, field):
+    act = activity
+    when = act['when']
+    last_doc = batch_updates[-1]
+    tid = last_doc['id']
+    # We ignore the fields that aren't in the timeline
+    if field in last_doc['fields']:
+        batch_updates.pop()
+        if last_doc['end'] == when:
+            #part of the same change as the activity before
+            new_doc = last_doc
+            last_doc = batch_updates.pop()
+        else:
+            new_doc = {'fields': deepcopy(last_doc['fields']),
+                       'id': tid,
+                       'start': when,
+                       'end': when,
+                       'current': False}
+        last_doc['start'] = when
+        inconsistent = False
+        time_val = last_doc['fields'][field]
+        type_ = c.get_field_property('type', field)
+        added = act['added']
+        removed = act['removed']
+        if c.get_field_property('container', field):
+            if added is not None:
+                added = type_cast(added.split(','), type_)
+            if removed is not None:
+                removed = type_cast(removed.split(','), type_)
+            if new_doc['fields'][field] is None:
+                new_doc['fields'][field] = []
+            if added is not None:
+                added_list = added if (type(added) is
+                                       list) else [added]
+                for ad in added_list:
+                    if ad in new_doc['fields'][field]:
+                        new_doc['fields'][field].remove(ad)
+                    else:
+                        inconsistent = True
+            if removed is not None:
+                removed_list = removed if (type(removed) is
+                                           list) else [removed]
+                for rem in removed_list:
+                    new_doc['fields'][field].append(rem)
+        else:
+            added = type_cast(added, type_)
+            removed = type_cast(removed, type_)
+            new_doc['fields'][field] = removed
+            if added != time_val:
+                inconsistent = True
+        # Check if the object has the correct field value.
+        if inconsistent:
+            logger.warn('Inconsistency: %s %s: %s -> %s, '
+                        'object has %s.' % (
+                            tid, field, removed,
+                            added, time_val))
+            if 'corrupted' not in new_doc:
+                new_doc['corrupted'] = {}
+            new_doc['corrupted'][field] = added
+        # Add the objects to the batch
+        batch_updates.append(last_doc)
+        batch_updates.append(new_doc)
+
+
+def _activity_import_doc(c, time_doc, activities, timeline, fieldmap):
+    batch_updates = [time_doc]
+    for act in activities:
+        # We want to consider only activities that happend before
+        # the oldest version of the object from the timeline.
+        if not (act['when'] < time_doc['start']):
+            continue
+        field = fieldmap[act['what']]
+        _activity_batch_update(c, batch_updates, act, field)
+
+    if len(batch_updates) > 1:
+        # make the batch update
+        doc = batch_updates[0]
+        spec_now = {'_id': doc['_id']}
+        update_now = {'$set': {'start': doc['start']}}
+        timeline.update(spec_now, update_now, upsert=True)
+        for doc in batch_updates[1:]:
+            timeline.insert(doc)
+        #logger.warn('Imported: %s' % doc['id'])
 
 
 def _activity_import(cube, ids):
@@ -181,84 +267,8 @@ def _activity_import(cube, ids):
                     activities.append(act_doc)
                 except StopIteration:
                     break
-            batch_updates = [time_doc]
-            for act in activities:
-                if act['id'] != tid:
-                    continue
-                # We want to consider only activities that happend before
-                # the oldest version of the object from the timeline.
-                when = act['when']
-                if not (when < time_doc['start']):
-                    continue
-
-                last_doc = batch_updates[-1]
-                field = fieldmap[act['what']]
-                # We ignore the fields that aren't in the timeline
-                if field in last_doc['fields']:
-                    batch_updates.pop()
-                    if last_doc['end'] == when:
-                        #part of the same change as the activity before
-                        new_doc = last_doc
-                        last_doc = batch_updates.pop()
-                    else:
-                        new_doc = {'fields': deepcopy(last_doc['fields']),
-                                   'id': tid,
-                                   'start': when,
-                                   'end': when,
-                                   'current': False}
-                    last_doc['start'] = when
-                    inconsistent = False
-                    time_val = last_doc['fields'][field]
-                    type_ = c.get_field_property('type', field)
-                    added = act['added']
-                    removed = act['removed']
-                    if c.get_field_property('container', field):
-                        if added is not None:
-                            added = type_cast(added.split(','), type_)
-                        if removed is not None:
-                            removed = type_cast(removed.split(','), type_)
-                        if new_doc['fields'][field] is None:
-                            new_doc['fields'][field] = []
-                        if added is not None:
-                            added_list = added if (type(added) is
-                                                   list) else [added]
-                            for ad in added_list:
-                                if ad in new_doc['fields'][field]:
-                                    new_doc['fields'][field].remove(ad)
-                                else:
-                                    inconsistent = True
-                        if removed is not None:
-                            removed_list = removed if (type(removed) is
-                                                       list) else [removed]
-                            for rem in removed_list:
-                                new_doc['fields'][field].append(rem)
-                    else:
-                        added = type_cast(added, type_)
-                        removed = type_cast(removed, type_)
-                        new_doc['fields'][field] = removed
-                        if added != time_val:
-                            inconsistent = True
-                    # Check if the object has the correct field value.
-                    if inconsistent:
-                        logger.warn('Inconsistency: %s %s: %s -> %s, '
-                                    'object has %s.' % (
-                                        tid, field, removed,
-                                        added, time_val))
-                        if 'corrupted' not in new_doc:
-                            new_doc['corrupted'] = {}
-                        new_doc['corrupted'][field] = added
-                    # Add the objects to the batch
-                    batch_updates.append(last_doc)
-                    batch_updates.append(new_doc)
-            if len(batch_updates) > 1:
-                # make the batch update
-                doc = batch_updates[0]
-                spec_now = {'_id': doc['_id']}
-                update_now = {'$set': {'start': doc['start']}}
-                t.update(spec_now, update_now, upsert=True)
-                for doc in batch_updates[1:]:
-                    t.insert(doc)
-                #logger.warn('Imported: %s' % doc['id'])
+            acts = [act for act in activities if act['id'] == tid]
+            _activity_import_doc(c, time_doc, acts, t, fieldmap)
             activities = [act for act in activities if act['id'] != tid]
 
 

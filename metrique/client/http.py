@@ -152,6 +152,9 @@ class AdminETL(BaseClient):
     def snapshot(self, cube):
         return self._get('snapshot', cube=cube)
 
+    def activity_import(self, cube):
+        return self._get('activityimport', cube=cube)
+
 
 class AdminAuth(BaseClient):
     def __init__(self, config_dir=None, config_file=None):
