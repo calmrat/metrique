@@ -65,7 +65,7 @@ def save_doc(cube, field, tokens, id=None):
 
     now = datetime.now(UTC)
     spec_now = {'_id': id}
-    update_now = {'$set': {field: tokens, '_mtime': now}}
+    update_now = {'$set': {field: tokens, '_mtime': now, '_mtime_%s' % field: now}}
 
     _cube = c.get_collection(admin=True)
     _cube.update(spec_now, update_now, upsert=True)
@@ -279,14 +279,18 @@ def last_known_warehouse_mtime(cube, field=None):
     '''get the last known warehouse object mtime'''
     c = get_cube(cube)
 
+    start = None
     if field:
-        spec = {field: {'$exists': True}}
+        mtime = '_mtime_%s' % field
+        spec = {mtime: {'$exists': True}}
+        doc = c.get_collection().find_one(spec, [mtime], sort=[(mtime, -1)])
     else:
+        mtime = '_mtime'
         spec = {}
-    doc = c.get_collection().find_one(spec, ['_mtime'], sort=[('_mtime', -1)])
+        doc = c.get_collection().find_one(spec, [mtime], sort=[(mtime, -1)])
+
     if doc:
-        start = doc['_mtime']
-    else:
-        start = None
+        start = doc[mtime]
+
     logger.debug('... Last field mtime: %s' % start)
     return start
