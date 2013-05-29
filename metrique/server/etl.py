@@ -149,79 +149,97 @@ def snapshot(cube, ids=None):
     logger.debug(' ... %s done' % (done + 1))
 
 
+def cast_to_list(value, fieldtype):
+    if value is None:
+        return []
+    value = type_cast(value.split(','), fieldtype)
+    return value if (type(value) is list) else [value]
+
+
+def _activity_backwards(c, field, val, removed, added):
+    inconsistent = False
+    fieldtype = c.get_field_property('type', field)
+    container = c.get_field_property('container', field)
+
+    try:
+        if container:
+            val = [] if val is None else val
+            for ad in cast_to_list(added, fieldtype):
+                if ad in val:
+                    val.remove(ad)
+                else:
+                    inconsistent = True
+            for rem in cast_to_list(removed, fieldtype):
+                val.append(rem)
+        else:
+            if val != type_cast(added, fieldtype):
+                inconsistent = True
+            val = type_cast(removed, fieldtype)
+    except:
+        inconsistent = True
+        val = fieldtype()
+    return val, inconsistent
+
+
 def _activity_batch_update(c, batch_updates, activity):
+    '''
+    Adds the object before the activity to batch_updates.
+    '''
     act = activity
     field = c.fieldmap[act['what']]
-    when = act['when']
     last_doc = batch_updates[-1]
-    tid = last_doc['id']
     # We ignore the fields that aren't in the timeline
-    if field in last_doc['fields']:
-        batch_updates.pop()
-        if last_doc['end'] == when:
-            #part of the same change as the activity before
-            new_doc = last_doc
-            last_doc = batch_updates.pop()
-        else:
-            new_doc = {'fields': deepcopy(last_doc['fields']),
-                       'id': tid,
-                       'start': when,
-                       'end': when,
-                       'current': False}
-        last_doc['start'] = when
-        inconsistent = False
-        time_val = last_doc['fields'][field]
-        type_ = c.get_field_property('type', field)
-        added = act['added']
-        removed = act['removed']
-        if c.get_field_property('container', field):
-            if added is not None:
-                added = type_cast(added.split(','), type_)
-            if removed is not None:
-                removed = type_cast(removed.split(','), type_)
-            if new_doc['fields'][field] is None:
-                new_doc['fields'][field] = []
-            if added is not None:
-                added_list = added if (type(added) is
-                                       list) else [added]
-                for ad in added_list:
-                    if ad in new_doc['fields'][field]:
-                        new_doc['fields'][field].remove(ad)
-                    else:
-                        inconsistent = True
-            if removed is not None:
-                removed_list = removed if (type(removed) is
-                                           list) else [removed]
-                for rem in removed_list:
-                    new_doc['fields'][field].append(rem)
-        else:
-            added = type_cast(added, type_)
-            removed = type_cast(removed, type_)
-            new_doc['fields'][field] = removed
-            if added != time_val:
-                inconsistent = True
-        # Check if the object has the correct field value.
-        if inconsistent:
-            logger.warn('Inconsistency: %s %s: %s -> %s, '
-                        'object has %s.' % (
-                            tid, field, removed,
-                            added, time_val))
-            if 'corrupted' not in new_doc:
-                new_doc['corrupted'] = {}
-            new_doc['corrupted'][field] = added
-        # Add the objects to the batch
-        batch_updates.append(last_doc)
-        batch_updates.append(new_doc)
+    if field not in last_doc['fields']:
+        return
+
+    when = act['when']
+    tid = last_doc['id']
+    batch_updates.pop()
+
+    # check if this activity happened at the same time as the last one, if it
+    # did then we need to group them together
+    if last_doc['end'] == when:
+        new_doc = last_doc
+        last_doc = batch_updates.pop()
+    else:
+        new_doc = {'fields': deepcopy(last_doc['fields']),
+                   'id': tid,
+                   'start': when,  # FIXME to creation_ts
+                   'end': when,
+                   'current': False}
+    if 'corrupted' in last_doc:
+        new_doc['corrupted'] = last_doc['corrupted']
+    last_doc['start'] = when
+    added, removed = act['added'], act['removed']
+    last_val = last_doc['fields'][field]
+    new_val, inconsistent = _activity_backwards(c, field,
+                                                new_doc['fields'][field],
+                                                removed, added)
+    new_doc['fields'][field] = new_val
+    # Check if the object has the correct field value.
+    if inconsistent:
+        logger.warn('Inconsistency: %s %s: %s -> %s, '
+                    'object has %s.' % (
+                        tid, field, removed,
+                        added, last_val))
+        if 'corrupted' not in new_doc:
+            new_doc['corrupted'] = {}
+        new_doc['corrupted'][field] = added
+    # Add the objects to the batch
+    batch_updates.append(last_doc)
+    batch_updates.append(new_doc)
 
 
 def _activity_import_doc(c, time_doc, activities, timeline):
+    '''
+    Import activities for a single document into timeline.
+    '''
     batch_updates = [time_doc]
     for act in activities:
-        # We want to consider only activities that happend before
-        # the oldest version of the object from the timeline.
-        if not (act['when'] < time_doc['start']):
-            continue
-        _activity_batch_update(c, batch_updates, act)
+        # We want to consider only activities that happend before time_doc
+        if act['when'] < time_doc['start']:
+            # apply the activity to the batch:
+            _activity_batch_update(c, batch_updates, act)
 
     if len(batch_updates) > 1:
         # make the batch update
@@ -231,62 +249,73 @@ def _activity_import_doc(c, time_doc, activities, timeline):
         timeline.update(spec_now, update_now, upsert=True)
         for doc in batch_updates[1:]:
             timeline.insert(doc)
-        #logger.warn('Imported: %s' % doc['id'])
 
 
 def _activity_import(cube, ids):
     c = get_cube(cube)
+
+    timeline = c.get_collection(timeline=True, admin=True)
+    time_docs = timeline.find({'id': {'$in': ids}},
+                              sort=[('id', 1), ('start', 1)])
+
     h = c.get_collection(timeline=False, admin=False,
                          cube='%s_activity' % c.name)
-    t = c.get_collection(timeline=True, admin=True)
-    time_docs = t.find({'id': {'$in': ids}},
-                       sort=[('id', 1), ('start', 1)])
     act_docs = h.find({'id': {'$in': ids}}, sort=[('id', 1), ('when', -1)])
     act_docs_iter = iter(act_docs)
 
-    aid = -1
+    act_id = -1
     last_doc_id = -1
     activities = []
     for time_doc in time_docs:
         tid = time_doc['id']
+        # we want to update only the oldest version of the object
         if tid != last_doc_id:
             last_doc_id = tid
-            # we want to update only the oldest version of the object
-            while aid <= tid:
+            while act_id <= tid:
                 try:
                     act_doc = act_docs_iter.next()
-                    aid = act_doc['id']
+                    act_id = act_doc['id']
                     activities.append(act_doc)
                 except StopIteration:
                     break
             acts = [act for act in activities if act['id'] == tid]
-            _activity_import_doc(c, time_doc, acts, t)
-            activities = [act for act in activities if act['id'] != tid]
+            _activity_import_doc(c, time_doc, acts, timeline)
+            activities = [act for act in activities if act['id'] > tid]
 
 
-def activity_import(cube):
+def activity_import(cube, ids=None):
     logger.debug('Running activity history import')
     c = get_cube(cube)
     h = c.get_collection(timeline=False, admin=True,
                          cube='%s_activity' % c.name)
-    t = c.get_collection(timeline=True, admin=True)
-    t.ensure_index([('id', 1), ('start', 1)])
-    h.ensure_index([('id', 1)])
     h.ensure_index([('id', 1), ('when', -1)])
-    _activity_import(cube, range(800000, 900000))
+    if ids is None:
+        # Run on all the ids
+        t = c.get_collection(timeline=True, admin=True)
+        docs = t.find({'current': True}, fields=['id'])
+        logger.debug('Found %s docs' % docs.count())
+
+        ids = []
+        for done, doc in enumerate(docs):
+            ids.append(doc['id'])
+            if done % 100000 == 0:
+                _activity_import(cube, ids)
+                ids = []
+                logger.debug(' ... %s done' % done)
+        _activity_import(cube, ids)
+        logger.debug(' ... %s done' % (done + 1))
+    elif type(ids) is list:
+        _activity_import(cube, ids)
+    elif isinstance(ids, basestring):
+        ids = map(int, ids.split(','))
+        _activity_import(cube, ids)
 
 
 def index_timeline(cube):
     logger.debug(" ... Indexing Timeline)")
     c = get_cube(cube)
     t = c.get_collection(timeline=True, admin=True)
-    keys = [('id', 1)]
-    result = {}
-    for tup in keys:
-        name, direction = tup
-        result = t.ensure_index(tup, name=name)
-        result.update({name: result})
-    return result
+    t.ensure_index([('id', 1), ('start', 1)])
 
 
 def index_warehouse(cube, fields, force=False):

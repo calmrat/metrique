@@ -149,11 +149,11 @@ class AdminETL(BaseClient):
         return self._get('extract', cube=cube, fields=fields,
                          force=force, id_delta=id_delta, index=index)
 
-    def snapshot(self, cube):
-        return self._get('snapshot', cube=cube)
+    def snapshot(self, cube, ids=None):
+        return self._get('snapshot', cube=cube, ids=ids)
 
-    def activity_import(self, cube):
-        return self._get('activityimport', cube=cube)
+    def activity_import(self, cube, ids=None):
+        return self._get('activityimport', cube=cube, ids=ids)
 
 
 class AdminAuth(BaseClient):
