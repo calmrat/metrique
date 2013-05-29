@@ -65,10 +65,11 @@ def save_doc(cube, field, tokens, id=None):
 
     now = datetime.now(UTC)
     spec_now = {'_id': id}
-    update_now = {'$set': {field: tokens, '_mtime': now, '_mtime_%s' % field: now}}
+    update_now = {'$set': {field: tokens, '_mtime': now}}
 
     _cube = c.get_collection(admin=True)
     _cube.update(spec_now, update_now, upsert=True)
+
     return 1  # eg, one document added
 
 
@@ -263,7 +264,7 @@ def extract(cube, index=False, **kwargs):
             kwargs['field'] = field
             logger.debug('%sField: %s%s' % (YELLOW, field, ENDC))
             result[field] = c.extract_func(**kwargs)
-            logger.info('Extract - Complete: (%s.%s): %s' % (cube, field, result))
+            logger.info('Extract - Complete: (%s.%s): %s' % (cube, field, result[field]))
         if index:
             index_warehouse(cube, fields)
     else:
@@ -278,19 +279,22 @@ def extract(cube, index=False, **kwargs):
 def last_known_warehouse_mtime(cube, field=None):
     '''get the last known warehouse object mtime'''
     c = get_cube(cube)
+    _cube = c.get_collection()
 
     start = None
     if field:
-        mtime = '_mtime_%s' % field
-        spec = {mtime: {'$exists': True}}
-        doc = c.get_collection().find_one(spec, [mtime], sort=[(mtime, -1)])
+        # we need to check the etl_activity collection
+        spec = {'cube': cube, field: {'$exists': True}}
+        doc = c._c_etl_activity.find_one(spec, ['%s.mtime' % field])
+        if doc:
+            start = doc[field]['mtime']
     else:
+        # get the most recent _mtime of all objects in the cube
         mtime = '_mtime'
         spec = {}
-        doc = c.get_collection().find_one(spec, [mtime], sort=[(mtime, -1)])
-
-    if doc:
-        start = doc[mtime]
+        doc = _cube.find_one(spec, [mtime], sort=[(mtime, -1)])
+        if doc:
+            start = doc[field][mtime]
 
     logger.debug('... Last field mtime: %s' % start)
     return start

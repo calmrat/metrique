@@ -176,6 +176,14 @@ def _extract_func(cube, **kwargs):
     force = int(kwargs.get('force', 0))
     id_delta = kwargs.get('id_delta', None)
 
+    if id_delta:
+        if force:
+            raise RuntimeError("force and id_delta can't be used simultaneously")
+        else:
+            touch = False
+    else:
+        touch = True
+
     db = c.get_field_property('db', field)
     table = c.get_field_property('table', field)
     db_table = '%s.%s' % (db, table)
@@ -369,6 +377,11 @@ def _extract_func(cube, **kwargs):
 
     container = c.get_field_property('container', field)
 
+    if touch:
+        now = datetime.now(UTC)
+        spec_mtime = {'cube': cube}
+        update_mtime = {'$set': {field: {'mtime': now}}}
+
     while not _stop:
         rows = c._sql_fetchall(sql, start, field, row_limit)
         k = len(rows)
@@ -420,4 +433,9 @@ def _extract_func(cube, **kwargs):
     result = {'saved': saved}
     if failed:
         result.update({'failed_ids': failed})
+    else:
+        if touch:
+            # update the mtimestamp for when this field was last touched
+            # to the moment we started updating
+            c._c_etl_activity.update(spec_mtime, update_mtime, upsert=True)
     return result
