@@ -8,7 +8,6 @@ logger = logging.getLogger(__name__)
 from bson.objectid import ObjectId
 from datetime import datetime
 from copy import deepcopy
-from collections import defaultdict
 
 from metrique.server.drivers.drivermap import get_cube, get_fields
 
@@ -150,8 +149,9 @@ def snapshot(cube, ids=None):
     logger.debug(' ... %s done' % (done + 1))
 
 
-def _activity_batch_update(c, batch_updates, activity, field):
+def _activity_batch_update(c, batch_updates, activity):
     act = activity
+    field = c.fieldmap[act['what']]
     when = act['when']
     last_doc = batch_updates[-1]
     tid = last_doc['id']
@@ -214,15 +214,14 @@ def _activity_batch_update(c, batch_updates, activity, field):
         batch_updates.append(new_doc)
 
 
-def _activity_import_doc(c, time_doc, activities, timeline, fieldmap):
+def _activity_import_doc(c, time_doc, activities, timeline):
     batch_updates = [time_doc]
     for act in activities:
         # We want to consider only activities that happend before
         # the oldest version of the object from the timeline.
         if not (act['when'] < time_doc['start']):
             continue
-        field = fieldmap[act['what']]
-        _activity_batch_update(c, batch_updates, act, field)
+        _activity_batch_update(c, batch_updates, act)
 
     if len(batch_updates) > 1:
         # make the batch update
@@ -245,13 +244,6 @@ def _activity_import(cube, ids):
     act_docs = h.find({'id': {'$in': ids}}, sort=[('id', 1), ('when', -1)])
     act_docs_iter = iter(act_docs)
 
-    # Dictionary of field_id: field_name
-    fieldmap = defaultdict(lambda: '')
-    for field in c.fields:
-        field_id = c.get_field_property('what', field)
-        if field_id is not None:
-            fieldmap[field_id[1]] = field
-
     aid = -1
     last_doc_id = -1
     activities = []
@@ -268,7 +260,7 @@ def _activity_import(cube, ids):
                 except StopIteration:
                     break
             acts = [act for act in activities if act['id'] == tid]
-            _activity_import_doc(c, time_doc, acts, t, fieldmap)
+            _activity_import_doc(c, time_doc, acts, t)
             activities = [act for act in activities if act['id'] != tid]
 
 
