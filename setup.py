@@ -25,7 +25,7 @@ setup(
     author='Chris Ward',
     author_email='cward@redhat.com',
     description='Python/MongoDB Information Platform',
-    requires=['pandas', 'psycopg2', 'MySQLdb', 'tornado', 'pql',
+    requires=['pandas', 'psycopg2', 'MySQLdb', 'tornado (>=3.0)', 'pql',
               'argparse', 'dateutil', 'simplejson', 'pymongo',
               'bson', 'decorator', 'requests', 'futures',
               'gitdb'],

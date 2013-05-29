@@ -41,7 +41,7 @@ def async(f):
             try:
                 tornado.ioloop.IOLoop.instance().add_future(future, future_end)
             except AttributeError as e:
-                raise RuntimeError("Install python-futures version >= 3 (%s)" % e)
+                raise RuntimeError("Install python tornado version >= 3 (%s)" % e)
         else:
             _result = f(self, *args, **kwargs)
             # Result is always expected to be json encoded!
