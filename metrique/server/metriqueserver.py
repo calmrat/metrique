@@ -7,6 +7,7 @@ logger = logging.getLogger()
 
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
+from multiprocessing import cpu_count
 import os
 
 from metrique.server import baseserver
@@ -17,8 +18,10 @@ from metrique.server.utils.loghandlers import MongoLogHandler
 from metrique.tools.constants import UTC
 from metrique.tools.decorators import memo
 
-# FIXME: add as config property
-MAX_WORKERS = 8
+# FIXME: add as metrique_config property
+# NOTE: this means the tornado server will only be able to
+# handle this number of requests simultaneously
+MAX_WORKERS = cpu_count() * 10
 
 
 class MetriqueServer(baseserver.BaseServer):
