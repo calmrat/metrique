@@ -62,11 +62,11 @@ class BaseDriver(object):
         '''
         Dictionary of field_id: field_name
         '''
-        fieldmap = defaultdict(lambda: '')
+        fieldmap = defaultdict(str)
         for field in self.fields:
             field_id = self.get_field_property('what', field)
             if field_id is not None:
-                fieldmap[field_id[1]] = field
+                fieldmap[field_id] = field
         return fieldmap
 
     # FIXME: split out into get_timeline... and drop the timeline arg...
