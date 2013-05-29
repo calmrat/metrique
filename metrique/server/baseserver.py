@@ -138,12 +138,12 @@ class ETL(BaseServer):
                            index=index)
 
     @job_save('etl_snapshot')
-    def snapshot(self, cube):
-        return etl.snapshot(cube)
+    def snapshot(self, cube, ids):
+        return etl.snapshot(cube, ids)
 
-    @job_save('etl_import_history')
-    def import_history(self, cube):
-        return etl.activity_history_import(cube)
+    @job_save('etl_activity_import')
+    def activity_import(self, cube, ids):
+        return etl.activity_import(cube, ids)
 
 
 class Query(BaseServer):
