@@ -20,35 +20,45 @@ with the scientific python computing stack.*
 Installation
 ------------
 
-Install virtualenv, then create a new virtual environment, as such::
+**MongoDB**
+We assume you have a MongoDB server up and running. If it's running
+binded to 127.0.0.1 with noauth = true and ssl = false, metrique
+should find it automatically.
 
-    cd $HOME
-    virtualenv vroot --no-site-packages --distribute
+If it's not localhost, then you must remember to run metrique-server-setup after installing metrique.
 
-Activate the virtualenv::
+**Metrique**
+(optional) Install virtualenv and create a new virtual environment for metrique.
 
-    source $HOME/vroot/bin/activate
+Then, install metrique. 
 
-Install dependencies::
-
-    easy_install -U distribute    
-    python bin/pip install requests
-    python bin/pip install simplejson
-    python bin/pip install tornado
-    python bin/pip install futures
-    python bin/pip install pymongo
-    python bin/pip install bson
-    python bin/pip install pql
-    python bin/pip install python-dateutil
-    python bin/pip install decorator
-    python bin/pip install numpy
-    python bin/pip install pandas
-    python bin/pip install psycopg2  # requires postgresql-devel
-    python bin/pip install MySQL-python  # requires mysql-devel
-    python bin/pip install gitdb
+    python-pip install metrique
 
 .. note::
      If you see 'gcc' error, try installing gcc and python-devel libraries first
 
 .. note::
      If you see 'Connection reset by peer' error, try option: --use-mirrors
+
+At this point, if you have default mongob setup and it's started, you 
+should be ready to go. Otherwise, run metrique-server-config.py.
+
+Run::
+    
+    $> metrique-server start [1|0] [1|0]
+
+Where 1|0 for argv 0 and 1 are debug on and async on respectively
+
+
+**Client**
+
+Metrique offers a http api, with a convenient pyclient that understands that api.
+
+Assuming your server is configured and metrique-server is running, launch ipython.
+
+>>> from metrique.client import pyclient
+>>> c = pyclient()
+>>> c.ping()
+[m] pong!
+
+If all is well, the server server should return your ping.
