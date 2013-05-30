@@ -23,25 +23,18 @@ def async(f):
         if self.proxy.async:
             def future_end(future):
                 try:
-                    try:
-                        _result = future.result()
-                    except ImportError as e:
-                        raise ImportError("Missing dependency! (%s)" % e)
+                    _result = future.result()
                     # Result is always expected to be json encoded!
                     result = json.dumps(_result, cls=Encoder,
                                         ensure_ascii=False)
+                except Exception as e:
+                    result = json.dumps(str(e))
+                    raise
+                finally:
                     self.write(result)
                     self.finish()
-                except Exception as e:
-                    e = json.dumps(str(e))
-                    self.write(e)
-                    self.finish()
-                    raise
             future = self.proxy.executor.submit(f, self, *args, **kwargs)
-            try:
-                tornado.ioloop.IOLoop.instance().add_future(future, future_end)
-            except AttributeError as e:
-                raise RuntimeError("Install python tornado version >= 3 (%s)" % e)
+            tornado.ioloop.IOLoop.instance().add_future(future, future_end)
         else:
             _result = f(self, *args, **kwargs)
             # Result is always expected to be json encoded!
