@@ -50,22 +50,29 @@ def get_cubes():
     return sorted(_cubes)
 
 
+def fields_check(cube, fields):
+    c = get_cube(cube)
+    for field in fields:
+        if not field:
+            continue
+        if field not in c.fields.keys():
+            raise ValueError("Invalid field: '%s'" % field)
+    return True
+
+
 def get_fields(cube, fields):
     c = get_cube(cube)
     if not fields:
         return []
-    elif type(fields) is list:
-        return sorted([s.strip() for s in fields])
     elif fields == '__all__':
         return sorted(c.fields.keys())
+    elif type(fields) is list:
+        fields = [str(s).strip() for s in fields]
+        fields_check(cube, fields)
+        return sorted(set(fields))
     elif isinstance(fields, basestring):
         fields = [s.strip() for s in fields.split(',')]
-
-        for field in fields:
-            if not field:
-                continue
-            if field not in c.fields.keys():
-                raise ValueError("Invalid field: '%s'" % field)
+        fields_check(cube, fields)
         return sorted(set(fields))
     else:
         raise ValueError("Unable to parse fields. Got (%s)" % fields)
