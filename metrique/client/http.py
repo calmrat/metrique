@@ -57,11 +57,6 @@ class BaseClient(object):
             else:
                 return response
 
-    # FIXME: move to client.utils
-    @staticmethod
-    def list2csv(_list):
-        return ','.join(map(str, _list))
-
 
 class Query(BaseClient):
     def __init__(self, config_dir=None, config_file=None):
@@ -69,7 +64,11 @@ class Query(BaseClient):
         self._command = 'query'
 
     def aggregate(self, cube, pipeline):
-        return self._get('aggregate', cube=cube, pipeline=pipeline)
+        result = self._get('aggregate', cube=cube, pipeline=pipeline)
+        try:
+            return result['result']
+        except Exception:
+            raise RuntimeError(result)
 
     def count(self, cube, query):
         '''
