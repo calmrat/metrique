@@ -123,8 +123,8 @@ class JobManage(BaseServer):
 
 class ETL(BaseServer):
     @job_save('etl_index_timeline')
-    def index_timeline(self, cube, force=None):
-        return etl.index_timeline(cube, force)
+    def index_timeline(self, cube):
+        return etl.index_timeline(cube)
 
     @job_save('etl_index_warehouse')
     def index_warehouse(self, cube, field=None, force=None):
