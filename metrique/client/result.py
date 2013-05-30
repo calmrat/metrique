@@ -36,12 +36,6 @@ class Result(object):
         else:
             return self.data[key]
 
-    def __getattr__(self, attr):
-        if hasattr(self, '_frame'):
-            return self._frame[attr]
-        else:
-            return self.data[attr]
-
     @property
     def frame(self):
         '''

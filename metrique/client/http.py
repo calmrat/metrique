@@ -57,6 +57,11 @@ class BaseClient(object):
             else:
                 return response
 
+    # FIXME: move to client.utils
+    @staticmethod
+    def list2csv(_list):
+        return ','.join(map(str, _list))
+
 
 class Query(BaseClient):
     def __init__(self, config_dir=None, config_file=None):
@@ -156,35 +161,9 @@ class AdminETL(BaseClient):
         return self._get('activityimport', cube=cube, ids=ids)
 
 
-class AdminAuth(BaseClient):
-    def __init__(self, config_dir=None, config_file=None):
-        super(AdminAuth, self).__init__(config_dir, config_file)
-        self._command = 'admin/auth'
-
-    def list(self, fingerprint=""):
-        return self._get('list', fingerprint=fingerprint)
-
-    def auth(self, fingerprint="", role="", cube="", field=""):
-        return self._get('auth', fingerprint=fingerprint, role=role,
-                         cube=cube, field=field)
-
-    def add(self, fingerprint="", role="", cube="", field="", mask=0):
-        return self._get('add', fingerprint=fingerprint, role=role,
-                         cube=cube, field=field, mask=mask)
-
-    def drop(self, fingerprint="", role="", cube="", field=""):
-        return self._get('drop', fingerprint=fingerprint, role=role,
-                         cube=cube, field=field)
-
-    def mask(self, fingerprint="", role="", mask=0):
-        return self._get('mask', fingerprint=fingerprint, role=role,
-                         mask=mask)
-
-
 class Admin(BaseClient):
     def __init__(self, config_dir=None, config_file=None):
         super(Admin, self).__init__(config_dir, config_file)
-        self.auth = AdminAuth(config_dir, config_file)
         self.etl = AdminETL(config_dir, config_file)
         self.log = AdminLog(config_dir, config_file)
 
