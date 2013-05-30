@@ -8,6 +8,7 @@ logger = logging.getLogger(__name__)
 from bson.objectid import ObjectId
 from datetime import datetime
 from copy import deepcopy
+from collections import defaultdict
 
 from metrique.server.drivers.drivermap import get_cube, get_fields
 
@@ -91,6 +92,7 @@ def _snapshot(cube, ids):
     time_docs_iter = iter(time_docs)
     tid = -1
 
+    batch_insert = []
     for doc in docs:
         _id = doc.pop('_id')
         _mtime = doc.pop('_mtime')
@@ -119,9 +121,14 @@ def _snapshot(cube, ids):
             new_doc = {'fields': doc,
                        'id': _id,
                        'start': _mtime,
-                       'end': _mtime,
+                       'end': None,
                        'current': True}
-            t.insert(new_doc)
+            batch_insert.append(new_doc)
+        if len(batch_insert) > 1000:
+            t.insert(batch_insert)
+            batch_insert = []
+    if len(batch_insert) > 0:
+        t.insert(batch_insert)
 
 
 def snapshot(cube, ids=None):
@@ -153,32 +160,31 @@ def snapshot(cube, ids=None):
 def cast_to_list(value, fieldtype):
     if value is None:
         return []
-    value = type_cast(value.split(','), fieldtype)
+    value = type_cast([s.strip() for s in value.split(',')],
+                      fieldtype)
     return value if (type(value) is list) else [value]
 
 
 def _activity_backwards(c, field, val, removed, added):
     inconsistent = False
-    fieldtype = c.get_field_property('type', field)
     container = c.get_field_property('container', field)
 
     try:
         if container:
             val = [] if val is None else val
-            for ad in cast_to_list(added, fieldtype):
+            for ad in added:
                 if ad in val:
                     val.remove(ad)
                 else:
                     inconsistent = True
-            for rem in cast_to_list(removed, fieldtype):
+            for rem in removed:
                 val.append(rem)
         else:
-            if val != type_cast(added, fieldtype):
+            if val != added[0]:
                 inconsistent = True
-            val = type_cast(removed, fieldtype)
+            val = removed[0]
     except:
         inconsistent = True
-        val = fieldtype()
     return val, inconsistent
 
 
@@ -186,14 +192,12 @@ def _activity_batch_update(c, batch_updates, activity):
     '''
     Adds the object before the activity to batch_updates.
     '''
-    act = activity
-    field = c.fieldmap[act['what']]
+    when, field, removed, added, inconsistent = activity
     last_doc = batch_updates[-1]
     # We ignore the fields that aren't in the timeline
     if field not in last_doc['fields']:
         return
 
-    when = act['when']
     tid = last_doc['id']
     batch_updates.pop()
 
@@ -211,12 +215,12 @@ def _activity_batch_update(c, batch_updates, activity):
     if 'corrupted' in last_doc:
         new_doc['corrupted'] = last_doc['corrupted']
     last_doc['start'] = when
-    added, removed = act['added'], act['removed']
     last_val = last_doc['fields'][field]
-    new_val, inconsistent = _activity_backwards(c, field,
-                                                new_doc['fields'][field],
-                                                removed, added)
-    new_doc['fields'][field] = new_val
+    if not inconsistent:
+        new_val, inconsistent = _activity_backwards(c, field,
+                                                    new_doc['fields'][field],
+                                                    removed, added)
+        new_doc['fields'][field] = new_val
     # Check if the object has the correct field value.
     if inconsistent:
         logger.warn('Inconsistency: %s %s: %s -> %s, '
@@ -231,14 +235,58 @@ def _activity_batch_update(c, batch_updates, activity):
     batch_updates.append(new_doc)
 
 
+def _activity_prepare(c, activities):
+    '''
+    Creates a list of (when, field, removed, added, inconsistent) pairs.
+    It groups those activities that happened at the same time on the
+    same field.
+    The list is sorted descending by when.
+    '''
+    d = defaultdict(lambda: defaultdict(list))
+    for act in activities:
+        what = act['what']
+        d[when][what].append(act)
+
+    res = []
+    for when in d:
+        for what in d[when]:
+            acts = d[when][what]
+            field = c.fieldmap[what]
+            fieldtype = c.get_field_property('type', field)
+            container = c.get_field_property('container', field)
+            try:
+                if container:
+                    # we must group the added and removed
+                    added = [cast_to_list(act['added'], fieldtype)
+                             for act in acts]
+                    added = sum(added, [])
+                    removed = [cast_to_list(act['removed'], fieldtype)
+                               for act in acts]
+                    removed = sum(removed, [])
+                else:
+                    # there should be only one activity for this,
+                    # otherwise it is corrupted
+                    removed = [type_cast(act['removed'], fieldtype)
+                               for act in acts]
+                    added = [type_cast(act['added'], fieldtype)
+                             for act in acts]
+                res.append((when, field, removed, added, False))
+            except:
+                added = [act['added'] for act in acts]
+                removed = [act['removed'] for act in acts]
+                res.append((when, field, removed, added, True))
+    res.sort(reverse=True)
+    return res
+
+
 def _activity_import_doc(c, time_doc, activities, timeline):
     '''
     Import activities for a single document into timeline.
     '''
     batch_updates = [time_doc]
-    for act in activities:
+    for act in _activity_prepare(c, activities):
         # We want to consider only activities that happend before time_doc
-        if act['when'] < time_doc['start']:
+        if act[0] <= time_doc['start']:
             # apply the activity to the batch:
             _activity_batch_update(c, batch_updates, act)
 
@@ -248,8 +296,7 @@ def _activity_import_doc(c, time_doc, activities, timeline):
         spec_now = {'_id': doc['_id']}
         update_now = {'$set': {'start': doc['start']}}
         timeline.update(spec_now, update_now, upsert=True)
-        for doc in batch_updates[1:]:
-            timeline.insert(doc)
+        timeline.insert(batch_updates[1:])
 
 
 def _activity_import(cube, ids):
@@ -356,7 +403,8 @@ def extract(cube, index=False, **kwargs):
             kwargs['field'] = field
             logger.debug('%sField: %s%s' % (YELLOW, field, ENDC))
             result[field] = c.extract_func(**kwargs)
-            logger.info('Extract - Complete: (%s.%s): %s' % (cube, field, result[field]))
+            logger.info('Extract - Complete: (%s.%s): %s' %
+                        (cube, field, result[field]))
         if index:
             index_warehouse(cube, fields)
     else:

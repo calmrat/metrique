@@ -145,6 +145,9 @@ class AdminETL(BaseClient):
                                       field=field, force=force)
         return result
 
+    def index_timeline(self, cube):
+        return self._get('index/timeline', cube=cube)
+
     def extract(self, cube, fields="", force=0, id_delta="", index=0):
         return self._get('extract', cube=cube, fields=fields,
                          force=force, id_delta=id_delta, index=index)
