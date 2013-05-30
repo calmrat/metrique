@@ -2,6 +2,9 @@
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 # Author: "Chris Ward" <cward@redhat.com>
 
+import logging
+logger = logging.getLogger(__name__)
+
 import simplejson as json
 import os
 from dateutil.parser import parse as dt_parse
@@ -56,7 +59,11 @@ class Result(object):
 
     def load(self, data):
         if isinstance(data, basestring):
-            self._load_file(data)
+            try:
+                self._load_file(data)
+            except Exception:
+                logger.debug('Failed to load data file (%s)' % data)
+                self.data = None
         elif data is not None:
             self._load_py(data)
         else:
