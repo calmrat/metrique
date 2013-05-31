@@ -245,6 +245,7 @@ def _activity_prepare(c, activities):
     d = defaultdict(lambda: defaultdict(list))
     for act in activities:
         what = act['what']
+        when = act['when']
         d[when][what].append(act)
 
     res = []
@@ -257,23 +258,23 @@ def _activity_prepare(c, activities):
             try:
                 if container:
                     # we must group the added and removed
-                    added = [cast_to_list(act['added'], fieldtype)
+                    added = [cast_to_list(act['added'].lower(), fieldtype)
                              for act in acts]
                     added = sum(added, [])
-                    removed = [cast_to_list(act['removed'], fieldtype)
+                    removed = [cast_to_list(act['removed'].lower(), fieldtype)
                                for act in acts]
                     removed = sum(removed, [])
                 else:
                     # there should be only one activity for this,
                     # otherwise it is corrupted
-                    removed = [type_cast(act['removed'], fieldtype)
+                    removed = [type_cast(act['removed'].lower(), fieldtype)
                                for act in acts]
-                    added = [type_cast(act['added'], fieldtype)
+                    added = [type_cast(act['added'].lower(), fieldtype)
                              for act in acts]
                 res.append((when, field, removed, added, False))
             except:
-                added = [act['added'] for act in acts]
-                removed = [act['removed'] for act in acts]
+                added = [act['added'].lower() for act in acts]
+                removed = [act['removed'].lower() for act in acts]
                 res.append((when, field, removed, added, True))
     res.sort(reverse=True)
     return res
