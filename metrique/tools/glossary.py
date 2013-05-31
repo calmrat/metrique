@@ -12,7 +12,11 @@ def join_or(*args):
 
 
 def o_in(field_token):
-    return '%s in [%s]' % field_token
+    field, token = field_token
+    if type(token) is list:
+        return '%s in %s' % field_token
+    else:
+        return '%s in [%s]' % field_token
 
 
 def o_has(field_token):
