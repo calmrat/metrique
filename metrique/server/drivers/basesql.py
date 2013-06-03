@@ -285,9 +285,6 @@ def _extract_func(cube, **kwargs):
             table_lookup = '%s.%s' % (table, lookup)
             join_sql = None
 
-        # whether field has timezone info attached, assume datetime if so
-        timezone = c.get_field_property('timezone', field)
-
         # sql column convert
         sql_column_convert = c.get_field_property('sql_column_convert', field)
         # sql lookup convert
@@ -339,12 +336,6 @@ def _extract_func(cube, **kwargs):
 
         if sql_lookup_convert:
             table_lookup = 'CONVERT(%s, %s)' % (table_lookup, sql_lookup_convert)
-
-        # convert lookups with tz data to UTC
-        if timezone:
-            #                              tz, from, to
-            table_lookup = "modifytimezone(%s, '%s', 'GMT+0')" % (table_lookup,
-                                                                  timezone)
 
         sql = "SELECT %s, %s FROM %s.%s " % (table_column,
                                              table_lookup,
