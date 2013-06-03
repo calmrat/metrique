@@ -6,6 +6,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 import pql
+import re
 
 from metrique.server.drivers.drivermap import get_cube, get_fields
 
@@ -90,8 +91,31 @@ def count(cube, query):
         return 0
 
 
-def find(cube, query, fields=None):
+def _get_date_pql_string(date):
+    before = lambda d: 'start <= date("%s")' % d
+    after = lambda d: '(end >= date("%s") or end == None)' % d
+    split = date.split('~')
+    logger.warn(split)
+    if len(split) == 1:
+        return '%s and %s' % (before(date), after(date))
+    elif split[0] == '':
+        return before(split[1])
+    elif split[1] == '':
+        return after(split[0])
+    else:
+        return '%s and %s' % (before(split[1]), after(split[0]))
+
+
+def find(cube, query, fields=None, date=None, most_recent=True):
     logger.debug('Running Find')
+    if date is not None:
+        # we will be doing a timeline query so we need to rename the fields
+        # WARNING: might not work if some field is a substring of other field
+        all_fields = get_fields(cube, '__all__')
+        for f in all_fields:
+            query = re.sub(f, 'fields.%s' % f, query)
+        # add the date constraint
+        query = query + ' and ' + _get_date_pql_string(date)
     pql_parser = pql.SchemaFreeParser()
     try:
         # FIXME: make it a schema aware parser
@@ -100,15 +124,32 @@ def find(cube, query, fields=None):
         raise ValueError("Invalid Query (%s)" % str(e))
 
     c = get_cube(cube)
-    _cube = c.get_collection()
+    _cube = c.get_collection(timeline=(date is not None))
 
     logger.debug('Query: %s' % spec)
 
     fields = get_fields(cube, fields)
-    logger.debug('Return Fields: %s' % fields)
 
-    docs = _cube.find(spec, fields)
-    docs.batch_size(10000000)  # hard limit is 16M...
+    if date is not None:
+        project_d = {f: '$fields.%s' % f for f in fields}
+        project_d.update(dict(_id='$id', _start='$start', _end='$end'))
+        if most_recent:
+            docs = _cube.aggregate([{'$match': spec},
+                                    {'$sort': {'start': -1}},
+                                    {'$group': {'_id': '$id',
+                                                'fields': {'$first':
+                                                           '$fields'},
+                                                'start': {'$first': '$start'},
+                                                'end':  {'$first': '$end'},
+                                                'id': {'$first': '$id'}}},
+                                    {'$project': project_d}])
+        else:
+            docs = _cube.aggregate([{'$match': spec},
+                                    {'$project': project_d}])
+        docs = docs['result']
+    else:
+        docs = _cube.find(spec, fields)
+        docs.batch_size(10000000)  # hard limit is 16M...
     docs = [d for d in docs]
     return docs
 

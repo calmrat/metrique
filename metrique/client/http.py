@@ -33,13 +33,16 @@ class BaseClient(object):
 
     def _get(self, *args, **kwargs):
         # arguments are expected to be json encoded!
-        kwargs_json = dict([(k, json.dumps(v, cls=Encoder, ensure_ascii=False)) for k, v in kwargs.items()])
+        kwargs_json = dict([(k, json.dumps(v, cls=Encoder, ensure_ascii=False))
+                            for k, v in kwargs.items()])
 
         url = os.path.join(self.config.metrique_api_url, self._command, *args)
         if self.background:
-            # FIXME: save the threads and use (eg) multiprocessing.pool.ThreadPool... result.get()
+            # FIXME: save the threads and use (eg)
+            # multiprocessing.pool.ThreadPool... result.get()
             # to get back the results later if the client wants...
-            t = Thread(target=rq.get, kwargs={'url': url, 'params': kwargs_json})
+            t = Thread(target=rq.get, kwargs={'url': url,
+                                              'params': kwargs_json})
             t.daemon = True
             t.start()
             return
@@ -75,11 +78,27 @@ class Query(BaseClient):
         '''
         return self._get('count', cube=cube, query=query)
 
-    def find(self, cube, query, fields=''):
+    def find(self, cube, query, fields='', date=None, most_recent=True):
         '''
+        Paremeters
+        ----------
+        cube : str
+            Name of the cube you want to query
+        query : str
+            The query in pql
+        fields : str, or list of str, or str of comma-separated values
+            Fields that should be returned
+        date : str, default None
+            Date (date range) that should be queried:
+                date -> 'd', '~d', 'd~', 'd~d'
+                d -> '%Y-%m-%d %H:%M:%S,%f', '%Y-%m-%d %H:%M:%S', '%Y-%m-%d'
+        most_recent : boolean, default True
+            If true and there are multiple historical version of a single
+            object matching the query then only the most recent one will
+            be returned
         '''
         result = self._get('find', cube=cube, query=query,
-                           fields=fields)
+                           fields=fields, date=date, most_recent=most_recent)
         return Result(result)
 
     def fetch(self, cube, fields, skip=0, limit=0, ids=[]):
