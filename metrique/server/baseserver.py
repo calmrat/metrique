@@ -92,7 +92,8 @@ class Log(BaseServer):
             if limit < 0:
                 raise ValueError("limit must be an integer value > 0")
 
-        docs = self.mongodb_config.c_logs.find(spec, limit=limit, sort=[('when', -1)])
+        docs = self.mongodb_config.c_logs.find(spec, limit=limit,
+                                               sort=[('when', -1)])
 
         _result = sorted([doc for doc in docs], key=itemgetter('when'))
 
@@ -152,8 +153,8 @@ class Query(BaseServer):
         return query_live.count(cube, query)
 
     @job_save('find')
-    def find(self, cube, query, fields=None):
-        return query_live.find(cube, query, fields)
+    def find(self, cube, query, fields, date, most_recent):
+        return query_live.find(cube, query, fields, date, most_recent)
 
     @job_save('aggregate')
     def aggregate(self, cube, pipeline):

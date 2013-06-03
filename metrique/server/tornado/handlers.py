@@ -54,7 +54,8 @@ class MetriqueInitialized(tornado.web.RequestHandler):
         if type(item) is dict and item.get('$match'):
             for k, v in item['$match'].iteritems():
                 if isinstance(v, basestring) and HAS_SRE_PATTERN.search(v):
-                    item['$match'][k] = re.compile(HAS_SRE_PATTERN.sub(r'\1', v))
+                    item['$match'][k] = re.compile(HAS_SRE_PATTERN.sub(r'\1',
+                                                                       v))
         return item
 
     def get_argument(self, key, default=None):
@@ -129,7 +130,9 @@ class QueryFindHandler(MetriqueInitialized):
         cube = self.get_argument('cube')
         query = self.get_argument('query')
         fields = self.get_argument('fields', '')
-        return self.proxy.query.find(cube, query, fields)
+        date = self.get_argument('date')
+        most_recent = self.get_argument('most_recent', True)
+        return self.proxy.query.find(cube, query, fields, date, most_recent)
 
 
 class LogTailHandler(MetriqueInitialized):
