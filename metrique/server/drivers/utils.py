@@ -3,13 +3,16 @@
 # Author: "Chris Ward" <cward@redhat.com>
 # Contributor: "Juraj Niznan" <jniznan@redhat.com>
 
-from datetime import timedelta
+import pytz
 
 
-def get_timezone_converter(hours_delta):
+def get_timezone_converter(from_timezone):
+    utc = pytz.utc
+    from_tz = pytz.timezone(from_timezone)
+
     def timezone_converter(self, dt):
         try:
-            return dt + timedelta(hours=hours_delta)
+            return from_tz.localize(dt).astimezone(utc)
         except Exception:
             return None
     return timezone_converter

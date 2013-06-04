@@ -3,46 +3,14 @@
 # Author: "Chris Ward <cward@redhat.com>
 
 import re
-from datetime import datetime, date, timedelta, tzinfo
+from datetime import datetime, date
 from datetime import time as dt_time
+from pytz import timezone
 
 
-class utc(tzinfo):
-    def utcoffset(self, dt):
-        return timedelta(hours=0, minutes=0)
-
-    def tzname(self):
-        return "UTC"
-
-    def dst(self, dt):
-        return timedelta(0)
-
-
-class est(tzinfo):
-    def utcoffset(self, dt):
-        return timedelta(hours=-6, minutes=0)
-
-    def tzname(self):
-        return "EST"
-
-    def dst(self, dt):
-        return timedelta(0)
-
-
-class cest(tzinfo):
-    def utcoffset(self, dt):
-        return timedelta(hours=1, minutes=0)
-
-    def tzname(self, dt):
-        return "CEST"
-
-    def dst(self, dt):
-        return timedelta(0)
-
-
-UTC = utc()
-EST = est()
-CEST = cest()
+UTC = timezone("UTC")
+EST = timezone("EST")
+CEST = timezone("CET")
 
 # string that will be used where value in DB is null, queriable
 NONE_STR = '---'
