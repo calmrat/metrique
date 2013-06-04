@@ -131,7 +131,7 @@ def find(cube, query, fields=None, date=None, most_recent=True):
     fields = get_fields(cube, fields)
 
     if date is not None:
-        project_d = {f: '$fields.%s' % f for f in fields}
+        project_d = dict([(f, '$fields.%s' % f) for f in fields])
         project_d.update(dict(_id='$id', _start='$start', _end='$end'))
         if most_recent:
             docs = _cube.aggregate([{'$match': spec},
