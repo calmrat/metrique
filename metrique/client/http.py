@@ -47,10 +47,7 @@ class BaseClient(object):
             t.start()
             return
         else:
-            try:
-                _response = rq.get(url, params=kwargs_json)
-            except KeyboardInterrupt:
-                return
+            _response = rq.get(url, params=kwargs_json)
 
             try:
                 # responses are always expected to be json encoded
@@ -192,6 +189,7 @@ class AdminETL(BaseClient):
 
     def save_object(self, cube, obj, _id=None):
         return self._get('saveobject', cube=cube, obj=obj, _id=_id)
+
 
 class Admin(BaseClient):
     def __init__(self, config_dir=None, config_file=None):

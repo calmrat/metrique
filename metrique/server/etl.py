@@ -72,8 +72,8 @@ def save_object(cube, obj, _id=None):
     if not type(obj) in [list, tuple]:
         obj = [obj]
     for _saved, o in enumerate(obj):
-        for field, tokens in obj.iteritems():
-            save_doc(cube, field, tokens, obj[_id])
+        for field, tokens in o.iteritems():
+            save_doc(cube, field, tokens, o[_id])
     return _saved
 
 
