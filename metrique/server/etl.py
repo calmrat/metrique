@@ -33,14 +33,6 @@ def get_last_id(cube, field):
     return value
 
 
-def insert_doc(collection, new_doc):
-    return collection.insert(new_doc)
-
-
-def update_doc(collection, spec, update):
-    return collection.update(spec, update, upsert=True)
-
-
 def save_doc(cube, field, tokens, id=None):
     '''
     All subclasses use this method to 'save' a document into the warehouse
@@ -77,9 +69,12 @@ def save_doc(cube, field, tokens, id=None):
 def save_object(cube, obj, _id=None):
     '''
     '''
-    for field, tokens in obj.iteritems():
-        save_doc(cube, field, tokens, obj[_id])
-    return 1
+    if not type(obj) in [list, tuple]:
+        obj = [obj]
+    for _saved, o in enumerate(obj):
+        for field, tokens in obj.iteritems():
+            save_doc(cube, field, tokens, obj[_id])
+    return _saved
 
 
 def _snapshot(cube, ids):
