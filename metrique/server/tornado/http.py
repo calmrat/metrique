@@ -20,6 +20,7 @@ from handlers import LogTailHandler
 from handlers import ETLIndexWarehouseHandler, ETLIndexTimelineHandler
 from handlers import ETLExtractHandler, ETLSnapshotHandler, CubesHandler
 from handlers import ETLActivityImportHandler
+from handlers import ETLSaveObject
 
 
 class HTTPServer(MetriqueServer):
@@ -50,6 +51,7 @@ class HTTPServer(MetriqueServer):
             (r"/api/v1/admin/etl/snapshot", ETLSnapshotHandler, init),
             (r"/api/v1/admin/etl/activityimport",
              ETLActivityImportHandler, init),
+            (r"/api/v1/admin/etl/saveobject", ETLSaveObject, init),
             (r"/api/v1/cubes", CubesHandler, init),
         ], gzip=True)
         # FIXME: set gzip as metrique_config property, default True

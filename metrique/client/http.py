@@ -190,6 +190,8 @@ class AdminETL(BaseClient):
     def activity_import(self, cube, ids=None):
         return self._get('activityimport', cube=cube, ids=ids)
 
+    def save_object(self, cube, obj, _id=None):
+        return self._get('saveobject', cube=cube, obj=obj, _id=_id)
 
 class Admin(BaseClient):
     def __init__(self, config_dir=None, config_file=None):
