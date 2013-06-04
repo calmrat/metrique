@@ -89,9 +89,9 @@ def get_template(cube, types=False):
             if field_type:
                 template[field] = field_type
             else:
-                template[field] = ""
+                template[field] = "None"
         else:
-            template[field] = ""
+            template[field] = "None"
     return template
 
 
