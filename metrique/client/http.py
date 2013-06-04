@@ -190,6 +190,8 @@ class AdminETL(BaseClient):
     def save_object(self, cube, obj, _id=None):
         return self._get('saveobject', cube=cube, obj=obj, _id=_id)
 
+    def get_template(self, cube, types=False):
+        return self._get('gettemplate', cube=cube, types=types)
 
 class Admin(BaseClient):
     def __init__(self, config_dir=None, config_file=None):
