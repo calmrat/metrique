@@ -66,16 +66,31 @@ def save_doc(cube, field, tokens, id=None):
     return 1  # eg, one document added
 
 
+def save_objects(cube, objs):
+    c = get_cube(cube)
+    _cube = c.get_collection(admin=True)
+
+    if not type(objs) in [list, tuple]:
+        raise TypeError("Expected list or tuple, got type(%s)" % type(objs))
+
+    now = datetime.now(UTC)
+    for x, obj in enumerate(objs):
+        if not isinstance(obj, dict):
+            raise TypeError(
+                "Expected objects as dict, got type(%s)" % type(obj))
+        objs[x].update({'_mtime': now})
+
+    _cube.insert(objs, manipulate=False)
+    return len(objs)
+
+
 def save_object(cube, obj, _id=None):
     '''
     '''
-    if not type(obj) in [list, tuple]:
-        obj = [obj]
-    saved = 0
-    for o in enumerate(obj):
+    for o in obj:
         for field, tokens in o.iteritems():
-            saved += save_doc(cube, field, tokens, o[_id])
-    return saved
+            save_doc(cube, field, tokens, o[_id])
+    return 1
 
 
 def _snapshot(cube, ids):
@@ -149,8 +164,6 @@ def snapshot(cube, ids=None):
     elif isinstance(ids, basestring):
         ids = map(int, ids.split(','))
         _snapshot(cube, ids)
-
-    logger.debug(' ... %s done' % (done + 1))
 
 
 def cast_to_list(value, fieldtype):
