@@ -188,6 +188,15 @@ class ETLActivityImportHandler(MetriqueInitialized):
         return self.proxy.admin.etl.activity_import(cube=cube, ids=ids)
 
 
+class ETLSaveObject(MetriqueInitialized):
+    @async
+    def get(self):
+        cube = self.get_argument('cube')
+        obj = self.get_argument('obj')
+        _id = self.get_argument('_id')
+        return self.proxy.admin.etl.save_object(cube=cube, obj=obj, _id=_id)
+
+
 class CubesHandler(MetriqueInitialized):
     @async
     def get(self):

@@ -145,6 +145,10 @@ class ETL(BaseServer):
     def activity_import(self, cube, ids):
         return etl.activity_import(cube, ids)
 
+    @job_save('etl_save_object')
+    def save_object(self, cube, obj, _id):
+        return etl.save_object(cube, obj, _id)
+
 
 class Query(BaseServer):
     @job_save('count')
