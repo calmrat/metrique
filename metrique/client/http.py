@@ -171,12 +171,21 @@ class AdminETL(BaseClient):
     def index_timeline(self, cube):
         return self._get('index/timeline', cube=cube)
 
-    def extract(self, cube, fields="", force=0, id_delta="", index=0):
-        return self._get('extract', cube=cube, fields=fields,
-                         force=force, id_delta=id_delta, index=index)
+    def extract(self, cube, fields="", force=False, id_delta="",
+                index=False, snapshot=True):
+        result = self._get('extract', cube=cube, fields=fields,
+                           force=force, id_delta=id_delta)
+        if index:
+            self.index_warehouse(cube, fields)
+        if snapshot:
+            self.snapshot(cube, index=index)
+        return result
 
-    def snapshot(self, cube, ids=None):
-        return self._get('snapshot', cube=cube, ids=ids)
+    def snapshot(self, cube, ids=None, index=False):
+        result = self._get('snapshot', cube=cube, ids=ids)
+        if index:
+            self.index_timeline(cube)
+        return result
 
     def activity_import(self, cube, ids=None):
         return self._get('activityimport', cube=cube, ids=ids)
