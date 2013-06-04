@@ -132,11 +132,10 @@ class ETL(BaseServer):
         return etl.index_warehouse(cube, field, force)
 
     @job_save('etl_extract')
-    def extract(self, cube, fields="", force=0, id_delta=None, index=0):
+    def extract(self, cube, fields="", force=False, id_delta=None):
         return etl.extract(cube, fields=fields,
                            force=force,
-                           id_delta=id_delta,
-                           index=index)
+                           id_delta=id_delta)
 
     @job_save('etl_snapshot')
     def snapshot(self, cube, ids):

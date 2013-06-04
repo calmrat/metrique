@@ -166,12 +166,10 @@ class ETLExtractHandler(MetriqueInitialized):
     def get(self):
         cube = self.get_argument('cube')
         fields = self.get_argument('fields', "")
-        force = self.get_argument('force', 0)
+        force = self.get_argument('force', False)
         id_delta = self.get_argument('id_delta', "")
-        index = self.get_argument('index', 0)
         return self.proxy.admin.etl.extract(cube=cube, fields=fields,
-                                            force=force, id_delta=id_delta,
-                                            index=index)
+                                            force=force, id_delta=id_delta)
 
 
 class ETLSnapshotHandler(MetriqueInitialized):

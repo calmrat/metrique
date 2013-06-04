@@ -207,9 +207,15 @@ def _activity_batch_update(c, batch_updates, activity):
         new_doc = last_doc
         last_doc = batch_updates.pop()
     else:
+        try:
+            # set start to creation time if available
+            creation_field = c.get_field_property('cfield')
+            start = last_doc['fields'][creation_field]
+        except:
+            start = when
         new_doc = {'fields': deepcopy(last_doc['fields']),
                    'id': tid,
-                   'start': when,  # FIXME to creation_ts
+                   'start': start,
                    'end': when,
                    'current': False}
     if 'corrupted' in last_doc:
@@ -287,7 +293,7 @@ def _activity_import_doc(c, time_doc, activities, timeline):
     batch_updates = [time_doc]
     for act in _activity_prepare(c, activities):
         # We want to consider only activities that happend before time_doc
-        if act[0] <= time_doc['start']:
+        if act[0] < time_doc['start']:
             # apply the activity to the batch:
             _activity_batch_update(c, batch_updates, act)
 
@@ -361,7 +367,7 @@ def activity_import(cube, ids=None):
 
 
 def index_timeline(cube):
-    logger.debug(" ... Indexing Timeline)")
+    logger.debug(" ... Indexing Timeline")
     c = get_cube(cube)
     t = c.get_collection(timeline=True, admin=True)
     t.ensure_index([('id', 1), ('start', 1)])
@@ -388,7 +394,7 @@ def index_warehouse(cube, fields, force=False):
     return result
 
 
-def extract(cube, index=False, **kwargs):
+def extract(cube, **kwargs):
     logger.info(' Starting Update operation!')
     logger.info(' %sCube: %s%s' % (YELLOW, cube, ENDC))
     c = get_cube(cube)
@@ -406,13 +412,9 @@ def extract(cube, index=False, **kwargs):
             result[field] = c.extract_func(**kwargs)
             logger.info('Extract - Complete: (%s.%s): %s' %
                         (cube, field, result[field]))
-        if index:
-            index_warehouse(cube, fields)
     else:
         result = c.extract_func(**kwargs)
         logger.info('Extract - Complete: (%s): %s' % (cube, result))
-        if index:
-            index_warehouse(cube, '__all__')
 
     return result
 
