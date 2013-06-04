@@ -71,10 +71,11 @@ def save_object(cube, obj, _id=None):
     '''
     if not type(obj) in [list, tuple]:
         obj = [obj]
-    for _saved, o in enumerate(obj):
+    saved = 0
+    for o in enumerate(obj):
         for field, tokens in o.iteritems():
-            save_doc(cube, field, tokens, o[_id])
-    return _saved
+            saved += save_doc(cube, field, tokens, o[_id])
+    return saved
 
 
 def _snapshot(cube, ids):
