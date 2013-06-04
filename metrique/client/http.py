@@ -169,7 +169,7 @@ class AdminETL(BaseClient):
         return self._get('index/timeline', cube=cube)
 
     def extract(self, cube, fields="", force=False, id_delta="",
-                index=False, snapshot=True):
+                index=False, snapshot=False):
         result = self._get('extract', cube=cube, fields=fields,
                            force=force, id_delta=id_delta)
         if index:

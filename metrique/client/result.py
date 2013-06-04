@@ -9,109 +9,57 @@ import simplejson as json
 import os
 from dateutil.parser import parse as dt_parse
 
-from metrique.tools.constants import UTC
+from pandas import DataFrame, Series
+import pandas as pd
 
 
-class Result(object):
-    def __init__(self, data=None, load_frame=True):
-        self.load(data)
-        if load_frame:
-            try:
-                self.frame
-            except ImportError:
-                pass
+class Result(DataFrame):
+    def __init__(self, data=None):
+        super(Result, self).__init__(data)
+        self._result_data = data
+        if '_start' in self:
+            self._start = pd.to_datetime(self._start)
+        if '_end' in self:
+            self._end = pd.to_datetime(self._end)
 
-    def __repr__(self):
-        try:
-            return str(self.frame.head())
-        except Exception:
-            return str(self.data)
-
-    def __str__(self):
-        return self.__repr__()
-
-    def __getitem__(self, key):
-        if hasattr(self, '_frame'):
-            return self._frame[key]
-        else:
-            return self.data[key]
-
-    @property
-    def frame(self):
-        '''
-        pandas DataFrame
-        '''
-        try:
-            from pandas import DataFrame
-        except ImportError:
-            raise ImportError("Install python-pandas")
-
-        if hasattr(self, '_frame'):
-            return self._frame
-
-        self._frame = DataFrame(self.data)
-
-        return self._frame
-
-    @frame.setter
-    def frame(self, value):
-        self._frame = value
-
-    def load(self, data):
-        if isinstance(data, basestring):
-            try:
-                self._load_file(data)
-            except Exception:
-                logger.debug('Failed to load data file (%s)' % data)
-                self.data = None
-        elif data is not None:
-            self._load_py(data)
-        else:
-            self.data = None
-        if hasattr(self, '_frame'):
-            del self._frame  # Clear cached frame
-
-    def _load_py(self, data):
-        self.data = data
-        if hasattr(self, '_frame'):
-            del self._frame  # Clear cached frame
-
-    def _load_file(self, path):
+    @classmethod
+    def from_result_file(cls, path):
         path = os.path.expanduser(path)
         with open(path) as f:
-            self.data = json.load(f)
+            data = json.load(f)
+            return Result(data)
 
-    def save(self, path):
+    def to_result_file(self, path):
         path = os.path.expanduser(path)
         with open(path, 'w') as f:
-            json.dump(self.data, f)
+            json.dump(self._result_data, f)
 
-    def convert_dates(self, utc=True, inplace=True):
+    def on_date(self, date):
         '''
-        Takes a pandas DataFrame and converts to dates those columns
-        that can be parsed as dates.
-        Returns the converted DataFrame.
+        Filters out only the rows that match the spectified date.
+        Works only on a Result that has _start and _end columns.
+
+        Parameters
+        ----------
+        date : str
         '''
-        if not hasattr(self, '_frame'):
-            raise ValueError("No frame available")
-        if utc:
-            dt_p = lambda d: dt_parse(d).replace(UTC)
-        else:
-            dt_p = lambda d: dt_parse(d)
+        if isinstance(date, basestring):
+            date = dt_parse(date)
+        after_start = self._start <= date
+        before_end = (self._end >= date) | self._end.isnull()
+        return self[before_end & after_start]
 
-        result = self.frame.apply(lambda col:
-                                  col.apply(dt_p)
-                                  if col.apply(is_date).all()
-                                  else col)
-        if inplace:
-            self.frame = result
-
-        return result
-
-
-def is_date(datestr):
-    try:
-        dt_parse(datestr)
-        return True
-    except:
-        return False
+    def historical_counts(self):
+        '''
+        Works only on a Result that has _start and _end columns.
+        most_recent=False should be set for this to work
+        '''
+        start_dts = list(self._start[~self._start.isnull()].values)
+        end_dts = list(self._end[~self._end.isnull()].values)
+        dts = set(start_dts + end_dts)
+        idx, vals = [], []
+        for dt in dts:
+            idx.append(dt)
+            vals.append(len(self.on_date(dt)))
+        ret = Series(vals, index=idx)
+        return ret.sort_index()
