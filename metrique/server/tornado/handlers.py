@@ -154,13 +154,6 @@ class ETLIndexWarehouseHandler(MetriqueInitialized):
                                                     force)
 
 
-class ETLIndexTimelineHandler(MetriqueInitialized):
-    @async
-    def get(self):
-        cube = self.get_argument('cube')
-        return self.proxy.admin.etl.index_timeline(cube)
-
-
 class ETLExtractHandler(MetriqueInitialized):
     @async
     def get(self):

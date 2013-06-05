@@ -338,6 +338,7 @@ def _activity_import(cube, ids):
     c = get_cube(cube)
 
     timeline = c.get_collection(timeline=True, admin=True)
+    t.ensure_index([('id', 1), ('start', 1)])
     time_docs = timeline.find({'id': {'$in': ids}},
                               sort=[('id', 1), ('start', 1)])
 
@@ -392,13 +393,6 @@ def activity_import(cube, ids=None):
     elif isinstance(ids, basestring):
         ids = map(int, ids.split(','))
         _activity_import(cube, ids)
-
-
-def index_timeline(cube):
-    logger.debug(" ... Indexing Timeline")
-    c = get_cube(cube)
-    t = c.get_collection(timeline=True, admin=True)
-    t.ensure_index([('id', 1), ('start', 1)])
 
 
 def index_warehouse(cube, fields, force=False):

@@ -17,7 +17,7 @@ from handlers import JobStatusHandler
 from handlers import QueryAggregateHandler, QueryFindHandler
 from handlers import QueryFetchHandler, QueryCountHandler
 from handlers import LogTailHandler
-from handlers import ETLIndexWarehouseHandler, ETLIndexTimelineHandler
+from handlers import ETLIndexWarehouseHandler
 from handlers import ETLExtractHandler, ETLSnapshotHandler, CubesHandler
 from handlers import ETLActivityImportHandler
 from handlers import ETLSaveObject
@@ -47,7 +47,6 @@ class HTTPServer(MetriqueServer):
             (r"/api/v1/admin/mongo/user/add", MongoUserAddHandler, init),
             (r"/api/v1/admin/etl/extract", ETLExtractHandler, init),
             (r"/api/v1/admin/etl/index/warehouse", ETLIndexWarehouseHandler, init),
-            (r"/api/v1/admin/etl/index/timeline", ETLIndexTimelineHandler, init),
             (r"/api/v1/admin/etl/snapshot", ETLSnapshotHandler, init),
             (r"/api/v1/admin/etl/activityimport",
              ETLActivityImportHandler, init),

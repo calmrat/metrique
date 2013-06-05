@@ -165,9 +165,6 @@ class AdminETL(BaseClient):
                                       field=field, force=force)
         return result
 
-    def index_timeline(self, cube):
-        return self._get('index/timeline', cube=cube)
-
     def extract(self, cube, fields="", force=False, id_delta="",
                 index=False, snapshot=False):
         result = self._get('extract', cube=cube, fields=fields,
@@ -178,11 +175,8 @@ class AdminETL(BaseClient):
             self.snapshot(cube, index=index)
         return result
 
-    def snapshot(self, cube, ids=None, index=False):
-        result = self._get('snapshot', cube=cube, ids=ids)
-        if index:
-            self.index_timeline(cube)
-        return result
+    def snapshot(self, cube, ids=None):
+        return self._get('snapshot', cube=cube, ids=ids)
 
     def activity_import(self, cube, ids=None):
         return self._get('activityimport', cube=cube, ids=ids)
