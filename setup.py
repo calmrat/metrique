@@ -15,16 +15,44 @@ def find_packages(path='./', prefix=""):
         if ispkg:
             yield name
 
+with open('readme.rst') as _file:
+    readme = _file.read()
+
+with open('version.txt') as _file:
+    version = _file.read().strip()
+
+github = 'https://github.com/drpoovilleorg/metrique'
+download_url = '%s/archive/%s.tar.gz' % (github, version)
 
 setup(
     name='metrique',
-    version='0.1.0',
+    version=version,
     packages=list(find_packages(metrique.__path__, metrique.__name__)),
     url='https://github.com/drpoovilleorg/metrique',
     license='GPLv3',
     author='Chris Ward',
     author_email='cward@redhat.com',
+    download_url=download_url,
     description='Python/MongoDB Information Platform',
+    long_description=readme,
+    classifiers=[
+        'Development Status :: 4 - Beta',
+        'Intended Audience :: Science/Research',
+        'License :: OSI Approved :: GNU General Public License v3 (GPLv3)',
+        'Natural Language :: English',
+        'Programming Language :: Python :: 2.6',
+        'Programming Language :: Python :: 2.7',
+        'Programming Language :: Python :: 2 :: Only',
+        'Topic :: Database',
+        'Topic :: Office/Business',
+        'Topic :: Scientific/Engineering',
+        'Topic :: Scientific/Engineering :: Artificial Intelligence',
+        'Topic :: Scientific/Engineering :: Visualization',
+        'Topic :: Utilities',
+    ],
+    keywords=['data', 'mining', 'information', 'mongo',
+              'etl', 'analysis', 'search', 'query'],
+    provides=['metrique'],
     requires=['pandas', 'psycopg2', 'MySQLdb', 'tornado (>=3.0)', 'pql',
               'argparse', 'dateutil', 'simplejson', 'pymongo',
               'bson', 'decorator', 'requests', 'futures',
