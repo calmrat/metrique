@@ -67,6 +67,8 @@ def save_doc(cube, field, tokens, id=None):
 
 
 def save_objects(cube, objs):
+    if not objs:
+        raise ValueError("Empty objects list")
     c = get_cube(cube)
     expected_fields = set(c.fields.keys())
     expected_fields.add('_id')  # we always expect the _id to be defined as well
@@ -77,11 +79,14 @@ def save_objects(cube, objs):
 
     now = datetime.now(UTC)
     for x, obj in enumerate(objs):
-        obj_fields = set(obj.keys())
-        if not isinstance(obj, dict):
+        if not obj:
+            raise ValueError("Empty object")
+        elif not isinstance(obj, dict):
             raise TypeError(
                 "Expected objects as dict, got type(%s)" % type(obj))
-        elif not obj_fields <= expected_fields:
+
+        obj_fields = set(obj.keys())
+        if not obj_fields <= expected_fields:
             raise ValueError(
                 "Object includes unexpected fields.\n"
                 "Unexpected: %s" % (obj_fields - expected_fields))

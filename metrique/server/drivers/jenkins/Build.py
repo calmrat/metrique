@@ -106,7 +106,7 @@ class Build(JSON):
                 },
 
                 'timestamp': {
-                    # fixme: this is in milliseconds... datetime.fromtimestamp excepts
+                    'convert': lambda x: datetime.fromtimestamp(x / 1000),
                     'type': float,
                     'help': '',
                 },
@@ -128,33 +128,38 @@ class Build(JSON):
 
         with ThreadPoolExecutor(MAX_WORKERS) as executor:
             results = defaultdict(int)
-            future_builds = {}
             for k, job in enumerate(jobs, 1):
                 job_name = job['name']
                 logger.debug('JOB (%s): %s of %s with %s builds' % (job_name, k,
                                                                     len(jobs),
                                                                     len(job['builds'])))
+                future_builds = []
                 nums = [b['number'] for b in job['builds']]
                 for n in nums:
-                    future_builds.setdefault(job_name, [])
-                    future_builds[job_name].append(
+                    future_builds.append(
                         executor.submit(self.get_build, job_name, n))
 
-            for job_name, running in future_builds.items():
-                for future in as_completed(running):
-                    results[job_name] += save_objects(future.result())
+                builds = []
+                for future in as_completed(future_builds):
+                    obj = future.result()
+                    if obj:
+                        builds.append(obj)
+
+                if builds:
+                    results[job_name] += save_objects(self.name, builds)
         return results
 
     def get_build(self, job_name, build_number):
         c = self.get_collection()
         _id = '%s #%s' % (job_name, build_number)
+
         ## Check if we the job_build was already done building
         ## if it was, skip the import all together
         field_spec = {'_id': _id,
-                      'fields.building.tokens': False}
-        if c.find_one(field_spec, fields={'_id': 1}):
-            logger.debug('BUILD: %s (CACHED)' % _id)
-            return 0
+                      'building': {'$ne': True}}
+        if c.find(field_spec).count():
+            #logger.debug('BUILD: %s (CACHED)' % _id)
+            return {}
 
         _build = {}
         logger.debug('BUILD: %s' % _id)
