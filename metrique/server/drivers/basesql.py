@@ -152,19 +152,23 @@ def _extract_func(cube, **kwargs):
     except (TypeError, ValueError):
         raise ValueError("row_limit must be a number")
 
-    _sql = c.get_field_property('sql', field)
     sql_where = []
-    sql = 'SELECT %s, %s FROM ' % (table_column, _sql[0])
-    _from = [db_table]
-    if _sql[1]:
-        _from.extend(_sql[1])
-    sql += ', '.join(_from)
-    sql += ' '
-    if _sql[2]:
-        sql += ' '.join(_sql[2])
-    sql += ' '
-    if _sql[3]:
-        sql_where.append('(%s)' % ' OR '.join(_sql[3]))
+    _sql = c.get_field_property('sql', field)
+    if not _sql:
+        sql = 'SELECT %s, %s.%s FROM %s' % (
+            table_column, table, field, db_table)
+    else:
+        sql = 'SELECT %s, %s FROM ' % (table_column, _sql[0])
+        _from = [db_table]
+        if _sql[1]:
+            _from.extend(_sql[1])
+        sql += ', '.join(_from)
+        sql += ' '
+        if _sql[2]:
+            sql += ' '.join(_sql[2])
+        sql += ' '
+        if _sql[3]:
+            sql_where.append('(%s)' % ' OR '.join(_sql[3]))
 
     delta_filter = []
     delta_filter_sql = None
