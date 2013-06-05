@@ -110,7 +110,13 @@ def _snapshot(cube, ids):
     c = get_cube(cube)
     w = c.get_collection(admin=False, timeline=False)
     t = c.get_collection(admin=True, timeline=True)
+
     docs = w.find({'_id': {'$in': ids}}, sort=[('_id', 1)])
+
+    logger.debug('Snapshot Timeline Index: Start')
+    t.ensure_index([('current', 1), ('id', 1)])
+    logger.debug('... Snapshot Timeline Index: Done')
+
     time_docs = t.find({'current': True, 'id': {'$in': ids}},
                        sort=[('id', 1)])
     time_docs_iter = iter(time_docs)
