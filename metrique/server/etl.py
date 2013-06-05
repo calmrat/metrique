@@ -257,7 +257,7 @@ def _activity_batch_update(c, batch_updates, activity):
         new_doc['fields'][field] = new_val
     # Check if the object has the correct field value.
     if inconsistent:
-        logger.warn('Inconsistency: %s %s: %s -> %s, '
+        logger.warn(u'Inconsistency: %s %s: %s -> %s, '
                     'object has %s.' % (
                         tid, field, removed,
                         added, last_val))
