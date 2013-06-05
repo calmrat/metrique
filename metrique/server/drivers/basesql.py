@@ -12,12 +12,12 @@ import re
 import time
 
 from metrique.server.drivers.basedriver import BaseDriver
-from metrique.server.drivers.drivermap import get_cube, drivermap
+from metrique.server.drivers.drivermap import get_cube
 from metrique.server.etl import get_last_id
 from metrique.server.etl import save_doc, last_known_warehouse_mtime
 
 from metrique.tools.constants import UTC
-from metrique.tools.constants import LIST_TYPE, TUPLE_TYPE, INT_TYPE, FLOAT_TYPE
+from metrique.tools.constants import INT_TYPE, FLOAT_TYPE
 from metrique.tools.type_cast import type_cast
 
 DEFAULT_ROW_LIMIT = 100000
@@ -39,54 +39,6 @@ class BaseSql(BaseDriver):
     @property
     def proxy(self):
         raise NotImplementedError("BaseSql has not defined a proxy")
-
-    def delta_mtime(self, field):
-        '''
-        '''
-        sql = []
-        _delta_mtime_dict = self.get_field_property('delta_mtime', field)
-        if not _delta_mtime_dict:
-            return None
-
-        for mtime_field, mtime_column in _delta_mtime_dict.items():
-            _sql = self._delta_mtime(mtime_field, mtime_column, field)
-            if _sql:
-                sql.append(_sql)
-        if sql:
-            return ' OR '.join(sql)
-        else:
-            return None
-
-    def _delta_mtime(self, mtime_field, mtime_column, field):
-        '''
-        '''
-        f_table = self.get_field_property('table', field)
-
-        db = self.get_field_property('db', mtime_field)
-        table = self.get_field_property('table', mtime_field)
-        # if lookup isn't explicitly defined, use delta_mtime name
-        lookup = self.get_field_property('lookup', mtime_field, mtime_field)
-
-        # create SQL which will find only items with mtime column > last_update
-        last_update_dt = last_known_warehouse_mtime(self.name, field)
-        if not last_update_dt:
-            logger.debug('... This field has not yet completed a successful run')
-            sql = None
-        else:
-            # NOTE: TEIID SQL unable to parse miliseconds
-            last_update_dt = last_update_dt.strftime('%Y-%m-%d %H:%M:%S %z')
-
-            # FIXME: let driver override dt_format
-            dt_format = "yyyy-MM-dd HH:mm:ss z"
-            sql = """(%s.%s IN (
-                        SELECT %s.%s FROM %s.%s
-                        WHERE %s.%s >= parseTimestamp('%s', '%s')))
-                    """ % (f_table, mtime_column,
-                           table, mtime_column, db, table,
-                           table, lookup,
-                           last_update_dt,
-                           dt_format)
-        return sql
 
     def _sql_fetchall(self, sql, start, field, row_limit):
         '''
@@ -199,153 +151,65 @@ def _extract_func(cube, **kwargs):
 
     _sql = c.get_field_property('sql', field)
     sql_where = []
-    if _sql:
-        sql = 'SELECT %s, %s FROM ' % (table_column, _sql[0])
-        _from = [db_table]
-        if _sql[1]:
-            _from.extend(_sql[1])
-        sql += ', '.join(_from)
-        sql += ' '
-        if _sql[2]:
-            sql += ' '.join(_sql[2])
-        sql += ' '
-        if _sql[3]:
-            sql_where.append('(%s)' % ' OR '.join(_sql[3]))
+    sql = 'SELECT %s, %s FROM ' % (table_column, _sql[0])
+    _from = [db_table]
+    if _sql[1]:
+        _from.extend(_sql[1])
+    sql += ', '.join(_from)
+    sql += ' '
+    if _sql[2]:
+        sql += ' '.join(_sql[2])
+    sql += ' '
+    if _sql[3]:
+        sql_where.append('(%s)' % ' OR '.join(_sql[3]))
 
-        delta_filter = []
-        delta_filter_sql = None
+    delta_filter = []
+    delta_filter_sql = None
 
-        # force full update
-        if force:
-            _delta = False
-        else:
-            _delta = c.get_field_property('delta', field, True)
-
-        if _delta:
-            # delta is enabled
-            # the following deltas are mutually exclusive
-            if id_delta:
-                delta_sql = "(%s IN (%s))" % (table_column, id_delta)
-                delta_filter.append(delta_sql)
-            elif c.get_field_property('delta_new_ids', field):
-                # if we delta_new_ids is on, but there is no 'last_id',
-                # then we need to do a FULL run...
-                last_id = get_last_id(c.name, field)
-                if last_id:
-                    # FIXME: any reason to ensure we know what the _id is typecasted as?
-                    try:
-                            last_id = int(last_id)
-                    except (TypeError, ValueError):
-                            pass
-
-                    if type(last_id) in [INT_TYPE, FLOAT_TYPE]:
-                        last_id_sql = "(%s > %s)" % (table_column, last_id)
-                    else:
-                        last_id_sql = "(%s > '%s')" % (table_column, last_id)
-                    delta_filter.append(last_id_sql)
-
-                    # driver can find changes by checking mtime field
-                    if c.get_field_property('delta_mtime', field):
-                        pmt_sql = c.delta_mtime(field)
-                        if pmt_sql:
-                            delta_filter.append(pmt_sql)
-
-        if delta_filter:
-            delta_filter_sql = ' OR '.join(delta_filter)
-            sql_where.append(delta_filter_sql)
-
+    # force full update
+    if force:
+        _delta = False
     else:
-        # default to field name for lookup column if none provided
-        lookup = c.get_field_property('lookup', field, field)
-        if type(lookup) in (LIST_TYPE, TUPLE_TYPE):
-            x_table_column = table_column
-            if len(lookup) == 2:
-                _driver, _lookup = lookup
-                # default join key is column if not otherwise defined
-                _column = column
-            elif len(lookup) == 3:
-                _driver, _lookup, _column = lookup
-            elif len(lookup) == 5:
-                _driver, _lookup, _column, x_table, x_column = lookup
-                x_table_column = '%s.%s' % (x_table, x_column)
-            else:
-                raise ValueError("Invalid lookup value")
-            _driver = drivermap[_driver]
-            #if _column != column:
-            #    _column = _driver.get_field_property('column', _column)
-            #print _column, column, '*'
-            _db = _driver.get_field_property('db', _lookup)
-            _table = _driver.get_field_property('table', _lookup)
-            __lookup = _driver.get_field_property('lookup', _lookup, _lookup)
-            table_lookup = '%s.%s' % (_table, __lookup)
-            join_sql = ' LEFT JOIN %s.%s ON %s.%s = %s ' % (_db, _table,
-                                                            _table, _column,
-                                                            x_table_column)
-        else:
-            table_lookup = '%s.%s' % (table, lookup)
-            join_sql = None
+        _delta = c.get_field_property('delta', field, True)
 
-        # sql column convert
-        sql_column_convert = c.get_field_property('sql_column_convert', field)
-        # sql lookup convert
-        sql_lookup_convert = c.get_field_property('sql_lookup_convert', field)
+    if _delta:
+        # delta is enabled
+        # the following deltas are mutually exclusive
+        if id_delta:
+            delta_sql = "(%s IN (%s))" % (table_column, id_delta)
+            delta_filter.append(delta_sql)
+        elif c.get_field_property('delta_new_ids', field):
+            # if we delta_new_ids is on, but there is no 'last_id',
+            # then we need to do a FULL run...
+            last_id = get_last_id(c.name, field)
+            if last_id:
+                # FIXME: any reason to ensure we know what the _id is typecasted as?
+                try:
+                        last_id = int(last_id)
+                except (TypeError, ValueError):
+                        pass
 
-        delta_filter = []
-        delta_filter_sql = None
+                if type(last_id) in [INT_TYPE, FLOAT_TYPE]:
+                    last_id_sql = "%s > %s" % (table_column, last_id)
+                else:
+                    last_id_sql = "%s > '%s'" % (table_column, last_id)
+                delta_filter.append(last_id_sql)
 
-        # force full update
-        if force:
-            _delta = False
-        else:
-            _delta = c.get_field_property('delta', field, True)
+            mtime_columns = c.get_field_property('delta_mtime', field)
+            if mtime_columns:
+                if isinstance(mtime_columns, basestring):
+                    mtime_columns = [mtime_columns]
+                last_update_dt = last_known_warehouse_mtime(c.name, field)
+                last_update_dt = last_update_dt.strftime('%Y-%m-%d %H:%M:%S %z')
+                dt_format = "yyyy-MM-dd HH:mm:ss z"
+                for _column in mtime_columns:
+                    _sql = "%s > parseTimestamp('%s', '%s')" % (
+                        _column, last_update_dt, dt_format)
+                    delta_filter.append(_sql)
 
-        if _delta:
-            # delta is enabled
-            # the following deltas are mutually exclusive
-            if id_delta:
-                delta_sql = "(%s IN (%s))" % (table_column, id_delta)
-                delta_filter.append(delta_sql)
-            elif c.get_field_property('delta_new_ids', field):
-                # if we delta_new_ids is on, but there is no 'last_id',
-                # then we need to do a FULL run...
-                last_id = get_last_id(c.name, field)
-                if last_id:
-                    # FIXME: any reason to ensure we know what the _id is typecasted as?
-                    try:
-                            last_id = int(last_id)
-                    except (TypeError, ValueError):
-                            pass
-
-                    if type(last_id) in [INT_TYPE, FLOAT_TYPE]:
-                        last_id_sql = "(%s > %s)" % (table_column, last_id)
-                    else:
-                        last_id_sql = "(%s > '%s')" % (table_column, last_id)
-                    delta_filter.append(last_id_sql)
-
-                    # driver can find changes by checking mtime field
-                    if c.get_field_property('delta_mtime', field):
-                        pmt_sql = c.delta_mtime(field)
-                        if pmt_sql:
-                            delta_filter.append(pmt_sql)
-
-        if delta_filter:
-            delta_filter_sql = ' OR '.join(delta_filter)
-
-        if sql_column_convert:
-            table_column = 'CONVERT(%s, %s)' % (table_column, sql_column_convert)
-
-        if sql_lookup_convert:
-            table_lookup = 'CONVERT(%s, %s)' % (table_lookup, sql_lookup_convert)
-
-        sql = "SELECT %s, %s FROM %s.%s " % (table_column,
-                                             table_lookup,
-                                             db, table)
-
-        if join_sql:
-            sql += join_sql
-
-        if delta_filter_sql:
-            sql_where.append(" (%s) " % delta_filter_sql)
+    if delta_filter:
+        delta_filter_sql = ' OR '.join(delta_filter)
+        sql_where.append('(%s)' % delta_filter_sql)
 
     if sql_where:
         sql += ' WHERE %s ' % ' AND '.join(sql_where)
