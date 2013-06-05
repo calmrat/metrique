@@ -75,7 +75,11 @@ if __name__ == '__main__':
     else:
         command = 'status'
 
-    metriqued = HTTPServer(host=host, port=port, debug=debug, async=async)
+    m_conf.debug = debug
+    m_conf.async = async
+    m_conf.save()
+
+    metriqued = HTTPServer(host=host, port=port)
     pid_file = metriqued.metrique_config.pid_file
     pid = get_pid(pid_file)
 

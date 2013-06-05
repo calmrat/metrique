@@ -31,12 +31,10 @@ class MetriqueServer(baseserver.BaseServer):
     job = baseserver.JobManage()
     query = baseserver.Query()
 
-    def __init__(self, debug=False, async=True, **kwargs):
+    def __init__(self, **kwargs):
         super(MetriqueServer, self).__init__(**kwargs)
-        self.metrique_config.debug = debug
-
-        self.async = async
-        logger.debug('Async: %s' % async)
+        logger.debug('Debug: %s' % self.metrique_config.debug)
+        logger.debug('Async: %s' % self.metrique_config.async)
         self.admin = baseserver.Admin(**kwargs)
         self.job = baseserver.JobManage(**kwargs)
         self.query = baseserver.Query(**kwargs)

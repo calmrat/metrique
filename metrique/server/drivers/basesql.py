@@ -112,9 +112,12 @@ class BaseSql(BaseDriver):
         return grouped
 
     def extract_func(self, **kwargs):
-        with ProcessPoolExecutor(MAX_WORKERS) as executor:
-            future = executor.submit(_extract_func, self.name, **kwargs)
-        return future.result()
+        if self.metrique_config.async:
+            with ProcessPoolExecutor(MAX_WORKERS) as executor:
+                future = executor.submit(_extract_func, self.name, **kwargs)
+            return future.result()
+        else:
+            _extract_func(self.name, **kwargs)
 
 
 def _extract_func(cube, **kwargs):
@@ -292,5 +295,5 @@ def _extract_func(cube, **kwargs):
         if touch:
             # update the mtimestamp for when this field was last touched
             # to the moment we started updating
-            c._c_etl_activity.update(spec_mtime, update_mtime, upsert=True)
+            c.c_etl_activity.update(spec_mtime, update_mtime, upsert=True)
     return result

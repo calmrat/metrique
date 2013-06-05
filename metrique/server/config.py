@@ -34,18 +34,20 @@ class metrique(JSONConfig):
         return self._default('pid_file', _pf)
 
     @property
+    def async(self):
+        return self._default('async', True)
+
+    @async.setter
+    def async(self, bool_):
+        self._config['async'] = bool_
+
+    @property
     def debug(self):
-        try:
-            self._config['debug']
-        except KeyError:
-            self._debug = None
-        return self._debug
+        return self._default('debug', False)
 
     @debug.setter
     def debug(self, bool_):
         bool_ = self._json_bool(bool_)
-        self._debug = bool_
-
         if bool_ is False:
             level = logging.WARN
         elif bool_ is True:

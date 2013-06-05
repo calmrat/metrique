@@ -20,7 +20,7 @@ def async(f):
     @tornado.web.asynchronous
     @wraps(f)
     def wrapper(self, *args, **kwargs):
-        if self.proxy.async:
+        if self.proxy.metrique_config.async:
             def future_end(future):
                 try:
                     _result = future.result()

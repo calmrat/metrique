@@ -453,7 +453,7 @@ def last_known_warehouse_mtime(cube, field=None, value=None):
             spec = {'cube': cube, field: value}
         else:
             spec = {'cube': cube, field: {'$exists': True}}
-        doc = c._c_etl_activity.find_one(spec, ['%s.mtime' % field])
+        doc = c.c_etl_activity.find_one(spec, ['%s.mtime' % field])
         if doc:
             start = doc[field]['mtime']
     else:

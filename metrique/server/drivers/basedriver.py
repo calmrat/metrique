@@ -22,14 +22,14 @@ MAX_WORKERS = 1
 class BaseDriver(object):
     '''
     '''
-    _metrique_config = metrique(METRIQUE_CONF)
-    _mongodb_config = mongodb(MONGODB_CONF)
+    metrique_config = metrique(METRIQUE_CONF)
+    mongodb_config = mongodb(MONGODB_CONF)
 
-    _db_timeline_data = _mongodb_config.db_timeline_data
-    _db_timeline_admin = _mongodb_config.db_timeline_admin
-    _db_warehouse_data = _mongodb_config.db_warehouse_data
-    _db_warehouse_admin = _mongodb_config.db_warehouse_admin
-    _c_etl_activity = _mongodb_config.c_etl_activity
+    db_timeline_data = mongodb_config.db_timeline_data
+    db_timeline_admin = mongodb_config.db_timeline_admin
+    db_warehouse_data = mongodb_config.db_warehouse_data
+    db_warehouse_admin = mongodb_config.db_warehouse_admin
+    c_etl_activity = mongodb_config.c_etl_activity
 
     def __init__(self, name):
         '''
@@ -83,13 +83,13 @@ class BaseDriver(object):
             # B) if we're getting data only
             # otherwise, we need to return authorized db collections
             if admin and timeline:
-                db = self._db_timeline_admin
+                db = self.db_timeline_admin
             elif admin:
-                db = self._db_warehouse_admin
+                db = self.db_warehouse_admin
             elif timeline:
-                db = self._db_timeline_data
+                db = self.db_timeline_data
             else:
-                db = self._db_warehouse_data
+                db = self.db_warehouse_data
             collection = db[name]
 
         return collection
