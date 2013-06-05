@@ -108,9 +108,7 @@ class Commit(BaseGitObject):
             commit = self.extract_commit(obj)
             if last_update_dt and ts_tz2dt_tz(commit['committer_ts']) <= last_update_dt:
                 continue
-            commit.update(
-                {'_id': commit['hexsha'],
-                 'uri': uri})
+            commit.update({'uri': uri})
             commits.append(commit)
         return save_objects(self.name, commits)
 
