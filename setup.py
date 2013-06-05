@@ -35,6 +35,7 @@ setup(
     download_url=download_url,
     description='Python/MongoDB Information Platform',
     long_description=readme,
+    data_files=[('metrique', ['readme.rst', 'version.txt'])],
     classifiers=[
         'Development Status :: 4 - Beta',
         'Intended Audience :: Science/Research',
