@@ -338,7 +338,7 @@ def _activity_import(cube, ids):
     c = get_cube(cube)
 
     timeline = c.get_collection(timeline=True, admin=True)
-    t.ensure_index([('id', 1), ('start', 1)])
+    timeline.ensure_index([('id', 1), ('start', 1)])
     time_docs = timeline.find({'id': {'$in': ids}},
                               sort=[('id', 1), ('start', 1)])
 
