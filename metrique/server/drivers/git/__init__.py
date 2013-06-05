@@ -21,5 +21,6 @@ class GIT(BaseDriverMap):
         'commit': 'git.Commit',
     }
 
-    def __init__(self):
-        super(GIT, self).__init__(repos=self.config['repos'])
+    def __init__(self, repos=None):
+        repos = self.config['repos'] if repos is None else repos
+        super(GIT, self).__init__(repos=repos)

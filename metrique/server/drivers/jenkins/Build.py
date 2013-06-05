@@ -2,20 +2,28 @@
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 # Author: "Chris Ward <cward@redhat.com>
 
-#from datetime import datetime
+from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from concurrent.futures import ProcessPoolExecutor
+from datetime import datetime
+from dateutil.parser import parse as dt_parse
 import logging
 logger = logging.getLogger(__name__)
 from urllib2 import urlopen, HTTPError
+import re
 import simplejson as json
 
-from metrique.server.drivers.drivermap import get_cube
 from metrique.server.drivers.json import JSON
-from metrique.server.etl import save_object
+from metrique.server.etl import save_objects
 
-#from converters import id_when
 MAX_WORKERS = 20
+
+
+def id_when(id):
+    if isinstance(id, datetime):
+        return id
+    else:
+        when = re.sub('[_ T](\d\d)[:-](\d\d)[:-](\d\d)$', 'T\g<1>:\g<2>:\g<3>', id)
+        return dt_parse(when)
 
 
 class Build(JSON):
@@ -30,7 +38,6 @@ class Build(JSON):
 
         self.cube = {
             'defaults': {
-                'id_x': 'job_build',
                 'index': True,
             },
 
@@ -112,11 +119,33 @@ class Build(JSON):
         }
 
     def extract_func(self, **kwargs):
-        with ProcessPoolExecutor(MAX_WORKERS) as executor:
-            future = executor.submit(_extract_func, self.name, **kwargs)
-        return future.result()
+        # get all known jobs
+        args = 'tree=jobs[name,builds[number]]'
+        url = '%s:%s%s?%s' % (self._url, self._port, self._api_path, args)
+        logger.debug("Getting Jenkins Job details (%s)" % url)
+        content = json.loads(urlopen(url).readlines()[0], strict=False)
+        jobs = content['jobs']
 
-    def _save_build(self, job_name, build_number):
+        with ThreadPoolExecutor(MAX_WORKERS) as executor:
+            results = defaultdict(int)
+            future_builds = {}
+            for k, job in enumerate(jobs, 1):
+                job_name = job['name']
+                logger.debug('JOB (%s): %s of %s with %s builds' % (job_name, k,
+                                                                    len(jobs),
+                                                                    len(job['builds'])))
+                nums = [b['number'] for b in job['builds']]
+                for n in nums:
+                    future_builds.setdefault(job_name, [])
+                    future_builds[job_name].append(
+                        executor.submit(self.get_build, job_name, n))
+
+            for job_name, running in future_builds.items():
+                for future in as_completed(running):
+                    results[job_name] += save_objects(future.result())
+        return results
+
+    def get_build(self, job_name, build_number):
         c = self.get_collection()
         _id = '%s #%s' % (job_name, build_number)
         ## Check if we the job_build was already done building
@@ -124,11 +153,11 @@ class Build(JSON):
         field_spec = {'_id': _id,
                       'fields.building.tokens': False}
         if c.find_one(field_spec, fields={'_id': 1}):
-            logger.debug('BUILD (%s) (CACHED)' % _id)
+            logger.debug('BUILD: %s (CACHED)' % _id)
             return 0
 
         _build = {}
-        logger.debug('BUILD (%s)' % _id)
+        logger.debug('BUILD: %s' % _id)
         _args = 'tree=%s' % ','.join(self.fields)
         _job_path = '/job/%s/%s' % (job_name, build_number)
 
@@ -136,8 +165,9 @@ class Build(JSON):
         try:
             build_content = json.loads(urlopen(job_url).readlines()[0], strict=False)
         except HTTPError:
-            return 0
+            return {}
 
+        _build['_id'] = _id
         _build['job_build'] = _id
         _build['number'] = build_number
         _build['job_name'] = job_name
@@ -163,33 +193,4 @@ class Build(JSON):
         _build['passCount'] = report_content.get('passCount')
         _build['skipCount'] = report_content.get('skipCount')
 
-        return save_object(c.name, _build, _id='job_build')
-
-
-def _extract_func(cube, **kwargs):
-    c = get_cube(cube)
-    saved = 0
-    # get all known jobs
-    args = 'tree=jobs[name,builds[number]]'
-    url = '%s:%s%s?%s' % (c._url, c._port, c._api_path, args)
-    logger.debug("Getting Jenkins Job details (%s)" % url)
-    content = json.loads(urlopen(url).readlines()[0], strict=False)
-    jobs = content['jobs']
-
-    with ThreadPoolExecutor(MAX_WORKERS) as executor:
-        for k, job in enumerate(jobs, 1):
-            job_name = job['name']
-            logger.debug('JOB (%s): %s of %s with %s builds' % (job_name, k,
-                                                                len(jobs),
-                                                                len(job['builds'])))
-            nums = [b['number'] for b in job['builds']]
-            future_build = []
-            for n in nums:
-                future_build.append(executor.submit(c._save_build, job_name, n))
-
-            for future in as_completed(future_build):
-                    try:
-                        saved += future.result()
-                    except Exception as exc:
-                        print('Exception: %s' % exc)
-    return str(saved)
+        return _build

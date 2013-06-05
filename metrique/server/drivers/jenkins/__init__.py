@@ -21,5 +21,8 @@ class Jenkins(BaseDriverMap):
         'build': 'jenkins.Build',
     }
 
-    def __init__(self):
-        super(Jenkins, self).__init__(**DEFAULT_CONFIG)
+    def __init__(self, url=None, port=None, api_path=None):
+        url = self.config['url'] if url is None else url
+        port = self.config['port'] if port is None else port
+        api_path = self.config['api_path'] if api_path is None else api_path
+        super(Jenkins, self).__init__(url=url, port=port, api_path=api_path)
