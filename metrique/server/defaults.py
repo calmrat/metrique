@@ -28,7 +28,7 @@ MAX_SIZE = 1000000000
 MAX_DOCS = 100000
 
 DATE_FORMAT = '%Y%m%dT%H:%M:%S'
-LOG_FORMAT = '%(processName)s:%(message)s'
+LOG_FORMAT = u'%(processName)s:%(message)s'
 LOG_FORMATTER = logging.Formatter(LOG_FORMAT,
                                   DATE_FORMAT)
 
