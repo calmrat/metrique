@@ -117,7 +117,7 @@ class BaseSql(BaseDriver):
                 future = executor.submit(_extract_func, self.name, **kwargs)
             return future.result()
         else:
-            _extract_func(self.name, **kwargs)
+            return _extract_func(self.name, **kwargs)
 
 
 def _extract_func(cube, **kwargs):
