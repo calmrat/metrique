@@ -11,6 +11,7 @@ from metrique.server.drivers.basegitobject import BaseGitObject
 from metrique.server.drivers.utils import ts_tz2dt_tz
 from metrique.server.etl import last_known_warehouse_mtime
 from metrique.server.etl import save_objects
+from metrique.tools.type_cast import type_cast
 
 tree_re = re.compile('tree ([0-9a-f]{5,40})')
 parent_re = re.compile('parent ([0-9a-f]{5,40})')
@@ -106,15 +107,23 @@ class Commit(BaseGitObject):
         commits = []
         for obj in self.walk_objects(uri, 'commit'):
             commit = self.extract_commit(obj)
-            if last_update_dt and ts_tz2dt_tz(commit['committer_ts']) <= last_update_dt:
-                continue
+            if last_update_dt:
+                committer_ts = commit['committer_ts']
+                obj_cached = ts_tz2dt_tz(committer_ts) <= last_update_dt
+                if obj_cached:
+                    continue
             commit.update({'uri': uri})
+            for f, v in commit.iteritems():
+                convert = self.get_field_property('convert', f)
+                if convert:
+                    commit[f] = convert(v)
             commits.append(commit)
         return save_objects(self.name, commits)
 
     def extract_commit(self, obj):
         if obj.type != 'commit':
-            raise TypeError("Expected 'commit' type objects. Got (%s)" % obj.type)
+            raise TypeError(
+                "Expected 'commit' type objects. Got (%s)" % obj.type)
         hexsha = obj.hexsha
         commit_i = obj.read().split('\n')
         t_ix = 0
@@ -136,7 +145,8 @@ class Commit(BaseGitObject):
 
         c_ts_ix = a_ts_ix + 1
         committer_ts = commit_i[c_ts_ix]
-        committer, committer_ts = committer_ts_re.match(committer_ts).group(1, 2)
+        committer, committer_ts = committer_ts_re.match(
+            committer_ts).group(1, 2)
 
         b_ix = c_ts_ix + 1
         blank = commit_i[b_ix]
