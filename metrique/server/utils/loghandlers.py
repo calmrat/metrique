@@ -36,7 +36,7 @@ class MongoLogHandler(logging.Handler):
                          "when": now,
                          "time": now_time,
                          "level": r.levelname,
-                         "message": str(r.msg),
+                         "message": str(r.msg.decode('utf-8')),
                          "args": str(r.args),
                          "hostname": HOSTNAME,
                          "exc_info": str(r.exc_info),
