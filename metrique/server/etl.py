@@ -68,6 +68,8 @@ def save_doc(cube, field, tokens, id=None):
 
 def save_objects(cube, objs):
     c = get_cube(cube)
+    expected_fields = set(c.fields.keys())
+    expected_fields.add('_id')  # we always expect the _id to be defined as well
     _cube = c.get_collection(admin=True)
 
     if not type(objs) in [list, tuple]:
@@ -75,10 +77,16 @@ def save_objects(cube, objs):
 
     now = datetime.now(UTC)
     for x, obj in enumerate(objs):
+        obj_fields = set(obj.keys())
         if not isinstance(obj, dict):
             raise TypeError(
                 "Expected objects as dict, got type(%s)" % type(obj))
-        objs[x].update({'_mtime': now})
+        elif not obj_fields <= expected_fields:
+            raise ValueError(
+                "Object includes unexpected fields.\n"
+                "Unexpected: %s" % (obj_fields - expected_fields))
+        else:
+            objs[x].update({'_mtime': now})
 
     _cube.insert(objs, manipulate=False)
     return len(objs)
@@ -428,7 +436,7 @@ def extract(cube, **kwargs):
     return result
 
 
-def last_known_warehouse_mtime(cube, field=None):
+def last_known_warehouse_mtime(cube, field=None, value=None):
     '''get the last known warehouse object mtime'''
     c = get_cube(cube)
     _cube = c.get_collection()
@@ -436,7 +444,10 @@ def last_known_warehouse_mtime(cube, field=None):
     start = None
     if field:
         # we need to check the etl_activity collection
-        spec = {'cube': cube, field: {'$exists': True}}
+        if value:
+            spec = {'cube': cube, field: value}
+        else:
+            spec = {'cube': cube, field: {'$exists': True}}
         doc = c._c_etl_activity.find_one(spec, ['%s.mtime' % field])
         if doc:
             start = doc[field]['mtime']
@@ -446,7 +457,7 @@ def last_known_warehouse_mtime(cube, field=None):
         spec = {}
         doc = _cube.find_one(spec, [mtime], sort=[(mtime, -1)])
         if doc:
-            start = doc[field][mtime]
+            start = doc[mtime]
 
     logger.debug('... Last field mtime: %s' % start)
     return start

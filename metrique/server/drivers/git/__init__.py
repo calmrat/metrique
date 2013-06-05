@@ -7,7 +7,7 @@ from metrique.tools.jsonconfig import JSONConfig
 
 DEFAULT_CONFIG = {
     "repos": {
-        "pql": "https://github.com/alonho/pql.git"
+        "metrique": "https://github.com/drpoovilleorg/metrique.git"
     }
 }
 
