@@ -22,6 +22,7 @@ class Result(DataFrame):
             self._start = pd.to_datetime(self._start)
         if '_end' in self:
             self._end = pd.to_datetime(self._end)
+        self._lbound = self._rbound = None
 
     @classmethod
     def from_result_file(cls, path):
@@ -35,6 +36,35 @@ class Result(DataFrame):
         with open(path, 'w') as f:
             json.dump(self._result_data, f)
 
+    def date(self, date):
+        '''
+        Pass in the date used in the original query.
+
+        Parameters
+        ----------
+        date : str
+            Date (date range) that was queried:
+                date -> 'd', '~d', 'd~', 'd~d'
+                d -> '%Y-%m-%d %H:%M:%S,%f', '%Y-%m-%d %H:%M:%S', '%Y-%m-%d'
+        '''
+        if date is not None:
+            split = date.split('~')
+            if len(split) == 1:
+                self._lbound = Timestamp(date)
+                self._rbound = Timestamp(date)
+            elif split[0] == '':
+                self._rbound = Timestamp(split[1])
+            elif split[1] == '':
+                self._lbound = Timestamp(split[0])
+            else:
+                self._lbound = Timestamp(split[0])
+                self._rbound = Timestamp(split[1])
+
+    def check_in_bounds(self, date):
+        dt = Timestamp(date)
+        return ((self._lbound is None or dt >= self._lbound) and
+                (self._rbound is None or dt <= self._rbound))
+
     def on_date(self, date, only_count=False):
         '''
         Filters out only the rows that match the spectified date.
@@ -44,6 +74,8 @@ class Result(DataFrame):
         ----------
         date : str
         '''
+        if not self.check_in_bounds(date):
+            raise ValueError('Date %s is not in the queried range.' % date)
         date = Timestamp(date)
         after_start = self._start <= date
         before_end = (self._end > date) | self._end.isnull()
@@ -52,7 +84,7 @@ class Result(DataFrame):
         else:
             return self[before_end & after_start]
 
-    def history(self, scale='maximum', counts=True, start=None, end=None):
+    def history(self, scale='daily', counts=True, start=None, end=None):
         '''
         Works only on a Result that has _start and _end columns.
         most_recent=False should be set for this to work
@@ -71,7 +103,8 @@ class Result(DataFrame):
         '''
         start_dts = list(self._start[~self._start.isnull()].values)
         end_dts = list(self._end[~self._end.isnull()].values)
-        dts = set(start_dts + end_dts)
+        dts = map(Timestamp, set(start_dts + end_dts))
+        dts = filter(lambda dt: self.check_in_bounds(dt), dts)
         if scale == 'maximum':
             if start is not None:
                 start = Timestamp(start)
@@ -80,9 +113,10 @@ class Result(DataFrame):
                 end = Timestamp(end)
                 dts = filter(lambda ts: ts <= end, dts)
         else:
-            start = min(dts) if start is None else start
-            end = max(dts) if end is None else end
+            start = min(dts) if start is None else max(min(dts), start)
+            end = max(dts) if end is None else min(max(dts), end)
             dts = self.get_date_ranges(start, end, scale)
+
         idx, vals = [], []
         for dt in dts:
             idx.append(dt)
