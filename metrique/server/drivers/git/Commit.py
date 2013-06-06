@@ -33,6 +33,7 @@ class Commit(BaseGitObject):
 
         self.cube = {
             'defaults': {
+                'index': True,
             },
 
             'fielddefs': {
