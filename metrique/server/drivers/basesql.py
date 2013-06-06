@@ -222,7 +222,7 @@ def _extract_func(cube, **kwargs):
     if sql_where:
         sql += ' WHERE %s ' % ' AND '.join(sql_where)
 
-    if not c.get_field_property('no_sort', field, False):
+    if c.get_field_property('sort', field, True):
         sql += " ORDER BY %s ASC" % table_column
 
     # whether to query for distinct rows only or not; default, no
