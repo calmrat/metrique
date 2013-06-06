@@ -116,8 +116,10 @@ class Commit(BaseGitObject):
             commit.update({'uri': uri})
             for f, v in commit.iteritems():
                 convert = self.get_field_property('convert', f)
+                _type = self.get_field_property('type', f)
                 if convert:
                     commit[f] = convert(v)
+                v = type_cast(v, _type)
             commits.append(commit)
         return save_objects(self.name, commits)
 
