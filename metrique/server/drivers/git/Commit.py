@@ -9,8 +9,6 @@ import re
 
 from metrique.server.drivers.basegitobject import BaseGitObject
 from metrique.server.drivers.utils import ts_tz2dt_tz
-from metrique.server.etl import last_known_warehouse_mtime
-#from metrique.server.etl import save_objects
 from metrique.server.etl import save_object2
 from metrique.tools.type_cast import type_cast
 
@@ -104,28 +102,29 @@ class Commit(BaseGitObject):
         return result
 
     def save_commits(self, uri):
-        last_update_dt = last_known_warehouse_mtime(self.name, 'uri', uri)
-
-        #commits = []
+        c = self.get_collection()
+        last_hexsha = c.find_one({'uri': uri},
+                                 {'_id': 0, 'hexsha': 1},
+                                 sort=[('hexsha', -1)])
         saved = 0
         for obj in self.walk_objects(uri, 'commit'):
             commit = self.extract_commit(obj)
-            if last_update_dt:
-                committer_ts = commit['committer_ts']
-                obj_cached = ts_tz2dt_tz(committer_ts) <= last_update_dt
-                if obj_cached:
-                    continue
+            if commit['hexsha'] < last_hexsha:
+                # don't import if we've already got it
+                continue
             commit.update({'uri': uri})
-            _commit = commit.copy()
-            for f, v in _commit.iteritems():
-                convert = self.get_field_property('convert', f)
-                _type = self.get_field_property('type', f)
-                if convert:
-                    v = convert(v)
-                commit[f] = type_cast(v, _type)
-            saved += save_object2(self.name, commit)
-            #commits.append(commit)
-        #return save_objects(self.name, commits)
+            saved += self.save_commit(commit)
+        return saved
+
+    def save_commit(self, commit):
+        _commit = commit.copy()
+        for f, v in _commit.iteritems():
+            convert = self.get_field_property('convert', f)
+            _type = self.get_field_property('type', f)
+            if convert:
+                v = convert(v)
+            commit[f] = type_cast(v, _type)
+        return save_object2(self.name, commit)
 
     def extract_commit(self, obj):
         if obj.type != 'commit':
@@ -157,7 +156,15 @@ class Commit(BaseGitObject):
 
         b_ix = c_ts_ix + 1
         blank = commit_i[b_ix]
-        assert blank == ''
+
+        if blank != '':
+            if re.match('encoding', blank):
+                b_ix += 1  # bump forward one more
+            else:
+                raise RuntimeError(
+                    "Expected to find an 'encoding' or "
+                    "empty string in commit %s; got('%s')" % (
+                        commit_i, blank))
         co_ix = b_ix + 1
         message = commit_i[co_ix:]
         message_str = '\n'.join(message)
