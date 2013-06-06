@@ -207,12 +207,13 @@ def _extract_func(cube, **kwargs):
                 if isinstance(mtime_columns, basestring):
                     mtime_columns = [mtime_columns]
                 last_update_dt = last_known_warehouse_mtime(c.name, field)
-                last_update_dt = last_update_dt.strftime('%Y-%m-%d %H:%M:%S %z')
-                dt_format = "yyyy-MM-dd HH:mm:ss z"
-                for _column in mtime_columns:
-                    _sql = "%s > parseTimestamp('%s', '%s')" % (
-                        _column, last_update_dt, dt_format)
-                    delta_filter.append(_sql)
+                if last_update_dt:
+                    last_update_dt = last_update_dt.strftime('%Y-%m-%d %H:%M:%S %z')
+                    dt_format = "yyyy-MM-dd HH:mm:ss z"
+                    for _column in mtime_columns:
+                        _sql = "%s > parseTimestamp('%s', '%s')" % (
+                            _column, last_update_dt, dt_format)
+                        delta_filter.append(_sql)
 
     if delta_filter:
         delta_filter_sql = ' OR '.join(delta_filter)
