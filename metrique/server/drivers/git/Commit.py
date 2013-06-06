@@ -10,7 +10,8 @@ import re
 from metrique.server.drivers.basegitobject import BaseGitObject
 from metrique.server.drivers.utils import ts_tz2dt_tz
 from metrique.server.etl import last_known_warehouse_mtime
-from metrique.server.etl import save_objects
+#from metrique.server.etl import save_objects
+from metrique.server.etl import save_object2
 from metrique.tools.type_cast import type_cast
 
 tree_re = re.compile('tree ([0-9a-f]{5,40})')
@@ -105,7 +106,8 @@ class Commit(BaseGitObject):
     def save_commits(self, uri):
         last_update_dt = last_known_warehouse_mtime(self.name, 'uri', uri)
 
-        commits = []
+        #commits = []
+        saved = 0
         for obj in self.walk_objects(uri, 'commit'):
             commit = self.extract_commit(obj)
             if last_update_dt:
@@ -114,14 +116,16 @@ class Commit(BaseGitObject):
                 if obj_cached:
                     continue
             commit.update({'uri': uri})
-            for f, v in commit.iteritems():
+            _commit = commit.copy()
+            for f, v in _commit.iteritems():
                 convert = self.get_field_property('convert', f)
                 _type = self.get_field_property('type', f)
                 if convert:
-                    commit[f] = convert(v)
-                v = type_cast(v, _type)
-            commits.append(commit)
-        return save_objects(self.name, commits)
+                    v = convert(v)
+                commit[f] = type_cast(v, _type)
+            saved += save_object2(self.name, commit)
+            #commits.append(commit)
+        #return save_objects(self.name, commits)
 
     def extract_commit(self, obj):
         if obj.type != 'commit':
