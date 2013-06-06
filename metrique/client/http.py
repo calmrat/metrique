@@ -75,7 +75,7 @@ class Query(BaseClient):
         '''
         return self._get('count', cube=cube, query=query)
 
-    def find(self, cube, query, fields='', date=None, most_recent=True):
+    def find(self, cube, query, fields='', date=None, most_recent=False):
         '''
         Paremeters
         ----------
@@ -89,7 +89,7 @@ class Query(BaseClient):
             Date (date range) that should be queried:
                 date -> 'd', '~d', 'd~', 'd~d'
                 d -> '%Y-%m-%d %H:%M:%S,%f', '%Y-%m-%d %H:%M:%S', '%Y-%m-%d'
-        most_recent : boolean, default True
+        most_recent : boolean
             If true and there are multiple historical version of a single
             object matching the query then only the most recent one will
             be returned
