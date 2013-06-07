@@ -153,6 +153,7 @@ def _extract_func(cube, **kwargs):
         raise ValueError("row_limit must be a number")
 
     sql_where = []
+    sql_groupby = ''
     _sql = c.get_field_property('sql', field)
     if not _sql:
         sql = 'SELECT %s, %s.%s FROM %s' % (
@@ -160,15 +161,25 @@ def _extract_func(cube, **kwargs):
     else:
         sql = 'SELECT %s, %s FROM ' % (table_column, _sql[0])
         _from = [db_table]
+
+        # FIXME: THIS IS UGLY! use a dict... or sqlalchemy
         if _sql[1]:
             _from.extend(_sql[1])
         sql += ', '.join(_from)
         sql += ' '
+
         if _sql[2]:
             sql += ' '.join(_sql[2])
         sql += ' '
+
         if _sql[3]:
             sql_where.append('(%s)' % ' OR '.join(_sql[3]))
+
+        try:
+            if _sql[4]:
+                sql_groupby = _sql[4]
+        except IndexError:
+            pass
 
     delta_filter = []
     delta_filter_sql = None
@@ -221,6 +232,9 @@ def _extract_func(cube, **kwargs):
 
     if sql_where:
         sql += ' WHERE %s ' % ' AND '.join(sql_where)
+
+    if sql_groupby:
+        sql += ' GROUP BY %s ' % sql_groupby
 
     if c.get_field_property('sort', field, True):
         sql += " ORDER BY %s ASC" % table_column
