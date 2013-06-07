@@ -2,7 +2,7 @@
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 # Author: "Chris Ward <cward@redhat.com>
 
-from gitdb.db.git import GitDB
+from git import Repo, GitCmdObjectDB
 import logging
 logger = logging.getLogger(__name__)
 import os
@@ -41,15 +41,16 @@ class BaseGitObject(BaseDriver):
                 raise RuntimeError('Failed to fetch repo')
             logger.info(' ... Fetch complete')
         obj_path = os.path.join(repo_path, DEFAULT_OBJECTS_PATH)
-        return GitDB(obj_path)
+        return Repo(obj_path, odbt=GitCmdObjectDB)
 
-    def walk_objects(self, uri, _type=None):
+    def walk_commits(self, uri, last_dt=None, branch='master'):
         repo = uri.split('/')[-1]
         gitdb = self.fetch_repo(uri, repo)
         logger.debug("Iterating through object db (%s)" % repo)
-        for sha in gitdb.sha_iter():
-            obj = gitdb.stream(sha)
-            if _type and obj.type != _type:
-                continue
-            else:
-                yield obj
+        # by default, we're sorted DESC; we want ASC
+        if last_dt:
+            # and filter starting after the last object we've already
+            return gitdb.iter_commits(branch, reverse=True, after=last_dt)
+        else:
+            # ... imported, if any; or get them all
+            return gitdb.iter_commits(branch, reverse=True)

@@ -2,7 +2,7 @@
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 # Author: "Chris Ward <cward@redhat.com>
 
-from metrique.server.drivers.git import GIT
+from metrique.server.drivers.gitrepo import GIT
 from metrique.server.drivers.jenkins import Jenkins
 
 from metrique.tools.constants import RE_DRIVER_CUBE
