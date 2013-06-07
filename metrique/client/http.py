@@ -85,7 +85,7 @@ class Query(BaseClient):
             The query in pql
         fields : str, or list of str, or str of comma-separated values
             Fields that should be returned
-        date : str, default None
+        date : str
             Date (date range) that should be queried:
                 date -> 'd', '~d', 'd~', 'd~d'
                 d -> '%Y-%m-%d %H:%M:%S,%f', '%Y-%m-%d %H:%M:%S', '%Y-%m-%d'
@@ -96,7 +96,9 @@ class Query(BaseClient):
         '''
         result = self._get('find', cube=cube, query=query,
                            fields=fields, date=date, most_recent=most_recent)
-        return Result(result)
+        result = Result(result)
+        result.date(date)
+        return result
 
     def fetch(self, cube, fields, skip=0, limit=0, ids=[]):
         result = self._get('fetch', cube=cube, fields=fields,
