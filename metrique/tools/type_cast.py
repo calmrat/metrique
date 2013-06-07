@@ -7,7 +7,7 @@ from dateutil.parser import parse as dt_parse
 from metrique.tools.constants import UTC, NONE_VALUES
 from metrique.tools.constants import UNICODE_TYPE
 from metrique.tools.constants import STR_TYPE, FLOAT_TYPE, DATETIME_TYPE
-from metrique.tools.constants import INT_TYPE, BOOL_TYPE, NONE_TYPE
+from metrique.tools.constants import INT_TYPE, BOOL_TYPE, NONE_TYPE, DICT_TYPE
 from metrique.tools.constants import LONG_TYPE, STR_TYPES
 from metrique.tools.constants import NOMINAL_TYPES, LIST_TYPES
 
@@ -18,8 +18,8 @@ logger = getLogger(__name__)
 # type_cast() will be called many thousands of times so
 # no reason to re-evaluate these lists every time...
 VALID_RAW_TYPES = (NONE_TYPE, FLOAT_TYPE, INT_TYPE, LONG_TYPE, BOOL_TYPE,
-                   DATETIME_TYPE, UNICODE_TYPE, STR_TYPE)
-VALID_CAST_TYPES = (FLOAT_TYPE, DATETIME_TYPE, UNICODE_TYPE)
+                   DATETIME_TYPE, UNICODE_TYPE, STR_TYPE, DICT_TYPE)
+VALID_CAST_TYPES = (FLOAT_TYPE, DATETIME_TYPE, UNICODE_TYPE, DICT_TYPE)
 
 
 def type_cast(raw, cast_type=None):
@@ -30,6 +30,12 @@ def type_cast(raw, cast_type=None):
     Input types supported: none, bool, int, float, long, datetime, unicode, str
     Output types supported: float, datetime, unicode
     '''
+    if type(raw) is DICT_TYPE:
+        # HACK; for now, we're now doing recursive type casting
+        # of dict tokens; the type the nested docs are in
+        # must be known and user is expected to query accordingly
+        return raw
+
     if not cast_type:
         cast_type = unicode
     elif cast_type not in VALID_CAST_TYPES:
@@ -44,7 +50,7 @@ def type_cast(raw, cast_type=None):
     for item in raw_items:
         item_type = type(item)
         if item_type not in VALID_RAW_TYPES:
-            raise TypeError("Unsupported input token type: %s" % item_type)
+            raise TypeError("Unsupported input token type (%s) for %s" % (item_type, item))
 
         elif item in NONE_VALUES:
             token = None  # normalize nulls to None object

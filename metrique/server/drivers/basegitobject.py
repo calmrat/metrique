@@ -2,7 +2,7 @@
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 # Author: "Chris Ward <cward@redhat.com>
 
-from git import Repo, GitCmdObjectDB
+from git import Repo   # , GitCmdObjectDB
 import logging
 logger = logging.getLogger(__name__)
 import os
@@ -41,7 +41,8 @@ class BaseGitObject(BaseDriver):
                 raise RuntimeError('Failed to fetch repo')
             logger.info(' ... Fetch complete')
         obj_path = os.path.join(repo_path, DEFAULT_OBJECTS_PATH)
-        return Repo(obj_path, odbt=GitCmdObjectDB)
+        #return Repo(obj_path, odbt=GitCmdObjectDB)
+        return Repo(obj_path)
 
     def walk_commits(self, uri, last_dt=None, branch='master'):
         repo = uri.split('/')[-1]
