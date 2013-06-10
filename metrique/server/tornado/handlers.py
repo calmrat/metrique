@@ -3,6 +3,7 @@
 # Author: "Chris Ward <cward@redhat.com>
 
 import logging
+import base64
 logger = logging.getLogger(__name__)
 
 from functools import wraps
@@ -41,6 +42,31 @@ def async(f):
             result = json.dumps(_result, cls=Encoder, ensure_ascii=False)
             self.write(result)
             self.finish()
+    return wrapper
+
+
+def auth(f):
+
+    def request_authentication(handler):
+        handler.set_status(401)
+        handler.set_header('WWW-Authenticate', 'Basic realm="Metrique"')
+        handler.finish()
+        return False
+
+    @wraps(f)
+    def wrapper(handler, *args, **kwargs):
+        auth_header = handler.request.headers.get('Authorization')
+        if auth_header is None or not auth_header.startswith('Basic '):
+            #No HTTP Basic Authentication header
+            request_authentication(handler)
+        auth = base64.decodestring(auth_header[6:])
+        username, password = auth.split(':', 2)
+        #TODO: Add an authentication function
+        is_authed = True #authenticate(username, password)
+        if is_authed:
+            f(handler, *args, **kwargs)
+        else:
+            request_authentication(handler)
     return wrapper
 
 

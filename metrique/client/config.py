@@ -62,6 +62,22 @@ class Config(JSONConfig):
             raise TypeError("metrique_http_host must be string")
         self._config['metrique_http_host'] = value
 
+    @property
+    def metrique_api_username(self):
+        return self._default('metrique_username')
+
+    @metrique_api_username.setter
+    def metrique_api_username(self, value):
+        self._config['metrique_username'] = value
+
+    @property
+    def metrique_api_password(self):
+        return self._default('metrique_password')
+
+    @metrique_api_username.setter
+    def metrique_api_password(self, value):
+        self._config['metrique_password'] = value
+
 
     @property
     def debug(self):

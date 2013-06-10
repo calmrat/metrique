@@ -8,6 +8,8 @@ METRIQUE_CONF = 'metrique_config'
 MONGODB_CONF = 'mongodb_config'
 SERVER_CONFIG_PATH = '~/.metrique/'
 PID_FILE = '~/.metrique/server.pid'
+SSL_CERT_KEY = '~/.metrique/pkey.pem'
+SSL_CERT = '~/.metrique/cert.pem'
 
 METRIQUE_DB = 'metrique'
 WAREHOUSE_DB = 'warehouse'
