@@ -12,6 +12,7 @@ from pandas import DataFrame, Series
 import pandas.tseries.offsets as off
 from pandas.tslib import Timestamp
 import pandas as pd
+import numpy as np
 
 
 class Result(DataFrame):
@@ -80,19 +81,40 @@ class Result(DataFrame):
         after_start = self._start <= date
         before_end = (self._end > date) | self._end.isnull()
         if only_count:
-            return sum(before_end & after_start)
+            return np.sum(before_end & after_start)
         else:
             return self[before_end & after_start]
 
-    def history(self, scale='daily', counts=True, start=None, end=None):
+    def _auto_select_scale(self, dts, start=None, end=None, ideal=300):
+        start = min(dts) if start is None else start
+        end = max(dts) if end is None else end
+        maximum_count = len(filter(lambda dt: start <= dt and dt <= end, dts))
+        daily_count = (end - start).days
+        if maximum_count <= ideal:
+            return 'maximum'
+        elif daily_count <= ideal:
+            return 'daily'
+        elif daily_count / 7 <= ideal:
+            return 'weekly'
+        elif daily_count / 30 <= ideal:
+            return 'monthly'
+        elif daily_count / 91 <= ideal:
+            return 'quarterly'
+        else:
+            return 'yearly'
+
+    def history(self, scale='auto', counts=True, start=None, end=None):
         '''
         Works only on a Result that has _start and _end columns.
         most_recent=False should be set for this to work
 
         Parameters
         ----------
-        scale: {'maximum', 'daily', 'weekly', 'monthly', 'quarterly', 'yearly'}
+        scale: {'auto', 'maximum', 'daily', 'weekly', 'monthly',
+                'quarterly', 'yearly'}
             Scale specifies the sampling intervals.
+            'auto' will heuritically choose such scale that will give you
+            fast results.
         counts: boolean
             If True counts will be returned
             If False ids will be returned
@@ -101,20 +123,20 @@ class Result(DataFrame):
         end: str
             Last date that will be included
         '''
-        start_dts = list(self._start[~self._start.isnull()].values)
-        end_dts = list(self._end[~self._end.isnull()].values)
-        dts = map(Timestamp, set(start_dts + end_dts))
-        dts = filter(lambda dt: self.check_in_bounds(dt), dts)
-        if scale == 'maximum':
-            if start is not None:
-                start = Timestamp(start)
-                dts = filter(lambda ts: ts >= start, dts)
-            if end is not None:
-                end = Timestamp(end)
-                dts = filter(lambda ts: ts <= end, dts)
-        else:
-            start = min(dts) if start is None else max(min(dts), start)
-            end = max(dts) if end is None else min(max(dts), end)
+        start = self._start.min() if start is None else start
+        end = max(self._end.max(), self._start.max()) if end is None else end
+        start = start if self.check_in_bounds(start) else self._lbound
+        end = end if self.check_in_bounds(end) else self._rbound
+
+        if scale == 'auto' or scale == 'maximum':
+            start_dts = list(self._start[~self._start.isnull()].values)
+            end_dts = list(self._end[~self._end.isnull()].values)
+            dts = map(Timestamp, set(start_dts + end_dts))
+            dts = filter(lambda ts: self.check_in_bounds(ts) and
+                         ts >= start and ts <= end, dts)
+        if scale == 'auto':
+            scale = self._auto_select_scale(dts, start, end)
+        if scale != 'maximum':
             dts = self.get_date_ranges(start, end, scale)
 
         idx, vals = [], []
