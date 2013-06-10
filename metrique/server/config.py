@@ -13,6 +13,7 @@ from defaults import LOGS_COLLECTION, LOG_FORMATTER
 from defaults import ETL_ACTIVITY_COLLECTION, MAX_SIZE, MAX_DOCS
 from defaults import DATA_USER, ADMIN_USER, TIMELINE_DB
 from defaults import PID_FILE
+from defaults import SSL_CERT, SSL_CERT_KEY
 
 from metrique.tools.decorators import memo
 from metrique.tools.defaults import METRIQUE_HTTP_HOST, METRIQUE_HTTP_PORT
@@ -73,6 +74,22 @@ class metrique(JSONConfig):
     @http_port.setter
     def http_port(self, value):
         self._config['http_port'] = value
+
+    @property
+    def ssl_certificate_key(self):
+        return self._default('ssl_certificate_key', SSL_CERT_KEY)
+
+    @ssl_certificate_key.setter
+    def ssl_certificate_key(self, value):
+        self._config['ssl_certificate_key'] = value
+
+    @property
+    def ssl_certificate(self):
+        return self._default('ssl_certificate', SSL_CERT_KEY)
+
+    @ssl_certificate.setter
+    def ssl_certificate_key(self, value):
+        self._config['ssl_certificate'] = value
 
     @property
     def logs_max_size(self):

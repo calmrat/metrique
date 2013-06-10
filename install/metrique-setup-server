@@ -3,6 +3,9 @@
 
 from functools import partial
 from pprint import PrettyPrinter
+from os.path import isfile
+from subprocess import call
+
 pp = PrettyPrinter(indent=2)
 
 from metrique.server.tornado.http import HTTPServer
@@ -17,6 +20,20 @@ pp.pprint(s.metrique_config._config)
 
 _p = "Metrique Hostname/IP (ie, this server): "
 s.metrique_config.setup_basic('http_host', partial(prompter, _p))
+
+_p = "Metrique SSL Certificate Key: "
+s.metrique_config.setup_basic('ssl_certificate_key')
+
+_p = "Metrique SSL Certificate: "
+s.metrique_config.setup_basic('ssl_certificate')
+
+if not (isfile(s.metrique_config.ssl_certificate) and
+            isfile(s.metrique_config.ssl_certificate_key)):
+    print "generating self-signed certificate:"
+    call(['openssl', 'req', '-x509', '-newkey', 'rsa:2048', '-keyout',
+          s.metrique_config.ssl_certificate_key,'-nodes', '-out',
+          s.metrique_config.ssl_certificate])
+
 
 _p = "MongoDB Host: "
 s.mongodb_config.setup_basic('host', partial(prompter, _p))

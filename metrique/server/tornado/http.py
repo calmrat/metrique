@@ -56,7 +56,10 @@ class HTTPServer(MetriqueServer):
         # FIXME: set gzip as metrique_config property, default True
         port = self.metrique_config.http_port
         address = self.metrique_config.http_host
-        self._web_app.listen(port=port, address=address)
+        ssl_options = dict(certfile=self.metrique_config.ssl_certificate,
+                           keyfile=self.metrique_config.ssl_certificate_key)
+        self._web_app.listen(port=port, address=address,
+                             ssl_options=ssl_options)
         logger.debug("Tornado: listening on %s:%s" % (port, address))
 
     def start(self):
