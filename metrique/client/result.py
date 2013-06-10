@@ -85,7 +85,7 @@ class Result(DataFrame):
         else:
             return self[before_end & after_start]
 
-    def _auto_select_scale(self, dts, start=None, end=None, ideal=100):
+    def _auto_select_scale(self, dts, start=None, end=None, ideal=300):
         start = min(dts) if start is None else start
         end = max(dts) if end is None else end
         maximum_count = len(filter(lambda dt: start <= dt and dt <= end, dts))
@@ -123,12 +123,11 @@ class Result(DataFrame):
         end: str
             Last date that will be included
         '''
-        if start is None:
-            start = self._start.min()
-        start = max(start, self._lbound)
-        if end is None:
-            end = max(self._end.max(), self._start.max())
-        end = min(end, self._rbound)
+        start = self._start.min() if start is None else start
+        end = max(self._end.max(), self._start.max()) if end is None else end
+        start = start if self.check_in_bounds(start) else self._lbound
+        end = end if self.check_in_bounds(end) else self._rbound
+
         if scale == 'auto' or scale == 'maximum':
             start_dts = list(self._start[~self._start.isnull()].values)
             end_dts = list(self._end[~self._end.isnull()].values)
