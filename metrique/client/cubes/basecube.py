@@ -12,5 +12,5 @@ class BaseCube(pyclient):
         self.query.find = self._find
 
     def _find(self, query, fields='', date=None, most_recent=True):
-        return self._queryfind(self.cube, query, fields,
-                               date, most_recent)
+        return self._queryfind(cube=self.cube, query=query, fields=fields,
+                               date=date, most_recent=most_recent)
