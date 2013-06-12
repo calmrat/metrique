@@ -19,36 +19,44 @@ s.metrique_config._autosave = False
 print 'Metrique Config: '
 pp.pprint(s.metrique_config._config)
 
+_p = "Metrique Hostname/IP (ie, this server): "
+s.metrique_config.setup_basic('http_host', partial(prompter, _p))
+
 _p = "Enable authentication? "
-if s.metrique_config.yes_no_prompt(_p):
+if not s.metrique_config.yes_no_prompt(_p):
+    s.metrique_config.auth = False
+else:
     s.metrique_config.auth = True
 
     _p = "Metrique admin password: "
     s.metrique_config.setup_basic('admin_password', partial(prompter, _p))
 
-_p = "Metrique Hostname/IP (ie, this server): "
-s.metrique_config.setup_basic('http_host', partial(prompter, _p))
+_p = "Enable SSL? "
+if not s.metrique_config.yes_no_prompt(_p):
+    s.metrique_config.ssl = False
+else:
+    s.metrique_config.ssl = True
 
-ssl_created = False
-if not (isfile(s.metrique_config.ssl_certificate) and
-        isfile(s.metrique_config.ssl_certificate_key)):
-    _p = "Create a new default, self-signed SSL Certificate + Key? "
-    _bool = s.metrique_config.yes_no_prompt(_p)
-    if _bool:
-        print "Generating self-signed certificate:"
-        call(['openssl', 'req', '-x509', '-newkey', 'rsa:2048', '-keyout',
-             s.metrique_config.ssl_certificate_key, '-nodes', '-out',
-             s.metrique_config.ssl_certificate])
-        ssl_created = True
+    ssl_created = False
+    if not (isfile(s.metrique_config.ssl_certificate) and
+            isfile(s.metrique_config.ssl_certificate_key)):
+        _p = "Create a new default, self-signed SSL Certificate + Key? "
+        _bool = s.metrique_config.yes_no_prompt(_p)
+        if _bool:
+            print "Generating self-signed certificate:"
+            call(['openssl', 'req', '-x509', '-newkey', 'rsa:2048', '-keyout',
+                s.metrique_config.ssl_certificate_key, '-nodes', '-out',
+                s.metrique_config.ssl_certificate])
+            ssl_created = True
 
-if not ssl_created:
-    print 'NOTE: SSL Cert found: %s' % s.metrique_config.ssl_certificate
-    print 'NOTE: SSL Cert Key found: %s' % s.metrique_config.ssl_certificate_key
-    _p = "Path to Metrique SSL Certificate: "
-    s.metrique_config.setup_basic('ssl_certificate', partial(prompter, _p))
+    if not ssl_created:
+        print 'NOTE: SSL Cert found: %s' % s.metrique_config.ssl_certificate
+        print 'NOTE: SSL Cert Key found: %s' % s.metrique_config.ssl_certificate_key
+        _p = "Path to Metrique SSL Certificate: "
+        s.metrique_config.setup_basic('ssl_certificate', partial(prompter, _p))
 
-    _p = "Path to Metrique SSL Certificate Key: "
-    s.metrique_config.setup_basic('ssl_certificate_key', partial(prompter, _p))
+        _p = "Path to Metrique SSL Certificate Key: "
+        s.metrique_config.setup_basic('ssl_certificate_key', partial(prompter, _p))
 
 print '\n\nMongoDB Config: '
 _p = "MongoDB Host: "
