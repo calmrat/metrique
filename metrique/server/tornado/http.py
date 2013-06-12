@@ -12,10 +12,10 @@ import tornado.web
 from metrique.server.metriqueserver import MetriqueServer
 
 from handlers import PingHandler
-from handlers import MongoUserAddHandler
 from handlers import JobStatusHandler
 from handlers import QueryAggregateHandler, QueryFindHandler
 from handlers import QueryFetchHandler, QueryCountHandler
+from handlers import UsersAddHandler
 from handlers import LogTailHandler
 from handlers import ETLIndexWarehouseHandler
 from handlers import ETLExtractHandler, ETLSnapshotHandler, CubesHandler
@@ -43,8 +43,8 @@ class HTTPServer(MetriqueServer):
             (r"/api/v1/query/count", QueryCountHandler, init),
             (r"/api/v1/query/aggregate", QueryAggregateHandler, init),
             (r"/api/v1/query/fetch", QueryFetchHandler, init),
+            (r"/api/v1/admin/users/add", UsersAddHandler, init),
             (r"/api/v1/admin/log/tail", LogTailHandler, init),
-            (r"/api/v1/admin/mongo/user/add", MongoUserAddHandler, init),
             (r"/api/v1/admin/etl/extract", ETLExtractHandler, init),
             (r"/api/v1/admin/etl/index/warehouse", ETLIndexWarehouseHandler, init),
             (r"/api/v1/admin/etl/snapshot", ETLSnapshotHandler, init),
@@ -56,7 +56,15 @@ class HTTPServer(MetriqueServer):
         # FIXME: set gzip as metrique_config property, default True
         port = self.metrique_config.http_port
         address = self.metrique_config.http_host
-        self._web_app.listen(port=port, address=address)
+        ssl_options = {}
+        if self.metrique_config.ssl:
+            ssl_options = dict(certfile=self.metrique_config.ssl_certificate,
+                            keyfile=self.metrique_config.ssl_certificate_key)
+        try:
+            self._web_app.listen(port=port, address=address,
+                                ssl_options=ssl_options)
+        except ValueError:
+            raise ValueError("SSL Cert missing, perhaps? (%s)." % ssl_options)
         logger.debug("Tornado: listening on %s:%s" % (port, address))
 
     def start(self):

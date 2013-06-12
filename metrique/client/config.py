@@ -11,7 +11,7 @@ from metrique.tools.defaults import METRIQUE_HTTP_PORT, METRIQUE_HTTP_HOST
 
 API_VERSION = 'v1'
 API_REL_PATH = 'api'
-API_SSL = False
+API_SSL = True
 
 
 class Config(JSONConfig):
@@ -20,48 +20,63 @@ class Config(JSONConfig):
         self.debug = None
 
     @property
-    def metrique_api_ssl(self):
-        return self._default('metrique_api_ssl', API_SSL)
+    def api_ssl(self):
+        return self._default('api_ssl', API_SSL)
 
     @property
-    def metrique_api_version(self):
-        return self._default('metrique_api_version', API_VERSION)
+    def api_version(self):
+        return self._default('api_version', API_VERSION)
 
     @property
-    def metrique_api_rel_path(self):
-        def_rel_path = os.path.join(API_REL_PATH, self.metrique_api_version)
-        return self._default('metrique_api_rel_path', def_rel_path)
+    def api_rel_path(self):
+        def_rel_path = os.path.join(API_REL_PATH, self.api_version)
+        return self._default('api_rel_path', def_rel_path)
 
     @property
-    def metrique_api_url(self):
-        if self.metrique_api_ssl:
+    def api_url(self):
+        if self.api_ssl:
             proto = 'https://'
         else:
             proto = 'http://'
-        host_port = '%s:%s' % (self.metrique_http_host, self.metrique_http_port)
-        api_url = os.path.join(proto, host_port, self.metrique_api_rel_path)
+        host_port = '%s:%s' % (self.api_host, self.api_port)
+        api_url = os.path.join(proto, host_port, self.api_rel_path)
         return api_url
 
     @property
-    def metrique_http_port(self):
-        return self._default('metrique_http_port', METRIQUE_HTTP_PORT)
+    def api_port(self):
+        return self._default('api_port', METRIQUE_HTTP_PORT)
 
-    @metrique_http_port.setter
-    def metrique_http_port(self, value):
+    @api_port.setter
+    def api_port(self, value):
         if not isinstance(value, basestring):
-            raise TypeError("metrique_http_port must be string")
-        self._config['metrique_http_port'] = value
+            raise TypeError("api_port must be string")
+        self._config['api_port'] = value
 
     @property
-    def metrique_http_host(self):
-        return self._default('metrique_http_host', METRIQUE_HTTP_HOST)
+    def api_host(self):
+        return self._default('api_host', METRIQUE_HTTP_HOST)
 
-    @metrique_http_host.setter
-    def metrique_http_host(self, value):
+    @api_host.setter
+    def api_host(self, value):
         if not isinstance(value, basestring):
-            raise TypeError("metrique_http_host must be string")
-        self._config['metrique_http_host'] = value
+            raise TypeError("api_host must be string")
+        self._config['api_host'] = value
 
+    @property
+    def api_username(self):
+        return self._default('api_username')
+
+    @api_username.setter
+    def api_username(self, value):
+        self._config['api_username'] = value
+
+    @property
+    def api_password(self):
+        return self._default('api_password')
+
+    @api_password.setter
+    def api_password(self, value):
+        self._config['api_password'] = value
 
     @property
     def debug(self):

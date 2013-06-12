@@ -36,7 +36,8 @@ class BaseClient(object):
         kwargs_json = dict([(k, json.dumps(v, cls=Encoder, ensure_ascii=False))
                             for k, v in kwargs.items()])
 
-        url = os.path.join(self.config.metrique_api_url, self._command, *args)
+        url = os.path.join(self.config.api_url, self._command, *args)
+        logger.debug("Connecting to URL: %s" % url)
         if self.background:
             # FIXME: save the threads and use (eg)
             # multiprocessing.pool.ThreadPool... result.get()
@@ -47,8 +48,17 @@ class BaseClient(object):
             t.start()
             return
         else:
-            _response = rq.get(url, params=kwargs_json)
-
+            # verify = False means we don't care about SSL CA
+            _response = rq.get(url, params=kwargs_json, verify=False)
+            if _response.status_code == 401:
+                # authentication request
+                user = self.config.api_username
+                password = self.config.api_password
+                _response = rq.get(url, params=kwargs_json,
+                                   verify=False,
+                                   auth=rq.auth.HTTPBasicAuth(
+                                       user, password))
+                _response.raise_for_status()
             try:
                 # responses are always expected to be json encoded
                 response = json.loads(_response.text)
@@ -117,6 +127,16 @@ class JobManage(BaseClient):
 
     def kill(self, job_key):
         raise NotImplementedError()
+
+
+class AdminUsers(BaseClient):
+    def __init__(self, config_dir=None, config_file=None):
+        super(AdminUsers, self).__init__(config_dir, config_file)
+        self._command = 'admin/users'
+
+    def add(self, cube, user, password, permissions):
+        return self._get('add', cube=cube, user=user,
+                         password=password, permissions=permissions)
 
 
 class AdminLog(BaseClient):
@@ -192,6 +212,7 @@ class Admin(BaseClient):
         super(Admin, self).__init__(config_dir, config_file)
         self.etl = AdminETL(config_dir, config_file)
         self.log = AdminLog(config_dir, config_file)
+        self.users = AdminUsers(config_dir, config_file)
 
 
 class client(BaseClient):

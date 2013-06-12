@@ -16,10 +16,16 @@ c.config._autosave = False
 pp.pprint(c.config._config)
 
 _p = "Metrique Host: "
-c.config.setup_basic('metrique_http_host', partial(prompter, _p))
+c.config.setup_basic('api_host', partial(prompter, _p))
+
+_p = "Metrique Username: "
+c.config.setup_basic('api_username', partial(prompter, _p))
+
+_p = "Metrique Password: "
+c.config.setup_basic('api_password', partial(prompter, _p))
 
 pp.pprint(c.config._config)
 
-a = c.config._yes_no_prompt('Save? ')
+a = c.config.yes_no_prompt('Save? ')
 if a:
     c.config.save()

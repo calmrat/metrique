@@ -3,6 +3,7 @@
 # Author: "Chris Ward <cward@redhat.com>
 
 import logging
+import base64
 logger = logging.getLogger(__name__)
 
 from functools import wraps
@@ -12,6 +13,7 @@ import tornado
 
 from metrique.server.drivers.drivermap import get_cube, get_cubes
 
+from metrique.tools import hash_password
 from metrique.tools.constants import HAS_SRE_PATTERN
 from metrique.tools.json import Encoder
 
@@ -42,6 +44,76 @@ def async(f):
             self.write(result)
             self.finish()
     return wrapper
+
+
+def request_authentication(handler):
+    handler.set_status(401)
+    handler.set_header('WWW-Authenticate', 'Basic realm="Metrique"')
+    return False
+
+
+def authenticate(handler, username, password, permissions):
+    # if auth isn't on, let anyone do anything!
+    if not handler.proxy.metrique_config.auth:
+        return True
+
+    # GLOBAL DEFAULT
+    cube = handler.get_argument('cube')
+    c = get_cube(cube)
+
+    if username == handler.proxy.metrique_config.admin_user:
+        admin_password = handler.proxy.metrique_config.admin_password
+        if password == admin_password:
+            # admin pass is stored in plain text
+            # we're admin user and so we get 'rw' to all cubes
+            return True
+
+    # user is not admin... lookup username in auth_keys
+    valid_cubes = [cube, '__all__']
+    spec = {'_id': {'$in': valid_cubes},
+            '$or': [{username: {'$exists': True}},
+                    {'__all__': {'$exists': True}}]}
+    doc = c.c_auth_keys.find_one(spec)
+
+    try:
+        user = doc[username]
+    except KeyError:
+        user = doc['__all__']
+    except TypeError:
+        return False
+
+    has_perms = set(permissions) <= set(user['permissions'])
+
+    if not user['password'] and has_perms:
+        return True
+
+    _, p_hash = hash_password(password, user['salt'])
+    p_match = user['password'] == p_hash
+    if p_match and has_perms:
+        # password is defined, make sure user's pass matches it
+        # and that the user has the right permissions defined
+        return True
+    return False
+
+
+def auth(permissions='r'):
+    def decorator(f):
+        @wraps(f)
+        def wrapper(handler, *args, **kwargs):
+            auth_header = handler.request.headers.get('Authorization')
+            if auth_header is None or not auth_header.startswith('Basic '):
+                #No HTTP Basic Authentication header
+                return request_authentication(handler)
+
+            auth = base64.decodestring(auth_header[6:])
+            username, password = auth.split(':', 2)
+            privleged = authenticate(handler, username, password, permissions)
+            if privleged:
+                return f(handler, *args, **kwargs)
+            else:
+                return request_authentication(handler)
+        return wrapper
+    return decorator
 
 
 class MetriqueInitialized(tornado.web.RequestHandler):
@@ -76,16 +148,6 @@ class PingHandler(MetriqueInitialized):
     @async
     def get(self):
         return self.proxy.ping()
-
-
-class MongoUserAddHandler(MetriqueInitialized):
-    # FIXME: This should be POST, not GET
-    @async
-    def get(self, user):
-        name = self.get_argument('name')
-        password = self.get_argument('password')
-        admin = self.get_argument('admin', 0)
-        return self.proxy.mongo.add_user(name, password, admin)
 
 
 class JobStatusHandler(MetriqueInitialized):
@@ -125,6 +187,7 @@ class QueryCountHandler(MetriqueInitialized):
 
 
 class QueryFindHandler(MetriqueInitialized):
+    @auth()
     @async
     def get(self):
         cube = self.get_argument('cube')
@@ -132,7 +195,22 @@ class QueryFindHandler(MetriqueInitialized):
         fields = self.get_argument('fields', '')
         date = self.get_argument('date')
         most_recent = self.get_argument('most_recent', True)
-        return self.proxy.query.find(cube, query, fields, date, most_recent)
+        return self.proxy.query.find(cube=cube,
+                                     query=query,
+                                     fields=fields,
+                                     date=date,
+                                     most_recent=most_recent)
+
+
+class UsersAddHandler(MetriqueInitialized):
+    @async
+    def get(self):
+        cube = self.get_argument('cube')
+        user = self.get_argument('user')
+        password = self.get_argument('password')
+        permissions = self.get_argument('permissions', 'r')
+        return self.proxy.admin.users.add(cube, user,
+                                          password, permissions)
 
 
 class LogTailHandler(MetriqueInitialized):
@@ -155,6 +233,7 @@ class ETLIndexWarehouseHandler(MetriqueInitialized):
 
 
 class ETLExtractHandler(MetriqueInitialized):
+    @auth('rw')
     @async
     def get(self):
         cube = self.get_argument('cube')

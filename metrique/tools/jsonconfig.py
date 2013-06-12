@@ -109,7 +109,7 @@ class JSONConfig(object):
         return self._config[option]
 
     @staticmethod
-    def _yes_no_prompt(question, default='yes'):
+    def yes_no_prompt(question, default='yes'):
         # FIXME: make this as regex...
         valid_yes = ["Y", "y", "Yes", "yes", "YES", "ye", "Ye", "YE"]
         valid_no = ["N", "n", "No", "no", "NO"]

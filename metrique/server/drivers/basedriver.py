@@ -30,6 +30,7 @@ class BaseDriver(object):
     db_warehouse_data = mongodb_config.db_warehouse_data
     db_warehouse_admin = mongodb_config.db_warehouse_admin
     c_etl_activity = mongodb_config.c_etl_activity
+    c_auth_keys = mongodb_config.c_auth_keys
 
     def __init__(self, name):
         '''

@@ -9,10 +9,12 @@ import os
 from defaults import LOGDIR_SAVEAS
 from defaults import ADMIN_DB, WAREHOUSE_DB, METRIQUE_DB
 from defaults import JOB_ACTIVITY_COLLECTION
-from defaults import LOGS_COLLECTION, LOG_FORMATTER
+from defaults import LOGS_COLLECTION, AUTH_KEYS_COLLECTION
+from defaults import LOG_FORMATTER
 from defaults import ETL_ACTIVITY_COLLECTION, MAX_SIZE, MAX_DOCS
 from defaults import DATA_USER, ADMIN_USER, TIMELINE_DB
 from defaults import PID_FILE
+from defaults import SSL_CERT, SSL_CERT_KEY
 
 from metrique.tools.decorators import memo
 from metrique.tools.defaults import METRIQUE_HTTP_HOST, METRIQUE_HTTP_PORT
@@ -59,6 +61,26 @@ class metrique(JSONConfig):
         self._config['debug'] = bool_
 
     @property
+    def admin_user(self):
+        return self._default('admin_user', ADMIN_USER)
+
+    @property
+    def admin_password(self):
+        return self._default('admin_password', None)
+
+    @admin_password.setter
+    def admin_password(self, value):
+        self._config['admin_password'] = value
+
+    @property
+    def auth(self):
+        return self._default('auth', False)
+
+    @auth.setter
+    def auth(self, value):
+        self._config['auth'] = value
+
+    @property
     def http_host(self):
         return self._default('http_host', METRIQUE_HTTP_HOST)
 
@@ -73,6 +95,31 @@ class metrique(JSONConfig):
     @http_port.setter
     def http_port(self, value):
         self._config['http_port'] = value
+
+    @property
+    def ssl(self):
+        return self._default('ssl', True)
+
+    @ssl.setter
+    def ssl(self, value):
+        self._config['ssl'] = value
+
+    @property
+    def ssl_certificate_key(self):
+        return self._default(
+            'ssl_certificate_key', os.path.expanduser(SSL_CERT_KEY))
+
+    @ssl_certificate_key.setter
+    def ssl_certificate_key(self, value):
+        self._config['ssl_certificate_key'] = value
+
+    @property
+    def ssl_certificate(self):
+        return self._default('ssl_certificate', os.path.expanduser(SSL_CERT))
+
+    @ssl_certificate.setter
+    def ssl_certificate(self, value):
+        self._config['ssl_certificate'] = value
 
     @property
     def logs_max_size(self):
@@ -92,7 +139,8 @@ class metrique(JSONConfig):
 
     @property
     def log_file_path(self):
-        return os.path.expanduser(self._default('log_file_path', LOGDIR_SAVEAS))
+        return os.path.expanduser(
+            self._default('log_file_path', LOGDIR_SAVEAS))
 
     @log_file_path.setter
     def log_file_path(self, value):
@@ -218,6 +266,10 @@ class mongodb(JSONConfig):
     @property
     def collection_logs(self):
         return self._default('collection_logs', LOGS_COLLECTION)
+
+    @property
+    def collection_auth_keys(self):
+        return self._default('collection_auth_keys', AUTH_KEYS_COLLECTION)
 
     @property
     @memo

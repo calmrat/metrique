@@ -15,9 +15,12 @@ import simplejson as json
 
 from metrique.server.config import metrique, mongodb
 from metrique.server.defaults import METRIQUE_CONF, MONGODB_CONF
+from metrique.server.defaults import VALID_PERMISSIONS
 from metrique.server.job import get_job
 from metrique.server import query as query_live
 from metrique.server import etl
+
+from metrique.tools import hash_password
 
 
 def job_save(name):
@@ -51,15 +54,29 @@ class BaseServer(object):
 
 class Admin(BaseServer):
     def __init__(self):
+        self.users = Users()
         self.etl = ETL()
         self.log = Log()
-        self.mongo = Mongo()
 
 
-class Mongo(BaseServer):
-    @job_save('add_user')
-    def add_user(self, name, password, admin=False):
-        return self.warehouse_admin.add_user(name, password, admin)
+class Users(BaseServer):
+    @job_save('users_add')
+    def add(self, cube, username, password=None, permissions='r'):
+        if permissions not in VALID_PERMISSIONS:
+            raise ValueError(
+                "Expected acl == 'r' or 'rw'. Got %s" % permissions)
+        if password:
+            salt, password = hash_password(password)
+        else:
+            salt, password = None, None
+        spec = {'_id': cube}
+        logger.debug("NEW USER (%s:%s) %s, %s" % (
+            username, permissions, salt, password))
+        update = {'$set': {
+                  username: {'salt': salt,
+                             'password': password,
+                             'permissions': permissions}}}
+        return self.mongodb_config.c_auth_keys.update(spec, update, upsert=True)
 
 
 class Log(BaseServer):

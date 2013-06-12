@@ -55,7 +55,7 @@ setup(
               'etl', 'analysis', 'search', 'query'],
     provides=['metrique'],
     requires=['pandas', 'psycopg2', 'MySQLdb', 'tornado (>=3.0)', 'pql',
-              'argparse', 'dateutil', 'simplejson', 'pymongo',
+              'argparse', 'dateutils', 'simplejson', 'pymongo',
               'bson', 'decorator', 'requests', 'futures',
               'GitPython', 'tz'],
     scripts=['metrique/server/bin/metrique-server',
