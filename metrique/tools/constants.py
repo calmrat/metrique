@@ -12,10 +12,6 @@ UTC = timezone("UTC")
 EST = timezone("EST")
 CEST = timezone("CET")
 
-# string that will be used where value in DB is null, queriable
-NONE_STR = '---'
-ERR_STR = '!!!'
-
 # Types... for type checking
 NONE_TYPE = type(None)
 DATETIME_TYPE = type(datetime(1, 1, 1))
@@ -60,6 +56,6 @@ RE_DATE_DATETIME = re.compile('(\d\d\d\d)-(\d\d)-(\d\d)((T| )?(\d\d):(\d\d):(\d\
 
 RE_DRIVER_CUBE = re.compile('^([^_]+)_(.+)$', re.U)
 
+# FIXME: Can these be removed??
 SRE_PATTERN_ID = '_sre\.SRE_Pattern'
-
 HAS_SRE_PATTERN = re.compile('<%s (.+)>' % SRE_PATTERN_ID)

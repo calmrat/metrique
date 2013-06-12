@@ -22,6 +22,10 @@ CONFIG_FILE = 'client_http'
 
 
 class BaseClient(object):
+    '''
+    Base class that other metrique api wrapper sub-classes
+    use to call special, shared call of _get (http request)
+    '''
     def __init__(self, config_dir=None, config_file=None, *args, **kwargs):
         if not config_file:
             config_file = CONFIG_FILE
@@ -75,11 +79,23 @@ class BaseClient(object):
 
 
 class Query(BaseClient):
+    ''' Container for query related methods '''
     def __init__(self, config_dir=None, config_file=None):
         super(Query, self).__init__(config_dir, config_file)
         self._command = 'query'
 
     def aggregate(self, cube, pipeline):
+        '''
+        Proxy for pymongodb's .aggregate framework call
+        on a given cube
+
+        Paremeters
+        ----------
+        cube : str
+            Name of the cube you want to query
+        pipeline : list
+            The aggregation pipeline. $match, $project, etc.
+        '''
         result = self._get('aggregate', cube=cube, pipeline=pipeline)
         try:
             return result['result']
@@ -88,11 +104,36 @@ class Query(BaseClient):
 
     def count(self, cube, query):
         '''
+        Run a `pql` based query on the given cube, but
+        only return back the count (int)
+
+        Paremeters
+        ----------
+        cube : str
+            Name of the cube you want to query
+        query : str
+            The query in pql
+        #### COMING SOON - 0.1.4 ####
+        date : str
+            Date (date range) that should be queried:
+                date -> 'd', '~d', 'd~', 'd~d'
+                d -> '%Y-%m-%d %H:%M:%S,%f', '%Y-%m-%d %H:%M:%S', '%Y-%m-%d'
+        most_recent : boolean
+            If true and there are multiple historical version of a single
+            object matching the query then only the most recent one will
+            be returned
         '''
         return self._get('count', cube=cube, query=query)
 
-    def find(self, cube, query, fields='', date=None, most_recent=False):
+    def find(self, cube, query, fields=None, date=None, most_recent=False):
         '''
+        Run a `pql` based query on the given cube.
+        Optionally:
+        * return back accompanying field meta data for
+        * query again arbitrary datetimes in the past, if the
+        * return back only the most recent date objects which
+          match any given query, rather than all.
+
         Paremeters
         ----------
         cube : str
@@ -117,69 +158,101 @@ class Query(BaseClient):
         return result
 
     def fetch(self, cube, fields, skip=0, limit=0, ids=[]):
+        '''
+        Fetch field values for (potentially) all objects
+        of a given, with skip, limit, id "filter" arguments
+
+        Paremeters
+        ----------
+        cube : str
+            Name of the cube you want to query
+        fields : str, or list of str, or str of comma-separated values
+            Fields that should be returned
+        skip : int
+            number of items (sorted ASC) to skip
+        limit : int
+            number of items total to return, given skip
+        ids : list
+            specific list of ids we should fetch
+        '''
         result = self._get('fetch', cube=cube, fields=fields,
                            skip=skip, limit=limit, ids=ids)
         return Result(result)
 
 
 class JobManage(BaseClient):
+    ''' Container for Managing "Metrique Job" related methods '''
     def __init__(self, config_dir=None, config_file=None):
         super(JobManage, self).__init__(config_dir, config_file)
         self._command = 'job'
 
     def status(self, job_key):
+        '''
+        Fetch job status for a given metrique job
+        identified by the job_key argument
+
+        Paremeters
+        ----------
+        job_key : int
+            id of the job
+        '''
         action = 'status'
         return self._get(action, job_key)
 
-    def kill(self, job_key):
+    def __kill(self, job_key):
         raise NotImplementedError()
 
 
 class AdminUsers(BaseClient):
+    ''' Container for Managing "Metrique User Management" related methods '''
     def __init__(self, config_dir=None, config_file=None):
         super(AdminUsers, self).__init__(config_dir, config_file)
         self._command = 'admin/users'
 
     def add(self, cube, user, password, permissions):
+        '''
+        Add user permissions (or update if exists)
+        Assigne that user a password (salt+hash)
+
+        permissions are, as of v0.1::
+        * r, rw, admin
+        * inherent right (r <- rw <- admin)
+
+        Paremeters
+        ----------
+        cube : str
+            Name of the cube you want to query
+        user : str
+            Name of the user you're managing
+        password : str
+            Password (plain text), if any of user
+        permission : str
+            Permission set, as of v0.1 (r, rw, admin)
+            Permissions decorate tornado object methods (result?)
+            and add 'auth'
+        '''
         return self._get('add', cube=cube, user=user,
                          password=password, permissions=permissions)
 
 
-class AdminLog(BaseClient):
-    def __init__(self, config_dir=None, config_file=None):
-        super(AdminLog, self).__init__(config_dir, config_file)
-        self._command = 'admin/log'
-
-    def formats(self):
-        raise NotImplementedError
-        action = 'formats'
-        return self._get(action)
-
-    def tail(self, n=10, spec='', follow=0, module_name='',
-             format_='%(when)s:%(processName)s:%(message)s'):
-        action = 'tail'
-        if spec:
-            spec = json.loads(spec)
-        else:
-            spec = {}
-
-        if module_name:
-            spec_name = spec.get('name', '')
-            if spec_name:
-                spec_name = [spec_name, module_name]
-            else:
-                spec_name = [module_name]
-            spec.update({'name': {'$regex': '|'.join(spec_name)}})
-
-        return self._get(action, spec=spec, limit=n, format=format_)
-
-
 class AdminETL(BaseClient):
+    ''' Container for Managing "Metrique ETL" related methods '''
     def __init__(self, config_dir=None, config_file=None):
         super(AdminETL, self).__init__(config_dir, config_file)
         self._command = 'admin/etl'
 
     def index_warehouse(self, cube, fields="", force=0):
+        '''
+        Index particular fields of a given cube, assuming
+        indexing is enabled for the cube.fields
+
+        Paremeters
+        ----------
+        cube : str
+            Name of the cube you want to query
+        fields : str, or list of str, or str of comma-separated values
+            Fields that should be indexed
+        '''
         if not fields:
             fields = client(self._config_dir, self._config_file).fields(cube)
         elif isinstance(fields, basestring):
@@ -193,8 +266,31 @@ class AdminETL(BaseClient):
                                       field=field, force=force)
         return result
 
+    # FIXME: remove passing snapshot argument; snapshots should be
+    # called explicitly
     def extract(self, cube, fields="", force=False, id_delta="",
                 index=False, snapshot=False):
+        '''
+        Run the cube.extract_func command to pull data and dump
+        to the warehouse
+
+        Paremeters
+        ----------
+        cube : str
+            Name of the cube you want to query
+        fields : str, or list of str, or str of comma-separated values
+            Fields that should be indexed
+        force : bool
+            True runs without deltas. When False (default),
+            and deltas supported, cube is expected to apply them
+        id_delta : list of cube object ids or str of comma-separated ids
+            Specifically list object ids to extract (if supported)
+        index : bool
+            Run warehouse ensure indexing after extraction
+        snapshot : bool
+            Run warehouse -> timeline snapshot after extraction
+
+        '''
         result = self._get('extract', cube=cube, fields=fields,
                            force=force, id_delta=id_delta)
         if index:
@@ -204,24 +300,69 @@ class AdminETL(BaseClient):
         return result
 
     def snapshot(self, cube, ids=None):
+        '''
+        Run a warehouse -> timeline (datetimemachine) snapshot
+        of the data as it existed in the warehouse and dump
+        copies of objects into the timeline, one new object
+        per unique state in time.
+
+        Paremeters
+        ----------
+        cube : str
+            Name of the cube you want to query
+        ids : list of cube object ids or str of comma-separated ids
+            Specificly run snapshot for this list of object ids
+        '''
         return self._get('snapshot', cube=cube, ids=ids)
 
     def activity_import(self, cube, ids=None):
+        '''
+        Run the activity import for a given cube, if the
+        cube supports it.
+
+        Essentially, recreate object histories from
+        a cubes 'activity history' table row data,
+        and dump those pre-calcultated historical
+        state object copies into the timeline.
+
+        Paremeters
+        ----------
+        cube : str
+            Name of the cube you want to query
+        ids : list of cube object ids or str of comma-separated ids
+            Specificly run snapshot for this list of object ids
+        '''
         return self._get('activityimport', cube=cube, ids=ids)
 
     def save_object(self, cube, obj, _id=None):
+        '''
+        Save a single object the given metrique.cube
+
+        THIS IS OBSOLETE; WILL BE REPLACED WITH save_objects()
+        note the plural.
+
+        Paremeters
+        ----------
+        cube : str
+            Name of the cube you want to query
+        obj : dict with 1+ field:value and _id defined
+            These objects match the given cube(driver) definition
+        _id : str
+            The field which contains the _id value of each obj
+        '''
         return self._get('saveobject', cube=cube, obj=obj, _id=_id)
 
 
 class Admin(BaseClient):
+    ''' Container for all rw+ Metrique sub-containers '''
     def __init__(self, config_dir=None, config_file=None):
         super(Admin, self).__init__(config_dir, config_file)
         self.etl = AdminETL(config_dir, config_file)
-        self.log = AdminLog(config_dir, config_file)
         self.users = AdminUsers(config_dir, config_file)
 
 
 class client(BaseClient):
+    ''' Container for all metrique client api sub-containers '''
     def __init__(self, config_dir=None, config_file=None):
         super(client, self).__init__(config_dir, config_file)
         self.jobs = JobManage(config_dir, config_file)
@@ -233,7 +374,17 @@ class client(BaseClient):
 
     @property
     def cubes(self):
+        ''' List all valid cubes for a given metrique instance '''
         return self._get('cubes')
 
     def fields(self, cube, details=False):
+        ''' List all valid fields for a given cube
+
+        Paremeters
+        ----------
+        cube : str
+            Name of the cube you want to query
+        details : bool
+            return back dict of additional cube.field metadata
+        '''
         return self._get('cubes', cube=cube, details=details)

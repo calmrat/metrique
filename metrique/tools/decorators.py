@@ -19,5 +19,6 @@ def _memo(func, *args, **kw):
 
 
 def memo(f):
+    ''' memoize function output '''
     f.cache = {}
     return decorator(_memo, f)

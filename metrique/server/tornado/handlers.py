@@ -20,6 +20,12 @@ from metrique.tools.json import Encoder
 
 
 def async(f):
+    '''
+    Decorator for enabling async Tornado.Handlers
+    But if not metrique.config.async: disable async
+
+    Requires: futures
+    '''
     @tornado.web.asynchronous
     @wraps(f)
     def wrapper(self, *args, **kwargs):
@@ -48,12 +54,17 @@ def async(f):
 
 
 def request_authentication(handler):
+    ''' Helper-Function for settig 401 - Request for authentication '''
     handler.set_status(401)
     handler.set_header('WWW-Authenticate', 'Basic realm="Metrique"')
     return False
 
 
 def authenticate(handler, username, password, permissions):
+    ''' Helper-Function for determining whether a given
+        user:password:permissions combination provides
+        client with enough privleges to execute
+        the requested command against the given cube '''
     # if auth isn't on, let anyone do anything!
     if not handler.proxy.metrique_config.auth:
         return True
@@ -102,6 +113,7 @@ def authenticate(handler, username, password, permissions):
 
 
 def auth(permissions='r'):
+    ''' Decorator for auth dependent Tornado.Handlers '''
     def decorator(f):
         @wraps(f)
         def wrapper(handler, *args, **kwargs):
@@ -123,20 +135,26 @@ def auth(permissions='r'):
 
 
 class MetriqueInitialized(tornado.web.RequestHandler):
+    '''
+        Template RequestHandler that accepts init parameters
+        and unifies json get_argument handling
+    '''
+
     def initialize(self, proxy):
+        '''
+        Paremeters
+        ----------
+        proxy : HTTPServer (MetriqueServer) Obj
+            A pointer to the running metrique server namespace
+        '''
         self.proxy = proxy
 
-    @staticmethod
-    def _regex_parser(item):
-        # FIXME: this only works for 1 level deep nested conditions
-        if type(item) is dict and item.get('$match'):
-            for k, v in item['$match'].iteritems():
-                if isinstance(v, basestring) and HAS_SRE_PATTERN.search(v):
-                    item['$match'][k] = re.compile(HAS_SRE_PATTERN.sub(r'\1',
-                                                                       v))
-        return item
-
     def get_argument(self, key, default=None):
+        '''
+            Assume incoming arguments are json encoded,
+            get_arguments should always deserialize
+            on the way in
+        '''
         # arguments are expected to be json encoded!
         _arg = super(MetriqueInitialized, self).get_argument(key, default)
 
@@ -144,19 +162,21 @@ class MetriqueInitialized(tornado.web.RequestHandler):
             return _arg
 
         try:
-            arg = json.loads(_arg, object_hook=self._regex_parser)
+            arg = json.loads(_arg)
         except Exception as e:
             raise ValueError("Invalid JSON content (%s): %s" % (type(_arg), e))
         return arg
 
 
 class PingHandler(MetriqueInitialized):
+    ''' RequestHandler for pings'''
     @async
     def get(self):
         return self.proxy.ping()
 
 
 class JobStatusHandler(MetriqueInitialized):
+    ''' RequestHandler wrapper handling client job status requests '''
     @auth('rw')
     @async
     def get(self, job_key):
@@ -166,6 +186,10 @@ class JobStatusHandler(MetriqueInitialized):
 
 
 class QueryAggregateHandler(MetriqueInitialized):
+    '''
+        RequestHandler for running mongodb aggregation
+        framwork pipeines against a given cube
+    '''
     @auth()
     @async
     def get(self):
@@ -175,6 +199,7 @@ class QueryAggregateHandler(MetriqueInitialized):
 
 
 class QueryFetchHandler(MetriqueInitialized):
+    ''' RequestHandler for fetching lumps of cube data '''
     @auth()
     @async
     def get(self):
@@ -188,6 +213,10 @@ class QueryFetchHandler(MetriqueInitialized):
 
 
 class QueryCountHandler(MetriqueInitialized):
+    '''
+        RequestHandler for returning back simple integer
+        counts of objects matching the given query
+    '''
     @auth()
     @async
     def get(self):
@@ -197,6 +226,10 @@ class QueryCountHandler(MetriqueInitialized):
 
 
 class QueryFindHandler(MetriqueInitialized):
+    '''
+        RequestHandler for returning back object
+        matching the given query
+    '''
     @auth()
     @async
     def get(self):
@@ -213,6 +246,10 @@ class QueryFindHandler(MetriqueInitialized):
 
 
 class UsersAddHandler(MetriqueInitialized):
+    '''
+        RequestHandler for managing user access control
+        lists for a given cube
+    '''
     @auth('admin')
     @async
     def get(self):
@@ -224,17 +261,11 @@ class UsersAddHandler(MetriqueInitialized):
                                           password, permissions)
 
 
-class LogTailHandler(MetriqueInitialized):
-    @auth('admin')
-    @async
-    def get(self):
-        spec = self.get_argument('spec', '{}')
-        limit = self.get_argument('limit', 20)
-        format_ = self.get_argument('format', '')
-        return self.proxy.admin.log.tail(spec, limit, format_=format_)
-
-
 class ETLIndexWarehouseHandler(MetriqueInitialized):
+    '''
+        RequestHandler for ensuring mongodb indexes
+        in warehouse for a given cube
+    '''
     @auth('rw')
     @async
     def get(self):
@@ -246,6 +277,11 @@ class ETLIndexWarehouseHandler(MetriqueInitialized):
 
 
 class ETLExtractHandler(MetriqueInitialized):
+    '''
+        RequestHandler for calling cube defined
+        extract function that ultimately saves
+        object data in the warehouse
+    '''
     @auth('rw')
     @async
     def get(self):
@@ -258,6 +294,11 @@ class ETLExtractHandler(MetriqueInitialized):
 
 
 class ETLSnapshotHandler(MetriqueInitialized):
+    '''
+        RequestHandler for taking a snapshot
+        of warehouse data and copying objects
+        to the timeline
+    '''
     @auth('rw')
     @async
     def get(self):
@@ -267,6 +308,12 @@ class ETLSnapshotHandler(MetriqueInitialized):
 
 
 class ETLActivityImportHandler(MetriqueInitialized):
+    '''
+        RequestHandler for building pre-calculated
+        object timelines given a 'activity history'
+        data source that can be used to recreate
+        objects in time
+    '''
     @auth('rw')
     @async
     def get(self):
@@ -276,6 +323,10 @@ class ETLActivityImportHandler(MetriqueInitialized):
 
 
 class ETLSaveObject(MetriqueInitialized):
+    '''
+        RequestHandler for saving a given
+        object to a metrique server cube
+    '''
     @auth('rw')
     @async
     def get(self):
@@ -286,6 +337,10 @@ class ETLSaveObject(MetriqueInitialized):
 
 
 class CubesHandler(MetriqueInitialized):
+    '''
+        RequestHandler for querying about
+        available cubes and cube.fields
+    '''
     @auth('r')
     @async
     def get(self):

@@ -13,9 +13,14 @@ HAS_SRE_OBJ = re.compile('(<%s (.+)>)' % SRE_PATTERN_ID)
 
 
 class Encoder(json.JSONEncoder):
+    '''
+        Convert
+        * datetime.datetime and .date -> date.isoformat
+        * set -> list
+        * re_type -> sre_pattern_id (see constant)
+        # DEFAULT: unicode string representation of the object
+    '''
     def default(self, obj):
-        # for our use, return back None/Bools if that's
-        # what we have... ie, don't encode.
         if isinstance(obj, datetime.datetime):
             encoded = obj.isoformat()
         elif isinstance(obj, datetime.date):

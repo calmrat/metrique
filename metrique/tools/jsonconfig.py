@@ -14,6 +14,10 @@ from metrique.tools.defaults import JSON_EXT, CONFIG_DIR
 
 class JSONConfig(object):
     '''
+        Config object using json as its underlying data store
+
+        Provides helper-methods for setting and saving
+        options and config object properties
     '''
     def __init__(self, config_file, config_dir=None, default=None,
                  autosave=False, force=False):
@@ -37,6 +41,10 @@ class JSONConfig(object):
         self._load()
 
     def _set_path(self):
+        '''
+            set config object's internal path to where
+            config data will be stored/retrieved
+        '''
         _dir_path = os.path.expanduser(self._dir_path)
         _config_path = os.path.join(_dir_path, self._config_file)
         if not os.path.exists(_config_path) and self._force:
@@ -51,6 +59,7 @@ class JSONConfig(object):
         self.path = _config_path
 
     def _load(self):
+        ''' load config data from disk '''
         try:
             with open(self.path, 'r') as config_file:
                 self._config = json.load(config_file)
@@ -59,6 +68,7 @@ class JSONConfig(object):
             self.save()
 
     def save(self):
+        ''' save config data to disk '''
         with open(self.path, 'w') as config_file:
             config_string = json.dumps(self._config, indent=2)
             config_file.write(config_string)
@@ -84,6 +94,10 @@ class JSONConfig(object):
         return str(self._config)
 
     def setup_basic(self, option, prompter):
+        '''
+            Helper-Method for getting user input with prompt text
+            and saving the result
+        '''
         x_opt = self._config.get(option)
         print '\n(Press ENTER to use current: %s)' % x_opt
         n_opt = prompter()
@@ -93,6 +107,7 @@ class JSONConfig(object):
         return n_opt
 
     def _property_default(self, option, default):
+        ''' Helper-Method for setting config property, with default '''
         try:
             self._properties[option]
         except KeyError:
@@ -100,6 +115,7 @@ class JSONConfig(object):
         return self._properties[option]
 
     def _default(self, option, default=None, required=False):
+        ''' Helper-Method for setting config argument, with default '''
         try:
             self._config[option]
         except KeyError:
@@ -112,6 +128,7 @@ class JSONConfig(object):
 
     @staticmethod
     def yes_no_prompt(question, default='yes'):
+        ''' Helper-Function for getting Y/N response from user '''
         # FIXME: make this as regex...
         valid_yes = ["Y", "y", "Yes", "yes", "YES", "ye", "Ye", "YE"]
         valid_no = ["N", "n", "No", "no", "NO"]
@@ -128,6 +145,10 @@ class JSONConfig(object):
         return ans in valid_yes
 
     def _json_bool(self, value):
+        '''
+            Helper-Function for converting various forms
+            of bool to a json compatible form
+        '''
         if value in [0, 1]:
             return value
         elif value is True:

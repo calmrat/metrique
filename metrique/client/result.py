@@ -16,6 +16,7 @@ import numpy as np
 
 
 class Result(DataFrame):
+    ''' Custom DataFrame implementation for Metrique '''
     def __init__(self, data=None):
         super(Result, self).__init__(data)
         self._result_data = data
@@ -27,12 +28,14 @@ class Result(DataFrame):
 
     @classmethod
     def from_result_file(cls, path):
+        ''' Load saved json data from file '''
         path = os.path.expanduser(path)
         with open(path) as f:
             data = json.load(f)
             return Result(data)
 
     def to_result_file(self, path):
+        ''' Save json data to file '''
         path = os.path.expanduser(path)
         with open(path, 'w') as f:
             json.dump(self._result_data, f)
@@ -62,6 +65,7 @@ class Result(DataFrame):
                 self._rbound = Timestamp(split[1])
 
     def check_in_bounds(self, date):
+        ''' Check that left and right bounds are sane '''
         dt = Timestamp(date)
         return ((self._lbound is None or dt >= self._lbound) and
                 (self._rbound is None or dt <= self._rbound))
@@ -74,6 +78,7 @@ class Result(DataFrame):
         Parameters
         ----------
         date : str
+            date can be anything Pandas.Timestamp supports parsing
         '''
         if not self.check_in_bounds(date):
             raise ValueError('Date %s is not in the queried range.' % date)
@@ -86,6 +91,14 @@ class Result(DataFrame):
             return self[before_end & after_start]
 
     def _auto_select_scale(self, dts, start=None, end=None, ideal=300):
+        '''
+        Guess what a good timeseries scale might be,
+        given a particular data set, attempting to
+        make the total number of x values as close to
+        `ideal` as possible
+
+        This is a helper for plotting
+        '''
         start = min(dts) if start is None else start
         end = max(dts) if end is None else end
         maximum_count = len(filter(lambda dt: start <= dt and dt <= end, dts))
