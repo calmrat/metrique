@@ -10,11 +10,15 @@ from metrique.client.http import client as http_client
 
 
 class pyclient(http_client):
-    def __init__(self, config_file=None, config_dir=None, metrique_http_host=None,
-                 metrique_http_port=None):
+    def __init__(self, config_file=None, config_dir=None, host=None,
+                 port=None, ssl=None, username=None, password=None):
         super(pyclient, self).__init__(config_dir, config_file)
 
-        if metrique_http_host:
-            self.config.metrique_http_host = metrique_http_host
-        if metrique_http_port:
-            self.config.metrique_http_port = metrique_http_port
+        if host is not None:
+            self.config.api_host = host
+        if port is not None:
+            self.config.api_port = port
+        if username is not None:
+            self.config.api_username = username
+        if password is not None:
+            self.config.api_username = password

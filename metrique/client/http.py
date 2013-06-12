@@ -43,13 +43,17 @@ class BaseClient(object):
             # multiprocessing.pool.ThreadPool... result.get()
             # to get back the results later if the client wants...
             t = Thread(target=rq.get, kwargs={'url': url,
-                                              'params': kwargs_json})
+                                              'params': kwargs_json,
+                                              'verify': False})
             t.daemon = True
             t.start()
             return
         else:
             # verify = False means we don't care about SSL CA
-            _response = rq.get(url, params=kwargs_json, verify=False)
+            try:
+                _response = rq.get(url, params=kwargs_json, verify=False)
+            except rq.exceptions.ConnectionError:
+                raise rq.exceptions.ConnectionError('Failed to connect (%s). Try https://?' % url)
             if _response.status_code == 401:
                 # authentication request
                 user = self.config.api_username
@@ -59,6 +63,7 @@ class BaseClient(object):
                                    auth=rq.auth.HTTPBasicAuth(
                                        user, password))
                 _response.raise_for_status()
+
             try:
                 # responses are always expected to be json encoded
                 response = json.loads(_response.text)

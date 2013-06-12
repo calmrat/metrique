@@ -5,6 +5,7 @@
 import logging
 logger = logging.getLogger(__name__)
 import os
+import re
 
 from metrique.tools.jsonconfig import JSONConfig
 from metrique.tools.defaults import METRIQUE_HTTP_PORT, METRIQUE_HTTP_HOST
@@ -21,7 +22,10 @@ class Config(JSONConfig):
 
     @property
     def api_ssl(self):
-        return self._default('api_ssl', API_SSL)
+        if re.match('https://', self.api_host):
+            return True
+        else:
+            return False
 
     @property
     def api_version(self):
@@ -34,12 +38,16 @@ class Config(JSONConfig):
 
     @property
     def api_url(self):
-        if self.api_ssl:
-            proto = 'https://'
+        if not re.match('http', self.api_host):
+            host = '%s%s' % ('http://', self.api_host)
         else:
-            proto = 'http://'
-        host_port = '%s:%s' % (self.api_host, self.api_port)
-        api_url = os.path.join(proto, host_port, self.api_rel_path)
+            host = self.api_host
+
+        if not re.match('https?://', host):
+            raise ValueError("Invalid schema (%s). "
+                             "Expected: %s" % (host, 'http(s)?'))
+        host_port = '%s:%s' % (host, self.api_port)
+        api_url = os.path.join(host_port, self.api_rel_path)
         return api_url
 
     @property
