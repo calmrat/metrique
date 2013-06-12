@@ -13,7 +13,7 @@ class pyclient(http_client):
     def __init__(self, config_file=None, config_dir=None, host=None,
                  port=None, ssl=None, username=None, password=None):
         super(pyclient, self).__init__(config_dir, config_file)
-
+        # FIXME: THIS IS BROKEN. These config options are not propogated!
         if host is not None:
             self.config.api_host = host
         if port is not None:
@@ -21,4 +21,4 @@ class pyclient(http_client):
         if username is not None:
             self.config.api_username = username
         if password is not None:
-            self.config.api_username = password
+            self.config.api_password = password

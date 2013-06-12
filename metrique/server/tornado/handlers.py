@@ -59,6 +59,7 @@ def authenticate(handler, username, password, permissions):
 
     # GLOBAL DEFAULT
     cube = handler.get_argument('cube')
+    # FIXME: this is broken if cube is '__all__'
     c = get_cube(cube)
 
     if username == handler.proxy.metrique_config.admin_user:
