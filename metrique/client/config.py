@@ -11,7 +11,7 @@ from metrique.tools.defaults import METRIQUE_HTTP_PORT, METRIQUE_HTTP_HOST
 
 API_VERSION = 'v1'
 API_REL_PATH = 'api'
-API_SSL = True
+API_SSL = False
 
 
 class Config(JSONConfig):
