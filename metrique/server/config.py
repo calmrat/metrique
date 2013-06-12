@@ -98,7 +98,7 @@ class metrique(JSONConfig):
 
     @property
     def ssl(self):
-        return self._default('ssl', True)
+        return self._default('ssl', False)
 
     @ssl.setter
     def ssl(self, value):
