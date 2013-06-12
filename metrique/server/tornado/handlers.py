@@ -151,6 +151,7 @@ class PingHandler(MetriqueInitialized):
 
 
 class JobStatusHandler(MetriqueInitialized):
+    @auth('rw')
     @async
     def get(self, job_key):
         job_json = self.proxy.job.status(job_key)
@@ -159,6 +160,7 @@ class JobStatusHandler(MetriqueInitialized):
 
 
 class QueryAggregateHandler(MetriqueInitialized):
+    @auth()
     @async
     def get(self):
         cube = self.get_argument('cube')
@@ -167,6 +169,7 @@ class QueryAggregateHandler(MetriqueInitialized):
 
 
 class QueryFetchHandler(MetriqueInitialized):
+    @auth()
     @async
     def get(self):
         cube = self.get_argument('cube')
@@ -179,6 +182,7 @@ class QueryFetchHandler(MetriqueInitialized):
 
 
 class QueryCountHandler(MetriqueInitialized):
+    @auth()
     @async
     def get(self):
         cube = self.get_argument('cube')
@@ -203,6 +207,7 @@ class QueryFindHandler(MetriqueInitialized):
 
 
 class UsersAddHandler(MetriqueInitialized):
+    @auth('rw')
     @async
     def get(self):
         cube = self.get_argument('cube')
@@ -214,6 +219,7 @@ class UsersAddHandler(MetriqueInitialized):
 
 
 class LogTailHandler(MetriqueInitialized):
+    @auth('rw')
     @async
     def get(self):
         spec = self.get_argument('spec', '{}')
@@ -223,6 +229,7 @@ class LogTailHandler(MetriqueInitialized):
 
 
 class ETLIndexWarehouseHandler(MetriqueInitialized):
+    @auth('rw')
     @async
     def get(self):
         cube = self.get_argument('cube')
@@ -245,6 +252,7 @@ class ETLExtractHandler(MetriqueInitialized):
 
 
 class ETLSnapshotHandler(MetriqueInitialized):
+    @auth('rw')
     @async
     def get(self):
         cube = self.get_argument('cube')
@@ -253,6 +261,7 @@ class ETLSnapshotHandler(MetriqueInitialized):
 
 
 class ETLActivityImportHandler(MetriqueInitialized):
+    @auth('rw')
     @async
     def get(self):
         cube = self.get_argument('cube')
@@ -261,6 +270,7 @@ class ETLActivityImportHandler(MetriqueInitialized):
 
 
 class ETLSaveObject(MetriqueInitialized):
+    @auth('rw')
     @async
     def get(self):
         cube = self.get_argument('cube')
@@ -270,6 +280,7 @@ class ETLSaveObject(MetriqueInitialized):
 
 
 class CubesHandler(MetriqueInitialized):
+    @auth('r')
     @async
     def get(self):
         cube = self.get_argument('cube')
