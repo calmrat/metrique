@@ -64,19 +64,21 @@ class Users(BaseServer):
     def add(self, cube, username, password=None, permissions='r'):
         if permissions not in VALID_PERMISSIONS:
             raise ValueError(
-                "Expected acl == 'r' or 'rw'. Got %s" % permissions)
+                "Expected acl == %s. Got %s" % (
+                    (VALID_PERMISSIONS, permissions)))
         if password:
             salt, password = hash_password(password)
         else:
             salt, password = None, None
         spec = {'_id': cube}
-        logger.debug("NEW USER (%s:%s) %s, %s" % (
-            username, permissions, salt, password))
+        logger.debug("NEW USER (%s:%s)" % (username,
+                                           permissions))
         update = {'$set': {
                   username: {'salt': salt,
                              'password': password,
                              'permissions': permissions}}}
-        return self.mongodb_config.c_auth_keys.update(spec, update, upsert=True)
+        return self.mongodb_config.c_auth_keys.update(
+            spec, update, upsert=True)
 
 
 class Log(BaseServer):

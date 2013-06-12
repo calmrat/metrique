@@ -11,7 +11,7 @@ PID_FILE = '~/.metrique/server.pid'
 SSL_CERT_KEY = '~/.metrique/pkey.pem'
 SSL_CERT = '~/.metrique/cert.pem'
 
-VALID_PERMISSIONS = ('r', 'rw')
+VALID_PERMISSIONS = ('r', 'rw', 'admin')
 
 METRIQUE_DB = 'metrique'
 WAREHOUSE_DB = 'warehouse'

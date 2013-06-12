@@ -11,6 +11,7 @@ import re
 import simplejson as json
 import tornado
 
+from metrique.server.defaults import VALID_PERMISSIONS
 from metrique.server.drivers.drivermap import get_cube, get_cubes
 
 from metrique.tools import hash_password
@@ -59,9 +60,6 @@ def authenticate(handler, username, password, permissions):
 
     # GLOBAL DEFAULT
     cube = handler.get_argument('cube')
-    # FIXME: this is broken if cube is '__all__'
-    c = get_cube(cube)
-
     if username == handler.proxy.metrique_config.admin_user:
         admin_password = handler.proxy.metrique_config.admin_password
         if password == admin_password:
@@ -70,20 +68,26 @@ def authenticate(handler, username, password, permissions):
             return True
 
     # user is not admin... lookup username in auth_keys
-    valid_cubes = [cube, '__all__']
-    spec = {'_id': {'$in': valid_cubes},
-            '$or': [{username: {'$exists': True}},
-                    {'__all__': {'$exists': True}}]}
-    doc = c.c_auth_keys.find_one(spec)
+    def cube_check(cube, lookup):
+        spec = {'_id': cube,
+                lookup: {'$exists': True}}
+        logger.debug("Cube Check: spec (%s)" % spec)
+        return handler.proxy.mongodb_config.c_auth_keys.find_one(spec)
+    udoc = cube_check(cube, username)
+    adoc = cube_check('__all__', '__all__')
 
-    try:
-        user = doc[username]
-    except KeyError:
-        user = doc['__all__']
-    except TypeError:
+    if udoc:
+        user = udoc[username]
+    elif adoc:
+        user = adoc['__all__']
+    else:
         return False
 
-    has_perms = set(permissions) <= set(user['permissions'])
+    # permissions is a single string
+    assert isinstance(permissions, basestring)
+    VP = VALID_PERMISSIONS
+    has_perms = VP.index(user['permissions']) >= VP.index(permissions)
+    print VP.index(user['permissions']), VP.index(permissions)
 
     if not user['password'] and has_perms:
         return True
@@ -109,6 +113,7 @@ def auth(permissions='r'):
             auth = base64.decodestring(auth_header[6:])
             username, password = auth.split(':', 2)
             privleged = authenticate(handler, username, password, permissions)
+            logger.debug("User (%s): Privleged (%s)" % (username, privleged))
             if privleged:
                 return f(handler, *args, **kwargs)
             else:
@@ -208,7 +213,7 @@ class QueryFindHandler(MetriqueInitialized):
 
 
 class UsersAddHandler(MetriqueInitialized):
-    @auth('rw')
+    @auth('admin')
     @async
     def get(self):
         cube = self.get_argument('cube')
@@ -220,7 +225,7 @@ class UsersAddHandler(MetriqueInitialized):
 
 
 class LogTailHandler(MetriqueInitialized):
-    @auth('rw')
+    @auth('admin')
     @async
     def get(self):
         spec = self.get_argument('spec', '{}')
