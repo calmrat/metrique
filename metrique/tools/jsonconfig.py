@@ -16,12 +16,13 @@ class JSONConfig(object):
     '''
     '''
     def __init__(self, config_file, config_dir=None, default=None,
-                 autosave=False):
+                 autosave=False, force=False):
         self._name = config_file
         if not re.search('%s$' % JSON_EXT, config_file, re.I):
             config_file = '.'.join((config_file, JSON_EXT))
         self._config_file = config_file
         self._autosave = autosave
+        self._force = force
 
         if not config_dir:
             config_dir = os.path.expanduser(CONFIG_DIR)
@@ -32,20 +33,21 @@ class JSONConfig(object):
         else:
             self._config = {}
 
-        self._changed = False
         self._set_path()
         self._load()
 
     def _set_path(self):
         _dir_path = os.path.expanduser(self._dir_path)
         _config_path = os.path.join(_dir_path, self._config_file)
-        if not os.path.exists(_config_path):
+        if not os.path.exists(_config_path) and self._force:
             if not os.path.exists(_dir_path):
                 if _dir_path == os.path.expanduser(CONFIG_DIR):
                     os.makedirs(_dir_path)
-                else:
-                    raise IOError(
-                        "Directory doesn't exist (%s)" % _dir_path)
+
+        if not os.path.exists(_config_path):
+            raise IOError(
+                "Config doesn't exist (%s)" % _config_path)
+
         self.path = _config_path
 
     def _load(self):

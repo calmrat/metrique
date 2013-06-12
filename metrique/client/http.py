@@ -53,7 +53,8 @@ class BaseClient(object):
             try:
                 _response = rq.get(url, params=kwargs_json, verify=False)
             except rq.exceptions.ConnectionError:
-                raise rq.exceptions.ConnectionError('Failed to connect (%s). Try https://?' % url)
+                raise rq.exceptions.ConnectionError(
+                    'Failed to connect (%s). Try https://?' % url)
             if _response.status_code == 401:
                 # authentication request
                 user = self.config.api_username
