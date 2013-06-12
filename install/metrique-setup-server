@@ -23,16 +23,18 @@ _p = "Metrique Hostname/IP (ie, this server): "
 s.metrique_config.setup_basic('http_host', partial(prompter, _p))
 
 _p = "Enable authentication? "
+auth_enabled = False
 if not s.metrique_config.yes_no_prompt(_p):
     s.metrique_config.auth = False
 else:
     s.metrique_config.auth = True
+    auth_enabled = True
 
     _p = "Metrique admin password: "
     s.metrique_config.setup_basic('admin_password', partial(prompter, _p))
 
 _p = "Enable SSL? "
-if not s.metrique_config.yes_no_prompt(_p):
+if not auth_enabled and s.metrique_config.yes_no_prompt(_p):
     s.metrique_config.ssl = False
 else:
     s.metrique_config.ssl = True
@@ -45,8 +47,8 @@ else:
         if _bool:
             print "Generating self-signed certificate:"
             call(['openssl', 'req', '-x509', '-newkey', 'rsa:2048', '-keyout',
-                s.metrique_config.ssl_certificate_key, '-nodes', '-out',
-                s.metrique_config.ssl_certificate])
+                  s.metrique_config.ssl_certificate_key, '-nodes', '-out',
+                  s.metrique_config.ssl_certificate])
             ssl_created = True
 
     if not ssl_created:
