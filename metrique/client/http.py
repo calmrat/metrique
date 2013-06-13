@@ -352,6 +352,8 @@ class AdminETL(BaseClient):
         '''
         return self._get('saveobject', cube=cube, obj=obj, _id=_id)
 
+    def get_template(self, cube, types=False):
+        return self._get('gettemplate', cube=cube, types=types)
 
 class Admin(BaseClient):
     ''' Container for all rw+ Metrique sub-containers '''

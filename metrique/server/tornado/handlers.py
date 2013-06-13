@@ -336,6 +336,14 @@ class ETLSaveObject(MetriqueInitialized):
         return self.proxy.admin.etl.save_object(cube=cube, obj=obj, _id=_id)
 
 
+class ETLGetTemplate(MetriqueInitialized):
+    @async
+    def get(self):
+        cube = self.get_argument('cube')
+        types = self.get_argument('types')
+        return self.proxy.admin.etl.get_template(cube=cube, types=types)
+
+
 class CubesHandler(MetriqueInitialized):
     '''
         RequestHandler for querying about

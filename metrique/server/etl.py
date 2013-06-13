@@ -132,6 +132,24 @@ def save_object(cube, obj, _id=None):
     return 1
 
 
+def get_template(cube, types=False):
+    '''
+    Returns dictionary of cube fields.
+    '''
+    c = get_cube(cube)
+    template = {}
+    for field in c.fields:
+        if types:
+            field_type = c.get_field_property('type', field, None)
+            if field_type:
+                template[field] = field_type
+            else:
+                template[field] = "None"
+        else:
+            template[field] = "None"
+    return template
+
+
 def _snapshot(cube, ids):
     c = get_cube(cube)
     w = c.get_collection(admin=False, timeline=False)

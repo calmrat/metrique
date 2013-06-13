@@ -164,6 +164,10 @@ class ETL(BaseServer):
     def save_object(self, cube, obj, _id):
         return etl.save_object(cube, obj, _id)
 
+    @job_save('etl_get_template')
+    def get_template(self, cube, types):
+        return etl.get_template(cube, types)
+
 
 class Query(BaseServer):
     @job_save('count')
