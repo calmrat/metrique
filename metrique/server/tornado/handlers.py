@@ -7,15 +7,13 @@ import base64
 logger = logging.getLogger(__name__)
 
 from functools import wraps
-import re
 import simplejson as json
 import tornado
 
 from metrique.server.defaults import VALID_PERMISSIONS
-from metrique.server.drivers.drivermap import get_cube, get_cubes
+from metrique.server import query_api, etl_api, users_api
 
 from metrique.tools import hash_password
-from metrique.tools.constants import HAS_SRE_PATTERN
 from metrique.tools.json import Encoder
 
 
@@ -180,6 +178,9 @@ class JobStatusHandler(MetriqueInitialized):
     @auth('rw')
     @async
     def get(self, job_key):
+        raise NotImplementedError
+        # FIXME
+        # the api call below '.job.status' is not available yet
         job_json = self.proxy.job.status(job_key)
         job = json.loads(job_json)
         return job['result']
@@ -195,7 +196,7 @@ class QueryAggregateHandler(MetriqueInitialized):
     def get(self):
         cube = self.get_argument('cube')
         pipeline = self.get_argument('pipeline', '[]')
-        return self.proxy.query.aggregate(cube, pipeline)
+        return query_api.aggregate(cube, pipeline)
 
 
 class QueryFetchHandler(MetriqueInitialized):
@@ -208,8 +209,8 @@ class QueryFetchHandler(MetriqueInitialized):
         skip = self.get_argument('skip', 0)
         limit = self.get_argument('limit', 0)
         ids = self.get_argument('ids', [])
-        return self.proxy.query.fetch(cube=cube, fields=fields,
-                                      skip=skip, limit=limit, ids=ids)
+        return query_api.fetch(cube=cube, fields=fields,
+                               skip=skip, limit=limit, ids=ids)
 
 
 class QueryCountHandler(MetriqueInitialized):
@@ -222,7 +223,7 @@ class QueryCountHandler(MetriqueInitialized):
     def get(self):
         cube = self.get_argument('cube')
         query = self.get_argument('query')
-        return self.proxy.query.count(cube, query)
+        return query_api.count(cube, query)
 
 
 class QueryFindHandler(MetriqueInitialized):
@@ -238,11 +239,11 @@ class QueryFindHandler(MetriqueInitialized):
         fields = self.get_argument('fields', '')
         date = self.get_argument('date')
         most_recent = self.get_argument('most_recent', True)
-        return self.proxy.query.find(cube=cube,
-                                     query=query,
-                                     fields=fields,
-                                     date=date,
-                                     most_recent=most_recent)
+        return query_api.find(cube=cube,
+                              query=query,
+                              fields=fields,
+                              date=date,
+                              most_recent=most_recent)
 
 
 class UsersAddHandler(MetriqueInitialized):
@@ -257,8 +258,8 @@ class UsersAddHandler(MetriqueInitialized):
         user = self.get_argument('user')
         password = self.get_argument('password')
         permissions = self.get_argument('permissions', 'r')
-        return self.proxy.admin.users.add(cube, user,
-                                          password, permissions)
+        return users_api.add(cube, user,
+                             password, permissions)
 
 
 class ETLIndexWarehouseHandler(MetriqueInitialized):
@@ -272,8 +273,7 @@ class ETLIndexWarehouseHandler(MetriqueInitialized):
         cube = self.get_argument('cube')
         field = self.get_argument('field', '')
         force = self.get_argument('force', 0)
-        return self.proxy.admin.etl.index_warehouse(cube, field,
-                                                    force)
+        return etl_api.index_warehouse(cube, field, force)
 
 
 class ETLExtractHandler(MetriqueInitialized):
@@ -289,8 +289,8 @@ class ETLExtractHandler(MetriqueInitialized):
         fields = self.get_argument('fields', "")
         force = self.get_argument('force', False)
         id_delta = self.get_argument('id_delta', "")
-        return self.proxy.admin.etl.extract(cube=cube, fields=fields,
-                                            force=force, id_delta=id_delta)
+        return etl_api.extract(cube=cube, fields=fields,
+                               force=force, id_delta=id_delta)
 
 
 class ETLSnapshotHandler(MetriqueInitialized):
@@ -304,7 +304,7 @@ class ETLSnapshotHandler(MetriqueInitialized):
     def get(self):
         cube = self.get_argument('cube')
         ids = self.get_argument('ids')
-        return self.proxy.admin.etl.snapshot(cube=cube, ids=ids)
+        return etl_api.snapshot(cube=cube, ids=ids)
 
 
 class ETLActivityImportHandler(MetriqueInitialized):
@@ -319,10 +319,10 @@ class ETLActivityImportHandler(MetriqueInitialized):
     def get(self):
         cube = self.get_argument('cube')
         ids = self.get_argument('ids')
-        return self.proxy.admin.etl.activity_import(cube=cube, ids=ids)
+        return etl_api.activity_import(cube=cube, ids=ids)
 
 
-class ETLSaveObject(MetriqueInitialized):
+class ETLSaveObjects(MetriqueInitialized):
     '''
         RequestHandler for saving a given
         object to a metrique server cube
@@ -331,9 +331,8 @@ class ETLSaveObject(MetriqueInitialized):
     @async
     def get(self):
         cube = self.get_argument('cube')
-        obj = self.get_argument('obj')
-        _id = self.get_argument('_id')
-        return self.proxy.admin.etl.save_object(cube=cube, obj=obj, _id=_id)
+        objects = self.get_argument('objects')
+        return etl_api.save_objects(cube=cube, objects=objects)
 
 
 class CubesHandler(MetriqueInitialized):
@@ -345,14 +344,13 @@ class CubesHandler(MetriqueInitialized):
     @async
     def get(self):
         cube = self.get_argument('cube')
-        details = self.get_argument('details', None)
         if cube is None:
             # return a list of cubes
-            return get_cubes()
+            username = None
+            # FIXME: pass in a username!
+            return self.proxy.get_cubes(username)
         else:
+            # FIXME: pass in a username!
             # return a list of fields in a cube
-            if details:
-                result = get_cube(cube).fields
-            else:
-                result = sorted(get_cube(cube).fields.keys())
+            result = self.proxy.get_fields(cube)
             return result

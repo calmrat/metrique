@@ -103,3 +103,16 @@ class Job(object):
 
 def get_job(action, job_key=None):
     return Job(action, job_key)
+
+def job_save(name):
+    def decorator(func):
+        def wrapper(*args, **kwargs):
+            job = get_job(name)
+            logger.debug('Running: %s' % name)
+            result = func(*args, **kwargs)
+            job.complete()
+            return result
+        return wrapper
+    return decorator
+
+

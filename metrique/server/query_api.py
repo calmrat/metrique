@@ -8,68 +8,11 @@ logger = logging.getLogger(__name__)
 import pql
 import re
 
-from metrique.server.drivers.drivermap import get_cube, get_fields
+from metrique.server.cubes import get_fields
+from metrique.server.job import job_save
 
 
-def parse_ids(ids, delimeter=','):
-    if isinstance(ids, basestring):
-        ids = [s.strip() for s in ids.split(delimeter)]
-    if type(ids) is not list:
-        raise TypeError("ids expected to be a list")
-    return ids
-
-
-def get_tokens(cube, qspec, return_field=None):
-    '''
-    shortcut for finding fields tokens;
-    return a list of tokens which map to raw_pattern and
-    return_field/compare_field
-    '''
-    c = get_cube(cube)
-    _cube = c.get_collection()
-    if return_field is None:
-        return_field = '_id'
-        spec = {}
-    else:
-        spec = {return_field: {'$exists': True}}
-
-    for compare_field, raw_pattern in qspec.iteritems():
-        spec.update({compare_field: raw_pattern})
-
-    rf = {return_field: 1}
-
-    docs = _cube.find(spec, rf, manipulate=False)
-    docs.batch_size(10000000)  # hard limit is 16M...
-
-    _tokens = []
-    if docs:
-        for doc in docs:
-            tokens = doc.get(return_field)
-            if not tokens:
-                continue
-            elif type(tokens) is list:
-                _tokens.extend(tokens)
-            else:
-                _tokens.append(tokens)
-
-    if not _tokens:
-        _tokens = None
-    elif len(_tokens) is 1:
-        _tokens = _tokens[0]
-
-    return _tokens
-
-
-def find_tokens(cube, return_field, raw_pattern,
-                compare_field='_id'):
-    '''
-    wrapper around get_tokens; takes multiple items and automatically
-    calls get_tokens per each item
-    '''
-    qspec = {compare_field: raw_pattern}
-    return get_tokens(cube, qspec, return_field)
-
-
+@job_save('query count')
 def count(cube, query):
     logger.debug('Running Count')
     pql_parser = pql.SchemaFreeParser()
@@ -106,8 +49,9 @@ def _get_date_pql_string(date):
         return '%s and %s' % (before(split[1]), after(split[0]))
 
 
+@job_save('query find')
 def find(cube, query, fields=None, date=None, most_recent=True):
-    logger.debug('Running Find')
+    logger.debug('Running Find (%s)' % cube)
     if date is not None:
         # we will be doing a timeline query so we need to rename the fields
         # WARNING: might not work if some field is a substring of other field
@@ -154,6 +98,15 @@ def find(cube, query, fields=None, date=None, most_recent=True):
     return docs
 
 
+def parse_ids(ids, delimeter=','):
+    if isinstance(ids, basestring):
+        ids = [s.strip() for s in ids.split(delimeter)]
+    if type(ids) is not list:
+        raise TypeError("ids expected to be a list")
+    return ids
+
+
+@job_save('query fetch')
 def fetch(cube, fields, skip=0, limit=0, ids=None):
     logger.debug('Running Fetch (skip:%s, limit:%s, ids:%s)' % (
         skip, limit, len(ids)))
@@ -179,6 +132,7 @@ def fetch(cube, fields, skip=0, limit=0, ids=None):
     return [d for d in docs]
 
 
+@job_save('query aggregate')
 def aggregate(cube, pipeline):
     logger.debug('Running Aggregation')
     logger.debug('Pipeline (%s): %s' % (type(pipeline), pipeline))

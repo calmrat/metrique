@@ -1,16 +1,45 @@
 #!/usr/bin/env python
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
-# Author: "Jan Grec" <jgrec@redhat.com>
+# Author: "Chris Ward" <cward@redhat.com>
 
-from metrique.client.pyclient import pyclient
+from collections import defaultdict
+
+from metrique.client.http_api import HTTPClient
+from metrique.tools.decorators import memo
 
 
-class BaseCube(pyclient):
-    def __init__(self, *args, **kwargs):
-        super(BaseCube, self).__init__(*args, **kwargs)
-        self._queryfind = self.query.find
-        self.query.find = self._find
+class BaseCube(HTTPClient):
+    defaults = {}
+    fields = {}
 
-    def _find(self, query, fields='', date=None, most_recent=True):
-        return self._queryfind(cube=self.cube, query=query, fields=fields,
-                               date=date, most_recent=most_recent)
+    def __init__(self):
+        super(BaseCube, self).__init__()
+
+    @memo
+    def get_property(self, property, field=None, default=None):
+        '''
+        First try to get the field's fielddef property, if defined
+        Then try to get the default property, if defined
+        Then return the default for when neither is found
+        Or return None, if no default is defined
+        '''
+        try:
+            return self.fields[field][property]
+        except KeyError:
+            try:
+                return self.defaults[property]
+            except (TypeError, KeyError):
+                return default
+
+    @property
+    @memo
+    def fieldmap(self):
+        '''
+        Dictionary of field_id: field_name
+        '''
+        fieldmap = defaultdict(str)
+        for field in self.fields:
+            field_id = self.get_property('what', field)
+            if field_id is not None:
+                fieldmap[field_id] = field
+        return fieldmap

@@ -6,30 +6,22 @@ import logging
 logger = logging.getLogger()
 
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime
 from multiprocessing import cpu_count
 import os
 
-from metrique.server import baseserver
+from metrique.server.baseserver import BaseServer
 from metrique.server.defaults import BACKUP_COUNT, MAX_BYTES
-from metrique.server.drivers.drivermap import get_cubes
 from metrique.server.utils.loghandlers import MongoLogHandler
-
-from metrique.tools.constants import UTC
-from metrique.tools.decorators import memo
 
 # FIXME: add as metrique_config property
 # NOTE: this means the tornado server will only be able to
 # handle this number of requests simultaneously
+# HACK
 MAX_WORKERS = cpu_count() * 10
 
 
-class MetriqueServer(baseserver.BaseServer):
+class MetriqueServer(BaseServer):
     executor = ThreadPoolExecutor(MAX_WORKERS)
-
-    admin = baseserver.Admin()
-    job = baseserver.JobManage()
-    query = baseserver.Query()
 
     def __init__(self, **kwargs):
         super(MetriqueServer, self).__init__(**kwargs)
@@ -37,9 +29,6 @@ class MetriqueServer(baseserver.BaseServer):
         logger.debug('Async: %s' % self.metrique_config.async)
         logger.debug(' Auth: %s' % self.metrique_config.auth)
         logger.debug('  SSL: %s' % self.metrique_config.ssl)
-        self.admin = baseserver.Admin(**kwargs)
-        self.job = baseserver.JobManage(**kwargs)
-        self.query = baseserver.Query(**kwargs)
 
     @property
     def pid(self):
@@ -55,7 +44,8 @@ class MetriqueServer(baseserver.BaseServer):
 
     def _set_pid(self):
         if self.pid:
-            raise RuntimeError("(%s) found in %s" % (self.pid, self.metrique_config.pid_file))
+            raise RuntimeError(
+                "(%s) found in %s" % (self.pid, self.metrique_config.pid_file))
 
         _pid = os.getpid()
         with open(self.metrique_config.pid_file, 'w') as file:
@@ -74,9 +64,9 @@ class MetriqueServer(baseserver.BaseServer):
             logger.addHandler(hdlr)
 
         if self.metrique_config.log_to_file:
-            hdlr = logging.handlers.RotatingFileHandler(self.log_file_path,
-                                                        maxBytes=MAX_BYTES,
-                                                        backupCount=BACKUP_COUNT)
+            hdlr = logging.handlers.RotatingFileHandler(
+                self.log_file_path, maxBytes=MAX_BYTES,
+                backupCount=BACKUP_COUNT)
             hdlr.setFormatter(self.metrique_config.log_formatter)
             logger.addHandler(hdlr)
 
@@ -87,12 +77,3 @@ class MetriqueServer(baseserver.BaseServer):
     def stop(self):
         logger.debug("%s - Stop" % __name__)
         self._remove_pid()
-
-    def ping(self):
-        logger.debug('got ping @ %s' % datetime.now(UTC))
-        return 'pong'
-
-    @property
-    @memo
-    def cubes(self):
-        return get_cubes()

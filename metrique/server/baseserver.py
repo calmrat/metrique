@@ -6,33 +6,12 @@ import logging
 logger = logging.getLogger()
 logging.basicConfig()
 logger.propagate = False
-
-from bson.code import Code
-from bson.objectid import ObjectId
-from dateutil.parser import parse as dt_parse
-from operator import itemgetter
-import simplejson as json
+from datetime import datetime
 
 from metrique.server.config import metrique, mongodb
+from metrique.server.cubes import get_cubes, get_fields
 from metrique.server.defaults import METRIQUE_CONF, MONGODB_CONF
-from metrique.server.defaults import VALID_PERMISSIONS
-from metrique.server.job import get_job
-from metrique.server import query as query_live
-from metrique.server import etl
-
-from metrique.tools import hash_password
-
-
-def job_save(name):
-    def decorator(func):
-        def wrapper(self, *args, **kwargs):
-            job = get_job(name)
-            logger.debug('Running: %s' % name)
-            result = func(self, *args, **kwargs)
-            job.complete()
-            return result
-        return wrapper
-    return decorator
+from metrique.tools.decorators import memo
 
 
 class BaseServer(object):
@@ -51,134 +30,16 @@ class BaseServer(object):
         self._mongodb_config_file = metrique_config_file
         self.mongodb_config = mongodb(mongodb_config_file, config_dir)
 
+    def ping(self):
+        logger.debug('got ping @ %s' % datetime.utcnow())
+        return 'pong'
 
-class Admin(BaseServer):
-    def __init__(self):
-        self.users = Users()
-        self.etl = ETL()
-        self.log = Log()
+    @memo
+    def get_cubes(self, username=None):
+        # arg = username... return only cubes with 'r' access
+        return get_cubes(username)
 
-
-class Users(BaseServer):
-    @job_save('users_add')
-    def add(self, cube, username, password=None, permissions='r'):
-        if permissions not in VALID_PERMISSIONS:
-            raise ValueError(
-                "Expected acl == %s. Got %s" % (
-                    (VALID_PERMISSIONS, permissions)))
-        if password:
-            salt, password = hash_password(password)
-        else:
-            salt, password = None, None
-        spec = {'_id': cube}
-        logger.debug("NEW USER (%s:%s)" % (username,
-                                           permissions))
-        update = {'$set': {
-                  username: {'salt': salt,
-                             'password': password,
-                             'permissions': permissions}}}
-        return self.mongodb_config.c_auth_keys.update(
-            spec, update, upsert=True)
-
-
-class Log(BaseServer):
-    @job_save('log_get_formats')
-    def get_formats(self):
-        map = Code(
-            "function() { for (var key in this) { emit(key, null); } }")
-        reduce = Code("function(key, stuff) { return null; }")
-        impr = self.mongodb_config.c_logs.inline_map_reduce
-        return [doc['_id'] for doc in impr(map, reduce)]
-
-    @job_save('log_tail')
-    def tail(self, spec=None, limit=None, format_=None):
-        if not spec:
-            spec = {}
-        else:
-            spec = json.loads(spec)
-
-        if not format_:
-            format_ = '%(processName)s:%(message)s'
-
-        # spec 'when' key needs to be converted from string to datetime
-        if 'when' in spec:
-            spec['when']['$gt'] = dt_parse(spec['when']['$gt'])
-
-        if not limit:
-            limit = 20
-        else:
-            limit = int(limit)
-            if limit < 0:
-                raise ValueError("limit must be an integer value > 0")
-
-        docs = self.mongodb_config.c_logs.find(spec, limit=limit,
-                                               sort=[('when', -1)])
-
-        _result = sorted([doc for doc in docs], key=itemgetter('when'))
-
-        try:
-            # get the last log.when so client knows from where to
-            # start next...
-            last_when = _result[-1]['when']
-            meta = last_when
-            result = '\n'.join([format_ % doc for doc in _result])
-        except KeyError:
-            raise KeyError("Invalid log format key (%s)" % format_)
-        except ValueError:
-            raise ValueError("Invalid log format string (%s)" % format_)
-        except IndexError:
-            result = None
-            meta = None
-
-        return result, meta
-
-
-class JobManage(BaseServer):
-    @job_save('job_status')
-    def status(self, job_key):
-        _id = ObjectId(job_key)
-        spec = {'_id': _id}
-        return self.mongodb_config.c_job_activity.find_one(spec)
-
-
-class ETL(BaseServer):
-    @job_save('etl_index_warehouse')
-    def index_warehouse(self, cube, field=None, force=None):
-        return etl.index_warehouse(cube, field, force)
-
-    @job_save('etl_extract')
-    def extract(self, cube, fields="", force=False, id_delta=None):
-        return etl.extract(cube, fields=fields,
-                           force=force,
-                           id_delta=id_delta)
-
-    @job_save('etl_snapshot')
-    def snapshot(self, cube, ids):
-        return etl.snapshot(cube, ids)
-
-    @job_save('etl_activity_import')
-    def activity_import(self, cube, ids):
-        return etl.activity_import(cube, ids)
-
-    @job_save('etl_save_object')
-    def save_object(self, cube, obj, _id):
-        return etl.save_object(cube, obj, _id)
-
-
-class Query(BaseServer):
-    @job_save('count')
-    def count(self, cube, query):
-        return query_live.count(cube, query)
-
-    @job_save('find')
-    def find(self, cube, query, fields, date, most_recent):
-        return query_live.find(cube, query, fields, date, most_recent)
-
-    @job_save('aggregate')
-    def aggregate(self, cube, pipeline):
-        return query_live.aggregate(cube, pipeline)
-
-    @job_save('fetch')
-    def fetch(self, cube, fields, skip=0, limit=0, ids=[]):
-        return query_live.fetch(cube=cube, fields=fields,
-                                skip=skip, limit=limit, ids=ids)
+    @memo
+    def get_fields(self, cube):
+        # arg = username... return only cubes with 'r' access
+        return get_fields(cube)

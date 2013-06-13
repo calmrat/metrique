@@ -5,15 +5,42 @@
 import logging
 logger = logging.getLogger(__name__)
 
-from bson.objectid import ObjectId
 from datetime import datetime
 from copy import deepcopy
 from collections import defaultdict
 
-from metrique.server.drivers.drivermap import get_cube, get_fields
+from metrique.server.cubes import get_fields, get_cube
+from metrique.server.job import job_save
 
-from metrique.tools.constants import UTC, YELLOW, ENDC
+from metrique.tools.constants import YELLOW, ENDC
 from metrique.tools.type_cast import type_cast
+
+
+def prep_object(obj, when=None):
+    if not obj:
+        raise ValueError("Empty object")
+    elif not isinstance(obj, dict):
+        raise TypeError(
+            "Expected objects as dict, got type(%s)" % type(obj))
+    else:
+        if not when:
+            when = datetime.utcnow()
+        obj.update({'_mtime': when})
+    return obj
+
+
+@job_save('etl_save_objects')
+def save_objects(cube, objects):
+    if not objects:
+        raise ValueError("Empty objects list")
+    elif not type(objects) in [list, tuple]:
+        raise TypeError("Expected list or tuple, got type(%s)" % type(objects))
+
+    now = datetime.utcnow()
+    [prep_object(obj, now) for obj in objects]
+    _cube = get_cube(cube, admin=True)
+    _cube.insert(objects, manipulate=False)
+    return len(objects)
 
 
 def get_last_id(cube, field):
@@ -31,105 +58,6 @@ def get_last_id(cube, field):
         value = None
     logger.debug(" ... ... Last ID: %s" % last_id)
     return value
-
-
-def save_doc(cube, field, tokens, id=None):
-    '''
-    All subclasses use this method to 'save' a document into the warehouse
-    '''
-    c = get_cube(cube)
-    if field not in c.fields:
-        raise ValueError("Invalid field (%s)" % field)
-
-    container = c.get_field_property('container', field, False)
-
-    if tokens and container:
-        if type(tokens) is not list:
-            raise TypeError("Tokens type must be list()")
-        else:
-            tokens = sorted(tokens)
-
-    # normalize empty lists -> None
-    if not tokens:
-        tokens = None
-
-    if id is None:
-        id = ObjectId()
-
-    now = datetime.now(UTC)
-    spec_now = {'_id': id}
-    update_now = {'$set': {field: tokens, '_mtime': now}}
-
-    _cube = c.get_collection(admin=True)
-    _cube.update(spec_now, update_now, upsert=True)
-
-    return 1  # eg, one document added
-
-
-def save_object2(cube, obj):
-    c = get_cube(cube)
-    expected_fields = set(c.fields.keys())
-    expected_fields.add('_id')  # we always expect the _id to be defined as well
-    _cube = c.get_collection(admin=True)
-
-    now = datetime.now(UTC)
-
-    if not obj:
-        raise ValueError("Empty object")
-    elif not isinstance(obj, dict):
-        raise TypeError(
-            "Expected objects as dict, got type(%s)" % type(obj))
-
-    obj_fields = set(obj.keys())
-    if not obj_fields <= expected_fields:
-        raise ValueError(
-            "Object includes unexpected fields.\n"
-            "Unexpected: %s" % (obj_fields - expected_fields))
-    else:
-        obj.update({'_mtime': now})
-
-    _cube.insert(obj, manipulate=False)
-    return 1
-
-
-def save_objects(cube, objs):
-    if not objs:
-        raise ValueError("Empty objects list")
-    c = get_cube(cube)
-    expected_fields = set(c.fields.keys())
-    expected_fields.add('_id')  # we always expect the _id to be defined as well
-    _cube = c.get_collection(admin=True)
-
-    if not type(objs) in [list, tuple]:
-        raise TypeError("Expected list or tuple, got type(%s)" % type(objs))
-
-    now = datetime.now(UTC)
-    for x, obj in enumerate(objs):
-        if not obj:
-            raise ValueError("Empty object")
-        elif not isinstance(obj, dict):
-            raise TypeError(
-                "Expected objects as dict, got type(%s)" % type(obj))
-
-        obj_fields = set(obj.keys())
-        if not obj_fields <= expected_fields:
-            raise ValueError(
-                "Object includes unexpected fields.\n"
-                "Unexpected: %s" % (obj_fields - expected_fields))
-        else:
-            objs[x].update({'_mtime': now})
-
-    _cube.insert(objs, manipulate=False)
-    return len(objs)
-
-
-def save_object(cube, obj, _id=None):
-    '''
-    '''
-    for o in obj:
-        for field, tokens in o.iteritems():
-            save_doc(cube, field, tokens, o[_id])
-    return 1
 
 
 def _snapshot(cube, ids):
@@ -187,6 +115,7 @@ def _snapshot(cube, ids):
         t.insert(batch_insert)
 
 
+@job_save('etl_snapshot')
 def snapshot(cube, ids=None):
     logger.debug('Running snapshot')
     if ids is None:
@@ -393,6 +322,7 @@ def _activity_import(cube, ids):
             activities = [act for act in activities if act['id'] > tid]
 
 
+@job_save('etl_activity_import')
 def activity_import(cube, ids=None):
     logger.debug('Running activity history import')
     c = get_cube(cube)
@@ -421,6 +351,7 @@ def activity_import(cube, ids=None):
         _activity_import(cube, ids)
 
 
+@job_save('etl_index_warehouse')
 def index_warehouse(cube, fields, force=False):
     '''
     NOTE: _id key index is generated automatically by mongo
@@ -442,6 +373,7 @@ def index_warehouse(cube, fields, force=False):
     return result
 
 
+@job_save('etl_extract')
 def extract(cube, **kwargs):
     logger.info(' Starting Update operation!')
     logger.info(' %sCube: %s%s' % (YELLOW, cube, ENDC))

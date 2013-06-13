@@ -8,19 +8,19 @@ logger = logging.getLogger(__name__)
 import os
 import subprocess
 
-from metrique.server.drivers.basedriver import BaseDriver
+from metrique.client.cubes.basecube import BaseCube
 from metrique.tools.decorators import memo
 
 TMP_DIR = '/tmp'
 DEFAULT_OBJECTS_PATH = '.git/objects'
 
 
-class BaseGitObject(BaseDriver):
+class BaseGitObject(BaseCube):
     """
     Driver to help extract data from GIT repos
     """
-    def __init__(self, *args, **kwargs):
-        super(BaseGitObject, self).__init__(*args, **kwargs)
+    def __init__(self):
+        super(BaseGitObject, self).__init__()
 
     @memo
     def fetch_repo(self, uri, repo):

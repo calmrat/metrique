@@ -9,6 +9,7 @@ import re
 
 from metrique.tools.jsonconfig import JSONConfig
 from metrique.tools.defaults import METRIQUE_HTTP_PORT, METRIQUE_HTTP_HOST
+from metrique.tools.defaults import CUBES_PATH
 
 API_VERSION = 'v1'
 API_REL_PATH = 'api'
@@ -20,6 +21,11 @@ class Config(JSONConfig):
     def __init__(self, *args, **kwargs):
         super(Config, self).__init__(*args, **kwargs)
         self.debug = None
+
+    @property
+    def cubes_path(self):
+        ''' Path to client modules '''
+        return self._default('cubes_path', CUBES_PATH)
 
     @property
     def api_ssl(self):

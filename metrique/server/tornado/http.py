@@ -19,7 +19,7 @@ from handlers import UsersAddHandler
 from handlers import ETLIndexWarehouseHandler
 from handlers import ETLExtractHandler, ETLSnapshotHandler, CubesHandler
 from handlers import ETLActivityImportHandler
-from handlers import ETLSaveObject
+from handlers import ETLSaveObjects
 
 
 class HTTPServer(MetriqueServer):
@@ -45,24 +45,27 @@ class HTTPServer(MetriqueServer):
             (r"/api/v1/query/fetch", QueryFetchHandler, init),
             (r"/api/v1/admin/users/add", UsersAddHandler, init),
             (r"/api/v1/admin/etl/extract", ETLExtractHandler, init),
-            (r"/api/v1/admin/etl/index/warehouse", ETLIndexWarehouseHandler, init),
+            (r"/api/v1/admin/etl/index/warehouse",
+                ETLIndexWarehouseHandler, init),
             (r"/api/v1/admin/etl/snapshot", ETLSnapshotHandler, init),
             (r"/api/v1/admin/etl/activityimport",
-             ETLActivityImportHandler, init),
-            (r"/api/v1/admin/etl/saveobject", ETLSaveObject, init),
+                ETLActivityImportHandler, init),
+            (r"/api/v1/admin/etl/saveobjects", ETLSaveObjects, init),
             (r"/api/v1/cubes", CubesHandler, init),
         ], gzip=True)
         # FIXME: set gzip as metrique_config property, default True
         port = self.metrique_config.http_port
         address = self.metrique_config.http_host
         if self.metrique_config.ssl:
-            ssl_options = dict(certfile=self.metrique_config.ssl_certificate,
-                               keyfile=self.metrique_config.ssl_certificate_key)
+            ssl_options = dict(
+                certfile=self.metrique_config.ssl_certificate,
+                keyfile=self.metrique_config.ssl_certificate_key)
             try:
                 self._web_app.listen(port=port, address=address,
                                      ssl_options=ssl_options)
             except ValueError:
-                raise ValueError("SSL Cert missing, perhaps? (%s)." % ssl_options)
+                raise ValueError(
+                    "SSL Cert missing, perhaps? (%s)." % ssl_options)
         else:
             self._web_app.listen(port=port, address=address)
 
@@ -80,7 +83,8 @@ class HTTPServer(MetriqueServer):
 
     def stop(self):
         ''' Stop a run tornado web app '''
-        # FIXME: THIS ISN"T WORKING! should catch sigkill/sigterm and shutdown properly
+        # FIXME: THIS ISN"T WORKING!
+        # should catch sigkill/sigterm and shutdown properly
         super(HTTPServer, self).stop()
         logger.debug("Tornado: Stop")
         ioloop = tornado.ioloop.IOLoop.instance()
