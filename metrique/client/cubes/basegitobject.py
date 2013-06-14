@@ -19,8 +19,8 @@ class BaseGitObject(BaseCube):
     """
     Driver to help extract data from GIT repos
     """
-    def __init__(self):
-        super(BaseGitObject, self).__init__()
+    def __init__(self, **kwargs):
+        super(BaseGitObject, self).__init__(**kwargs)
 
     @memo
     def fetch_repo(self, uri, repo):

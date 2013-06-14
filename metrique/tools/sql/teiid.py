@@ -7,7 +7,7 @@ logger = logging.getLogger(__name__)
 
 import psycopg2
 import re
-from metrique.server.utils.sql.basesql import BaseSql
+from metrique.tools.sql.basesql import BaseSql
 
 
 class TEIID(BaseSql):

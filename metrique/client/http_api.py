@@ -30,7 +30,6 @@ class HTTPClient(object):
     count = query_api.count
     fetch = query_api.fetch
     aggregate = query_api.aggregate
-    extract = etl_api.extract
     index_warehouse = etl_api.index_warehouse
     snapshot = etl_api.snapshot
     activity_import = etl_api.activity_import
@@ -38,10 +37,14 @@ class HTTPClient(object):
     add_user = users_api.add
 
     def __init__(self, host=None, username=None, password=None,
-                 **kwargs):
+                 async=True, **kwargs):
         base_config_file = kwargs.get('config_file', CONFIG_FILE)
         base_config_dir = kwargs.get('config_dir')
         self.baseconfig = Config(base_config_file, base_config_dir)
+
+        debug = kwargs.get('debug')
+        self.baseconfig.debug = debug
+        self.baseconfig.async = async
 
         if host:
             self.baseconfig.api_host = host
@@ -52,19 +55,21 @@ class HTTPClient(object):
         if password:
             self.baseconfig.api_password = password
 
-    def _get(self, *args, **kwargs):
-        '''
-            Arguments are expected to be json encoded!
-            verify = False in requests.get() skips SSL CA validation
-        '''
-        kwargs_json = dict([(k, json.dumps(v, cls=Encoder, ensure_ascii=False))
-                            for k, v in kwargs.items()])
+    def _kwargs_json(self, **kwargs):
+        return dict([(k, json.dumps(v, cls=Encoder, ensure_ascii=False))
+                    for k, v in kwargs.items()])
 
+    def _args_url(self, *args):
         _url = os.path.join(self.baseconfig.api_url, *args)
-        logger.debug("Connecting to URL: %s" % _url)
+        logger.debug("URL: %s" % _url)
+        return _url
+
+    def _request_caller(self, proto, *args, **kwargs):
+        kwargs_json = self._kwargs_json(**kwargs)
+        _url = self._args_url(*args)
 
         try:
-            _response = rq.get(_url, params=kwargs_json, verify=False)
+            _response = proto(_url, params=kwargs_json, verify=False)
         except rq.exceptions.ConnectionError:
             raise rq.exceptions.ConnectionError(
                 'Failed to connect (%s). Try https://?' % _url)
@@ -72,14 +77,27 @@ class HTTPClient(object):
             # authentication request
             user = self.baseconfig.api_username
             password = self.baseconfig.api_password
-            _response = rq.get(_url, params=kwargs_json,
-                               verify=False,
-                               auth=rq.auth.HTTPBasicAuth(
-                                   user, password))
+            _response = proto(_url, params=kwargs_json,
+                              verify=False,
+                              auth=rq.auth.HTTPBasicAuth(
+                                  user, password))
         _response.raise_for_status()
         # responses are always expected to be json encoded
-        response = json.loads(_response.text)
-        return response
+        return json.loads(_response.text)
+
+    def _get(self, *args, **kwargs):
+        '''
+            Arguments are expected to be json encoded!
+            verify = False in requests.get() skips SSL CA validation
+        '''
+        return self._request_caller(rq.get, *args, **kwargs)
+
+    def _post(self, *args, **kwargs):
+        '''
+            Arguments are expected to be json encoded!
+            verify = False in requests.get() skips SSL CA validation
+        '''
+        return self._request_caller(rq.post, *args, **kwargs)
 
     def ping(self):
         return self._get('ping')

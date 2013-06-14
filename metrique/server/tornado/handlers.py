@@ -9,6 +9,7 @@ logger = logging.getLogger(__name__)
 from functools import wraps
 import simplejson as json
 import tornado
+import traceback
 
 from metrique.server.defaults import VALID_PERMISSIONS
 from metrique.server import query_api, etl_api, users_api
@@ -17,6 +18,7 @@ from metrique.tools import hash_password
 from metrique.tools.json import Encoder
 
 
+# FIXME: create jobsave meta data here! rather rapping handler gets
 def async(f):
     '''
     Decorator for enabling async Tornado.Handlers
@@ -34,12 +36,14 @@ def async(f):
                     # Result is always expected to be json encoded!
                     result = json.dumps(_result, cls=Encoder,
                                         ensure_ascii=False)
-                except Exception as e:
-                    result = json.dumps(str(e))
-                    raise
+                except Exception:
+                    result = traceback.format_exc()
+                    logger.error(result)
+                    raise tornado.web.HTTPError(500, result)
                 finally:
                     self.write(result)
-                    self.finish()
+                self.finish()
+
             future = self.proxy.executor.submit(f, self, *args, **kwargs)
             tornado.ioloop.IOLoop.instance().add_future(future, future_end)
         else:
@@ -206,10 +210,11 @@ class QueryFetchHandler(MetriqueInitialized):
     def get(self):
         cube = self.get_argument('cube')
         fields = self.get_argument('fields')
+        sort = self.get_argument('sort', None)
         skip = self.get_argument('skip', 0)
         limit = self.get_argument('limit', 0)
         ids = self.get_argument('ids', [])
-        return query_api.fetch(cube=cube, fields=fields,
+        return query_api.fetch(cube=cube, fields=fields, sort=sort,
                                skip=skip, limit=limit, ids=ids)
 
 
@@ -239,11 +244,15 @@ class QueryFindHandler(MetriqueInitialized):
         fields = self.get_argument('fields', '')
         date = self.get_argument('date')
         most_recent = self.get_argument('most_recent', True)
+        sort = self.get_argument('sort', None)
+        one = self.get_argument('one', False)
         return query_api.find(cube=cube,
                               query=query,
                               fields=fields,
                               date=date,
-                              most_recent=most_recent)
+                              most_recent=most_recent,
+                              sort=sort,
+                              one=one)
 
 
 class UsersAddHandler(MetriqueInitialized):
@@ -271,26 +280,8 @@ class ETLIndexWarehouseHandler(MetriqueInitialized):
     @async
     def get(self):
         cube = self.get_argument('cube')
-        field = self.get_argument('field', '')
-        force = self.get_argument('force', 0)
-        return etl_api.index_warehouse(cube, field, force)
-
-
-class ETLExtractHandler(MetriqueInitialized):
-    '''
-        RequestHandler for calling cube defined
-        extract function that ultimately saves
-        object data in the warehouse
-    '''
-    @auth('rw')
-    @async
-    def get(self):
-        cube = self.get_argument('cube')
-        fields = self.get_argument('fields', "")
-        force = self.get_argument('force', False)
-        id_delta = self.get_argument('id_delta', "")
-        return etl_api.extract(cube=cube, fields=fields,
-                               force=force, id_delta=id_delta)
+        fields = self.get_argument('fields', '')
+        return etl_api.index_warehouse(cube, fields)
 
 
 class ETLSnapshotHandler(MetriqueInitialized):
@@ -329,7 +320,7 @@ class ETLSaveObjects(MetriqueInitialized):
     '''
     @auth('rw')
     @async
-    def get(self):
+    def post(self):
         cube = self.get_argument('cube')
         objects = self.get_argument('objects')
         return etl_api.save_objects(cube=cube, objects=objects)

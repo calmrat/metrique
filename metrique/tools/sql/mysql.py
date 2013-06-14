@@ -7,7 +7,7 @@ logger = logging.getLogger(__name__)
 
 # FIXME: add to deps: mysql
 import MySQLdb
-from metrique.server.utils.sql.basesql import BaseSql
+from metrique.tools.sql.basesql import BaseSql
 
 
 class Mysql(BaseSql):

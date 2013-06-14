@@ -55,7 +55,8 @@ def count(self, query):
     return self._get(CMD, 'count', cube=self.name, query=query)
 
 
-def find(self, query, fields=None, date=None, most_recent=False):
+def find(self, query, fields=None, date=None, most_recent=False,
+         sort=None, one=False, raw=False):
     '''
     Run a `pql` based query on the given cube.
     Optionally:
@@ -82,13 +83,17 @@ def find(self, query, fields=None, date=None, most_recent=False):
         be returned
     '''
     result = self._get(CMD, 'find', cube=self.name, query=query,
-                       fields=fields, date=date, most_recent=most_recent)
-    result = Result(result)
-    result.date(date)
-    return result
+                       fields=fields, date=date, most_recent=most_recent,
+                       sort=sort, one=one)
+    if raw:
+        return result
+    else:
+        result = Result(result)
+        result.date(date)
+        return result
 
 
-def fetch(self, fields, skip=0, limit=0, ids=[]):
+def fetch(self, fields=None, sort=None, skip=0, limit=0, ids=[], raw=False):
     '''
     Fetch field values for (potentially) all objects
     of a given, with skip, limit, id "filter" arguments
@@ -107,5 +112,8 @@ def fetch(self, fields, skip=0, limit=0, ids=[]):
         specific list of ids we should fetch
     '''
     result = self._get(CMD, 'fetch', cube=self.name, fields=fields,
-                       skip=skip, limit=limit, ids=ids)
-    return Result(result)
+                       sort=sort, skip=skip, limit=limit, ids=ids)
+    if raw:
+        return result
+    else:
+        return Result(result)
