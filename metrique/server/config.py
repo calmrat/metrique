@@ -3,7 +3,6 @@
 # Author: "Chris Ward <cward@redhat.com>
 
 import logging
-logger = logging.getLogger()
 import os
 
 from defaults import LOGDIR_SAVEAS
@@ -50,6 +49,7 @@ class metrique(JSONConfig):
     @debug.setter
     def debug(self, bool_):
         bool_ = self._json_bool(bool_)
+        logger = logging.getLogger()
         if bool_ is False:
             level = logging.WARN
         elif bool_ is True:

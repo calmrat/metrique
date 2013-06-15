@@ -3,7 +3,6 @@
 # Author: "Chris Ward" <cward@redhat.com>
 
 import logging
-logger = logging.getLogger(__name__)
 import os
 import re
 
@@ -20,7 +19,7 @@ class Config(JSONConfig):
     ''' Client config (property) class '''
     def __init__(self, *args, **kwargs):
         super(Config, self).__init__(*args, **kwargs)
-        self.debug = None
+        self._debug = None
 
     @property
     def cubes_path(self):
@@ -118,15 +117,26 @@ class Config(JSONConfig):
         self._config['api_password'] = value
 
     @property
+    def async(self):
+        ''' Turn on/off async (parallel) multiprocessing (where supported) '''
+        return self._default('async', True)
+
+    @async.setter
+    def async(self, value):
+        self._config['async'] = value
+
+    @property
     def debug(self):
         ''' Reflect whether debug is enabled or not '''
         return self._debug
 
     @debug.setter
-    def debug(self, bool_=None):
+    def debug(self, bool_):
         ''' Update logger settings according to
             False=Warn, True=Debug, else Info
         '''
+        logging.basicConfig()
+        logger = logging.getLogger()
         if bool_ is False:
             logger.setLevel(logging.WARN)
         elif bool_ is True:
@@ -134,3 +144,4 @@ class Config(JSONConfig):
             logger.debug('DEBUG: ON')
         else:
             logging.disable(logging.INFO)
+        self._debug = bool_

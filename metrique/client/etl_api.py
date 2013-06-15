@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 CMD = 'admin/etl'
 
 
-def index_warehouse(self, fields=None, force=False):
+def index_warehouse(self, fields=None):
     '''
     Index particular fields of a given cube, assuming
     indexing is enabled for the cube.fields
@@ -22,49 +22,11 @@ def index_warehouse(self, fields=None, force=False):
     fields : str, or list of str, or str of comma-separated values
         Fields that should be indexed
     '''
-    if isinstance(fields, basestring):
-        fields = [s.strip() for s in fields.split(',')]
-    elif type(fields) is not list:
-        raise TypeError("fields expected to be list or csv string")
+    if not fields:
+        fields = '__all__'
 
-    result = {}
-    for field in fields:
-        result[field] = self._get('index/warehouse', cube=self.name,
-                                  field=field, force=force)
-    return result
-
-
-# FIXME: remove passing snapshot argument; snapshots should be
-# called explicitly
-def extract(self, fields="", force=False, id_delta="",
-            index=False, snapshot=False):
-    '''
-    Run the cube.extract_func command to pull data and dump
-    to the warehouse
-
-    Paremeters
-    ----------
-    cube : str
-        Name of the cube you want to query
-    fields : str, or list of str, or str of comma-separated values
-        Fields that should be indexed
-    force : bool
-        True runs without deltas. When False (default),
-        and deltas supported, cube is expected to apply them
-    id_delta : list of cube object ids or str of comma-separated ids
-        Specifically list object ids to extract (if supported)
-    index : bool
-        Run warehouse ensure indexing after extraction
-    snapshot : bool
-        Run warehouse -> timeline snapshot after extraction
-    '''
-    result = self._get('extract', cube=self.name, fields=fields,
-                       force=force, id_delta=id_delta)
-    if index:
-        self.index_warehouse(self.name, fields)
-    if snapshot:
-        self.snapshot(self.name, index=index)
-    return result
+    return self._get(CMD, 'index/warehouse', cube=self.name,
+                     fields=fields)
 
 
 def snapshot(self, ids=None):
@@ -114,4 +76,4 @@ def save_objects(self, objects):
         Name of the cube you want to query
     objs : list of dicts with 1+ field:value and _id defined
     '''
-    return self._get(CMD, 'saveobjects', cube=self.name, objects=objects)
+    return self._post(CMD, 'saveobjects', cube=self.name, objects=objects)

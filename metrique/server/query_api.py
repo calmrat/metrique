@@ -8,7 +8,7 @@ logger = logging.getLogger(__name__)
 import pql
 import re
 
-from metrique.server.cubes import get_fields
+from metrique.server.cubes import get_fields, get_cube
 from metrique.server.job import job_save
 
 
@@ -22,8 +22,7 @@ def count(cube, query):
     except Exception as e:
         raise ValueError("Invalid Query (%s)" % str(e))
 
-    c = get_cube(cube)
-    _cube = c.get_collection()
+    _cube = get_cube(cube)
 
     logger.debug('Query: %s' % spec)
 
@@ -50,8 +49,16 @@ def _get_date_pql_string(date):
 
 
 @job_save('query find')
-def find(cube, query, fields=None, date=None, most_recent=True):
+def find(cube, query, fields=None, date=None, most_recent=True, sort=None, one=False):
     logger.debug('Running Find (%s)' % cube)
+    if not sort:
+        sort = [('_id', 1)]
+
+    try:
+        assert len(sort[0]) == 2
+    except (AssertionError, IndexError, TypeError):
+        raise ValueError("Invalid sort value; try [('_id': -1)]")
+
     if date is not None:
         # we will be doing a timeline query so we need to rename the fields
         # WARNING: might not work if some field is a substring of other field
@@ -67,8 +74,7 @@ def find(cube, query, fields=None, date=None, most_recent=True):
     except Exception as e:
         raise ValueError("Invalid Query (%s)" % str(e))
 
-    c = get_cube(cube)
-    _cube = c.get_collection(timeline=(date is not None))
+    _cube = get_cube(cube, timeline=(date is not None))
 
     logger.debug('Query: %s' % spec)
 
@@ -78,7 +84,7 @@ def find(cube, query, fields=None, date=None, most_recent=True):
         project_d = dict([(f, '$fields.%s' % f) for f in fields])
         project_d.update(dict(_id='$id', _start='$start', _end='$end'))
         if most_recent:
-            docs = _cube.aggregate([{'$match': spec},
+            pipeline = [{'$match': spec},
                                     {'$sort': {'start': -1}},
                                     {'$group': {'_id': '$id',
                                                 'fields': {'$first':
@@ -86,16 +92,24 @@ def find(cube, query, fields=None, date=None, most_recent=True):
                                                 'start': {'$first': '$start'},
                                                 'end':  {'$first': '$end'},
                                                 'id': {'$first': '$id'}}},
-                                    {'$project': project_d}])
+                                    {'$project': project_d},
+                                    {'$sort': sort}]
+            if one:
+                pipeline.append({'$limit': 1})
         else:
-            docs = _cube.aggregate([{'$match': spec},
-                                    {'$project': project_d}])
-        docs = docs['result']
+            pipeline = [{'$match': spec},
+                                    {'$project': project_d},
+                                    {'$sort': sort}]
+            if one:
+                pipeline.append({'$limit': 1})
+        docs = _cube.aggregate(pipeline)['result']
     else:
-        docs = _cube.find(spec, fields)
-        docs.batch_size(10000000)  # hard limit is 16M...
-    docs = [d for d in docs]
-    return docs
+        if one:
+            return _cube.find_one(spec, fields, sort=sort)
+        else:
+            docs = _cube.find(spec, fields, sort=sort)
+            docs.batch_size(10000000)  # hard limit is 16M...
+            return tuple(docs)
 
 
 def parse_ids(ids, delimeter=','):
@@ -107,35 +121,39 @@ def parse_ids(ids, delimeter=','):
 
 
 @job_save('query fetch')
-def fetch(cube, fields, skip=0, limit=0, ids=None):
+def fetch(cube, fields=None, sort=None, skip=0, limit=0, ids=None):
     logger.debug('Running Fetch (skip:%s, limit:%s, ids:%s)' % (
         skip, limit, len(ids)))
     logger.debug('... Fields: %s' % fields)
 
-    c = get_cube(cube)
-    _cube = c.get_collection()
+    _cube = get_cube(cube)
 
     fields = get_fields(cube, fields)
     logger.debug('Return Fields: %s' % fields)
 
-    sort = [('_id', 1)]
+    if not sort:
+        sort = [('_id', 1)]
+
+    try:
+        assert len(sort[0]) == 2
+    except (AssertionError, IndexError, TypeError):
+        raise ValueError("Invalid sort value; try [('_id': -1)]")
+
 
     if ids:
         spec = {'_id': {'$in': parse_ids(ids)}}
     else:
         spec = {}
 
-    docs = _cube.find(spec, fields,
-                      skip=skip, limit=limit,
-                      sort=sort)
+    docs = _cube.find(spec, fields, sort=sort,
+                      skip=skip, limit=limit)
     docs.batch_size(10000000)  # hard limit is 16M...
-    return [d for d in docs]
+    return tuple(docs)
 
 
 @job_save('query aggregate')
 def aggregate(cube, pipeline):
     logger.debug('Running Aggregation')
     logger.debug('Pipeline (%s): %s' % (type(pipeline), pipeline))
-    c = get_cube(cube)
-    _cube = c.get_collection()
+    _cube = get_cube(cube)
     return _cube.aggregate(pipeline)

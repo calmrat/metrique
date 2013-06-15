@@ -9,7 +9,9 @@ def _memo(func, *args, **kw):
     if kw:  # frozenset is used to ensure hashability
         key = args, frozenset(kw.iteritems())
     else:
-        key = args
+        # normalize to str to ensure hashability
+        # (ie, 'list' type is unhashable)
+        key = str(args)
     cache = func.cache  # attributed added by memoize
     if key in cache:
         return cache[key]
