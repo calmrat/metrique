@@ -133,4 +133,4 @@ class HTTPClient(object):
             return fields
         else:
             raise ValueError(
-                "Invalid field in set: %s" % set(self.fields) - fields)
+                "Invalid field in set: %s" % (set(self.fields) - fields))

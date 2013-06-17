@@ -17,7 +17,7 @@ from metrique.tools.constants import UTC
 from metrique.tools.constants import INT_TYPE, FLOAT_TYPE
 
 DEFAULT_ROW_LIMIT = 100000
-MAX_WORKERS = 5
+MAX_WORKERS = 2
 
 
 class BaseSql(BaseCube):
@@ -96,7 +96,8 @@ class BaseSql(BaseCube):
             k, float(k) / (t1 - t0)))
         return grouped
 
-    def extract(self, force=False, id_delta=None, workers=MAX_WORKERS, fields='__all__'):
+    def extract(self, force=False, id_delta=None,
+                workers=MAX_WORKERS, fields='__all__'):
         saved = 0
         fields = self.parse_fields(fields)
         if self.baseconfig.async:
@@ -150,6 +151,8 @@ class BaseSql(BaseCube):
         sql_where = []
         sql_groupby = ''
         _sql = self.get_property('sql', field)
+        if isinstance(_sql, basestring):
+            _sql = [_sql]
         if not _sql:
             sql = 'SELECT %s, %s.%s FROM %s' % (
                 table_column, table, field, db_table)
@@ -163,12 +166,18 @@ class BaseSql(BaseCube):
             sql += ', '.join(_from)
             sql += ' '
 
-            if _sql[2]:
-                sql += ' '.join(_sql[2])
+            try:
+                if _sql[2]:
+                    sql += ' '.join(_sql[2])
+            except IndexError:
+                pass
             sql += ' '
 
-            if _sql[3]:
-                sql_where.append('(%s)' % ' OR '.join(_sql[3]))
+            try:
+                if _sql[3]:
+                    sql_where.append('(%s)' % ' OR '.join(_sql[3]))
+            except IndexError:
+                pass
 
             try:
                 if _sql[4]:

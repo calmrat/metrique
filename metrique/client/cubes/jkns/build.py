@@ -196,5 +196,5 @@ class Build(BaseJSON):
 
 
 if __name__ == '__main__':
-    csvobj = Build(debug=True, **DEFAULT_CONFIG)
-    csvobj.extract()
+    obj = Build(debug=True, **DEFAULT_CONFIG)
+    obj.extract()
