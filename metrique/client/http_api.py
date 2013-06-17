@@ -38,9 +38,11 @@ class HTTPClient(object):
     add_user = users_api.add
 
     def __init__(self, host=None, username=None, password=None,
-                 async=True, force=False, debug=False, **kwargs):
-        base_config_file = kwargs.get('config_file', CONFIG_FILE)
-        base_config_dir = kwargs.get('config_dir')
+                 async=True, force=False, debug=False,
+                 config_file=None, config_dir=None, **kwargs):
+        if not config_file:
+            base_config_file = CONFIG_FILE
+        base_config_dir = config_dir
         self.baseconfig = Config(base_config_file, base_config_dir, force=force)
 
         self.baseconfig.debug = debug

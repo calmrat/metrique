@@ -11,12 +11,17 @@ from metrique.tools.defaults import CUBES_PATH
 DEFAULT_MODULE = 'metrique.client.cubes'
 
 
-@memo
-def get_cube(module, cube, path=None):
+def set_cube_path(path=None):
     if not path:
         path = CUBES_PATH
     path = os.path.expanduser(path)
     sys.path.append(path)
+    return path
+
+
+@memo
+def get_cube(module, cube, path=None):
+    assert set_cube_path(path)
     try:
         _module = __import__(module, {}, {}, [cube])
     except ImportError as e:
