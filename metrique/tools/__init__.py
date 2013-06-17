@@ -11,6 +11,13 @@ def doublequote(item):
     return '"%s"' % item
 
 
+def csv2list(csv, delimiter=','):
+    ''' convert a str(csv,csv) into a list of strings '''
+    if type(csv) in [list, tuple]:
+        return csv
+    return [s.strip() for s in csv.split(delimiter)]
+
+
 def list2csv(_list, quote=False):
     ''' convert a list of objects into a csv string '''
     if quote:

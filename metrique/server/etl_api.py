@@ -44,17 +44,25 @@ def _prep_object(obj, when=None):
 
 
 @job_save('etl_save_objects')
-def save_objects(cube, objects):
+def save_objects(cube, objects, update=False):
     if not objects:
-        raise ValueError("Empty objects list")
+        return -1
     elif not type(objects) in [list, tuple]:
-        raise TypeError("Expected list or tuple, got type(%s)" % type(objects))
+        raise TypeError("Expected list or tuple, got type(%s): %s" % (type(objects), objects))
 
     now = datetime.utcnow()
     [_prep_object(obj, now) for obj in objects]
     _cube = get_cube(cube, admin=True)
-    for obj in iter(objects):
-        _cube.save(obj, manipulate=False)
+    if update:
+        for obj in iter(objects):
+            _cube.update({'_id': obj.pop('_id')},
+                         {'$set': obj},
+                         upsert=True,
+                         manipulate=False)
+    else:
+        for obj in iter(objects):
+            _cube.save(obj, manipulate=False)
+
     return len(objects)
 
 

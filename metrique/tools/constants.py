@@ -47,8 +47,6 @@ ENDC = '\033[0m'
 
 # date only
 RE_DATE = re.compile('(\d\d\d\d)-(\d\d)-(\d\d)')
-# date only range syntax
-RE_DATE_RANGE = re.compile('(\d\d\d\d-\d\d-\d\d):?(\d\d\d\d-\d\d-\d\d)?')
 # datetime only
 RE_DATETIME = re.compile('(\d\d\d\d)-(\d\d)-(\d\d)(T| )?(\d\d):(\d\d):(\d\d)Z?')
 # either date or datetime

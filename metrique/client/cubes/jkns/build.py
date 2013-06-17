@@ -196,8 +196,5 @@ class Build(BaseJSON):
 
 
 if __name__ == '__main__':
-    logging.basicConfig()
-    logger = logging.getLogger()
-    logger.setLevel(logging.DEBUG)
-    csvobj = Build(**DEFAULT_CONFIG)
+    csvobj = Build(debug=True, **DEFAULT_CONFIG)
     csvobj.extract()

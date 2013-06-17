@@ -56,28 +56,23 @@ class BaseCube(HTTPClient):
         else:
             return value
 
-    def last_known_warehouse_mtime(self, field=None, value=None):
+    def last_mtime(self, cube=None, field=None):
         '''get the last known warehouse object mtime'''
+        if not cube:
+            cube = self.name
         start = None
         if field:
-            # we need to check the etl_activity collection
-            if value:
-                spec = {'cube': self.name, field: value}
-                raise NotImplementedError()
-                # FIXME: THIS IS BORKED
-                doc = self.c_etl_activity.find_one(spec, ['%s.mtime' % field])
-            else:
-                spec = {'cube': self.name, field: {'$exists': True}}
-                doc = self.find_one(spec, ['%s._mtime' % field])
+            q = 'cube == "%s" and %s == exists(True)' % (cube, field)
+            doc = self.find(q, fields=['%s._mtime' % field],
+                            one=True, raw=True)
             if doc:
                 start = doc[field]['mtime']
         else:
             # get the most recent _mtime of all objects in the cube
-            mtime = '_mtime'
-            spec = {}
-            doc = self.find_one(spec, [mtime], sort=[(mtime, -1)])
+            doc = self.fetch(fields='_mtime', limit=1,
+                             sort=[('_mtime', -1)], raw=True)
             if doc:
-                start = doc[mtime]
+                start = doc['_mtime']
 
         logger.debug('... Last field mtime: %s' % start)
         return start

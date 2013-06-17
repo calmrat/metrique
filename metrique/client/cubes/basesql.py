@@ -15,7 +15,6 @@ from metrique.client.cubes.basecube import BaseCube
 
 from metrique.tools.constants import UTC
 from metrique.tools.constants import INT_TYPE, FLOAT_TYPE
-from metrique.tools.type_cast import type_cast
 
 DEFAULT_ROW_LIMIT = 100000
 MAX_WORKERS = 5
@@ -43,11 +42,6 @@ class BaseSql(BaseCube):
         # return the raw as token if no convert is defined by driver (self)
         convert = self.get_property('convert', field, None)
 
-        # if driver.field specifies a type for this field, use it
-        # otherwise, it'll be casted into a unicode string
-        token_type = self.get_property('type', field)
-        logger.debug('... Field Token Type: %s - %s' % (field, token_type))
-
         rows = list(self.proxy.fetchall(sql, row_limit, start))
         k = len(rows)
 
@@ -60,19 +54,16 @@ class BaseSql(BaseCube):
         _rows = []
 
         for row in rows:
-            _rows.append(self._get_row(row, field,
-                         convert, token_type))
+            _rows.append(self._get_row(row, field, convert))
 
         t1 = time.time()
         logger.info('... Rows prepared %i docs (%i/sec)' % (
             k, float(k) / (t1 - t0)))
         return _rows
 
-    def _get_row(self, row, field, convert, token_type):
-        # id 'column' is expected first
-        id = row[0]
-        # and raw token 'lookup' second
-        raw = row[1]
+    def _get_row(self, row, field, convert):
+        id = row[0]  # id 'column' is expected first
+        raw = row[1]  # and raw token 'lookup' second
         if type(raw) is date:
             # force convert dates into datetimes... otherwise mongo barfs
             raw = datetime.combine(raw, dt_time()).replace(tzinfo=UTC)
@@ -82,7 +73,6 @@ class BaseSql(BaseCube):
             tokens = convert(self, raw)
         else:
             tokens = raw
-        tokens = type_cast(tokens, token_type)
 
         return {'id': id, 'field': field, 'tokens': tokens}
 
@@ -106,19 +96,31 @@ class BaseSql(BaseCube):
             k, float(k) / (t1 - t0)))
         return grouped
 
-    def extract(self, force=False, id_delta=None):
-        items = []
-        with ThreadPoolExecutor(MAX_WORKERS) as executor:
-            future_builds = []
-            #for field in self.fields:
-            for field in ('uid', 'email'):
-                future_builds.append(
-                    executor.submit(self._extract, field, force, id_delta))
-            items = []
-            for future in as_completed(future_builds):
-                #objects = dict(x.items() + y.items())
-                items.append(future.result())
-        return self.save_objects(items)
+    def extract(self, force=False, id_delta=None, workers=MAX_WORKERS, fields='__all__'):
+        saved = 0
+        fields = self.parse_fields(fields)
+        if self.baseconfig.async:
+            with ThreadPoolExecutor(workers) as executor:
+                fmap = []
+                future_builds = []
+                for field in fields:
+                    fmap.append(field)
+                    future_builds.append(executor.submit(
+                        self._extract, field, force, id_delta))
+                for k, future in enumerate(as_completed(future_builds)):
+                    field = fmap[k]
+                    try:
+                        objects = future.result()
+                    except Exception as e:
+                        logger.error("ERROR (%s): %s" % (field, e))
+                    else:
+                        saved += self.save_objects(objects, update=True)
+        else:
+            for field in self.fields:
+                if fields and field not in fields:
+                    continue
+                objects = self._extract(field, force, id_delta)
+                saved += self.save_objects(objects, update=True)
 
     def _extract(self, field, force=False, id_delta=None):
         '''
@@ -209,8 +211,7 @@ class BaseSql(BaseCube):
                 if mtime_columns:
                     if isinstance(mtime_columns, basestring):
                         mtime_columns = [mtime_columns]
-                    last_update_dt = self.last_known_warehouse_mtime(
-                        self.name, field)
+                    last_update_dt = self.last_mtime(field=field)
                     if last_update_dt:
                         last_update_dt = last_update_dt.strftime(
                             '%Y-%m-%d %H:%M:%S %z')
@@ -251,9 +252,7 @@ class BaseSql(BaseCube):
             rows = self._sql_fetchall(sql, start, field, row_limit)
             k = len(rows)
             if k > 0:
-                logger.debug('... ... Starting Processer')
                 grouped = self.grouper(rows)
-                logger.debug('... ... Saving docs now!')
                 t0 = time.time()
                 _id_k = 0
                 for _id in grouped.iterkeys():
@@ -271,10 +270,9 @@ class BaseSql(BaseCube):
                                     "(set container=True?)" % (tokens))
                             else:
                                 tokens = tokens[0]
-
                         objects.append({'_id': _id, field: tokens})
                 t1 = time.time()
-                logger.info('... ... Saved %i docs (%i/sec)' % (
+                logger.info('... ... Processed %i docs (%i/sec)' % (
                     k, k / (t1 - t0)))
             else:
                 logger.debug('... ... No rows; nothing to process')

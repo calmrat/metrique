@@ -49,7 +49,8 @@ def _get_date_pql_string(date):
 
 
 @job_save('query find')
-def find(cube, query, fields=None, date=None, most_recent=True, sort=None, one=False):
+def find(cube, query, fields=None, date=None,
+         most_recent=True, sort=None, one=False):
     logger.debug('Running Find (%s)' % cube)
     if not sort:
         sort = [('_id', 1)]
@@ -69,7 +70,6 @@ def find(cube, query, fields=None, date=None, most_recent=True, sort=None, one=F
         query = query + ' and ' + _get_date_pql_string(date)
     pql_parser = pql.SchemaFreeParser()
     try:
-        # FIXME: make it a schema aware parser
         spec = pql_parser.parse(query)
     except Exception as e:
         raise ValueError("Invalid Query (%s)" % str(e))
@@ -85,21 +85,21 @@ def find(cube, query, fields=None, date=None, most_recent=True, sort=None, one=F
         project_d.update(dict(_id='$id', _start='$start', _end='$end'))
         if most_recent:
             pipeline = [{'$match': spec},
-                                    {'$sort': {'start': -1}},
-                                    {'$group': {'_id': '$id',
-                                                'fields': {'$first':
-                                                           '$fields'},
-                                                'start': {'$first': '$start'},
-                                                'end':  {'$first': '$end'},
-                                                'id': {'$first': '$id'}}},
-                                    {'$project': project_d},
-                                    {'$sort': sort}]
+                        {'$sort': {'start': -1}},
+                        {'$group': {'_id': '$id',
+                                    'fields': {'$first':
+                                               '$fields'},
+                                    'start': {'$first': '$start'},
+                                    'end':  {'$first': '$end'},
+                                    'id': {'$first': '$id'}}},
+                        {'$project': project_d},
+                        {'$sort': sort}]
             if one:
                 pipeline.append({'$limit': 1})
         else:
             pipeline = [{'$match': spec},
-                                    {'$project': project_d},
-                                    {'$sort': sort}]
+                        {'$project': project_d},
+                        {'$sort': sort}]
             if one:
                 pipeline.append({'$limit': 1})
         docs = _cube.aggregate(pipeline)['result']
@@ -138,7 +138,6 @@ def fetch(cube, fields=None, sort=None, skip=0, limit=0, ids=None):
         assert len(sort[0]) == 2
     except (AssertionError, IndexError, TypeError):
         raise ValueError("Invalid sort value; try [('_id': -1)]")
-
 
     if ids:
         spec = {'_id': {'$in': parse_ids(ids)}}

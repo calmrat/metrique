@@ -19,7 +19,7 @@ class BaseJSON(BaseCube):
         return json.loads(json_str, strict=False)
 
     def loadi(self, json_iter):
-        return self._loads(''.join(json_iter))
+        return self.loads(''.join(json_iter))
 
     def get_value(self, item, key, default):
         try:

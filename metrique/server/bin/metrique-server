@@ -3,6 +3,7 @@
 # Author: "Chris Ward <cward@redhat.com>
 
 import os
+import time
 import signal
 import sys
 
@@ -90,6 +91,7 @@ if __name__ == '__main__':
     elif command == 'restart':
         if status(pid) == 0:
             stop(pid, pid_file)
+        time.sleep(1)
         code = start()
     else:
         if status(pid) == 0:

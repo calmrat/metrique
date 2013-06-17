@@ -40,7 +40,7 @@ class metrique(JSONConfig):
 
     @async.setter
     def async(self, bool_):
-        self._config['async'] = bool_
+        self.config['async'] = bool_
 
     @property
     def debug(self):
@@ -49,7 +49,7 @@ class metrique(JSONConfig):
     @debug.setter
     def debug(self, bool_):
         bool_ = self._json_bool(bool_)
-        logger = logging.getLogger()
+        logger = logging.getLogger('metrique')
         if bool_ is False:
             level = logging.WARN
         elif bool_ is True:
@@ -58,7 +58,7 @@ class metrique(JSONConfig):
         else:
             level = logging.INFO
         logger.setLevel(level)
-        self._config['debug'] = bool_
+        self.config['debug'] = bool_
 
     @property
     def admin_user(self):
@@ -70,7 +70,7 @@ class metrique(JSONConfig):
 
     @admin_password.setter
     def admin_password(self, value):
-        self._config['admin_password'] = value
+        self.config['admin_password'] = value
 
     @property
     def auth(self):
@@ -78,7 +78,7 @@ class metrique(JSONConfig):
 
     @auth.setter
     def auth(self, value):
-        self._config['auth'] = value
+        self.config['auth'] = value
 
     @property
     def http_host(self):
@@ -86,7 +86,7 @@ class metrique(JSONConfig):
 
     @http_host.setter
     def http_host(self, value):
-        self._config['http_host'] = value
+        self.config['http_host'] = value
 
     @property
     def http_port(self):
@@ -94,7 +94,7 @@ class metrique(JSONConfig):
 
     @http_port.setter
     def http_port(self, value):
-        self._config['http_port'] = value
+        self.config['http_port'] = value
 
     @property
     def ssl(self):
@@ -102,7 +102,7 @@ class metrique(JSONConfig):
 
     @ssl.setter
     def ssl(self, value):
-        self._config['ssl'] = value
+        self.config['ssl'] = value
 
     @property
     def ssl_certificate_key(self):
@@ -111,7 +111,7 @@ class metrique(JSONConfig):
 
     @ssl_certificate_key.setter
     def ssl_certificate_key(self, value):
-        self._config['ssl_certificate_key'] = value
+        self.config['ssl_certificate_key'] = value
 
     @property
     def ssl_certificate(self):
@@ -119,7 +119,7 @@ class metrique(JSONConfig):
 
     @ssl_certificate.setter
     def ssl_certificate(self, value):
-        self._config['ssl_certificate'] = value
+        self.config['ssl_certificate'] = value
 
     @property
     def logs_max_size(self):
@@ -144,15 +144,11 @@ class metrique(JSONConfig):
 
     @log_file_path.setter
     def log_file_path(self, value):
-        self._config['log_file_path'] = value
+        self.config['log_file_path'] = value
 
     @property
     def log_to_file(self):
         return self._default('log_to_file', 0)
-
-    @property
-    def log_to_mongo(self):
-        return self._default('log_to_mongo', 1)
 
 
 class mongodb(JSONConfig):
@@ -162,7 +158,7 @@ class mongodb(JSONConfig):
 
     @host.setter
     def host(self, value):
-        self._config['host'] = value
+        self.config['host'] = value
 
     @property
     def ssl(self):
@@ -170,7 +166,7 @@ class mongodb(JSONConfig):
 
     @host.setter
     def host(self, value):
-        self._config['host'] = value
+        self.config['host'] = value
 
     @property
     def admin_password(self):
@@ -178,7 +174,7 @@ class mongodb(JSONConfig):
 
     @admin_password.setter
     def admin_password(self, value):
-        self._config['admin_password'] = value
+        self.config['admin_password'] = value
 
     @property
     def data_password(self):
@@ -186,7 +182,7 @@ class mongodb(JSONConfig):
 
     @data_password.setter
     def data_password(self, value):
-        self._config['data_password'] = value
+        self.config['data_password'] = value
 
     @property
     def data_user(self):

@@ -15,7 +15,7 @@ from metrique.server.defaults import VALID_PERMISSIONS
 from metrique.server import query_api, etl_api, users_api
 
 from metrique.tools import hash_password
-from metrique.tools.json import Encoder
+from metrique.tools.json import Encoder, decoder
 
 
 # FIXME: create jobsave meta data here! rather rapping handler gets
@@ -100,7 +100,6 @@ def authenticate(handler, username, password, permissions):
     assert isinstance(permissions, basestring)
     VP = VALID_PERMISSIONS
     has_perms = VP.index(user['permissions']) >= VP.index(permissions)
-    print VP.index(user['permissions']), VP.index(permissions)
 
     if not user['password'] and has_perms:
         return True
@@ -164,7 +163,7 @@ class MetriqueInitialized(tornado.web.RequestHandler):
             return _arg
 
         try:
-            arg = json.loads(_arg)
+            arg = json.loads(_arg, object_hook=decoder)
         except Exception as e:
             raise ValueError("Invalid JSON content (%s): %s" % (type(_arg), e))
         return arg
@@ -323,7 +322,8 @@ class ETLSaveObjects(MetriqueInitialized):
     def post(self):
         cube = self.get_argument('cube')
         objects = self.get_argument('objects')
-        return etl_api.save_objects(cube=cube, objects=objects)
+        update = self.get_argument('update')
+        return etl_api.save_objects(cube=cube, objects=objects, update=update)
 
 
 class CubesHandler(MetriqueInitialized):

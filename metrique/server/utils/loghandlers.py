@@ -6,6 +6,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 from datetime import datetime
+from pymongo.errors import InvalidDocument
 import time
 
 from socket import gethostname
@@ -27,26 +28,28 @@ class MongoLogHandler(logging.Handler):
         # this saves just level and message
         # LogRecord class show what record vars
         # are available by default
-        self.r = r = record
+        r = record
 
         now = datetime.now(UTC)
         now_time = time.mktime(now.timetuple())
 
-        self.dbrecord = {"name": r.name,
-                         "when": now,
-                         "time": now_time,
-                         "level": r.levelname,
-                         "message": r.msg,
-                         "args": unicode(r.args),
-                         "hostname": HOSTNAME,
-                         "exc_info": unicode(r.exc_info),
-                         "exc_text": unicode(r.exc_text),
-                         "lineno": r.lineno,
-                         "funcName": r.funcName,
-                         "created": r.created,
-                         "threadName": r.threadName,
-                         "processName": r.processName}
+        dbrecord = {"name": r.name,
+                    "when": now,
+                    "time": now_time,
+                    "level": r.levelname,
+                    "message": r.msg,
+                    "args": unicode(r.args),
+                    "hostname": HOSTNAME,
+                    "exc_info": unicode(r.exc_info),
+                    "exc_text": unicode(r.exc_text),
+                    "lineno": r.lineno,
+                    "funcName": r.funcName,
+                    "created": r.created,
+                    "threadName": r.threadName,
+                    "processName": r.processName}
 
-        self._collection.insert(self.dbrecord)
-        key_1 = [('when', -1)]
-        self._collection.ensure_index(key_1, unique=False)
+        try:
+            self._collection.insert(dbrecord)
+        except InvalidDocument:
+            dbrecord['message'] = '(__MESSAGE_SLICE__) %s' % dbrecord['message'][:1000]
+            self._collection.insert(dbrecord)

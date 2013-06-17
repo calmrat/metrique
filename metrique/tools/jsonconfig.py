@@ -38,9 +38,9 @@ class JSONConfig(object):
         self._dir_path = config_dir
 
         if default and isinstance(default, dict):
-            self._config = default
+            self.config = default
         else:
-            self._config = {}
+            self.config = {}
 
         self._set_path()
         self._load()
@@ -68,7 +68,7 @@ class JSONConfig(object):
         ''' load config data from disk '''
         try:
             with open(self.path, 'r') as config_file:
-                self._config = json.load(config_file)
+                self.config = json.load(config_file)
         except IOError as e:
             logger.debug('(%s): Creating empty config' % e)
             self.save()
@@ -76,40 +76,40 @@ class JSONConfig(object):
     def save(self):
         ''' save config data to disk '''
         with open(self.path, 'w') as config_file:
-            config_string = json.dumps(self._config, indent=2)
+            config_string = json.dumps(self.config, indent=2)
             config_file.write(config_string)
 
     def __getitem__(self, key):
-        return copy(self._config[key])
+        return copy(self.config[key])
 
     def setdefault(self, key, value):
-        self._config.setdefault(key, value)
+        self.config.setdefault(key, value)
 
     def __setitem__(self, key, value):
-        self._config[key] = value
+        self.config[key] = value
         if self._autosave:
             self.save()
 
     def __delitem__(self, key):
-        del self._config[key]
+        del self.config[key]
 
     def __repr__(self):
-        return repr(self._config)
+        return repr(self.config)
 
     def __str__(self):
-        return str(self._config)
+        return str(self.config)
 
     def setup_basic(self, option, prompter):
         '''
             Helper-Method for getting user input with prompt text
             and saving the result
         '''
-        x_opt = self._config.get(option)
+        x_opt = self.config.get(option)
         print '\n(Press ENTER to use current: %s)' % x_opt
         n_opt = prompter()
         if n_opt:
-            self._config[option] = n_opt
-            logger.debug('Updated Config: \n%s' % self._config)
+            self.config[option] = n_opt
+            logger.debug('Updated Config: \n%s' % self.config)
         return n_opt
 
     def _property_default(self, option, default):
@@ -123,14 +123,14 @@ class JSONConfig(object):
     def _default(self, option, default=None, required=False):
         ''' Helper-Method for setting config argument, with default '''
         try:
-            self._config[option]
+            self.config[option]
         except KeyError:
             if default is None and required:
                 raise ValueError(
                     "%s attribute is not set (required)" % option)
             else:
-                self._config[option] = default
-        return self._config[option]
+                self.config[option] = default
+        return self.config[option]
 
     @staticmethod
     def yes_no_prompt(question, default='yes'):

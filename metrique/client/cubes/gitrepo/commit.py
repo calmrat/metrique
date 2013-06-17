@@ -2,9 +2,9 @@
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 # Author: "Chris Ward <cward@redhat.com>
 
-from datetime import datetime
 import logging
 logger = logging.getLogger(__name__)
+from datetime import datetime
 import re
 
 from metrique.client.cubes.basegitobject import BaseGitObject
@@ -163,3 +163,8 @@ class Commit(BaseGitObject):
                 v = convert(v)
 
         return obj
+
+
+if __name__ == '__main__':
+    csvobj = Commit(debug=True, repos=DEFAULT_CONFIG)
+    csvobj.extract()

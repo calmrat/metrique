@@ -77,7 +77,7 @@ class Config(JSONConfig):
         ''' Set and save in config a metrique api port to use '''
         if not isinstance(value, basestring):
             raise TypeError("api_port must be string")
-        self._config['api_port'] = value
+        self.config['api_port'] = value
 
     @property
     def api_host(self):
@@ -94,7 +94,7 @@ class Config(JSONConfig):
         '''
         if not isinstance(value, basestring):
             raise TypeError("api_host must be string")
-        self._config['api_host'] = value
+        self.config['api_host'] = value
 
     @property
     def api_username(self):
@@ -104,7 +104,7 @@ class Config(JSONConfig):
     @api_username.setter
     def api_username(self, value):
         ''' Set and save the username to connect to metrique api with '''
-        self._config['api_username'] = value
+        self.config['api_username'] = value
 
     @property
     def api_password(self):
@@ -114,7 +114,7 @@ class Config(JSONConfig):
     @api_password.setter
     def api_password(self, value):
         ''' Set and save the password to connect to metrique api with '''
-        self._config['api_password'] = value
+        self.config['api_password'] = value
 
     @property
     def async(self):
@@ -123,7 +123,7 @@ class Config(JSONConfig):
 
     @async.setter
     def async(self, value):
-        self._config['async'] = value
+        self.config['async'] = value
 
     @property
     def debug(self):
@@ -136,12 +136,14 @@ class Config(JSONConfig):
             False=Warn, True=Debug, else Info
         '''
         logging.basicConfig()
-        logger = logging.getLogger()
+        logger = logging.getLogger('metrique')
         if bool_ is False:
             logger.setLevel(logging.WARN)
+            logger.debug('DEBUG: WARN')
         elif bool_ is True:
             logger.setLevel(logging.DEBUG)
-            logger.debug('DEBUG: ON')
+            logger.debug('DEBUG: DEBUG')
         else:
             logging.disable(logging.INFO)
+            logger.debug('DEBUG: INFO')
         self._debug = bool_

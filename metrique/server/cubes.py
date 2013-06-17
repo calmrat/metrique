@@ -48,11 +48,11 @@ def get_cube_fields(cube):
 
 
 @memo
-def get_fields(cube, fields):
+def get_fields(cube, fields=None):
     ''' return back a list of fields found in documents of a given cube '''
-    cube_fields = set(get_cube_fields(cube))
     if not fields:
         return []
+    cube_fields = set(get_cube_fields(cube))
     if fields == '__all__':
         return cube_fields
     elif fields and isinstance(fields, basestring):

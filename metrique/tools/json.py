@@ -3,10 +3,11 @@
 # Author: "Chris Ward <cward@redhat.com>
 
 import datetime
+from dateutil.parser import parse as dt_parse
 import simplejson as json
 import re
 
-from metrique.tools.constants import RE_TYPE
+from metrique.tools.constants import RE_TYPE, RE_DATE_DATETIME
 
 SRE_PATTERN_ID = '_sre.SRE_Pattern'
 HAS_SRE_OBJ = re.compile('(<%s (.+)>)' % SRE_PATTERN_ID)
@@ -32,3 +33,13 @@ class Encoder(json.JSONEncoder):
         else:
             encoded = unicode(obj)
         return encoded
+
+
+def decoder(dct):
+    for k, v in dct.items():
+        if isinstance(v, basestring) and RE_DATE_DATETIME.match(v):
+            try:
+                dct[k] = dt_parse(v)
+            except:
+                pass
+    return dct

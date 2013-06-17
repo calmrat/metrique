@@ -11,7 +11,6 @@ import os
 
 from metrique.server.baseserver import BaseServer
 from metrique.server.defaults import BACKUP_COUNT, MAX_BYTES
-from metrique.server.utils.loghandlers import MongoLogHandler
 
 # FIXME: add as metrique_config property
 # NOTE: this means the tornado server will only be able to
@@ -59,10 +58,6 @@ class MetriqueServer(BaseServer):
             pass
 
     def start(self):
-        if self.metrique_config.log_to_mongo:
-            hdlr = MongoLogHandler(self.mongodb_config.c_logs)
-            logger.addHandler(hdlr)
-
         if self.metrique_config.log_to_file:
             hdlr = logging.handlers.RotatingFileHandler(
                 self.log_file_path, maxBytes=MAX_BYTES,

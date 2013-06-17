@@ -10,7 +10,7 @@ from metrique.tools.sql.teiid import TEIID
 
 DEFAULT_CONFIG = {
     "host":         "",
-    "port":         0,
+    "port":         "",
     "vdb":          "",
     "username":     "",
     "password":     "",

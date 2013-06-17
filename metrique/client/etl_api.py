@@ -6,6 +6,11 @@
 
 import logging
 logger = logging.getLogger(__name__)
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from time import time
+
+DEFAULT_BATCH = 100000
+MAX_WORKERS = 5
 
 CMD = 'admin/etl'
 
@@ -66,7 +71,8 @@ def activity_import(self, ids=None):
     return self._get(CMD, 'activityimport', cube=self.name, ids=ids)
 
 
-def save_objects(self, objects):
+def save_objects(self, objects, update=False,
+                 batch=DEFAULT_BATCH, workers=MAX_WORKERS):
     '''
     Save a list of objects the given metrique.cube
 
@@ -76,4 +82,34 @@ def save_objects(self, objects):
         Name of the cube you want to query
     objs : list of dicts with 1+ field:value and _id defined
     '''
-    return self._post(CMD, 'saveobjects', cube=self.name, objects=objects)
+    olen = len(objects)
+    t1 = time()
+    if olen < batch:
+        saved = self._post(CMD, 'saveobjects', cube=self.name,
+                           update=update,
+                           objects=objects)
+    else:
+        saved = 0
+        k = 0
+        _k = batch
+        with ThreadPoolExecutor(workers) as executor:
+            pool = []
+            while True:
+                pool.append(
+                    executor.submit(
+                        self._post, CMD, 'saveobjects', cube=self.name,
+                        update=update, objects=objects[k:_k]))
+                k = _k
+                _k += batch
+                if _k > olen:
+                    break
+
+            pool.append(
+                executor.submit(
+                    self._post, CMD, 'saveobjects', cube=self.name,
+                    update=update, objects=objects[k:]))
+
+            for future in as_completed(pool):
+                saved += future.result()
+    logger.debug("... Saved %s docs in ~%is" % (olen, time()-t1))
+    return saved

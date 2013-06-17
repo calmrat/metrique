@@ -11,6 +11,7 @@ import simplejson as json
 from metrique.client.config import Config
 from metrique.client import query_api, etl_api, users_api
 
+from metrique.tools import csv2list
 from metrique.tools.json import Encoder
 
 CONFIG_FILE = 'http_api'
@@ -37,20 +38,11 @@ class HTTPClient(object):
     add_user = users_api.add
 
     def __init__(self, host=None, username=None, password=None,
-<<<<<<< HEAD
-                 async=True, **kwargs):
-=======
-                 async=True, force=False, **kwargs):
->>>>>>> 04b24f78b71c8c8acf5c7b3777ff96991a44d8c5
+                 async=True, force=False, debug=False, **kwargs):
         base_config_file = kwargs.get('config_file', CONFIG_FILE)
         base_config_dir = kwargs.get('config_dir')
         self.baseconfig = Config(base_config_file, base_config_dir, force=force)
 
-        debug = kwargs.get('debug')
-        self.baseconfig.debug = debug
-        self.baseconfig.async = async
-
-        debug = kwargs.get('debug')
         self.baseconfig.debug = debug
         self.baseconfig.async = async
 
@@ -72,40 +64,41 @@ class HTTPClient(object):
         logger.debug("URL: %s" % _url)
         return _url
 
-    def _request_caller(self, proto, *args, **kwargs):
+    def _get(self, *args, **kwargs):
         kwargs_json = self._kwargs_json(**kwargs)
         _url = self._args_url(*args)
 
+        username = self.baseconfig.api_username
+        password = self.baseconfig.api_password
+
         try:
-            _response = proto(_url, params=kwargs_json, verify=False)
+            _response = rq.get(_url, params=kwargs_json, auth=(username, password), verify=False)
         except rq.exceptions.ConnectionError:
             raise rq.exceptions.ConnectionError(
                 'Failed to connect (%s). Try https://?' % _url)
-        if _response.status_code == 401:
-            # authentication request
-            user = self.baseconfig.api_username
-            password = self.baseconfig.api_password
-            _response = proto(_url, params=kwargs_json,
-                              verify=False,
-                              auth=rq.auth.HTTPBasicAuth(
-                                  user, password))
         _response.raise_for_status()
         # responses are always expected to be json encoded
         return json.loads(_response.text)
-
-    def _get(self, *args, **kwargs):
-        '''
-            Arguments are expected to be json encoded!
-            verify = False in requests.get() skips SSL CA validation
-        '''
-        return self._request_caller(rq.get, *args, **kwargs)
 
     def _post(self, *args, **kwargs):
         '''
             Arguments are expected to be json encoded!
             verify = False in requests.get() skips SSL CA validation
         '''
-        return self._request_caller(rq.post, *args, **kwargs)
+        kwargs_json = self._kwargs_json(**kwargs)
+        _url = self._args_url(*args)
+
+        username = self.baseconfig.api_username
+        password = self.baseconfig.api_password
+
+        try:
+            _response = rq.post(_url, data=kwargs_json, auth=(username, password), verify=False)
+        except rq.exceptions.ConnectionError:
+            raise rq.exceptions.ConnectionError(
+                'Failed to connect (%s). Try https://?' % _url)
+        _response.raise_for_status()
+        # responses are always expected to be json encoded
+        return json.loads(_response.text)
 
     def ping(self):
         return self._get('ping')
@@ -128,3 +121,16 @@ class HTTPClient(object):
         if not cube:
             cube = self.cube
         return self._get('cubes', cube=cube, details=details)
+
+    def parse_fields(self, fields):
+        if not fields:
+            return []
+        elif fields == '__all__':
+            return self.fields
+
+        fields = set(csv2list(fields))
+        if fields <= set(self.fields):
+            return fields
+        else:
+            raise ValueError(
+                "Invalid field in set: %s" % set(self.fields) - fields)
