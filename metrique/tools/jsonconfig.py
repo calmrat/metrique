@@ -12,6 +12,11 @@ import simplejson as json
 from metrique.tools.defaults import JSON_EXT, CONFIG_DIR
 
 
+def empty_dict(fname):
+    with open(fname, 'a') as f:
+        f.write('{}')
+
+
 class JSONConfig(object):
     '''
         Config object using json as its underlying data store
@@ -51,6 +56,7 @@ class JSONConfig(object):
             if not os.path.exists(_dir_path):
                 if _dir_path == os.path.expanduser(CONFIG_DIR):
                     os.makedirs(_dir_path)
+            empty_dict(_config_path)
 
         if not os.path.exists(_config_path):
             raise IOError(

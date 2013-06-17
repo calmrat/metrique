@@ -9,12 +9,12 @@ from metrique.client.cubes.basesql import BaseSql
 from metrique.tools.sql.teiid import TEIID
 
 DEFAULT_CONFIG = {
-    "host":         "vdb.engineering.redhat.com",
-    "port":         35432,
-    "vdb":          "EngVDBF",
-    "username":     "teiid",
-    "password":     "teiid",
-    "row_limit":    1000000
+    "host":         "",
+    "port":         0,
+    "vdb":          "",
+    "username":     "",
+    "password":     "",
+    "row_limit":    300000
 }
 
 
