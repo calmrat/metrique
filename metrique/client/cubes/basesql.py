@@ -97,7 +97,7 @@ class BaseSql(BaseCube):
         return grouped
 
     def extract(self, fields='__all__', force=False, id_delta=None,
-                workers=MAX_WORKERS):
+                last_update=None, workers=MAX_WORKERS):
         saved = 0
         fields = self.parse_fields(fields)
         if self.config.async:
@@ -105,7 +105,7 @@ class BaseSql(BaseCube):
                 future_builds = []
                 for field in fields:
                     future_builds.append(executor.submit(
-                        self._extract, field, force, id_delta))
+                        self._extract, field, force, id_delta, last_update))
                 for future in as_completed(future_builds):
                     try:
                         objects = future.result()
@@ -117,10 +117,10 @@ class BaseSql(BaseCube):
             for field in self.fields:
                 if fields and field not in fields:
                     continue
-                objects = self._extract(field, force, id_delta)
+                objects = self._extract(field, force, id_delta, last_update)
                 saved += self.save_objects(objects, update=True)
 
-    def _extract(self, field, force=False, id_delta=None):
+    def _extract(self, field, force=False, id_delta=None, last_update=None):
         '''
         SQL import method
         '''
@@ -128,6 +128,9 @@ class BaseSql(BaseCube):
             if force:
                 raise RuntimeError(
                     "force and id_delta can't be used simultaneously")
+
+        if not (hasattr(last_update, 'tzinfo') and last_update.tzinfo):
+            raise TypeError('last_update dates must be timezone aware')
 
         db = self.get_property('db', field)
         table = self.get_property('table', field)
@@ -208,14 +211,13 @@ class BaseSql(BaseCube):
                 if mtime_columns:
                     if isinstance(mtime_columns, basestring):
                         mtime_columns = [mtime_columns]
-                    last_update_dt = self.last_mtime(field=field)
-                    if last_update_dt:
-                        last_update_dt = last_update_dt.strftime(
+                    if last_update:
+                        last_update = last_update.strftime(
                             '%Y-%m-%d %H:%M:%S %z')
                         dt_format = "yyyy-MM-dd HH:mm:ss z"
                         for _column in mtime_columns:
                             _sql = "%s > parseTimestamp('%s', '%s')" % (
-                                _column, last_update_dt, dt_format)
+                                _column, last_update, dt_format)
                             delta_filter.append(_sql)
 
         if delta_filter:

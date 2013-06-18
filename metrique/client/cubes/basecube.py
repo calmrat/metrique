@@ -56,25 +56,14 @@ class BaseCube(HTTPClient):
         else:
             return value
 
-    def last_mtime(self, cube=None, field=None):
+    def last_mtime(self, cube=None):
         '''get the last known warehouse object mtime'''
-        if not cube:
-            cube = self.name
         start = None
-        if field:
-            q = 'cube == "%s" and %s == exists(True)' % (cube, field)
-            doc = self.find(q, fields=['%s._mtime' % field],
-                            one=True, raw=True)
-            if doc:
-                start = doc[field]['mtime']
-        else:
-            # get the most recent _mtime of all objects in the cube
-            doc = self.fetch(fields='_mtime', limit=1,
-                             sort=[('_mtime', -1)], raw=True)
-            if doc:
-                start = doc['_mtime']
-
-        logger.debug('... Last field mtime: %s' % start)
+        q = '%s == exists(True)' % field
+        doc = self.find(q, fields='_mtime', one=True, raw=True)
+        if doc:
+            start = doc['_mtime']
+        logger.debug('... Last object mtime: %s' % start)
         return start
 
     def get_last_id(self, field=None):
