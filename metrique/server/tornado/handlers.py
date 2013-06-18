@@ -326,6 +326,18 @@ class ETLSaveObjects(MetriqueInitialized):
         return etl_api.save_objects(cube=cube, objects=objects, update=update)
 
 
+class ETLDrop(MetriqueInitialized):
+    '''
+        RequestsHandler for droping given
+        cube from warehouse
+    '''
+    @auth('rw')
+    @async
+    def delete(self):
+        cube = self.get_argument('cube')
+        return etl_api.drop(cube=cube)
+
+
 class CubesHandler(MetriqueInitialized):
     '''
         RequestHandler for querying about

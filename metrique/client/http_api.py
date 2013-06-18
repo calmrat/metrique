@@ -36,6 +36,7 @@ class HTTPClient(object):
     snapshot = etl_api.snapshot
     activity_import = etl_api.activity_import
     save_objects = etl_api.save_objects
+    drop = etl_api.drop
     add_user = users_api.add
 
     def __init__(self, host=None, username=None, password=None,
@@ -77,7 +78,8 @@ class HTTPClient(object):
         password = self.config.api_password
 
         try:
-            _response = rq.get(_url, params=kwargs_json, auth=(username, password), verify=False)
+            _response = rq.get(_url, params=kwargs_json,
+                               auth=(username, password), verify=False)
         except rq.exceptions.ConnectionError:
             raise rq.exceptions.ConnectionError(
                 'Failed to connect (%s). Try https://?' % _url)
@@ -97,7 +99,25 @@ class HTTPClient(object):
         password = self.config.api_password
 
         try:
-            _response = rq.post(_url, data=kwargs_json, auth=(username, password), verify=False)
+            _response = rq.post(_url, data=kwargs_json,
+                                auth=(username, password), verify=False)
+        except rq.exceptions.ConnectionError:
+            raise rq.exceptions.ConnectionError(
+                'Failed to connect (%s). Try https://?' % _url)
+        _response.raise_for_status()
+        # responses are always expected to be json encoded
+        return json.loads(_response.text)
+
+    def _delete(self, *args, **kwargs):
+        kwargs_json = self._kwargs_json(**kwargs)
+        _url = self._args_url(*args)
+
+        username = self.config.api_username
+        password = self.config.api_password
+
+        try:
+            _response = rq.delete(_url, params=kwargs_json,
+                                  auth=(username, password), verify=False)
         except rq.exceptions.ConnectionError:
             raise rq.exceptions.ConnectionError(
                 'Failed to connect (%s). Try https://?' % _url)
