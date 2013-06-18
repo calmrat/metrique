@@ -72,10 +72,10 @@ def _snapshot(cube, ids):
     t = get_cube(cube, admin=True, timeline=True)
 
     docs = w.find({'_id': {'$in': ids}}, sort=[('_id', 1)])
-    time_docs = t.find({'current': True, 'id': {'$in': ids}},
-                       sort=[('id', 1)])
+    time_docs = t.find({'_end': None, '_oid': {'$in': ids}},
+                       sort=[('_oid', 1)])
     time_docs_iter = iter(time_docs)
-    tid = -1
+    _oid = -1
 
     batch_insert = []
     for doc in docs:
@@ -84,30 +84,29 @@ def _snapshot(cube, ids):
 
         # time_doc will contain first doc that has id >= _id,
         # it might be a document where id > _id
-        while tid < _id:
+        while _oid < _id:
             try:
                 time_doc = time_docs_iter.next()
-                tid = time_doc['id']
+                _oid = time_doc['_oid']
             except StopIteration:
                 break
 
         store_new_doc = False
-        if _id == tid:
-            if doc != time_doc['fields']:
+        if _id == _oid:
+            time_doc_items = time_doc.items()
+            if any(item not in time_doc_items for item in doc.iteritems()):
                 store_new_doc = True
                 spec_now = {'_id': time_doc['_id']}
-                update_now = {'$set': {'current': False},
-                              '$set': {'end': _mtime}}
+                update_now = {'$set': {'_end': _mtime}}
                 t.update(spec_now, update_now, upsert=True)
         else:
             store_new_doc = True
 
         if store_new_doc:
-            new_doc = {'fields': doc,
-                       'id': _id,
-                       'start': _mtime,
-                       'end': None,
-                       'current': True}
+            new_doc = doc.copy()
+            new_doc.update({'_oid': _id,
+                            '_start': _mtime,
+                            '_end': None})
             batch_insert.append(new_doc)
         if len(batch_insert) > 1000:
             t.insert(batch_insert)
@@ -123,7 +122,7 @@ def snapshot(cube, ids=None):
 
     t = get_cube(cube, admin=True, timeline=True)
     logger.debug('... Timeline Index: Start')
-    t.ensure_index([('current', 1), ('id', 1)])
+    t.ensure_index([('_end', 1), ('_oid', 1)])
     logger.debug('... Timeline Index: Done')
 
     if ids is None:
