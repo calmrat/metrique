@@ -6,14 +6,12 @@ import logging
 logger = logging.getLogger(__name__)
 
 from metrique.server.config import mongodb
-from metrique.tools.decorators import memo
 
 from metrique.server.defaults import MONGODB_CONF
 
 mongodb_config = mongodb(MONGODB_CONF)
 
 
-@memo
 def get_cube(cube, admin=True, timeline=False):
     ''' return back a mongodb connection to give cube collection '''
     if timeline:
@@ -28,19 +26,11 @@ def get_cube(cube, admin=True, timeline=False):
             return mongodb_config.db_warehouse_data.db[cube]
 
 
-@memo
-def get_cube_fields(cube):
-    db = get_cube(cube)
-    result = db.find_one(sort=[('_id', -1)], limit=1)
-    return sorted(result)
-
-
-@memo
 def get_fields(cube, fields=None):
     ''' return back a list of fields found in documents of a given cube '''
     if not fields:
         return []
-    cube_fields = get_cube_fields(cube)
+    cube_fields = list_cube_fields(cube)
     if fields == '__all__':
         return cube_fields
     elif fields and isinstance(fields, basestring):
@@ -51,8 +41,13 @@ def get_fields(cube, fields=None):
             raise ValueError("Invalid field in set: %s" % fields)
 
 
-@memo
-def get_cubes(username=None):
+def list_cube_fields(cube):
+    db = get_cube(cube)
+    result = db.find_one(sort=[('_id', -1)], limit=1)
+    return sorted(result)
+
+
+def list_cubes():
     '''
         Get a list of cubes server exports
         (optionally) filter out cubes user can't 'r' access

@@ -337,11 +337,8 @@ class CubesHandler(MetriqueInitialized):
         cube = self.get_argument('cube')
         if cube is None:
             # return a list of cubes
-            username = None
-            # FIXME: pass in a username!
-            return self.proxy.get_cubes(username)
+            return self.proxy.get_cubes()
         else:
-            # FIXME: pass in a username!
             # return a list of fields in a cube
             result = self.proxy.get_fields(cube)
             return result

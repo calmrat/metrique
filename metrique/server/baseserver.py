@@ -9,7 +9,7 @@ logger.propagate = False
 from datetime import datetime
 
 from metrique.server.config import metrique, mongodb
-from metrique.server.cubes import get_cubes, get_fields
+from metrique.server.cubes import list_cubes, list_cube_fields
 from metrique.server.defaults import METRIQUE_CONF, MONGODB_CONF
 from metrique.tools.decorators import memo
 
@@ -35,11 +35,11 @@ class BaseServer(object):
         return 'pong'
 
     @memo
-    def get_cubes(self, username=None):
+    def list_cubes(self):
         # arg = username... return only cubes with 'r' access
-        return get_cubes(username)
+        return list_cubes()
 
     @memo
-    def get_fields(self, cube):
+    def list_cube_fields(self, cube):
         # arg = username... return only cubes with 'r' access
-        return get_fields(cube)
+        return list_cube_fields(cube)

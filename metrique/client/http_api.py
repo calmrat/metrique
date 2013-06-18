@@ -109,23 +109,28 @@ class HTTPClient(object):
         return self._get('ping')
 
     @property
-    def get_cubes(self):
+    @memo
+    def list_cubes(self):
         ''' List all valid cubes for a given metrique instance '''
         return self._get('cubes')
 
-    def get_fields(self, cube=None, details=False):
+    @memo
+    def list_cube_fields(self, cube=None, details=False):
         ''' List all valid fields for a given cube
 
         Paremeters
         ----------
         cube : str
             Name of the cube you want to query
-        details : bool
-            return back dict of additional cube.field metadata
         '''
-        if not cube:
-            cube = self.cube
-        return self._get('cubes', cube=cube, details=details)
+        try:
+            fields = sorted(
+                [f for f, v in self.fields.items() if v.get('enabled', True)])
+        except AttributeError:
+            if not cube:
+                cube = self.name
+            fields = self._get('cubes', cube=cube)
+        return fields
 
     @memo
     def parse_fields(self, fields):

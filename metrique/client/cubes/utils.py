@@ -5,7 +5,6 @@
 import os
 import sys
 
-from metrique.tools.decorators import memo
 from metrique.tools.defaults import CUBES_PATH
 
 DEFAULT_MODULE = 'metrique.client.cubes'
@@ -19,7 +18,6 @@ def set_cube_path(path=None):
     return path
 
 
-@memo
 def get_cube(module, cube, path=None):
     assert set_cube_path(path)
     try:
