@@ -3,6 +3,7 @@
 # Author: "Chris Ward <cward@redhat.com>
 
 import logging
+logging.basicConfig()
 logger = logging.getLogger(__name__)
 
 from concurrent.futures import ThreadPoolExecutor
