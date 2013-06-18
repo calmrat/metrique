@@ -6,7 +6,6 @@ import logging
 logger = logging.getLogger(__name__)
 
 import pql
-import re
 
 from metrique.server.cubes import get_fields, get_cube
 from metrique.server.job import job_save
@@ -34,8 +33,8 @@ def count(cube, query):
 
 
 def _get_date_pql_string(date):
-    before = lambda d: 'start <= date("%s")' % d
-    after = lambda d: '(end >= date("%s") or end == None)' % d
+    before = lambda d: '_start <= date("%s")' % d
+    after = lambda d: '(_end >= date("%s") or _end == None)' % d
     split = date.split('~')
     logger.warn(split)
     if len(split) == 1:
@@ -60,14 +59,14 @@ def find(cube, query, fields=None, date=None,
     except (AssertionError, IndexError, TypeError):
         raise ValueError("Invalid sort value; try [('_id': -1)]")
 
+    logger.debug('... fields: %s' % fields)
+    fields = get_fields(cube, fields)
+    logger.debug('... matched fields (%s)' % fields)
+
     if date is not None:
-        # we will be doing a timeline query so we need to rename the fields
-        # WARNING: might not work if some field is a substring of other field
-        all_fields = get_fields(cube, '__all__')
-        for f in all_fields:
-            query = re.sub(f, 'fields.%s' % f, query)
-        # add the date constraint
         query = query + ' and ' + _get_date_pql_string(date)
+        fields += ['_start', '_end', '_oid']
+
     pql_parser = pql.SchemaFreeParser()
     try:
         spec = pql_parser.parse(query)
@@ -78,38 +77,12 @@ def find(cube, query, fields=None, date=None,
 
     logger.debug('Query: %s' % spec)
 
-    fields = get_fields(cube, fields)
-
-    if date is not None:
-        project_d = dict([(f, '$fields.%s' % f) for f in fields])
-        project_d.update(dict(_id='$id', _start='$start', _end='$end'))
-        if most_recent:
-            pipeline = [{'$match': spec},
-                        {'$sort': {'start': -1}},
-                        {'$group': {'_id': '$id',
-                                    'fields': {'$first':
-                                               '$fields'},
-                                    'start': {'$first': '$start'},
-                                    'end':  {'$first': '$end'},
-                                    'id': {'$first': '$id'}}},
-                        {'$project': project_d},
-                        {'$sort': sort}]
-            if one:
-                pipeline.append({'$limit': 1})
-        else:
-            pipeline = [{'$match': spec},
-                        {'$project': project_d},
-                        {'$sort': sort}]
-            if one:
-                pipeline.append({'$limit': 1})
-        docs = _cube.aggregate(pipeline)['result']
+    if one:
+        return _cube.find_one(spec, fields, sort=sort)
     else:
-        if one:
-            return _cube.find_one(spec, fields, sort=sort)
-        else:
-            docs = _cube.find(spec, fields, sort=sort)
-            docs.batch_size(10000000)  # hard limit is 16M...
-            return tuple(docs)
+        docs = _cube.find(spec, fields, sort=sort)
+        docs.batch_size(10000000)  # hard limit is 16M...
+        return tuple(docs)
 
 
 def parse_ids(ids, delimeter=','):
