@@ -144,8 +144,7 @@ class HTTPClient(object):
             Name of the cube you want to query
         '''
         try:
-            fields = sorted(
-                [f for f, v in self.fields.items() if v.get('enabled', True)])
+            fields = sorted(self.fields)
         except AttributeError:
             if not cube:
                 cube = self.name
@@ -157,16 +156,10 @@ class HTTPClient(object):
         if not fields:
             return []
         elif fields == '__all__':
-            _fields = self.fields
-
-        fields = set(csv2list(fields))
-        if not fields <= set(self.fields):
-            raise ValueError(
-                "Invalid field in set: %s" % (set(self.fields) - fields))
-        _fields = {}
-        for field, values in self.fields.items():
-            fnf = field in _fields
-            if not (fnf and self.get_property('enabled', field, True)):
-                continue
-            _fields[field] = values
-        return _fields
+            return self.fields
+        else:
+            fields = set(csv2list(fields))
+            if not fields <= set(self.fields.keys()):
+                raise ValueError(
+                    "Invalid field in set: %s" % (set(self.fields) - fields))
+            return fields
