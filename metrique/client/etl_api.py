@@ -111,5 +111,13 @@ def save_objects(self, objects, update=False,
 
             for future in as_completed(pool):
                 saved += future.result()
-    logger.debug("... Saved %s docs in ~%is" % (olen, time()-t1))
+    logger.debug("... Saved %s docs in ~%is" % (olen, time() - t1))
     return saved
+
+
+def drop(self):
+    '''
+    Drops current cube from warehouse
+    '''
+    return self._delete(CMD, 'drop', cube=self.name)
+    pass
