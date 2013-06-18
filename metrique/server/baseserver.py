@@ -4,8 +4,6 @@
 
 import logging
 logger = logging.getLogger(__name__)
-logging.basicConfig()
-logger.propagate = False
 from datetime import datetime
 
 from metrique.server.config import metrique, mongodb

@@ -137,14 +137,16 @@ class HTTPClient(object):
         if not fields:
             return []
         elif fields == '__all__':
-            fields = self.fields
-        else:
-            fields = set(csv2list(fields))
-            if not fields <= set(self.fields):
-                raise ValueError(
-                    "Invalid field in set: %s" % (set(self.fields) - fields))
+            _fields = self.fields
+
+        fields = set(csv2list(fields))
+        if not fields <= set(self.fields):
+            raise ValueError(
+                "Invalid field in set: %s" % (set(self.fields) - fields))
         _fields = {}
-        for field, values in fields.items():
-            if self.get_property('enabled', field, True):
-                _fields[field] = values
+        for field, values in self.fields.items():
+            fnf = field in _fields
+            if not (fnf and self.get_property('enabled', field, True)):
+                continue
+            _fields[field] = values
         return _fields
