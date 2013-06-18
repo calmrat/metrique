@@ -44,21 +44,24 @@ class metrique(JSONConfig):
 
     @property
     def debug(self):
-        return self._default('debug', False)
+        return self._default('debug', -1)
 
     @debug.setter
-    def debug(self, bool_):
-        bool_ = self._json_bool(bool_)
+    def debug(self, n):
         logger = logging.getLogger('metrique')
-        if bool_ is False:
+        if n == -1:
             level = logging.WARN
-        elif bool_ is True:
-            level = logging.DEBUG
-            logger.debug("Debug: %s" % bool_)
-        else:
+        elif n == 0:
             level = logging.INFO
+        elif n == 1:
+            level = logging.DEBUG
+            logger.debug("Debug: metrique")
+        elif n == 2:
+            logger = logging.getLogger()
+            level = logging.DEBUG
+            logger.debug("Debug: metrique, tornado")
         logger.setLevel(level)
-        self.config['debug'] = bool_
+        self.config['debug'] = n
 
     @property
     def admin_user(self):

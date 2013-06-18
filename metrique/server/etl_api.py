@@ -48,7 +48,8 @@ def save_objects(cube, objects, update=False):
     if not objects:
         return -1
     elif not type(objects) in [list, tuple]:
-        raise TypeError("Expected list or tuple, got type(%s): %s" % (type(objects), objects))
+        raise TypeError("Expected list or tuple, got type(%s): %s" %
+                        (type(objects), objects))
 
     now = datetime.utcnow()
     [_prep_object(obj, now) for obj in objects]
@@ -71,11 +72,6 @@ def _snapshot(cube, ids):
     t = get_cube(cube, admin=True, timeline=True)
 
     docs = w.find({'_id': {'$in': ids}}, sort=[('_id', 1)])
-
-    logger.debug('Snapshot Timeline Index: Start')
-    t.ensure_index([('current', 1), ('id', 1)])
-    logger.debug('... Snapshot Timeline Index: Done')
-
     time_docs = t.find({'current': True, 'id': {'$in': ids}},
                        sort=[('id', 1)])
     time_docs_iter = iter(time_docs)
@@ -123,20 +119,27 @@ def _snapshot(cube, ids):
 @job_save('etl_snapshot')
 def snapshot(cube, ids=None):
     logger.debug('Running snapshot')
+    _cube = get_cube(cube)
+
+    t = get_cube(cube, admin=True, timeline=True)
+    logger.debug('... Timeline Index: Start')
+    t.ensure_index([('current', 1), ('id', 1)])
+    logger.debug('... Timeline Index: Done')
+
     if ids is None:
         # Run on all the ids
-        _cube = get_cube(cube)
         docs = _cube.find(fields=['_id'])
-        logger.debug('Found %s docs' % docs.count())
+        logger.debug('... Found %s docs' % docs.count())
 
         ids_to_snapshot = []
         for done, doc in enumerate(docs):
             ids_to_snapshot.append(doc['_id'])
-            if done % 100000 == 0:
+            if done % 100000 == 99999:
                 _snapshot(cube, ids_to_snapshot)
                 ids_to_snapshot = []
-                logger.debug(' ... %s done' % done)
+                logger.debug('... %s done' % (done + 1))
         _snapshot(cube, ids_to_snapshot)
+        logger.debug('... %s done' % (done + 1))
     elif type(ids) is list:
         _snapshot(cube, ids)
     elif isinstance(ids, basestring):
