@@ -128,8 +128,8 @@ class BaseSql(BaseCube):
             if force:
                 raise RuntimeError(
                     "force and id_delta can't be used simultaneously")
-
-        if not (hasattr(last_update, 'tzinfo') and last_update.tzinfo):
+        tzaware = hasattr(last_update, 'tzinfo') and last_update.tzinfo
+        if last_update and not tzaware:
             raise TypeError('last_update dates must be timezone aware')
 
         db = self.get_property('db', field)
@@ -248,7 +248,12 @@ class BaseSql(BaseCube):
 
         objects = []
         while not _stop:
-            rows = self._sql_fetchall(sql, start, field, row_limit)
+            try:
+                rows = self._sql_fetchall(sql, start, field, row_limit)
+            except Exception as e:
+                logger.error('SQL ERROR: %s' % e)
+                return []
+
             k = len(rows)
             if k > 0:
                 grouped = self.grouper(rows)
