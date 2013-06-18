@@ -12,6 +12,7 @@ from metrique.client.config import Config
 from metrique.client import query_api, etl_api, users_api
 
 from metrique.tools import csv2list
+from metrique.tools.decorators import memo
 from metrique.tools.json import Encoder
 
 CONFIG_FILE = 'http_api'
@@ -38,7 +39,7 @@ class HTTPClient(object):
     add_user = users_api.add
 
     def __init__(self, host=None, username=None, password=None,
-                 async=True, force=False, debug=False,
+                 async=True, force=False, debug=1,
                  config_file=None, config_dir=None, **kwargs):
         if not config_file:
             base_config_file = CONFIG_FILE
@@ -126,15 +127,19 @@ class HTTPClient(object):
             cube = self.cube
         return self._get('cubes', cube=cube, details=details)
 
+    @memo
     def parse_fields(self, fields):
         if not fields:
             return []
         elif fields == '__all__':
-            return self.fields
-
-        fields = set(csv2list(fields))
-        if fields <= set(self.fields):
-            return fields
+            fields = self.fields
         else:
-            raise ValueError(
-                "Invalid field in set: %s" % (set(self.fields) - fields))
+            fields = set(csv2list(fields))
+            if not fields <= set(self.fields):
+                raise ValueError(
+                    "Invalid field in set: %s" % (set(self.fields) - fields))
+        _fields = {}
+        for field, values in fields.items():
+            if self.get_property('enabled', field, True):
+                _fields[field] = values
+        return _fields

@@ -57,7 +57,7 @@ class BaseSql(BaseCube):
             _rows.append(self._get_row(row, field, convert))
 
         t1 = time.time()
-        logger.info('... Rows prepared %i docs (%i/sec)' % (
+        logger.debug('... Rows prepared %i docs (%i/sec)' % (
             k, float(k) / (t1 - t0)))
         return _rows
 
@@ -92,28 +92,25 @@ class BaseSql(BaseCube):
                 continue
             grouped[id][field].append(tokens)
         t1 = time.time()
-        logger.info('... ... ... Grouped %i docs (%i/sec)' % (
+        logger.debug('... ... ... Grouped %i docs (%i/sec)' % (
             k, float(k) / (t1 - t0)))
         return grouped
 
-    def extract(self, force=False, id_delta=None,
-                workers=MAX_WORKERS, fields='__all__'):
+    def extract(self, fields='__all__', force=False, id_delta=None,
+                workers=MAX_WORKERS):
         saved = 0
         fields = self.parse_fields(fields)
         if self.config.async:
             with ThreadPoolExecutor(workers) as executor:
-                fmap = []
                 future_builds = []
                 for field in fields:
-                    fmap.append(field)
                     future_builds.append(executor.submit(
                         self._extract, field, force, id_delta))
-                for k, future in enumerate(as_completed(future_builds)):
-                    field = fmap[k]
+                for future in as_completed(future_builds):
                     try:
                         objects = future.result()
                     except Exception as e:
-                        logger.error("ERROR (%s): %s" % (field, e))
+                        logger.error("ERROR: %s" % (e))
                     else:
                         saved += self.save_objects(objects, update=True)
         else:
@@ -281,7 +278,7 @@ class BaseSql(BaseCube):
                                 tokens = tokens[0]
                         objects.append({'_id': _id, field: tokens})
                 t1 = time.time()
-                logger.info('... ... Processed %i docs (%i/sec)' % (
+                logger.debug('... ... Processed %i docs (%i/sec)' % (
                     k, k / (t1 - t0)))
             else:
                 logger.debug('... ... No rows; nothing to process')

@@ -10,7 +10,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from time import time
 
 DEFAULT_BATCH = 100000
-MAX_WORKERS = 5
+MAX_WORKERS = 2
 
 CMD = 'admin/etl'
 

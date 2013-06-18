@@ -67,7 +67,7 @@ class MetriqueServer(BaseServer):
 
         #### # FIXME: Need to clear user jobs as well!  ####
         self._set_pid()
-        logger.debug("%s - Start" % __name__)
+        logger.debug("Metrique Server - Start")
 
     def stop(self):
         logger.debug("%s - Stop" % __name__)
