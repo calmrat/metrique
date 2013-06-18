@@ -61,14 +61,14 @@ if __name__ == '__main__':
     host = m_conf.http_host
     port = m_conf.http_port
 
-    debug = False
+    debug = -1
     async = True
     # accepts start, stop, restart, status
     if len(sys.argv) == 4:
         async = bool(int(sys.argv.pop(-1)))
 
     if len(sys.argv) == 3:
-        debug = bool(int(sys.argv.pop(-1)))
+        debug = int(sys.argv.pop(-1))
 
     if len(sys.argv) == 2:
         command = sys.argv.pop(-1)
