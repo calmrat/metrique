@@ -12,6 +12,14 @@ from metrique.server.cubes import get_cube
 from metrique.tools.type_cast import type_cast
 
 
+def cast_to_list(value, fieldtype):
+    if value is None:
+        return []
+    value = type_cast([s.strip() for s in value.split(',')],
+                      fieldtype)
+    return value if (type(value) is list) else [value]
+
+
 def _activity_backwards(c, field, val, removed, added):
     inconsistent = False
     container = c.get_field_property('container', field)
@@ -65,9 +73,9 @@ def _activity_batch_update(c, batch_updates, activity):
                    'start': start,
                    'end': when,
                    'current': False}
-    if 'corrupted' in last_doc:
-        new_doc['corrupted'] = last_doc['corrupted']
-    last_doc['start'] = when
+        if 'corrupted' in last_doc:
+            new_doc['corrupted'] = last_doc['corrupted']
+        last_doc['start'] = when
     last_val = last_doc['fields'][field]
     if not inconsistent:
         new_val, inconsistent = _activity_backwards(c, field,
@@ -86,6 +94,10 @@ def _activity_batch_update(c, batch_updates, activity):
     # Add the objects to the batch
     batch_updates.append(last_doc)
     batch_updates.append(new_doc)
+#    logger.warn(last_doc['fields']['last_closed'])
+#    logger.warn(new_doc['fields']['last_closed'])
+#    logger.warn('%s %s %s' % (when, field, new_val))
+#    logger.warn('--------------------------------------------')
 
 
 def _activity_prepare(c, activities):
@@ -99,7 +111,9 @@ def _activity_prepare(c, activities):
     for act in activities:
         what = act['what']
         when = act['when']
-        d[when][what].append(act)
+        act_ = c.activity_cleanup(act)
+        if act_ is not None:
+            d[when][what].append(act_)
 
     res = []
     for when in d:
@@ -111,12 +125,12 @@ def _activity_prepare(c, activities):
             try:
                 if container:
                     # we must group the added and removed
-                    added = [cast_to_list(act['added'], fieldtype)
-                             for act in acts]
-                    added = sum(added, [])
-                    removed = [cast_to_list(act['removed'], fieldtype)
-                               for act in acts]
-                    removed = sum(removed, [])
+                    added = [a for act in acts
+                             for a in cast_to_list(act['added'], fieldtype)
+                             if a is not None]
+                    removed = [a for act in acts
+                               for a in cast_to_list(act['removed'], fieldtype)
+                               if a is not None]
                 else:
                     # there should be only one activity for this,
                     # otherwise it is corrupted
@@ -138,11 +152,12 @@ def _activity_import_doc(c, time_doc, activities, timeline):
     Import activities for a single document into timeline.
     '''
     batch_updates = [time_doc]
-    for act in _activity_prepare(c, activities):
-        # We want to consider only activities that happend before time_doc
-        if act[0] < time_doc['start']:
-            # apply the activity to the batch:
-            _activity_batch_update(c, batch_updates, act)
+    activities = _activity_prepare(c, activities)
+    # We want to consider only activities that happend before time_doc
+    activities = filter(lambda act: act[0] < time_doc['start'], activities)
+    for act in activities:
+        # apply the activity to the batch:
+        _activity_batch_update(c, batch_updates, act)
 
     if len(batch_updates) > 1:
         # make the batch update
@@ -154,12 +169,14 @@ def _activity_import_doc(c, time_doc, activities, timeline):
 
 
 def _activity_import(cube, ids):
-    timeline = get_cube(cube, admin=True, timeline=True)
+    c = get_cube(cube)
+
+    timeline = get_cube(cube, timeline=True, admin=True)
     timeline.ensure_index([('id', 1), ('start', 1)])
     time_docs = timeline.find({'id': {'$in': ids}},
                               sort=[('id', 1), ('start', 1)])
 
-    h = get_cube('%s_activity' % cube)
+    h = get_cube('%s_activity' % cube, timeline=False, admin=False)
     act_docs = h.find({'id': {'$in': ids}}, sort=[('id', 1), ('when', -1)])
     act_docs_iter = iter(act_docs)
 
@@ -185,11 +202,11 @@ def _activity_import(cube, ids):
 
 def activity_import(cube, ids=None):
     logger.debug('Running activity history import')
-    h = get_cube('%s_activity' % cube, timeline=True, admin=True)
+    h = get_cube('%s_activity' % cube, timeline=False, admin=True)
     h.ensure_index([('id', 1), ('when', -1)])
     if ids is None:
         # Run on all the ids
-        t = c.get_collection(timeline=True, admin=True)
+        t = get_cube(cube, timeline=True, admin=True)
         docs = t.find({'current': True}, fields=['id'])
         logger.debug('Found %s docs' % docs.count())
 
@@ -208,10 +225,3 @@ def activity_import(cube, ids=None):
         ids = map(int, ids.split(','))
         _activity_import(cube, ids)
 
-
-def cast_to_list(value, fieldtype):
-    if value is None:
-        return []
-    value = type_cast([s.strip() for s in value.split(',')],
-                      fieldtype)
-    return value if (type(value) is list) else [value]
