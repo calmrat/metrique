@@ -100,7 +100,7 @@ class BaseSql(BaseCube):
                 workers=MAX_WORKERS, fields='__all__'):
         saved = 0
         fields = self.parse_fields(fields)
-        if self.baseconfig.async:
+        if self.config.async:
             with ThreadPoolExecutor(workers) as executor:
                 fmap = []
                 future_builds = []

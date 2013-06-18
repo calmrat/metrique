@@ -3,7 +3,7 @@
 # Author: "Chris Ward <cward@redhat.com>
 
 import logging
-logger = logging.getLogger()
+logger = logging.getLogger(__name__)
 logging.basicConfig()
 logger.propagate = False
 from datetime import datetime

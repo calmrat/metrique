@@ -42,27 +42,29 @@ class HTTPClient(object):
                  config_file=None, config_dir=None, **kwargs):
         if not config_file:
             base_config_file = CONFIG_FILE
+        else:
+            base_config_file = config_file
         base_config_dir = config_dir
-        self.baseconfig = Config(base_config_file, base_config_dir, force=force)
+        self.config = Config(base_config_file, base_config_dir, force=force)
 
-        self.baseconfig.debug = debug
-        self.baseconfig.async = async
+        self.config.debug = debug
+        self.config.async = async
 
         if host:
-            self.baseconfig.api_host = host
+            self.config.api_host = host
 
         if username:
-            self.baseconfig.api_username = username
+            self.config.api_username = username
 
         if password:
-            self.baseconfig.api_password = password
+            self.config.api_password = password
 
     def _kwargs_json(self, **kwargs):
         return dict([(k, json.dumps(v, cls=Encoder, ensure_ascii=False))
                     for k, v in kwargs.items()])
 
     def _args_url(self, *args):
-        _url = os.path.join(self.baseconfig.api_url, *args)
+        _url = os.path.join(self.config.api_url, *args)
         logger.debug("URL: %s" % _url)
         return _url
 
@@ -70,8 +72,8 @@ class HTTPClient(object):
         kwargs_json = self._kwargs_json(**kwargs)
         _url = self._args_url(*args)
 
-        username = self.baseconfig.api_username
-        password = self.baseconfig.api_password
+        username = self.config.api_username
+        password = self.config.api_password
 
         try:
             _response = rq.get(_url, params=kwargs_json, auth=(username, password), verify=False)
@@ -90,8 +92,8 @@ class HTTPClient(object):
         kwargs_json = self._kwargs_json(**kwargs)
         _url = self._args_url(*args)
 
-        username = self.baseconfig.api_username
-        password = self.baseconfig.api_password
+        username = self.config.api_username
+        password = self.config.api_password
 
         try:
             _response = rq.post(_url, data=kwargs_json, auth=(username, password), verify=False)
