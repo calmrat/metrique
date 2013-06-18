@@ -8,12 +8,12 @@ import os
 import requests as rq
 import simplejson as json
 
-from metrique.client.defaults import DEFAULT_CONFIG
 from metrique.client.config import Config
 from metrique.client import query_api, etl_api, users_api
 
 from metrique.tools import csv2list
 from metrique.tools.decorators import memo
+from metrique.tools.defaults import DEFAULT_CONFIG
 from metrique.tools.json import Encoder
 
 # FIXME: IDEAS
