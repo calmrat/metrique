@@ -44,7 +44,7 @@ def _prep_object(obj, when=None):
 
 
 @job_save('etl_save_objects')
-def save_objects(cube, objects, update=False):
+def save_objects(cube, objects, update=False, timeline=False):
     if not objects:
         return -1
     elif not type(objects) in [list, tuple]:
@@ -53,7 +53,7 @@ def save_objects(cube, objects, update=False):
 
     now = datetime.utcnow()
     [_prep_object(obj, now) for obj in objects]
-    _cube = get_cube(cube, admin=True)
+    _cube = get_cube(cube, admin=True, timeline=timeline)
     if update:
         for obj in iter(objects):
             _cube.update({'_id': obj.pop('_id')},
@@ -129,6 +129,7 @@ def snapshot(cube, ids=None):
     t = get_cube(cube, admin=True, timeline=True)
     logger.debug('... Timeline Index: Start')
     t.ensure_index([('_end', 1), ('_oid', 1)])
+    t.ensure_index([('_oid', 1), ('_start', 1)])
     logger.debug('... Timeline Index: Done')
 
     if ids is None:

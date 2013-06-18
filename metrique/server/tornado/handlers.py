@@ -323,7 +323,9 @@ class ETLSaveObjects(MetriqueInitialized):
         cube = self.get_argument('cube')
         objects = self.get_argument('objects')
         update = self.get_argument('update')
-        return etl_api.save_objects(cube=cube, objects=objects, update=update)
+        timeline = self.get_argument('timeline')
+        return etl_api.save_objects(cube=cube, objects=objects, update=update,
+                                    timeline=timeline)
 
 
 class ETLDrop(MetriqueInitialized):

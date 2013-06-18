@@ -9,7 +9,7 @@ import requests as rq
 import simplejson as json
 
 from metrique.client.config import Config
-from metrique.client import query_api, etl_api, users_api
+from metrique.client import query_api, etl_api, etl_activity, users_api
 
 from metrique.tools import csv2list
 from metrique.tools.decorators import memo
@@ -33,7 +33,7 @@ class HTTPClient(object):
     aggregate = query_api.aggregate
     index_warehouse = etl_api.index_warehouse
     snapshot = etl_api.snapshot
-    activity_import = etl_api.activity_import
+    activity_import = etl_activity.activity_import
     save_objects = etl_api.save_objects
     drop = etl_api.drop
     add_user = users_api.add
