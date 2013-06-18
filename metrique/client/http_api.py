@@ -8,14 +8,13 @@ import os
 import requests as rq
 import simplejson as json
 
+from metrique.client.defaults import DEFAULT_CONFIG
 from metrique.client.config import Config
 from metrique.client import query_api, etl_api, users_api
 
 from metrique.tools import csv2list
 from metrique.tools.decorators import memo
 from metrique.tools.json import Encoder
-
-CONFIG_FILE = 'http_api'
 
 # FIXME: IDEAS
 # commands should return back an object immediately which
@@ -43,7 +42,7 @@ class HTTPClient(object):
                  async=True, force=False, debug=1,
                  config_file=None, config_dir=None, **kwargs):
         if not config_file:
-            base_config_file = CONFIG_FILE
+            base_config_file = DEFAULT_CONFIG
         else:
             base_config_file = config_file
         base_config_dir = config_dir

@@ -3,29 +3,36 @@
 
 from functools import partial
 from pprint import PrettyPrinter
+import sys
+
+from metrique.tools.defaults import DEFAULT_CONFIG
+from metrique.tools.jsonconfig import JSONConfig
+
 pp = PrettyPrinter(indent=2)
-
-from metrique.client import pyclient
-
 prompter = lambda x: raw_input(x)
 
-c = pyclient()
+if len(sys.argv) > 1:
+    config_file = sys.argv[1]
+else:
+    config_file = DEFAULT_CONFIG
 
-c.config._autosave = False
+c = JSONConfig(config_file)
 
-pp.pprint(c.config._config)
+c._autosave = False
+
+pp.pprint(c.config)
 
 _p = "Metrique Host: "
-c.config.setup_basic('api_host', partial(prompter, _p))
+c.setup_basic('api_host', partial(prompter, _p))
 
 _p = "Metrique Username: "
-c.config.setup_basic('api_username', partial(prompter, _p))
+c.setup_basic('api_username', partial(prompter, _p))
 
 _p = "Metrique Password: "
-c.config.setup_basic('api_password', partial(prompter, _p))
+c.setup_basic('api_password', partial(prompter, _p))
 
-pp.pprint(c.config._config)
+pp.pprint(c.config)
 
-a = c.config.yes_no_prompt('Save? ')
+a = c.yes_no_prompt('Save? ')
 if a:
-    c.config.save()
+    c.save()

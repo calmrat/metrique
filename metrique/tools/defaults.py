@@ -5,6 +5,8 @@
 import os
 
 CONFIG_DIR = '~/.metrique/'
+DEFAULT_CONFIG = 'http_api'
+
 CUBES_PATH = os.path.join(CONFIG_DIR, 'cubes')
 
 METRIQUE_HTTP_HOST = '127.0.0.1'
