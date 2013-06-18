@@ -67,6 +67,12 @@ def save_objects(cube, objects, update=False):
     return len(objects)
 
 
+@job_save('etl_drop')
+def drop(cube):
+    c = get_cube(cube)
+    return c.drop()
+
+
 def _snapshot(cube, ids):
     w = get_cube(cube)
     t = get_cube(cube, admin=True, timeline=True)
