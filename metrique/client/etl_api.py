@@ -51,28 +51,9 @@ def snapshot(self, ids=None):
     return self._get(CMD, 'snapshot', cube=self.name, ids=ids)
 
 
-def activity_import(self, ids=None):
-    '''
-    Run the activity import for a given cube, if the
-    cube supports it.
-
-    Essentially, recreate object histories from
-    a cubes 'activity history' table row data,
-    and dump those pre-calcultated historical
-    state object copies into the timeline.
-
-    Paremeters
-    ----------
-    cube : str
-        Name of the cube you want to query
-    ids : list of cube object ids or str of comma-separated ids
-        Specificly run snapshot for this list of object ids
-    '''
-    return self._get(CMD, 'activityimport', cube=self.name, ids=ids)
-
-
 def save_objects(self, objects, update=False,
-                 batch=DEFAULT_BATCH, workers=MAX_WORKERS):
+                 batch=DEFAULT_BATCH, workers=MAX_WORKERS,
+                 timeline=False):
     '''
     Save a list of objects the given metrique.cube
 
@@ -86,8 +67,8 @@ def save_objects(self, objects, update=False,
     t1 = time()
     if olen < batch:
         saved = self._post(CMD, 'saveobjects', cube=self.name,
-                           update=update,
-                           objects=objects)
+                           update=update, objects=objects,
+                           timeline=timeline)
     else:
         saved = 0
         k = 0
@@ -98,7 +79,8 @@ def save_objects(self, objects, update=False,
                 pool.append(
                     executor.submit(
                         self._post, CMD, 'saveobjects', cube=self.name,
-                        update=update, objects=objects[k:_k]))
+                        update=update, objects=objects[k:_k],
+                        timeline=timeline))
                 k = _k
                 _k += batch
                 if _k > olen:
@@ -107,7 +89,8 @@ def save_objects(self, objects, update=False,
             pool.append(
                 executor.submit(
                     self._post, CMD, 'saveobjects', cube=self.name,
-                    update=update, objects=objects[k:]))
+                    update=update, objects=objects[k:],
+                    timeline=timeline))
 
             for future in as_completed(pool):
                 saved += future.result()

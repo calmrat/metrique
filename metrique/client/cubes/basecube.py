@@ -83,3 +83,13 @@ class BaseCube(HTTPClient):
                 last_id = last_id[0]
         logger.debug(" ... Last ID: %s" % last_id)
         return last_id
+
+    def activity_get(self, ids=None, mtime=None):
+        '''
+        Generator that yields by ids ascending.
+        Each yield has format: (id, [(when, field, removed, added)])
+        For fields that are containers, added and removed must be lists
+            (no None allowed)
+        '''
+        raise NotImplementedError(
+            'The activity_get method is not implemented in this cube.')
