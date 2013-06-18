@@ -44,7 +44,10 @@ def get_fields(cube, fields=None):
 def list_cube_fields(cube):
     db = get_cube(cube)
     result = db.find_one(sort=[('_id', -1)], limit=1)
-    return sorted(result)
+    if result:
+        return sorted(result)
+    else:
+        return []
 
 
 def list_cubes():

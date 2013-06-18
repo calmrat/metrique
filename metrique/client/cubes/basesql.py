@@ -148,39 +148,30 @@ class BaseSql(BaseCube):
         sql_where = []
         sql_groupby = ''
         _sql = self.get_property('sql', field)
-        if isinstance(_sql, basestring):
-            _sql = [_sql]
         if not _sql:
             sql = 'SELECT %s, %s.%s FROM %s' % (
                 table_column, table, field, db_table)
         else:
+            if isinstance(_sql, basestring):
+                _sql = [_sql]
             sql = 'SELECT %s, %s FROM ' % (table_column, _sql[0])
             _from = [db_table]
 
             # FIXME: THIS IS UGLY! use a dict... or sqlalchemy
-            if _sql[1]:
+            if len(_sql) >= 2 and _sql[1]:
                 _from.extend(_sql[1])
             sql += ', '.join(_from)
             sql += ' '
 
-            try:
-                if _sql[2]:
-                    sql += ' '.join(_sql[2])
-            except IndexError:
-                pass
+            if len(_sql) >= 3 and _sql[2]:
+                sql += ' '.join(_sql[2])
             sql += ' '
 
-            try:
-                if _sql[3]:
-                    sql_where.append('(%s)' % ' OR '.join(_sql[3]))
-            except IndexError:
-                pass
+            if len(_sql) >= 4 and _sql[3]:
+                sql_where.append('(%s)' % ' OR '.join(_sql[3]))
 
-            try:
-                if _sql[4]:
-                    sql_groupby = _sql[4]
-            except IndexError:
-                pass
+            if len(_sql) >= 5 and _sql[4]:
+                sql_groupby = _sql[4]
 
         delta_filter = []
         delta_filter_sql = None
