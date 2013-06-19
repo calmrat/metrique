@@ -44,6 +44,7 @@ class metrique(JSONConfig):
 
     @property
     def debug(self):
+        ''' Reflect whether debug is enabled or not '''
         return self._default('debug', -1)
 
     @debug.setter

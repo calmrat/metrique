@@ -3,4 +3,3 @@
 # Author: "Chris Ward" <cward@redhat.com>
 
 from result import Result
-from get_config import get_config

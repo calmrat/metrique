@@ -166,5 +166,7 @@ class Commit(BaseGitObject):
 
 
 if __name__ == '__main__':
-    csvobj = Commit(debug=True, repos=DEFAULT_CONFIG)
-    csvobj.extract()
+    from metrique.client.argparsers import cube_cli
+    a = cube_cli.parse_args()
+    obj = Commit(**vars(a))
+    obj.extract()

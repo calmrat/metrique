@@ -9,11 +9,12 @@ import requests as rq
 import simplejson as json
 
 from metrique.client.config import Config
-from metrique.client import query_api, etl_api, etl_activity, users_api
+from metrique.client import query_api, etl_api, users_api
+from metrique.client import etl_activity
 
 from metrique.tools import csv2list
 from metrique.tools.decorators import memo
-from metrique.tools.defaults import DEFAULT_CONFIG
+from metrique.tools.defaults import DEFAULT_CONFIG_FILE
 from metrique.tools.json import Encoder
 
 # FIXME: IDEAS
@@ -35,28 +36,28 @@ class HTTPClient(object):
     snapshot = etl_api.snapshot
     activity_import = etl_activity.activity_import
     save_objects = etl_api.save_objects
-    drop = etl_api.drop
+    drop_cube = etl_api.drop_cube
     add_user = users_api.add
 
     def __init__(self, host=None, username=None, password=None,
                  async=True, force=False, debug=1,
-                 config_file=None, config_dir=None, **kwargs):
+                 config_file=None, config_dir=None,
+                 **kwargs):
+
         if not config_file:
-            base_config_file = DEFAULT_CONFIG
+            config_file = DEFAULT_CONFIG_FILE
         else:
-            base_config_file = config_file
-        base_config_dir = config_dir
-        self.config = Config(base_config_file, base_config_dir, force=force)
+            config_file = config_file
+
+        self.config = Config(config_file, config_dir, force=force)
 
         self.config.debug = debug
         self.config.async = async
 
         if host:
             self.config.api_host = host
-
         if username:
             self.config.api_username = username
-
         if password:
             self.config.api_password = password
 

@@ -98,7 +98,7 @@ def save_objects(self, objects, update=False,
     return saved
 
 
-def drop(self):
+def drop_cube(self):
     '''
     Drops current cube from warehouse
     '''

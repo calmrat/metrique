@@ -50,13 +50,16 @@ class BaseCube(HTTPClient):
                 fieldmap[field_id] = field
         return fieldmap
 
-    def setdefault(self, value, default):
+    def setdefault(self, value, default, config_key=None):
         if value is None:
-            return default
+            try:
+                return self.config[config_key]
+            except (KeyError, AttributeError, TypeError):
+                return default
         else:
             return value
 
-    def last_mtime(self, cube=None):
+    def last_mtime(self, cube=None, field=None):
         '''get the last known warehouse object mtime'''
         start = None
         q = '%s == exists(True)' % field

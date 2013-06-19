@@ -5,7 +5,7 @@ from functools import partial
 from pprint import PrettyPrinter
 import sys
 
-from metrique.tools.defaults import DEFAULT_CONFIG
+from metrique.tools.defaults import DEFAULT_CONFIG_FILE
 from metrique.tools.jsonconfig import JSONConfig
 
 pp = PrettyPrinter(indent=2)
@@ -14,7 +14,7 @@ prompter = lambda x: raw_input(x)
 if len(sys.argv) > 1:
     config_file = sys.argv[1]
 else:
-    config_file = DEFAULT_CONFIG
+    config_file = DEFAULT_CONFIG_FILE
 
 c = JSONConfig(config_file)
 

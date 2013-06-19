@@ -17,7 +17,7 @@ s = HTTPServer()
 s.metrique_config._autosave = False
 
 print 'Metrique Config: '
-pp.pprint(s.metrique_config._config)
+pp.pprint(s.metrique_config.config)
 
 _p = "Metrique Hostname/IP (ie, this server): "
 s.metrique_config.setup_basic('http_host', partial(prompter, _p))
@@ -34,7 +34,7 @@ else:
     s.metrique_config.setup_basic('admin_password', partial(prompter, _p))
 
 _p = "Enable SSL? "
-if not auth_enabled and s.metrique_config.yes_no_prompt(_p):
+if not (auth_enabled or s.metrique_config.yes_no_prompt(_p)):
     s.metrique_config.ssl = False
 else:
     s.metrique_config.ssl = True
@@ -72,10 +72,10 @@ s.mongodb_config.setup_basic('data_password', partial(prompter, _p))
 
 print '\nConfig state after changes: '
 print 'Metrique:'
-pp.pprint(s.metrique_config._config)
+pp.pprint(s.metrique_config.config)
 
 print 'MongoDB:'
-pp.pprint(s.mongodb_config._config)
+pp.pprint(s.mongodb_config.config)
 
 a = s.metrique_config.yes_no_prompt('Save? ')
 if a:

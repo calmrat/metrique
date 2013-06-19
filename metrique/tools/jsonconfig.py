@@ -26,7 +26,8 @@ class JSONConfig(object):
     '''
     def __init__(self, config_file, config_dir=None, default=None,
                  autosave=False, force=False):
-        self._name = config_file
+        if not config_file:
+            raise ValueError("No config file defined")
         if not re.search('%s$' % JSON_EXT, config_file, re.I):
             config_file = '.'.join((config_file, JSON_EXT))
         self._config_file = config_file
@@ -39,6 +40,8 @@ class JSONConfig(object):
 
         if default and isinstance(default, dict):
             self.config = default
+        elif default and isinstance(default, JSONConfig):
+            self.config = default.config
         else:
             self.config = {}
 
@@ -58,7 +61,7 @@ class JSONConfig(object):
                     os.makedirs(_dir_path)
             empty_dict(_config_path)
 
-        if not os.path.exists(_config_path):
+        if not (os.path.exists(_config_path) or self._force):
             raise IOError(
                 "Config doesn't exist (%s)" % _config_path)
 
@@ -68,7 +71,7 @@ class JSONConfig(object):
         ''' load config data from disk '''
         try:
             with open(self.path, 'r') as config_file:
-                self.config = json.load(config_file)
+                self.config.update(json.load(config_file))
         except IOError as e:
             logger.debug('(%s): Creating empty config' % e)
             self.save()

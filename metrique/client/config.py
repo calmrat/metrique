@@ -19,7 +19,6 @@ class Config(JSONConfig):
     ''' Client config (property) class '''
     def __init__(self, *args, **kwargs):
         super(Config, self).__init__(*args, **kwargs)
-        self._debug = None
 
     @property
     def cubes_path(self):
@@ -128,22 +127,25 @@ class Config(JSONConfig):
     @property
     def debug(self):
         ''' Reflect whether debug is enabled or not '''
-        return self._debug
+        return self._default('debug', -1)
 
     @debug.setter
-    def debug(self, bool_):
+    def debug(self, n):
         ''' Update logger settings according to
             False=Warn, True=Debug, else Info
         '''
         logging.basicConfig()
         logger = logging.getLogger('metrique')
-        if bool_ is False:
-            logger.setLevel(logging.WARN)
-            logger.debug('DEBUG: WARN')
-        elif bool_ is True:
-            logger.setLevel(logging.DEBUG)
-            logger.debug('DEBUG: DEBUG')
-        else:
-            logging.disable(logging.INFO)
-            logger.debug('DEBUG: INFO')
-        self._debug = bool_
+        if n == -1:
+            level = logging.WARN
+        elif n == 0:
+            level = logging.INFO
+        elif n == 1:
+            level = logging.DEBUG
+            logger.debug("Debug: metrique")
+        elif n == 2:
+            logger = logging.getLogger()
+            level = logging.DEBUG
+            logger.debug("Debug: metrique, tornado")
+        logger.setLevel(level)
+        self.config['debug'] = n

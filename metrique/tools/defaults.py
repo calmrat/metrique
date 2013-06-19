@@ -5,7 +5,7 @@
 import os
 
 CONFIG_DIR = '~/.metrique/'
-DEFAULT_CONFIG = 'http_api'
+DEFAULT_CONFIG_FILE = 'http_api'
 
 CUBES_PATH = os.path.join(CONFIG_DIR, 'cubes')
 

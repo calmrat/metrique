@@ -196,5 +196,7 @@ class Build(BaseJSON):
 
 
 if __name__ == '__main__':
-    obj = Build(debug=True, **DEFAULT_CONFIG)
+    from metrique.client.argparsers import cube_cli
+    a = cube_cli.parse_args()
+    obj = Build(**vars(a))
     obj.extract()
