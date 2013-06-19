@@ -5,7 +5,7 @@
 import pandas as pd
 
 
-def plot_with_labels(self, figure, frame, value_field, labels_field):
+def plot_with_labels(figure, frame, value_field, labels_field):
     """
     Takes figure with plot based on datetime data type and adds
     additional subplot from given frame's value_field, also adding
