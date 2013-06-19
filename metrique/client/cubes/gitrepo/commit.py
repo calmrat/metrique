@@ -14,10 +14,6 @@ resolves_re = re.compile('Resolves: (.+)$', re.I)
 signed_off_by_re = re.compile('Signed-off-by: (.+)', re.I)
 acked_by_re = re.compile('Acked-by: (.+)', re.I)
 
-DEFAULT_CONFIG = {
-    "metrique": "https://github.com/drpoovilleorg/metrique.git"
-}
-
 
 class Commit(BaseGitObject):
     """
@@ -79,27 +75,18 @@ class Commit(BaseGitObject):
         'uri': {},
     }
 
-    def __init__(self, repos=None, **kwargs):
-        super(Commit, self).__init__(**kwargs)
-        if not repos:
-            repos = DEFAULT_CONFIG
-        self.repos = repos
+    def extract(self, uri, name=None, **kwargs):
+        logger.debug("Extracting GIT repo: %s" % uri)
+        return self.save_commits(uri, name)
 
-    def extract(self, **kwargs):
-        result = {}
-        for uri in sorted(self.repos.values()):
-            logger.debug("Processing repo: %s" % uri)
-            result[uri] = self.save_commits(uri)
-        return result
-
-    def save_commits(self, uri):
-        #c = self.get_collection()
-        # FIXME: replace api.find() call
-        last_commit_dt = None
-        #last_commit_dt = c.find_one({'uri': uri},
-        #                            {'_id': 0, 'committed_dt': 1},
-        #                            sort=[('committed_dt', -1)])
-        #logger.debug("Last Commit Date: %s" % last_commit_dt)
+    def save_commits(self, uri, name=None):
+        if not name:
+            name = uri.split('/')[-1].replace('.git', '')
+        last_commit_dt = self.find('uri == "%s"' % uri,
+                                   fields='committed_dt',
+                                   sort=[('committed_dt', -1)],
+                                   one=True, raw=True)
+        logger.debug("Last Commit Date: %s" % last_commit_dt)
         commits = self.walk_commits(uri, last_commit_dt)
         batch = []
         for saved, commit in enumerate(commits):
@@ -110,7 +97,6 @@ class Commit(BaseGitObject):
                 batch = []
         else:
             self.save_objects(batch)
-
         return saved
 
     def get_commit(self, commit, uri):

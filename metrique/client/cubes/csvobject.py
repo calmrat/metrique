@@ -9,11 +9,6 @@ logger = logging.getLogger(__name__)
 
 from metrique.client.cubes.basecsv import BaseCSV
 
-DEFAULT_CONFIG = {
-    'rh_bugzilla_bugs':
-    'http://bugzilla.redhat.com/buglist.cgi?product=Bugzilla&ctype=csv'
-}
-
 
 class CSVObject(BaseCSV):
     """
@@ -31,20 +26,9 @@ class CSVObject(BaseCSV):
 
     fields = {}
 
-    def __init__(self, uri=None, **kwargs):
-        super(CSVObject, self).__init__(**kwargs)
-        if not uri:
-            uri = DEFAULT_CONFIG['rh_bugzilla_bugs']
-        self.uri = uri
-
-    def extract(self, **kwargs):
-        logger.debug("Loading CSV: %s" % self.uri)
-        objects = self.loaduri(self.uri)
+    def extract(self, uri, **kwargs):
+        logger.debug("Loading CSV: %s" % uri)
+        objects = self.loaduri(uri)
         # save the uri for reference too
-        [o.update({'uri': self.uri}) for o in objects]
+        [o.update({'uri': uri}) for o in objects]
         return self.save_objects(objects)
-
-
-if __name__ == '__main__':
-    csvobj = CSVObject(debug=True, uri=DEFAULT_CONFIG['rh_bugzilla_bugs'])
-    csvobj.extract()

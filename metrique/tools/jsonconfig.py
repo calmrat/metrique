@@ -4,7 +4,7 @@
 
 import logging
 logger = logging.getLogger(__name__)
-from copy import copy
+from collections import MutableMapping
 import os
 import re
 import simplejson as json
@@ -12,12 +12,12 @@ import simplejson as json
 from metrique.tools.defaults import JSON_EXT, CONFIG_DIR
 
 
-def empty_dict(fname):
+def write_empty_json_dict(fname):
     with open(fname, 'a') as f:
         f.write('{}')
 
 
-class JSONConfig(object):
+class JSONConfig(MutableMapping):
     '''
         Config object using json as its underlying data store
 
@@ -48,6 +48,35 @@ class JSONConfig(object):
         self._set_path()
         self._load()
 
+    def __getitem__(self, key):
+        return self.config[key]
+
+    def __setitem__(self, key, value):
+        self.config[key] = value
+        if self._autosave:
+            self.save()
+
+    def __delitem__(self, key):
+        del self.config[key]
+
+    def __iter__(self):
+        return iter(self.config)
+
+    def __len__(self):
+        return len(self.config)
+
+    def __repr__(self):
+        return repr(self.config)
+
+    def __str__(self):
+        return str(self.config)
+
+    def setdefault(self, key, value):
+        self.config.setdefault(key, value)
+
+    def values(self):
+        return self.config.values()
+
     def _set_path(self):
         '''
             set config object's internal path to where
@@ -59,7 +88,7 @@ class JSONConfig(object):
             if not os.path.exists(_dir_path):
                 if _dir_path == os.path.expanduser(CONFIG_DIR):
                     os.makedirs(_dir_path)
-            empty_dict(_config_path)
+            write_empty_json_dict(_config_path)
 
         if not (os.path.exists(_config_path) or self._force):
             raise IOError(
@@ -81,26 +110,6 @@ class JSONConfig(object):
         with open(self.path, 'w') as config_file:
             config_string = json.dumps(self.config, indent=2)
             config_file.write(config_string)
-
-    def __getitem__(self, key):
-        return copy(self.config[key])
-
-    def setdefault(self, key, value):
-        self.config.setdefault(key, value)
-
-    def __setitem__(self, key, value):
-        self.config[key] = value
-        if self._autosave:
-            self.save()
-
-    def __delitem__(self, key):
-        del self.config[key]
-
-    def __repr__(self):
-        return repr(self.config)
-
-    def __str__(self):
-        return str(self.config)
 
     def setup_basic(self, option, prompter):
         '''
