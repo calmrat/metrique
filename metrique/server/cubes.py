@@ -33,8 +33,9 @@ def get_fields(cube, fields=None):
     cube_fields = list_cube_fields(cube)
     if fields == '__all__':
         return cube_fields
-    elif fields and isinstance(fields, basestring):
-        fields = [s.strip() for s in fields.split(',')]
+    elif fields:
+        if isinstance(fields, basestring):
+            fields = [s.strip() for s in fields.split(',')]
         if set(fields) <= set(cube_fields):
             return fields
         else:
