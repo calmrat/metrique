@@ -93,7 +93,8 @@ def find(self, query, fields=None, date=None, most_recent=False,
         return result
 
 
-def fetch(self, fields=None, sort=None, skip=0, limit=0, ids=[], raw=False):
+def fetch(self, fields=None, date=None, sort=None, skip=0, limit=0, ids=[],
+          raw=False):
     '''
     Fetch field values for (potentially) all objects
     of a given, with skip, limit, id "filter" arguments
@@ -104,6 +105,10 @@ def fetch(self, fields=None, sort=None, skip=0, limit=0, ids=[], raw=False):
         Name of the cube you want to query
     fields : str, or list of str, or str of comma-separated values
         Fields that should be returned
+    date : str
+        Date (date range) that should be queried:
+            date -> 'd', '~', '~d', 'd~', 'd~d'
+            d -> '%Y-%m-%d %H:%M:%S,%f', '%Y-%m-%d %H:%M:%S', '%Y-%m-%d'
     skip : int
         number of items (sorted ASC) to skip
     limit : int
@@ -111,7 +116,7 @@ def fetch(self, fields=None, sort=None, skip=0, limit=0, ids=[], raw=False):
     ids : list
         specific list of ids we should fetch
     '''
-    result = self._get(CMD, 'fetch', cube=self.name, fields=fields,
+    result = self._get(CMD, 'fetch', cube=self.name, fields=fields, date=date,
                        sort=sort, skip=skip, limit=limit, ids=ids)
     if raw:
         return result

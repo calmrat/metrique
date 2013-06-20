@@ -32,7 +32,7 @@ def count(cube, query):
         return 0
 
 
-def _get_date_pql_string(date):
+def _get_date_pql_string(date, prefix=' and '):
     if date == '~':
         return ''
     before = lambda d: '_start <= date("%s")' % d
@@ -40,13 +40,14 @@ def _get_date_pql_string(date):
     split = date.split('~')
     logger.warn(split)
     if len(split) == 1:
-        return ' and %s and %s' % (before(date), after(date))
+        ret = '%s and %s' % (before(date), after(date))
     elif split[0] == '':
-        return ' and %s' % before(split[1])
+        ret = '%s' % before(split[1])
     elif split[1] == '':
-        return ' and %s' % after(split[0])
+        ret = '%s' % after(split[0])
     else:
-        return ' and %s and %s' % (before(split[1]), after(split[0]))
+        ret = '%s and %s' % (before(split[1]), after(split[0]))
+    return prefix + ret
 
 
 @job_save('query find')
@@ -96,12 +97,12 @@ def parse_ids(ids, delimeter=','):
 
 
 @job_save('query fetch')
-def fetch(cube, fields=None, sort=None, skip=0, limit=0, ids=None):
+def fetch(cube, fields=None, date=None, sort=None, skip=0, limit=0, ids=None):
     logger.debug('Running Fetch (skip:%s, limit:%s, ids:%s)' % (
         skip, limit, len(ids)))
     logger.debug('... Fields: %s' % fields)
 
-    _cube = get_cube(cube)
+    _cube = get_cube(cube, timeline=(date is not None))
 
     fields = get_fields(cube, fields)
     logger.debug('Return Fields: %s' % fields)
@@ -118,6 +119,10 @@ def fetch(cube, fields=None, sort=None, skip=0, limit=0, ids=None):
         spec = {'_id': {'$in': parse_ids(ids)}}
     else:
         spec = {}
+
+    if date:
+        fields += ['_start', '_end', '_oid']
+        spec.update(pql.find(_get_date_pql_string(date, '')))
 
     docs = _cube.find(spec, fields, sort=sort,
                       skip=skip, limit=limit)
