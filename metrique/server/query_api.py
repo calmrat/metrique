@@ -64,7 +64,7 @@ def find(cube, query, fields=None, date=None,
 
     logger.debug('... fields: %s' % fields)
     fields = get_fields(cube, fields)
-    logger.debug('... matched fields (%s)' % fields)
+    logger.debug('... matched fields (%s)' % fields.keys())
 
     if date is not None:
         query += _get_date_pql_string(date)

@@ -52,6 +52,7 @@ def save_objects(cube, objects, update=False, timeline=False):
         raise TypeError("Expected list or tuple, got type(%s): %s" %
                         (type(objects), objects))
 
+    olen = len(objects)
     now = datetime.utcnow()
     [_prep_object(obj, now) for obj in objects]
     _cube = get_cube(cube, admin=True, timeline=timeline)
@@ -59,31 +60,35 @@ def save_objects(cube, objects, update=False, timeline=False):
     if update:
         for obj in objects:
             fields.extend(obj.keys())
-            fields = list(set(fields))
             _cube.update({'_id': obj.pop('_id')},
                          {'$set': obj},
                          upsert=True,
                          manipulate=False)
     else:
-        #has_id = set([o for o in objects if o.get('_id')])
-        #no_id = set(objects) - has_id
-        ## FIXME: should we send these in batches?
-        #if no_id:
-        #    _cube.insert(no_id, manipulate=False)
         # save rather than insert b/c insert would add dups (_id) docs
         # if for object's we've already stored
-        #if has_id:
+        # maybe 'insert' only objects which don't have
+        # and _id
+        batch = []
         for obj in iter(objects):
-            _cube.save(obj, manipulate=False)
+            fields.extend(obj.keys())
+            if '_id' in obj:
+                _cube.save(obj, manipulate=False)
+            else:
+                batch.append(obj)
 
-    logger.debug('[%s] Saved %s objects' % (cube, len(objects)))
+        if batch:
+            _cube.insert(batch, manipulate=False)
+
+    logger.debug('[%s] Saved %s objects' % (cube, olen))
 
     etl_activity_update(cube, fields, now)
 
-    return len(objects)
+    return olen
 
 
 def etl_activity_update(cube, fields, now):
+    fields = list(set(fields))
     spec = {'_id': cube}
     update = {'$set': dict([(f, now) for f in fields if not RE_PROP.match(f)])}
     return ETL_ACTIVITY.update(spec, update, upsert=True, safe=True)
