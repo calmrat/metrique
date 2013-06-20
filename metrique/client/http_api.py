@@ -15,7 +15,7 @@ from metrique.client import etl_activity
 from metrique.tools import csv2list
 from metrique.tools.decorators import memo
 from metrique.tools.defaults import DEFAULT_CONFIG_FILE
-from metrique.tools.json import Encoder
+from metrique.tools.json import Encoder, decoder
 
 # FIXME: IDEAS
 # commands should return back an object immediately which
@@ -62,7 +62,14 @@ class HTTPClient(object):
             self.config.api_password = password
 
     def _kwargs_json(self, **kwargs):
-        return dict([(k, json.dumps(v, cls=Encoder, ensure_ascii=False))
+        try:
+            return dict([(k, json.dumps(v, cls=Encoder, ensure_ascii=False))
+                        for k, v in kwargs.items()])
+        except UnicodeDecodeError:
+            pass
+
+        return dict([(k, json.dumps(v, cls=Encoder, ensure_ascii=False,
+                                    encoding="ISO-8859-1"))
                     for k, v in kwargs.items()])
 
     def _args_url(self, *args):
@@ -85,7 +92,7 @@ class HTTPClient(object):
                 'Failed to connect (%s). Try https://?' % _url)
         _response.raise_for_status()
         # responses are always expected to be json encoded
-        return json.loads(_response.text)
+        return json.loads(_response.text, object_hook=decoder)
 
     def _post(self, *args, **kwargs):
         '''

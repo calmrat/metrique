@@ -127,17 +127,14 @@ class Build(BaseJSON):
         return results
 
     def get_build(self, job_name, build_number):
-        # FIXME: delta implemntation needs to be updated
-        #c = self.get_collection()
         _id = '%s #%s' % (job_name, build_number)
 
         ## Check if we the job_build was already done building
         ## if it was, skip the import all together
-        #field_spec = {'_id': _id,
-        #              'building': {'$ne': True}}
-        #if c.find(field_spec).count():
-        #    #logger.debug('BUILD: %s (CACHED)' % _id)
-        #    return {}
+        query = '_id == "%s" and building != True'
+        if self.count(query):
+            #logger.debug('BUILD: %s (CACHED)' % _id)
+            return {}
 
         _build = {}
         logger.debug('BUILD: %s' % _id)

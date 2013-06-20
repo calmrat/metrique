@@ -18,8 +18,7 @@ def find_packages(path='./', prefix=""):
 with open('readme.rst') as _file:
     readme = _file.read()
 
-with open('version.txt') as _file:
-    version = _file.read().strip()
+from metrique import __version__ as version
 
 github = 'https://github.com/drpoovilleorg/metrique'
 download_url = '%s/archive/%s.tar.gz' % (github, version)
