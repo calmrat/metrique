@@ -6,6 +6,7 @@ import datetime
 from dateutil.parser import parse as dt_parse
 import simplejson as json
 import re
+from bson.objectid import ObjectId
 
 from metrique.tools.constants import RE_TYPE, RE_DATE_DATETIME
 
@@ -42,4 +43,9 @@ def decoder(dct):
                 dct[k] = dt_parse(v)
             except:
                 pass
+    if '_id' in dct:
+        try:
+            dct['_id'] = ObjectId(dct['_id'])
+        except:
+            pass
     return dct
