@@ -126,8 +126,8 @@ class Commit(BaseGitObject):
             #'files': dict(
             #    [(k.replace('.', '%2E'),
             #      v) for k, v in c.stats.files.iteritems()]),
-            # stats is very slow too; but it's useful...
-            'stats': c.stats.total,
+            # stats is very slow too; but it's useful... arg.
+            #'stats': c.stats.total,
             'summary': c.summary,
             'message': msg,
             'acked_by': acked_by,
