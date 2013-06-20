@@ -30,19 +30,29 @@ def get_etl_activity():
     return ETL_ACTIVITY
 
 
+def strip_split(item):
+    if isinstance(item, basestring):
+        return [s.strip() for s in item.split(',')]
+    else:
+        return item
+
+
 def get_fields(cube, fields=None):
-    ''' return back a list of fields found in documents of a given cube '''
+    ''' return back a list of known fields in documents of a given cube '''
     if not fields:
-        return []
-    cube_fields = list_cube_fields(cube)
-    if not cube_fields:
-        return []
-    elif fields == '__all__':
-        return cube_fields
-    else:  # fields
-        if isinstance(fields, basestring):
-            fields = [s.strip() for s in fields.split(',')]
-            return fields
+        fields = None
+    else:
+        cube_fields = list_cube_fields(cube)
+        if not cube_fields:
+            fields = None
+        elif fields == '__all__':
+            fields = cube_fields
+        else:  # fields
+            fields = strip_split(fields)
+            for field in fields:
+                if field not in cube_fields:
+                    raise ValueError("Unknown field: %s" % field)
+    return fields
 
 
 def list_cube_fields(cube):
