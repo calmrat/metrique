@@ -15,12 +15,14 @@ from handlers import PingHandler
 from handlers import JobStatusHandler
 from handlers import QueryAggregateHandler, QueryFindHandler
 from handlers import QueryFetchHandler, QueryCountHandler
+from handlers import QueryDistinctHandler
 from handlers import UsersAddHandler
 from handlers import ETLIndexWarehouseHandler
 from handlers import ETLSnapshotHandler
 from handlers import ETLActivityImportHandler
 from handlers import ETLSaveObjects, ETLCubeDrop
 from handlers import CubeHandler
+
 
 class HTTPServer(MetriqueServer):
     ''' HTTP (Tornado >=3.0) implemntation of MetriqueServer '''
@@ -44,6 +46,7 @@ class HTTPServer(MetriqueServer):
             (r"/api/v1/query/count", QueryCountHandler, init),
             (r"/api/v1/query/aggregate", QueryAggregateHandler, init),
             (r"/api/v1/query/fetch", QueryFetchHandler, init),
+            (r"/api/v1/query/distinct", QueryDistinctHandler, init),
             (r"/api/v1/admin/users/add", UsersAddHandler, init),
             (r"/api/v1/admin/etl/index/warehouse",
                 ETLIndexWarehouseHandler, init),

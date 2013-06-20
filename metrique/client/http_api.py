@@ -30,6 +30,7 @@ class HTTPClient(object):
     find = query_api.find
     count = query_api.count
     fetch = query_api.fetch
+    distinct = query_api.distinct
     aggregate = query_api.aggregate
     index_warehouse = etl_api.index_warehouse
     snapshot = etl_api.snapshot

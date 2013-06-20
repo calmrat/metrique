@@ -194,7 +194,7 @@ class QueryAggregateHandler(MetriqueInitialized):
         RequestHandler for running mongodb aggregation
         framwork pipeines against a given cube
     '''
-    @auth()
+    @auth('r')
     @async
     def get(self):
         cube = self.get_argument('cube')
@@ -204,7 +204,7 @@ class QueryAggregateHandler(MetriqueInitialized):
 
 class QueryFetchHandler(MetriqueInitialized):
     ''' RequestHandler for fetching lumps of cube data '''
-    @auth()
+    @auth('r')
     @async
     def get(self):
         cube = self.get_argument('cube')
@@ -223,7 +223,7 @@ class QueryCountHandler(MetriqueInitialized):
         RequestHandler for returning back simple integer
         counts of objects matching the given query
     '''
-    @auth()
+    @auth('r')
     @async
     def get(self):
         cube = self.get_argument('cube')
@@ -236,7 +236,7 @@ class QueryFindHandler(MetriqueInitialized):
         RequestHandler for returning back object
         matching the given query
     '''
-    @auth()
+    @auth('r')
     @async
     def get(self):
         cube = self.get_argument('cube')
@@ -253,6 +253,19 @@ class QueryFindHandler(MetriqueInitialized):
                               most_recent=most_recent,
                               sort=sort,
                               one=one)
+
+
+class QueryDistinctHandler(MetriqueInitialized):
+    '''
+        RequestHandler for fetching distinct token values for a
+        given cube.field
+    '''
+    @auth('r')
+    @async
+    def get(self):
+        cube = self.get_argument('cube')
+        field = self.get_argument('field')
+        return query_api.distinct(cube=cube, field=field)
 
 
 class UsersAddHandler(MetriqueInitialized):

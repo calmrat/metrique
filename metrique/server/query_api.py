@@ -11,6 +11,13 @@ from metrique.server.cubes import get_fields, get_cube
 from metrique.server.job import job_save
 
 
+@job_save('query distinct')
+def distinct(cube, field):
+    logger.debug('Running Distinct (%s.%s)' % (cube, field))
+    _cube = get_cube(cube)
+    return _cube.distinct(field)
+
+
 @job_save('query count')
 def count(cube, query):
     logger.debug('Running Count')

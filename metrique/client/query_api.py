@@ -116,9 +116,24 @@ def fetch(self, fields=None, date=None, sort=None, skip=0, limit=0, ids=[],
     ids : list
         specific list of ids we should fetch
     '''
-    result = self._get(CMD, 'fetch', cube=self.name, fields=fields, date=date,
-                       sort=sort, skip=skip, limit=limit, ids=ids)
+    result = self._get(CMD, 'fetch', cube=self.name, fields=fields,
+                       date=date, sort=sort, skip=skip, limit=limit,
+                       ids=ids)
     if raw:
         return result
     else:
         return Result(result)
+
+
+def distinct(self, field):
+    '''
+    Return back all distinct token values of a given field
+
+    Paremeters
+    ----------
+    cube : str
+        Name of the cube you want to query
+    field : str
+        Field to get distinct token values from
+    '''
+    return self._get(CMD, 'distinct', cube=self.name, field=field)
