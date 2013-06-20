@@ -64,6 +64,10 @@ def save_objects(self, objects, update=False,
     objs : list of dicts with 1+ field:value and _id defined
     '''
     olen = len(objects)
+    if not olen:
+        logger.debug("... No objects to save")
+        return 0
+
     t1 = time()
     if olen < batch:
         saved = self._post(CMD, 'saveobjects', cube=self.name,
@@ -98,9 +102,8 @@ def save_objects(self, objects, update=False,
     return saved
 
 
-def drop_cube(self):
+def cube_drop(self):
     '''
     Drops current cube from warehouse
     '''
-    return self._delete(CMD, 'drop', cube=self.name)
-    pass
+    return self._delete(CMD, 'cube/drop', cube=self.name)

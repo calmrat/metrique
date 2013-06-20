@@ -21,8 +21,6 @@ MAX_WORKERS = cpu_count() * 10
 
 
 class MetriqueServer(BaseServer):
-    executor = ThreadPoolExecutor(MAX_WORKERS)
-
     def __init__(self, **kwargs):
         super(MetriqueServer, self).__init__(**kwargs)
         logger.debug('Debug: %s' % self.metrique_config.debug)
@@ -65,11 +63,11 @@ class MetriqueServer(BaseServer):
                 backupCount=BACKUP_COUNT)
             hdlr.setFormatter(self.metrique_config.log_formatter)
             logger.addHandler(hdlr)
-
-        #### # FIXME: Need to clear user jobs as well!  ####
         self._set_pid()
-        logger.debug("Metrique Server - Start")
+        self.executor = ThreadPoolExecutor(MAX_WORKERS)
+        logger.debug("Metrique Server - Started")
 
     def stop(self):
-        logger.debug("%s - Stop" % __name__)
         self._remove_pid()
+        self.executor.shutdown()
+        logger.debug("Metrique Server - Stopped")

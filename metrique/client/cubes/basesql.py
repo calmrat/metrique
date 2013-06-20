@@ -128,9 +128,17 @@ class BaseSql(BaseCube):
             if force:
                 raise RuntimeError(
                     "force and id_delta can't be used simultaneously")
+
+        if not last_update:
+            fields = self.list_cube_fields()
+            if fields:
+                last_update = fields.get(field)
+
         tzaware = hasattr(last_update, 'tzinfo') and last_update.tzinfo
         if last_update and not tzaware:
             raise TypeError('last_update dates must be timezone aware')
+
+        logger.debug("Last mtime (%s): %s" % (field, last_update))
 
         db = self.get_property('db', field)
         table = self.get_property('table', field)

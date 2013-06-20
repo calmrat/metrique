@@ -17,11 +17,10 @@ from handlers import QueryAggregateHandler, QueryFindHandler
 from handlers import QueryFetchHandler, QueryCountHandler
 from handlers import UsersAddHandler
 from handlers import ETLIndexWarehouseHandler
-from handlers import ETLSnapshotHandler, CubesHandler
+from handlers import ETLSnapshotHandler
 from handlers import ETLActivityImportHandler
-from handlers import ETLSaveObjects
-from handlers import ETLDrop
-
+from handlers import ETLSaveObjects, ETLCubeDrop
+from handlers import CubeHandler
 
 class HTTPServer(MetriqueServer):
     ''' HTTP (Tornado >=3.0) implemntation of MetriqueServer '''
@@ -52,8 +51,8 @@ class HTTPServer(MetriqueServer):
             (r"/api/v1/admin/etl/activityimport",
                 ETLActivityImportHandler, init),
             (r"/api/v1/admin/etl/saveobjects", ETLSaveObjects, init),
-            (r"/api/v1/admin/etl/drop", ETLDrop, init),
-            (r"/api/v1/cubes", CubesHandler, init),
+            (r"/api/v1/admin/etl/cube/drop", ETLCubeDrop, init),
+            (r"/api/v1/cube", CubeHandler, init),
         ], gzip=True, debug=debug)
         # FIXME: set gzip as metrique_config property, default True
         port = self.metrique_config.http_port

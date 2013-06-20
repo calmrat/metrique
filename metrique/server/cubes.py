@@ -6,10 +6,10 @@ import logging
 logger = logging.getLogger(__name__)
 
 from metrique.server.config import mongodb
-
 from metrique.server.defaults import MONGODB_CONF
 
 mongodb_config = mongodb(MONGODB_CONF)
+ETL_ACTIVITY = mongodb_config.c_etl_activity
 
 
 def get_cube(cube, admin=True, timeline=False):
@@ -24,6 +24,10 @@ def get_cube(cube, admin=True, timeline=False):
             return mongodb_config.db_warehouse_admin.db[cube]
         else:
             return mongodb_config.db_warehouse_data.db[cube]
+
+
+def get_etl_activity():
+    return ETL_ACTIVITY
 
 
 def get_fields(cube, fields=None):
@@ -42,12 +46,7 @@ def get_fields(cube, fields=None):
 
 
 def list_cube_fields(cube):
-    db = get_cube(cube)
-    result = db.find_one(sort=[('_id', -1)], limit=1)
-    if result:
-        return sorted(result)
-    else:
-        return []
+    return ETL_ACTIVITY.find_one({'_id': cube})
 
 
 def list_cubes():

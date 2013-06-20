@@ -4,13 +4,14 @@
 
 import logging
 logger = logging.getLogger(__name__)
-
 from datetime import datetime
 
-from metrique.server.cubes import get_fields, get_cube
+from metrique.server.cubes import get_fields, get_cube, get_etl_activity
 from metrique.server.job import job_save
 
-from metrique.tools.constants import YELLOW, ENDC
+from metrique.tools.constants import YELLOW, ENDC, RE_PROP
+
+ETL_ACTIVITY = get_etl_activity()
 
 
 @job_save('etl_index_warehouse')
@@ -54,17 +55,38 @@ def save_objects(cube, objects, update=False, timeline=False):
     now = datetime.utcnow()
     [_prep_object(obj, now) for obj in objects]
     _cube = get_cube(cube, admin=True, timeline=timeline)
+    fields = []
     if update:
-        for obj in iter(objects):
+        for obj in objects:
+            fields.extend(obj.keys())
+            fields = list(set(fields))
             _cube.update({'_id': obj.pop('_id')},
                          {'$set': obj},
                          upsert=True,
                          manipulate=False)
     else:
-        for obj in iter(objects):
-            _cube.save(obj, manipulate=False)
+        has_id = set([o for o in objects if o.get('_id')])
+        no_id = set(objects) - has_id
+        # FIXME: should we send these in batches?
+        if no_id:
+            _cube.insert(no_id, manipulate=False)
+        # save rather than insert b/c insert would add dups (_id) docs
+        # if for object's we've already stored
+        if has_id:
+            for obj in iter(objects):
+                _cube.save(obj, manipulate=False)
+
+    logger.debug('[%s] Saved %s objects' % (cube, len(objects)))
+
+    etl_activity_update(cube, fields, now)
 
     return len(objects)
+
+
+def etl_activity_update(cube, fields, now):
+    spec = {'_id': cube}
+    update = {'$set': dict([(f, now) for f in fields if not RE_PROP.match(f)])}
+    return ETL_ACTIVITY.update(spec, update, upsert=True, safe=True)
 
 
 @job_save('etl_drop')

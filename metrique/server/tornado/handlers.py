@@ -328,7 +328,7 @@ class ETLSaveObjects(MetriqueInitialized):
                                     timeline=timeline)
 
 
-class ETLDrop(MetriqueInitialized):
+class ETLCubeDrop(MetriqueInitialized):
     '''
         RequestsHandler for droping given
         cube from warehouse
@@ -340,7 +340,7 @@ class ETLDrop(MetriqueInitialized):
         return etl_api.drop(cube=cube)
 
 
-class CubesHandler(MetriqueInitialized):
+class CubeHandler(MetriqueInitialized):
     '''
         RequestHandler for querying about
         available cubes and cube.fields
@@ -351,8 +351,7 @@ class CubesHandler(MetriqueInitialized):
         cube = self.get_argument('cube')
         if cube is None:
             # return a list of cubes
-            return self.proxy.get_cubes()
+            return self.proxy.list_cubes()
         else:
             # return a list of fields in a cube
-            result = self.proxy.get_fields(cube)
-            return result
+            return self.proxy.list_cube_fields(cube)

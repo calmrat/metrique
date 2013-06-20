@@ -13,7 +13,6 @@ from metrique.client import query_api, etl_api, users_api
 from metrique.client import etl_activity
 
 from metrique.tools import csv2list
-from metrique.tools.decorators import memo
 from metrique.tools.defaults import DEFAULT_CONFIG_FILE
 from metrique.tools.json import Encoder, decoder
 
@@ -36,8 +35,8 @@ class HTTPClient(object):
     snapshot = etl_api.snapshot
     activity_import = etl_activity.activity_import
     save_objects = etl_api.save_objects
-    drop_cube = etl_api.drop_cube
-    add_user = users_api.add
+    cube_drop = etl_api.cube_drop
+    user_add = users_api.add
 
     def __init__(self, host=None, username=None, password=None,
                  async=True, force=False, debug=1,
@@ -135,14 +134,11 @@ class HTTPClient(object):
     def ping(self):
         return self._get('ping')
 
-    @property
-    @memo
     def list_cubes(self):
         ''' List all valid cubes for a given metrique instance '''
-        return self._get('cubes')
+        return self._get('cube')
 
-    @memo
-    def list_cube_fields(self, cube=None, details=False):
+    def list_cube_fields(self, cube=None):
         ''' List all valid fields for a given cube
 
         Paremeters
@@ -150,15 +146,10 @@ class HTTPClient(object):
         cube : str
             Name of the cube you want to query
         '''
-        try:
-            fields = sorted(self.fields)
-        except AttributeError:
-            if not cube:
-                cube = self.name
-            fields = self._get('cubes', cube=cube)
-        return fields
+        if not cube:
+            cube = self.name
+        return self._get('cube', cube=cube)
 
-    @memo
     def parse_fields(self, fields):
         if not fields:
             return []

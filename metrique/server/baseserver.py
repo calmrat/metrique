@@ -9,7 +9,6 @@ from datetime import datetime
 from metrique.server.config import metrique, mongodb
 from metrique.server.cubes import list_cubes, list_cube_fields
 from metrique.server.defaults import METRIQUE_CONF, MONGODB_CONF
-from metrique.tools.decorators import memo
 
 
 class BaseServer(object):
@@ -32,12 +31,10 @@ class BaseServer(object):
         logger.debug('got ping @ %s' % datetime.utcnow())
         return 'pong'
 
-    @memo
     def list_cubes(self):
         # arg = username... return only cubes with 'r' access
         return list_cubes()
 
-    @memo
     def list_cube_fields(self, cube):
         # arg = username... return only cubes with 'r' access
         return list_cube_fields(cube)
