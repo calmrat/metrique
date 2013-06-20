@@ -66,7 +66,11 @@ def _activity_import_doc(cube, time_doc, activities):
 
 
 def _activity_import(cube, ids):
-    time_docs = cube.find("_oid in %s" % ids, fields='__all__',
+    if isinstance(ids, list):
+        q = '_oid in %s' % ids
+    if isinstance(ids, tuple):
+        q = '_oid >= %s and _oid <= %s' % ids
+    time_docs = cube.find(q, fields='__all__',
                           sort=[('_oid', 1), ('_start', 1)], raw=True,
                           date='~2023-01-01')
 
@@ -86,7 +90,7 @@ def _activity_import(cube, ids):
                 cube.save_objects(updates, timeline=True)
 
 
-def activity_import(self, ids=None):
+def activity_import(self, ids=None, chunk_size=1000):
     '''
     Run the activity import for a given cube, if the
     cube supports it.
@@ -102,10 +106,14 @@ def activity_import(self, ids=None):
         Specificly run snapshot for this list of object ids
     '''
     if ids is None:
-        #TODO get list of all ids from the timeline
-        return None
-    elif isinstance(ids, basestring):
-        ids = map(int, ids.split(','))
-    # TODO split into batch updates
-    _activity_import(self, ids)
-    # return self._get(CMD, 'activityimport', cube=self.name, ids=ids)
+        max_oid = self.find('_oid == exists(True)', date='~2023-01-01',
+                            sort=[('_oid', -1)], one=True, raw=True)['_oid']
+        ids = (0, max_oid)
+    if isinstance(ids, tuple):
+        for i in range(ids[0], ids[1] + 1, chunk_size):
+            _activity_import(self, (i, min(ids[1], i + chunk_size - 1)))
+    else:
+        if isinstance(ids, basestring):
+            ids = map(int, ids.split(','))
+        for i in range(0, len(ids), chunk_size):
+            _activity_import(self, ids[i:i + chunk_size])
