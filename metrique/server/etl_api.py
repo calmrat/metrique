@@ -65,16 +65,16 @@ def save_objects(cube, objects, update=False, timeline=False):
                          upsert=True,
                          manipulate=False)
     else:
-        has_id = set([o for o in objects if o.get('_id')])
-        no_id = set(objects) - has_id
-        # FIXME: should we send these in batches?
-        if no_id:
-            _cube.insert(no_id, manipulate=False)
+        #has_id = set([o for o in objects if o.get('_id')])
+        #no_id = set(objects) - has_id
+        ## FIXME: should we send these in batches?
+        #if no_id:
+        #    _cube.insert(no_id, manipulate=False)
         # save rather than insert b/c insert would add dups (_id) docs
         # if for object's we've already stored
-        if has_id:
-            for obj in iter(objects):
-                _cube.save(obj, manipulate=False)
+        #if has_id:
+        for obj in iter(objects):
+            _cube.save(obj, manipulate=False)
 
     logger.debug('[%s] Saved %s objects' % (cube, len(objects)))
 

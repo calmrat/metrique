@@ -42,10 +42,7 @@ def get_fields(cube, fields=None):
     else:  # fields
         if isinstance(fields, basestring):
             fields = [s.strip() for s in fields.split(',')]
-        if set(fields) <= set(cube_fields):
             return fields
-        else:
-            raise ValueError("Invalid field in set: %s" % fields)
 
 
 def list_cube_fields(cube):
