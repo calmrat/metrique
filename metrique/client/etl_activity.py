@@ -39,14 +39,14 @@ def _activity_import_doc(cube, time_doc, activities):
         else:
             try:
                 # set start to creation time if available
-                creation_field = cube.get_field_property('cfield')
+                creation_field = cube.get_property('cfield')
                 start = last_doc[creation_field]
             except:
                 start = when
             new_doc = deepcopy(last_doc)
             new_doc.pop('_id') if '_id' in new_doc else None
-            new_doc['_start'] = start,
-            new_doc['_end'] = when,
+            new_doc['_start'] = start
+            new_doc['_end'] = when
             last_doc['_start'] = when
         last_val = last_doc[field]
         new_val, inconsistent = _activity_backwards(new_doc[field],
@@ -54,7 +54,7 @@ def _activity_import_doc(cube, time_doc, activities):
         new_doc[field] = new_val
         # Check if the object has the correct field value.
         if inconsistent:
-            print u'Inconsistency: %s %s: %s -> %s, object has %s.' % (
+            print u'Inconsistency: %s %s: %s -> %s, object has %s' % (
                 last_doc['_oid'], field, removed, added, last_val)
             if '_corrupted' not in new_doc:
                 new_doc['_corrupted'] = {}
@@ -62,10 +62,11 @@ def _activity_import_doc(cube, time_doc, activities):
         # Add the objects to the batch
         batch_updates.append(last_doc)
         batch_updates.append(new_doc)
+    return batch_updates
 
 
 def _activity_import(cube, ids):
-    time_docs = cube.find("_oid in %s" % ids,
+    time_docs = cube.find("_oid in %s" % ids, fields='__all__',
                           sort=[('_oid', 1), ('_start', 1)], raw=True,
                           date='~2023-01-01')
 
