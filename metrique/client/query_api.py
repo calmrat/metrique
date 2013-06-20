@@ -75,7 +75,7 @@ def find(self, query, fields=None, date=None, most_recent=False,
         Fields that should be returned
     date : str
         Date (date range) that should be queried:
-            date -> 'd', '~d', 'd~', 'd~d'
+            date -> 'd', '~', '~d', 'd~', 'd~d'
             d -> '%Y-%m-%d %H:%M:%S,%f', '%Y-%m-%d %H:%M:%S', '%Y-%m-%d'
     most_recent : boolean
         If true and there are multiple historical version of a single

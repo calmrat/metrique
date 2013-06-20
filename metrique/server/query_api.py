@@ -33,18 +33,20 @@ def count(cube, query):
 
 
 def _get_date_pql_string(date):
+    if date == '~':
+        return ''
     before = lambda d: '_start <= date("%s")' % d
     after = lambda d: '(_end >= date("%s") or _end == None)' % d
     split = date.split('~')
     logger.warn(split)
     if len(split) == 1:
-        return '%s and %s' % (before(date), after(date))
+        return ' and %s and %s' % (before(date), after(date))
     elif split[0] == '':
-        return before(split[1])
+        return ' and %s' % before(split[1])
     elif split[1] == '':
-        return after(split[0])
+        return ' and %s' % after(split[0])
     else:
-        return '%s and %s' % (before(split[1]), after(split[0]))
+        return ' and %s and %s' % (before(split[1]), after(split[0]))
 
 
 @job_save('query find')
@@ -64,7 +66,7 @@ def find(cube, query, fields=None, date=None,
     logger.debug('... matched fields (%s)' % fields)
 
     if date is not None:
-        query = query + ' and ' + _get_date_pql_string(date)
+        query += _get_date_pql_string(date)
         fields += ['_start', '_end', '_oid']
 
     pql_parser = pql.SchemaFreeParser()

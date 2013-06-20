@@ -70,9 +70,8 @@ def _activity_import(cube, ids):
         q = '_oid in %s' % ids
     if isinstance(ids, tuple):
         q = '_oid >= %s and _oid <= %s' % ids
-    time_docs = cube.find(q, fields='__all__',
-                          sort=[('_oid', 1), ('_start', 1)], raw=True,
-                          date='~2023-01-01')
+    time_docs = cube.find(q, fields='__all__', date='~',
+                          sort=[('_oid', 1), ('_start', 1)], raw=True)
 
     # generator that yields by ids ascending
     # has format: (id, [(when, field, removed, added)])
@@ -106,7 +105,7 @@ def activity_import(self, ids=None, chunk_size=1000):
         Specificly run snapshot for this list of object ids
     '''
     if ids is None:
-        max_oid = self.find('_oid == exists(True)', date='~2023-01-01',
+        max_oid = self.find('_oid == exists(True)', date='~',
                             sort=[('_oid', -1)], one=True, raw=True)['_oid']
         ids = (0, max_oid)
     if isinstance(ids, tuple):
