@@ -39,20 +39,21 @@ def strip_split(item):
 
 def get_fields(cube, fields=None):
     ''' return back a list of known fields in documents of a given cube '''
-    if not fields:
-        fields = None
-    else:
+    _fields = None
+    if fields:
         cube_fields = list_cube_fields(cube)
-        if not cube_fields:
-            fields = None
-        elif fields == '__all__':
-            fields = cube_fields
-        else:  # fields
+        if fields == '__all__':
+            _fields = cube_fields
+        else:
             fields = strip_split(fields)
+            _fields = []
             for field in fields:
-                if field not in cube_fields:
-                    raise ValueError("Unknown field: %s" % field)
-    return fields
+                if field in cube_fields:
+                    _fields.append(field)
+            else:
+                if not _fields:
+                    _fields = None
+    return _fields
 
 
 def list_cube_fields(cube):
