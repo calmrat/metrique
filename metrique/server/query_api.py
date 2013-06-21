@@ -70,7 +70,7 @@ def find(cube, query, fields=None, date=None,
         raise ValueError("Invalid sort value; try [('_id': -1)]")
 
     logger.debug('... fields: %s' % fields)
-    fields = get_fields(cube, fields)
+    fields = sorted(get_fields(cube, fields))
     logger.debug('... matched fields (%s)' % fields)
 
     if date is not None:

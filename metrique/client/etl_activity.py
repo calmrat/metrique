@@ -2,6 +2,9 @@
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 # Author: "Juraj Niznan" <jniznan@redhat.com>
 
+import logging
+logger = logging.getLogger(__name__)
+
 from copy import deepcopy
 
 
@@ -54,8 +57,9 @@ def _activity_import_doc(cube, time_doc, activities):
         new_doc[field] = new_val
         # Check if the object has the correct field value.
         if inconsistent:
-            print u'Inconsistency: %s %s: %s -> %s, object has %s' % (
+            msg = 'Inconsistency: %s %s: %s -> %s, object has %s' % (
                 last_doc['_oid'], field, removed, added, last_val)
+            logger.warn(msg)
             if '_corrupted' not in new_doc:
                 new_doc['_corrupted'] = {}
             new_doc['_corrupted'][field] = added
