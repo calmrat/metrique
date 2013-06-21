@@ -35,7 +35,7 @@ class Commit(BaseGitObject):
         },
         'authored_dt': {
             'type': datetime,
-            'convert': datetime.fromtimestamp,
+            'convert': lambda s, x: datetime.fromtimestamp(x),
         },
         'committer_name': {},
         'committer_email': {},
@@ -44,7 +44,7 @@ class Commit(BaseGitObject):
         },
         'committed_dt': {
             'type': datetime,
-            'convert': datetime.fromtimestamp,
+            'convert': lambda s, x: datetime.fromtimestamp(x),
         },
         'count': {
             'enabled': False,
