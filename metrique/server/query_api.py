@@ -4,8 +4,8 @@
 
 import logging
 logger = logging.getLogger(__name__)
-
 import pql
+import re
 
 from metrique.server.cubes import get_fields, get_cube
 from metrique.server.job import job_save
@@ -42,7 +42,12 @@ def count(cube, query):
 def _get_date_pql_string(date, prefix=' and '):
     if date == '~':
         return ''
-    dt_str = date.isoformat().replace('T', ' ')
+
+    dt_str = date.replace('T', ' ')
+
+    # FIXME: file a bug against pql to support +00:00 timezone in string too
+    dt_str = re.sub('(\+\d\d:\d\d)?$', '', dt_str)
+
     before = lambda d: '_start <= date("%s")' % d
     after = lambda d: '(_end >= date("%s") or _end == None)' % d
     split = date.split('~')
