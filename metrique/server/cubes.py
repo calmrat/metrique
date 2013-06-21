@@ -39,7 +39,7 @@ def strip_split(item):
 
 def get_fields(cube, fields=None):
     ''' return back a list of known fields in documents of a given cube '''
-    _fields = None
+    _fields = {}
     if fields:
         cube_fields = list_cube_fields(cube)
         if fields == '__all__':
@@ -52,7 +52,7 @@ def get_fields(cube, fields=None):
                     _fields.append(field)
             else:
                 if not _fields:
-                    _fields = None
+                    _fields = {}
     return _fields
 
 
