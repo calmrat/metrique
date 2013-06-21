@@ -42,12 +42,13 @@ def count(cube, query):
 def _get_date_pql_string(date, prefix=' and '):
     if date == '~':
         return ''
+    dt_str = date.isoformat().replace('T', ' ')
     before = lambda d: '_start <= date("%s")' % d
     after = lambda d: '(_end >= date("%s") or _end == None)' % d
     split = date.split('~')
     logger.warn(split)
     if len(split) == 1:
-        ret = '%s and %s' % (before(date), after(date))
+        ret = '%s and %s' % (before(dt_str), after(dt_str))
     elif split[0] == '':
         ret = '%s' % before(split[1])
     elif split[1] == '':
@@ -77,11 +78,12 @@ def find(cube, query, fields=None, date=None,
         query += _get_date_pql_string(date)
         fields += ['_start', '_end', '_oid']
 
+    logger.debug("PQL Query: %s" % query)
     pql_parser = pql.SchemaFreeParser()
     try:
         spec = pql_parser.parse(query)
     except Exception as e:
-        raise ValueError("Invalid Query (%s)" % str(e))
+        raise ValueError("Invalid Query (%s): %s" % (str(e), query))
 
     _cube = get_cube(cube, timeline=(date is not None))
 

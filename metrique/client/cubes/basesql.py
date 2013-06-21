@@ -17,7 +17,7 @@ from metrique.tools.constants import UTC
 from metrique.tools.constants import INT_TYPE, FLOAT_TYPE
 
 DEFAULT_ROW_LIMIT = 100000
-MAX_WORKERS = 2
+MAX_WORKERS = 1
 
 
 class BaseSql(BaseCube):
