@@ -37,7 +37,7 @@ def strip_split(item):
         return item
 
 
-def get_fields(cube, fields=None):
+def get_fields(cube, fields=None, check=False):
     ''' return back a list of known fields in documents of a given cube '''
     _fields = {}
     if fields:
@@ -46,13 +46,15 @@ def get_fields(cube, fields=None):
             _fields = cube_fields
         else:
             fields = strip_split(fields)
-            _fields = []
-            for field in fields:
-                if field in cube_fields:
-                    _fields.append(field)
+            if not check:
+                _fields = fields
             else:
-                if not _fields:
-                    _fields = {}
+                _fields = []
+                for field in fields:
+                    if field not in cube_fields:
+                        raise ValueError('Invalid field: %s' % field)
+                    else:
+                        _fields.append(field)
     return _fields
 
 
