@@ -10,6 +10,7 @@ from copy import deepcopy
 
 def _activity_backwards(val, removed, added):
     if isinstance(added, list) and isinstance(removed, list):
+        val = [] if val is None else val
         inconsistent = False
         for ad in added:
             if ad in val:
