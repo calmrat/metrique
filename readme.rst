@@ -1,7 +1,7 @@
 Metrique
 ========
 
-Python/MondoDB Information Platform and Data Warehouse
+Python/MongoDB Information Platform and Data Warehouse
 
 *Metrique helps you bring data, structured and unstructured into an 
 intuitive, indexable data object collection that supported transparent
