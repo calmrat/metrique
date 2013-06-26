@@ -26,9 +26,10 @@ class CSVObject(BaseCSV):
 
     fields = {}
 
-    def extract(self, uri, **kwargs):
+    def extract(self, uri, _id, **kwargs):
         logger.debug("Loading CSV: %s" % uri)
         objects = self.loaduri(uri)
         # save the uri for reference too
-        [o.update({'uri': uri}) for o in objects]
+        objects = self.set_column(objects, 'uri', uri)
+        objects = self.set_column(objects, '_id', _id)
         return self.save_objects(objects)

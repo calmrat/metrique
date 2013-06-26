@@ -56,3 +56,15 @@ class BaseCSV(BaseCube):
                 obj[field] = row[i]
             objects.append(obj)
         return objects
+
+    def set_column(self, objects, key, value):
+        if key == '_id':
+            try:
+                [o.update({key: o[value]}) for o in objects]
+            except KeyError:
+                raise KeyError(
+                    "Invalid key object (%s). Available: %s" % (
+                        value, o.keys()))
+        else:
+            [o.update({key: value}) for o in objects]
+        return objects
