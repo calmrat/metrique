@@ -6,7 +6,6 @@ import logging
 logger = logging.getLogger(__name__)
 
 from decorator import decorator
-import re
 import simplejson as json
 import os
 
@@ -46,7 +45,7 @@ def _mask_filter(f, self, *args, **kwargs):
     if filter_ is None:
         return mask_frame
     else:
-        return self[mask_frame == filter_]
+        return type(self)(self[mask_frame == filter_])
 
 
 class Result(DataFrame):
