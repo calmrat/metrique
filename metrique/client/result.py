@@ -5,6 +5,8 @@
 import logging
 logger = logging.getLogger(__name__)
 
+from decorator import decorator
+import re
 import simplejson as json
 import os
 
@@ -15,11 +17,45 @@ import pandas as pd
 import numpy as np
 
 
+@staticmethod
+def perc(numerator, denominator):
+    return (float(numerator) / denominator) * 100
+
+
+def mask_filter(f):
+    '''
+        Generic function for getting back filtered frame
+        data according to True/False mask filter frame matching
+
+        Parameters
+        ----------
+        mask_frame : Pandas.DataFrame
+            DataFrame that maps index:True/False where True means it
+            matches the filter and False means it does not
+        filter_ : Boolean
+            True will return back a DataFrame that contains only items
+            which matched the mask_frame filter. False returns back the
+            opposite.
+    '''
+    return decorator(_mask_filter, f)
+
+
+def _mask_filter(f, self, *args, **kwargs):
+    filter_ = args[-1]  # by convention, filter_ expected as last arg
+    mask_frame = f(self, *args, **kwargs)
+    if filter_ is None:
+        return mask_frame
+    else:
+        return self[mask_frame == filter_]
+
+
 class Result(DataFrame):
     ''' Custom DataFrame implementation for Metrique '''
     def __init__(self, data=None):
         super(Result, self).__init__(data)
         self._result_data = data
+        # FIXME: Why isn't this already a datetime?
+        # FIXME: if it is... don't convert unnecessarily
         if '_start' in self:
             self._start = pd.to_datetime(self._start)
         if '_end' in self:
@@ -195,3 +231,31 @@ class Result(DataFrame):
             if end not in ret:
                 ret = ret + [end]
         return ret
+
+    ######################## FILTERS ##########################
+
+    def group_size(self, column, to_dict=False):
+        '''
+            Simply group items by the given column and return
+            dictionary (or Pandas Series) with each bucket size
+        '''
+        gby = self.groupby(column).size()
+        if to_dict:
+            return gby.to_dict()
+        else:
+            return gby
+
+    def column_count(self, column='_id'):
+        return float(self[column].count())
+
+    @mask_filter
+    def ids(self, ids, _filter=True):
+        ''' filter for only objects with matching object ids '''
+        # there *should* be an easier way to do this, without lambda...
+        return self['_id'].map(lambda x: True if x in ids else False)
+
+    ######################## Plotting #####################
+
+    def plot_column(self, column, **kwargs):
+        x = self.group_size(column)
+        return x.plot(**kwargs)

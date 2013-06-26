@@ -56,7 +56,7 @@ def count(self, query):
 
 
 def find(self, query, fields=None, date=None, most_recent=False,
-         sort=None, one=False, raw=False):
+         sort=None, one=False, raw=False, **kwargs):
     '''
     Run a `pql` based query on the given cube.
     Optionally:
@@ -88,13 +88,19 @@ def find(self, query, fields=None, date=None, most_recent=False,
     if raw:
         return result
     else:
-        result = Result(result)
+        if hasattr(self, '_result_class') and self._result_class is not None:
+            result = self._result_class(result, **kwargs)
+        else:
+            result = Result(result)
+
+        # FIXME: What's happening here?
         result.date(date)
+
         return result
 
 
 def fetch(self, fields=None, date=None, sort=None, skip=0, limit=0, ids=[],
-          raw=False):
+          raw=False, **kwargs):
     '''
     Fetch field values for (potentially) all objects
     of a given, with skip, limit, id "filter" arguments
@@ -122,7 +128,10 @@ def fetch(self, fields=None, date=None, sort=None, skip=0, limit=0, ids=[],
     if raw:
         return result
     else:
-        return Result(result)
+        if hasattr(self, '_result_class') and self._result_class is not None:
+            return self._result_class(result, **kwargs)
+        else:
+            return Result(result)
 
 
 def distinct(self, field):

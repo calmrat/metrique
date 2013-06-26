@@ -30,7 +30,7 @@ def count(cube, query):
 
     _cube = get_cube(cube)
 
-    logger.debug('Query: %s' % spec)
+    logger.debug('Mongo Query: %s' % spec)
 
     docs = _cube.find(spec)
     if docs:

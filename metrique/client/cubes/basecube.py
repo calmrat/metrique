@@ -15,6 +15,7 @@ class BaseCube(HTTPClient):
     name = '__UNKNOWN__'
     defaults = {}
     fields = {}
+    result = None
 
     def __init__(self, cube=None, **kwargs):
         if cube:
