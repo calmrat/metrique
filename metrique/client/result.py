@@ -16,11 +16,6 @@ import pandas as pd
 import numpy as np
 
 
-@staticmethod
-def perc(numerator, denominator):
-    return (float(numerator) / denominator) * 100
-
-
 def mask_filter(f):
     '''
         Generic function for getting back filtered frame
@@ -244,7 +239,7 @@ class Result(DataFrame):
         else:
             return gby
 
-    def column_count(self, column='_id'):
+    def count(self, column='_id'):
         return float(self[column].count())
 
     @mask_filter

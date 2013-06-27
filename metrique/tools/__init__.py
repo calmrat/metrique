@@ -43,3 +43,7 @@ def get_timezone_converter(from_timezone):
         except Exception:
             return None
     return timezone_converter
+
+
+def perc(numerator, denominator):
+    return (float(numerator) / denominator) * 100
