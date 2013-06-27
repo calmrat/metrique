@@ -83,13 +83,15 @@ def _activity_import(cube, ids, batch_size):
     act_generator = cube.activity_get(ids)
 
     last_doc_id = -1
+    aid = -1
     batched_updates = []
     for time_doc in time_docs:
         _oid = time_doc['_oid']
         # we want to update only the oldest version of the object
-        if _oid != last_doc_id:
+        while aid < _oid:
+            aid, acts = act_generator.next()
+        if _oid != last_doc_id and aid == _oid:
             last_doc_id = _oid
-            _, acts = act_generator.next()
             updates = _activity_import_doc(cube, time_doc, acts)
             if len(updates) > 1:
                 batched_updates += updates
