@@ -85,6 +85,14 @@ class metrique(JSONConfig):
         self.config['auth'] = value
 
     @property
+    def gzip(self):
+        return self._default('gzip', True)
+
+    @gzip.setter
+    def gzip(self, value):
+        self.config['gzip'] = value
+
+    @property
     def http_host(self):
         return self._default('http_host', METRIQUE_HTTP_HOST)
 

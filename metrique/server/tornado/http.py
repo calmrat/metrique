@@ -39,6 +39,7 @@ class HTTPServer(MetriqueServer):
         init = dict(proxy=self)
         # FIXME: v1 should be config option
         debug = self.metrique_config.debug
+        gzip = self.metrique_config.gzip
         self._web_app = tornado.web.Application([
             (r"/api/v1/ping/?", PingHandler, init),
             (r"/api/v1/job/status/(\w+)", JobStatusHandler, init),
@@ -56,7 +57,7 @@ class HTTPServer(MetriqueServer):
             (r"/api/v1/admin/etl/saveobjects", ETLSaveObjects, init),
             (r"/api/v1/admin/etl/cube/drop", ETLCubeDrop, init),
             (r"/api/v1/cube", CubeHandler, init),
-        ], gzip=True, debug=debug)
+        ], gzip=gzip, debug=debug)
         # FIXME: set gzip as metrique_config property, default True
         port = self.metrique_config.http_port
         address = self.metrique_config.http_host
