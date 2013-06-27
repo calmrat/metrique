@@ -38,7 +38,7 @@ class HTTPServer(MetriqueServer):
         logger.debug("Tornado: Web App setup")
         init = dict(proxy=self)
         # FIXME: v1 should be config option
-        debug = self.metrique_config.debug
+        debug = self.metrique_config.debug == 2
         gzip = self.metrique_config.gzip
         self._web_app = tornado.web.Application([
             (r"/api/v1/ping/?", PingHandler, init),
