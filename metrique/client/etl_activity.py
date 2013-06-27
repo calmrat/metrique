@@ -70,7 +70,7 @@ def _activity_import_doc(cube, time_doc, activities):
     return batch_updates
 
 
-def _activity_import(cube, ids):
+def _activity_import(cube, ids, batch_size):
     if isinstance(ids, list):
         q = '_oid in %s' % ids
     if isinstance(ids, tuple):
@@ -83,6 +83,7 @@ def _activity_import(cube, ids):
     act_generator = cube.activity_get(ids)
 
     last_doc_id = -1
+    batched_updates = []
     for time_doc in time_docs:
         _oid = time_doc['_oid']
         # we want to update only the oldest version of the object
@@ -91,10 +92,14 @@ def _activity_import(cube, ids):
             _, acts = act_generator.next()
             updates = _activity_import_doc(cube, time_doc, acts)
             if len(updates) > 1:
-                cube.save_objects(updates, timeline=True)
+                batched_updates += updates
+        if len(batched_updates) >= batch_size:
+            cube.save_objects(batched_updates, timeline=True)
+            batched_updates = []
+    cube.save_objects(batched_updates, timeline=True)
 
 
-def activity_import(self, ids=None, chunk_size=1000):
+def activity_import(self, ids=None, save_batch_size=1000, chunk_size=1000):
     '''
     Run the activity import for a given cube, if the
     cube supports it.
@@ -115,9 +120,11 @@ def activity_import(self, ids=None, chunk_size=1000):
         ids = (0, max_oid)
     if isinstance(ids, tuple):
         for i in range(ids[0], ids[1] + 1, chunk_size):
-            _activity_import(self, (i, min(ids[1], i + chunk_size - 1)))
+            _activity_import(self, (i, min(ids[1], i + chunk_size - 1)),
+                             batch_size=save_batch_size)
     else:
         if isinstance(ids, basestring):
             ids = map(int, ids.split(','))
         for i in range(0, len(ids), chunk_size):
-            _activity_import(self, ids[i:i + chunk_size])
+            _activity_import(self, ids[i:i + chunk_size],
+                             batch_size=save_batch_size)
