@@ -35,7 +35,7 @@ class Commit(BaseGitObject):
         },
         'authored_dt': {
             'type': datetime,
-            'convert': lambda s, x: datetime.fromtimestamp(x),
+            'convert': datetime.fromtimestamp,
         },
         'committer_name': {},
         'committer_email': {},
@@ -44,7 +44,7 @@ class Commit(BaseGitObject):
         },
         'committed_dt': {
             'type': datetime,
-            'convert': lambda s, x: datetime.fromtimestamp(x),
+            'convert': datetime.fromtimestamp,
         },
         'count': {
             'enabled': False,
@@ -127,7 +127,7 @@ class Commit(BaseGitObject):
             #    [(k.replace('.', '%2E'),
             #      v) for k, v in c.stats.files.iteritems()]),
             # stats is very slow too; but it's useful... arg.
-            #'stats': c.stats.total,
+            'stats': self.stats[c.hexsha],
             'summary': c.summary,
             'message': msg,
             'acked_by': acked_by,
