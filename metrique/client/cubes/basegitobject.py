@@ -2,7 +2,7 @@
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 # Author: "Chris Ward <cward@redhat.com>
 
-from git import Repo   # , GitCmdObjectDB
+from dulwich.repo import Repo   # , GitCmdObjectDB
 import logging
 logger = logging.getLogger(__name__)
 import os
@@ -46,40 +46,8 @@ class BaseGitObject(BaseCube):
             if rc != 0:
                 raise RuntimeError('Failed to fetch repo')
             logger.info(' ... Fetch complete')
-        # Get diffs for commits (because stats in GitPython is slow):
-        self._get_diff_stats(repo_path)
 
-        obj_path = os.path.join(repo_path, DEFAULT_OBJECTS_PATH)
-        #return Repo(obj_path, odbt=GitCmdObjectDB)
-        return Repo(obj_path)
-
-    def _get_diff_stats(self, repo_path):
-        os.chdir(repo_path)
-        cmd = 'git log master --format=%H --shortstat'
-        proc = subprocess.Popen(cmd.split(' '), stdout=subprocess.PIPE)
-        self.stats = {}
-        while True:
-            line = proc.stdout.readline()
-            if line == '':
-                break
-            line = line.strip()
-            if hash_re.match(line) is not None:
-                last_hash = line
-                self.stats[line] = {}
-                self.stats[line]['deletions'] = 0
-                self.stats[line]['insertions'] = 0
-                self.stats[line]['lines'] = 0
-                self.stats[line]['files'] = 0
-            files = files_re.findall(line)
-            if len(files) > 0:
-                ins = insertions_re.findall(line)
-                ins = int(ins[0]) if len(ins) > 0 else 0
-                dels = deletions_re.findall(line)
-                dels = int(dels[0]) if len(dels) > 0 else 0
-                self.stats[last_hash]['deletions'] = dels
-                self.stats[last_hash]['insertions'] = ins
-                self.stats[last_hash]['lines'] = dels + ins
-                self.stats[last_hash]['files'] = int(files[0])
+        return Repo(repo_path)
 
     def walk_commits(self, uri, last_dt=None, branch='master'):
         repo = uri.split('/')[-1]
@@ -88,7 +56,8 @@ class BaseGitObject(BaseCube):
         # by default, we're sorted DESC; we want ASC
         if last_dt:
             # and filter starting after the last object we've already
-            return gitdb.iter_commits(branch, reverse=True, after=last_dt)
+            #return gitdb.iter_commits(branch, reverse=True, after=last_dt)
+            pass
         else:
             # ... imported, if any; or get them all
-            return gitdb.iter_commits(branch, reverse=True)
+            return gitdb.get_graph_walker()

@@ -26,55 +26,6 @@ class Commit(BaseGitObject):
         'index': True,
     }
 
-    fields = {
-        'acked_by': {},
-        'author_name': {},
-        'author_email': {},
-        'author_tz_offset': {
-            'type': float,
-        },
-        'authored_dt': {
-            'type': datetime,
-            'convert': datetime.fromtimestamp,
-        },
-        'committer_name': {},
-        'committer_email': {},
-        'committer_tz_offset': {
-            'type': float,
-        },
-        'committed_dt': {
-            'type': datetime,
-            'convert': datetime.fromtimestamp,
-        },
-        'count': {
-            'enabled': False,
-            'type': float,
-        },
-        'files': {
-            'enabled': False,
-            'type': dict,
-        },
-        'hexsha': {},
-        'message': {},
-        'name_rev': {
-            'enabled': False,
-        },
-        'parents': {},
-        'repo_name': {},
-        'resolves': {},
-        'related': {},
-        'signed_off_by': {},
-        'size': {
-            'enabled': False,
-            'type': float,
-        },
-        'stats': {
-            'type': dict,
-        },
-        'summary': {},
-        'uri': {},
-    }
-
     def extract(self, uri, name=None, **kwargs):
         logger.debug("Extracting GIT repo: %s" % uri)
         return self.save_commits(uri, name)
@@ -95,7 +46,7 @@ class Commit(BaseGitObject):
 
     def get_commit(self, commit, uri):
         c = commit
-        if c.type != 'commit':
+        if c.type != 1:
             raise TypeError(
                 "Expected 'commit' type objects. Got (%s)" % c.type)
 
@@ -108,16 +59,14 @@ class Commit(BaseGitObject):
 
         obj = {
             'uri': uri,
-            'hexsha': c.hexsha,
-            'parents': [t.hexsha for t in c.parents],
-            'author_name': c.author.name,
-            'author_email': c.author.email,
-            'author_tz_offset': c.author_tz_offset,
-            'authored_dt': c.authored_date,
-            'committer_name': c.committer.name,
-            'committer_email': c.committer.email,
-            'committer_tz_offset': c.committer_tz_offset,
-            'committed_dt': c.committed_date,
+            'id': c.id,
+            'parents': c.parents,
+            'author': c.author,
+            'author_dt': datetime.fromtimestamp(c.author_time +
+                                                c.author_timezone),
+            'committer': c.committer,
+            'commit_dt': datetime.fromtimestamp(c.commit_time +
+                                                c.commit_timezone),
             # FIXME: Can this be sped up?
             # These commented out are all very slow
             #'count': c.count(),
@@ -127,20 +76,14 @@ class Commit(BaseGitObject):
             #    [(k.replace('.', '%2E'),
             #      v) for k, v in c.stats.files.iteritems()]),
             # stats is very slow too; but it's useful... arg.
-            'stats': self.stats[c.hexsha],
-            'summary': c.summary,
-            'message': msg,
+            # 'stats': self.stats[c.hexsha],
+            #'summary': c.summary,
+            'message': c.message,
             'acked_by': acked_by,
             'signed_off_by': signed_off_by,
             'resolves': resolves,
             'related': related,
         }
-
-        _obj = obj.copy()
-        for f, v in _obj.iteritems():
-            convert = self.get_property('convert', f)
-            if convert:
-                v = convert(v)
 
         return obj
 
