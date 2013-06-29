@@ -8,6 +8,7 @@ logger = logging.getLogger(__name__)
 from decorator import decorator
 import simplejson as json
 import os
+import datetime
 
 from pandas import DataFrame, Series
 import pandas.tseries.offsets as off
@@ -247,6 +248,53 @@ class Result(DataFrame):
         ''' filter for only objects with matching object ids '''
         # there *should* be an easier way to do this, without lambda...
         return self['_id'].map(lambda x: True if x in ids else False)
+
+    def unfinished_only(self):
+        '''
+        Leaves only those entities that has some version with _end equal None.
+        '''
+        oids = self[self._end.isnull()]._oid.tolist()
+        return type(self)(self[self._oid.apply(lambda oid: oid in oids)])
+
+    def last_versions_with_age(self, col_name='age'):
+        '''
+        Leaves only the latest version for each entity.
+        Add a new column which represents age - it is computed by taking
+        _start of the oldest version and subtracting it from current time.
+
+        Parameters
+        ----------
+        col_name: str
+            Name of the new column.
+        '''
+        def prep(df):
+            age = now_ts - df._start.min()
+            last = df[df._end.isnull()].copy()
+            last[col_name] = age
+            return last
+
+        now_ts = datetime.datetime.now()
+        res = pd.concat([prep(df) for _, df in self.groupby(self._oid)])
+        return type(self)(res)
+
+    def last_chain_only(self):
+        '''
+        Leaves only the last chain for each entity.
+        Chain is a series of consecutive versions
+            (_end of one is _start of another) .
+        '''
+        def prep(df):
+            ends = df._end.tolist()
+            maxend = pd.NaT if pd.NaT in ends else max(ends)
+            ends = set(df._end.tolist()) - set(df._start.tolist() + [maxend])
+            if len(ends) == 0:
+                return df
+            else:
+                cutoff = max(ends)
+                return df[df._start > cutoff]
+
+        res = pd.concat([prep(df) for _, df in self.groupby(self._oid)])
+        return type(self)(res)
 
     ######################## Plotting #####################
 
