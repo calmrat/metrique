@@ -296,6 +296,26 @@ class Result(DataFrame):
         res = pd.concat([prep(df) for _, df in self.groupby(self._oid)])
         return type(self)(res)
 
+    def first_versions(self):
+        '''
+        Leaves only the first version for each entity.
+        '''
+        def prep(df):
+            return df[df._start == df._start.min()]
+
+        res = pd.concat([prep(df) for _, df in self.groupby(self._oid)])
+        return type(self)(res)
+
+    def started_after(self, dt):
+        '''
+        Leaves only those entities whose first version started after the
+        specified date.
+        '''
+        starts = self._start.groupby(self._oid).min()
+        ids = starts[starts > dt].index.tolist()
+        res = self[self._oid.apply(lambda v: v in ids)]
+        return type(self)(res)
+
     ######################## Plotting #####################
 
     def plot_column(self, column, **kwargs):
