@@ -29,7 +29,7 @@ class BaseGitObject(BaseCube):
         super(BaseGitObject, self).__init__(**kwargs)
 
     @memo
-    def fetch_repo(self, uri, repo):
+    def fetch_repo(self, uri):
         repo_path = os.path.join(TMP_DIR, str(abs(hash(uri))))
         logger.info('GIT URI: %s' % uri)
         if not os.path.exists(repo_path):
@@ -48,14 +48,3 @@ class BaseGitObject(BaseCube):
             logger.info(' ... Fetch complete')
 
         return Repo(repo_path)
-
-    def walk_commits(self, uri, last_dt=None, branch='master'):
-        repo = uri.split('/')[-1]
-        gitdb = self.fetch_repo(uri, repo)
-        logger.debug("Iterating through object db (%s)" % repo)
-        if last_dt:
-            # and filter starting after the last object we've already
-            return gitdb.get_walker(since=last_dt)
-        else:
-            # ... imported, if any; or get them all
-            return gitdb.get_walker()

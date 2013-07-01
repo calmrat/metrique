@@ -31,20 +31,18 @@ class Commit(BaseGitObject):
         return self.save_commits(uri, name)
 
     def save_commits(self, uri, name=None):
-        if not name:
-            name = uri.split('/')[-1].replace('.git', '')
-        last_commit_dt = self.find('uri == "%s"' % uri,
-                                   fields='committed_dt',
-                                   sort=[('committed_dt', -1)],
-                                   one=True, raw=True)
-        logger.debug("Last Commit Date: %s" % last_commit_dt)
-        commits = self.walk_commits(uri, last_commit_dt)
+        repo = self.fetch_repo(uri)
+        last_ts = self.find('uri == "%s"' % uri, fields='_commit_ts',
+                            sort=[('_commit_ts', -1)], one=True, raw=True)
+        if last_ts:
+            last_ts = last_ts['_commit_ts'] + 0.1
+        logger.debug("Last Commit Date: %s" % last_ts)
         batch = []
-        for walk_entry in commits:
-            batch.append(self.get_commit(walk_entry.commit, uri))
+        for walk_entry in repo.get_walker(since=last_ts):
+            batch.append(self.get_commit(repo, walk_entry.commit, uri))
         return self.save_objects(batch)
 
-    def get_commit(self, commit, uri):
+    def get_commit(self, repo, commit, uri):
         c = commit
         if c.type != 1:
             raise TypeError(
@@ -67,6 +65,7 @@ class Commit(BaseGitObject):
             'committer': c.committer,
             'commit_dt': datetime.fromtimestamp(c.commit_time +
                                                 c.commit_timezone),
+            '_commit_ts': c.commit_time,
             # FIXME: Can this be sped up?
             # These commented out are all very slow
             #'count': c.count(),
