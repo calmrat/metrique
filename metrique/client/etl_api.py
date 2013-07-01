@@ -17,15 +17,11 @@ CMD = 'admin/etl'
 
 def index_warehouse(self, fields=None):
     '''
+    :param fields: str, or list of str, or str of comma-separated values
+        Fields that should be indexed
+
     Index particular fields of a given cube, assuming
     indexing is enabled for the cube.fields
-
-    Paremeters
-    ----------
-    cube : str
-        Name of the cube you want to query
-    fields : str, or list of str, or str of comma-separated values
-        Fields that should be indexed
     '''
     if not fields:
         fields = '__all__'
@@ -36,17 +32,13 @@ def index_warehouse(self, fields=None):
 
 def snapshot(self, ids=None):
     '''
+    :param list ids: list of cube object ids or str of comma-separated ids
+        Specificly run snapshot for this list of object ids
+
     Run a warehouse -> timeline (datetimemachine) snapshot
     of the data as it existed in the warehouse and dump
     copies of objects into the timeline, one new object
     per unique state in time.
-
-    Paremeters
-    ----------
-    cube : str
-        Name of the cube you want to query
-    ids : list of cube object ids or str of comma-separated ids
-        Specificly run snapshot for this list of object ids
     '''
     return self._get(CMD, 'snapshot', cube=self.name, ids=ids)
 
@@ -55,13 +47,14 @@ def save_objects(self, objects, update=False,
                  batch=DEFAULT_BATCH, workers=MAX_WORKERS,
                  timeline=False):
     '''
-    Save a list of objects the given metrique.cube
+    :param list objects: list of dictionary-like objects to be stored
+    :param boolean update: update already stored objects?
+    :param batch:
+    :param integer workers: number of subprocesses to work on saving
+    :param boolean timeline:
+    :rtype: integer - number of objects successfully saved
 
-    Paremeters
-    ----------
-    cube : str
-        Name of the cube you want to query
-    objs : list of dicts with 1+ field:value and _id defined
+    Save a list of objects the given metrique.cube
     '''
     olen = len(objects)
     if not olen:
