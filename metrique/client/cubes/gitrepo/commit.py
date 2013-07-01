@@ -40,8 +40,8 @@ class Commit(BaseGitObject):
         logger.debug("Last Commit Date: %s" % last_commit_dt)
         commits = self.walk_commits(uri, last_commit_dt)
         batch = []
-        for commit in commits:
-            batch.append(self.get_commit(commit, uri))
+        for walk_entry in commits:
+            batch.append(self.get_commit(walk_entry.commit, uri))
         return self.save_objects(batch)
 
     def get_commit(self, commit, uri):

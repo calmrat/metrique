@@ -53,11 +53,9 @@ class BaseGitObject(BaseCube):
         repo = uri.split('/')[-1]
         gitdb = self.fetch_repo(uri, repo)
         logger.debug("Iterating through object db (%s)" % repo)
-        # by default, we're sorted DESC; we want ASC
         if last_dt:
             # and filter starting after the last object we've already
-            #return gitdb.iter_commits(branch, reverse=True, after=last_dt)
-            pass
+            return gitdb.get_walker(since=last_dt)
         else:
             # ... imported, if any; or get them all
-            return gitdb.get_graph_walker()
+            return gitdb.get_walker()

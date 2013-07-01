@@ -56,7 +56,7 @@ setup(
     requires=['pandas', 'psycopg2', 'MySQLdb', 'tornado (>=3.0)', 'pql',
               'argparse', 'dateutils', 'simplejson', 'pymongo',
               'bson', 'decorator', 'requests', 'futures',
-              'GitPython', 'tz'],
+              'dulwich', 'tz'],
     scripts=['metrique/server/bin/metrique-server',
              'install/metrique-setup-server',
              'install/metrique-setup-client']
