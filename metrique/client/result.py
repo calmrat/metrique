@@ -22,12 +22,10 @@ def mask_filter(f):
         Generic function for getting back filtered frame
         data according to True/False mask filter frame matching
 
-        Parameters
-        ----------
-        mask_frame : Pandas.DataFrame
+        :param Pandas.DataFrame mask_frame:
             DataFrame that maps index:True/False where True means it
             matches the filter and False means it does not
-        filter_ : Boolean
+        :param Boolean filter_ :
             True will return back a DataFrame that contains only items
             which matched the mask_frame filter. False returns back the
             opposite.
@@ -75,9 +73,7 @@ class Result(DataFrame):
         '''
         Pass in the date used in the original query.
 
-        Parameters
-        ----------
-        date : str
+        :param String date:
             Date (date range) that was queried:
                 date -> 'd', '~d', 'd~', 'd~d'
                 d -> '%Y-%m-%d %H:%M:%S,%f', '%Y-%m-%d %H:%M:%S', '%Y-%m-%d'
@@ -106,9 +102,7 @@ class Result(DataFrame):
         Filters out only the rows that match the spectified date.
         Works only on a Result that has _start and _end columns.
 
-        Parameters
-        ----------
-        date : str
+        :param String date:
             date can be anything Pandas.Timestamp supports parsing
         '''
         if not self.check_in_bounds(date):
@@ -152,19 +146,17 @@ class Result(DataFrame):
         Works only on a Result that has _start and _end columns.
         most_recent=False should be set for this to work
 
-        Parameters
-        ----------
-        scale: {'auto', 'maximum', 'daily', 'weekly', 'monthly',
+        :param String scale: {'auto', 'maximum', 'daily', 'weekly', 'monthly',
                 'quarterly', 'yearly'}
             Scale specifies the sampling intervals.
             'auto' will heuritically choose such scale that will give you
             fast results.
-        counts: boolean
+        :param Boolean counts:
             If True counts will be returned
             If False ids will be returned
-        start: str
+        :param String start:
             First date that will be included.
-        end: str
+        :param String end:
             Last date that will be included
         '''
         start = self._start.min() if start is None else start
@@ -197,15 +189,13 @@ class Result(DataFrame):
         '''
         Returns a list of dates sampled according to the specified parameters.
 
-        Parameters
-        ----------
-        start: str
+        :param String start:
             First date that will be included.
-        end: str
+        :param String end:
             Last date that will be included
-        scale: {'daily', 'weekly', 'monthly', 'quarterly', 'yearly'}
+        :param String scale: {'daily', 'weekly', 'monthly', 'quarterly', 'yearly'}
             Scale specifies the sampling intervals.
-        include_bounds: boolean
+        :param Boolean include_bounds:
             Include start and end in the result if they are not included yet.
         '''
         if scale not in ['daily', 'weekly', 'monthly', 'quarterly', 'yearly']:
