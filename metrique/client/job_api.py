@@ -15,9 +15,6 @@ def status(self, job_key):
     Fetch job status for a given metrique job
     identified by the job_key argument
 
-    Paremeters
-    ----------
-    job_key : int
-        id of the job
+    :param Integer job_key: id of the job
     '''
     return self._get(CMD, 'status', job_key)

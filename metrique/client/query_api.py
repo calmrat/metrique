@@ -17,12 +17,7 @@ def aggregate(self, pipeline):
     Proxy for pymongodb's .aggregate framework call
     on a given cube
 
-    Paremeters
-    ----------
-    cube : str
-        Name of the cube you want to query
-    pipeline : list
-        The aggregation pipeline. $match, $project, etc.
+    :param list pipeline: The aggregation pipeline. $match, $project, etc.
     '''
     result = self._get(CMD, 'aggregate', cube=self.name, pipeline=pipeline)
     try:
@@ -34,20 +29,15 @@ def aggregate(self, pipeline):
 def count(self, query):
     '''
     Run a `pql` based query on the given cube, but
-    only return back the count (int)
+    only return back the count (Integer)
 
-    Paremeters
-    ----------
-    cube : str
-        Name of the cube you want to query
-    query : str
-        The query in pql
+    :param String query: The query in pql
+
     #### COMING SOON - 0.1.4 ####
-    date : str
-        Date (date range) that should be queried:
+    :param String date: Date (date range) that should be queried:
             date -> 'd', '~d', 'd~', 'd~d'
             d -> '%Y-%m-%d %H:%M:%S,%f', '%Y-%m-%d %H:%M:%S', '%Y-%m-%d'
-    most_recent : boolean
+    :param Boolean most_recent:
         If true and there are multiple historical version of a single
         object matching the query then only the most recent one will
         be returned
@@ -65,19 +55,14 @@ def find(self, query, fields=None, date=None, most_recent=False,
     * return back only the most recent date objects which
         match any given query, rather than all.
 
-    Paremeters
-    ----------
-    cube : str
-        Name of the cube you want to query
-    query : str
-        The query in pql
-    fields : str, or list of str, or str of comma-separated values
-        Fields that should be returned
-    date : str
+    :param String query: The query in pql
+    :param fields: Fields that should be returne
+    :type fields: str, or list of str, or str of comma-separated values
+    :param String date:
         Date (date range) that should be queried:
             date -> 'd', '~', '~d', 'd~', 'd~d'
             d -> '%Y-%m-%d %H:%M:%S,%f', '%Y-%m-%d %H:%M:%S', '%Y-%m-%d'
-    most_recent : boolean
+    :param Boolean most_recent:
         If true and there are multiple historical version of a single
         object matching the query then only the most recent one will
         be returned
@@ -105,21 +90,17 @@ def fetch(self, fields=None, date=None, sort=None, skip=0, limit=0, ids=[],
     Fetch field values for (potentially) all objects
     of a given, with skip, limit, id "filter" arguments
 
-    Paremeters
-    ----------
-    cube : str
-        Name of the cube you want to query
-    fields : str, or list of str, or str of comma-separated values
-        Fields that should be returned
-    date : str
+    :param fields: Fields that should be returned
+    :type fields: str, or list of str, or str of comma-separated values
+    :param String date:
         Date (date range) that should be queried:
             date -> 'd', '~', '~d', 'd~', 'd~d'
             d -> '%Y-%m-%d %H:%M:%S,%f', '%Y-%m-%d %H:%M:%S', '%Y-%m-%d'
-    skip : int
+    :param Integer skip:
         number of items (sorted ASC) to skip
-    limit : int
+    :param Integer limit:
         number of items total to return, given skip
-    ids : list
+    :param List ids:
         specific list of ids we should fetch
     '''
     result = self._get(CMD, 'fetch', cube=self.name, fields=fields,
@@ -138,11 +119,7 @@ def distinct(self, field):
     '''
     Return back all distinct token values of a given field
 
-    Paremeters
-    ----------
-    cube : str
-        Name of the cube you want to query
-    field : str
+    :param String field:
         Field to get distinct token values from
     '''
     return self._get(CMD, 'distinct', cube=self.name, field=field)

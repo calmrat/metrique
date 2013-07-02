@@ -19,15 +19,10 @@ def add(self, user, password, permissions):
     * r, rw, admin
     * inherent right (r <- rw <- admin)
 
-    Paremeters
-    ----------
-    cube : str
-        Name of the cube you want to query
-    user : str
-        Name of the user you're managing
-    password : str
+    :param String user: Name of the user you're managing
+    :param String password:
         Password (plain text), if any of user
-    permission : str
+    :param String permission:
         Permission set, as of v0.1 (r, rw, admin)
         Permissions decorate tornado object methods (result?)
         and add 'auth'
