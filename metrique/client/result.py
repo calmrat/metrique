@@ -230,9 +230,6 @@ class Result(DataFrame):
         else:
             return gby
 
-    def count(self, column='_id'):
-        return float(self[column].count())
-
     @mask_filter
     def ids(self, ids, _filter=True):
         ''' filter for only objects with matching object ids '''
