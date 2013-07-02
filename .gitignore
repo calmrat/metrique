@@ -38,3 +38,8 @@ nosetests.xml
 
 #Rope
 .ropeproject/
+
+# Builded documentation
+docs/build
+# Generated source-code documentation
+docs/source/source_codes
