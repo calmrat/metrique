@@ -30,8 +30,6 @@ class Commit(BaseGitObject):
         'index': True,
     }
 
-    stats = {}
-
     def extract(self, uri, fetch=True, **kwargs):
         logger.debug("Extracting GIT repo: %s" % uri)
         repo = self.get_repo(uri, fetch)
@@ -40,6 +38,7 @@ class Commit(BaseGitObject):
         if last_ts:
             last_ts = last_ts['_commit_ts'] + 0.1
         logger.debug("Last Commit Date: %s" % last_ts)
+        self.stats = {}
         batch = []
         for walk_entry in repo.get_walker(since=last_ts):
             batch.append(self.get_commit(repo, walk_entry, uri))
