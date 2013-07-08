@@ -8,7 +8,7 @@ logger = logging.getLogger(__name__)
 from decorator import decorator
 import simplejson as json
 import os
-import datetime
+from datetime import datetime
 
 from pandas import DataFrame, Series
 import pandas.tseries.offsets as off
@@ -40,6 +40,17 @@ def _mask_filter(f, self, *args, **kwargs):
         return mask_frame
     else:
         return type(self)(self[mask_frame == filter_])
+
+
+def filtered(f):
+    def _filter(f, self, *args, **kwargs):
+        frame = f(self, *args, **kwargs)
+        ret = type(self)(frame)
+        ret._lbound = self._lbound
+        ret._rbound = self._rbound
+        return ret
+
+    return decorator(_filter, f)
 
 
 class Result(DataFrame):
@@ -236,18 +247,35 @@ class Result(DataFrame):
         # there *should* be an easier way to do this, without lambda...
         return self['_id'].map(lambda x: True if x in ids else False)
 
-    def unfinished_only(self):
+    @filtered
+    def unfinished(self):
         '''
-        Leaves only those entities that has some version with _end equal None.
+        Leaves only those entities that has some version with _end equal None
+        or with _end larger than the right cutoff.
         '''
-        oids = self[self._end.isnull()]._oid.tolist()
-        return type(self)(self[self._oid.apply(lambda oid: oid in oids)])
+        if self._rbound is not None:
+            oids = self[self._end.isnull() | (self._end > self._rbound)]._oid.tolist()
+        else:
+            oids = self[self._end.isnull()]._oid.tolist()
+        return self[self._oid.apply(lambda oid: oid in oids)]
 
+    @filtered
     def last_versions_with_age(self, col_name='age'):
         '''
         Leaves only the latest version for each entity.
-        Add a new column which represents age - it is computed by taking
-        _start of the oldest version and subtracting it from current time.
+        Adds a new column which represents age.
+        The age is computed by subtracting _start of the oldest version
+        from one of these possibilities:
+            if self._rbound is None:
+                if latest_version._end is pd.NaT:
+                    current_time is used
+                else:
+                    min(current_time, latest_version._end) is used
+            else:
+                if latest_version._end is pd.NaT:
+                    self._rbound is used
+                else:
+                    min(self._rbound, latest_version._end) is used
 
         Parameters
         ----------
@@ -255,16 +283,22 @@ class Result(DataFrame):
             Name of the new column.
         '''
         def prep(df):
-            age = now_ts - df._start.min()
-            last = df[df._end.isnull()].copy()
+            ends = set(df._end.tolist())
+            end = pd.NaT if pd.NaT in ends else max(ends)
+            if end is pd.NaT:
+                age = cut_ts - df._start.min()
+            else:
+                age = min(cut_ts, end) - df._start.min()
+            last = df[df._end == end].copy()
             last[col_name] = age
             return last
 
-        now_ts = datetime.datetime.now()
+        cut_ts = datetime.now() if self._rbound is None else self._rbound
         res = pd.concat([prep(df) for _, df in self.groupby(self._oid)])
-        return type(self)(res)
+        return res
 
-    def last_chain_only(self):
+    @filtered
+    def last_chain(self):
         '''
         Leaves only the last chain for each entity.
         Chain is a series of consecutive versions
@@ -281,8 +315,9 @@ class Result(DataFrame):
                 return df[df._start > cutoff]
 
         res = pd.concat([prep(df) for _, df in self.groupby(self._oid)])
-        return type(self)(res)
+        return res
 
+    @filtered
     def first_versions(self):
         '''
         Leaves only the first version for each entity.
@@ -291,8 +326,9 @@ class Result(DataFrame):
             return df[df._start == df._start.min()]
 
         res = pd.concat([prep(df) for _, df in self.groupby(self._oid)])
-        return type(self)(res)
+        return res
 
+    @filtered
     def started_after(self, dt):
         '''
         Leaves only those entities whose first version started after the
@@ -301,7 +337,11 @@ class Result(DataFrame):
         starts = self._start.groupby(self._oid).min()
         ids = starts[starts > dt].index.tolist()
         res = self[self._oid.apply(lambda v: v in ids)]
-        return type(self)(res)
+        return res
+
+    @filtered
+    def filter(self, mask):
+        return self[mask]
 
     ######################## Plotting #####################
 
