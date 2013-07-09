@@ -58,8 +58,7 @@ class Result(DataFrame):
     def __init__(self, data=None):
         super(Result, self).__init__(data)
         self._result_data = data
-        # FIXME: Why isn't this already a datetime?
-        # FIXME: if it is... don't convert unnecessarily
+        # The converts are here so that None is converted to NaT
         if '_start' in self:
             self._start = pd.to_datetime(self._start)
         if '_end' in self:
@@ -152,48 +151,22 @@ class Result(DataFrame):
         else:
             return 'yearly'
 
-    def history(self, scale='auto', counts=True, start=None, end=None,
-                dts=None):
+    def history(self, dates=None, counts=True):
         '''
         Works only on a Result that has _start and _end columns.
         most_recent=False should be set for this to work
 
-        :param String scale: {'auto', 'maximum', 'daily', 'weekly', 'monthly',
-                'quarterly', 'yearly'}
-            Scale specifies the sampling intervals.
-            'auto' will heuritically choose such scale that will give you
-            fast results.
+        :param: List dates:
+            List of dates
         :param Boolean counts:
             If True counts will be returned
             If False ids will be returned
-        :param String start:
-            First date that will be included.
-        :param String end:
-            Last date that will be included
-        :param: List dates:
-            If specified, ignores all other parameters and uses the
-            list of dates directly.
         '''
-        if dts is None:
-            start = self._start.min() if start is None else start
-            end = max(self._end.max(),
-                      self._start.max()) if end is None else end
-            start = start if self.check_in_bounds(start) else self._lbound
-            end = end if self.check_in_bounds(end) else self._rbound
-
-            if scale == 'auto' or scale == 'maximum':
-                start_dts = list(self._start[~self._start.isnull()].values)
-                end_dts = list(self._end[~self._end.isnull()].values)
-                dts = map(Timestamp, set(start_dts + end_dts))
-                dts = filter(lambda ts: self.check_in_bounds(ts) and
-                             ts >= start and ts <= end, dts)
-            if scale == 'auto':
-                scale = self._auto_select_scale(dts, start, end)
-            if scale != 'maximum':
-                dts = self.get_date_ranges(start, end, scale)
+        if dates is None:
+            dates = self.get_dates_range()
 
         idx, vals = [], []
-        for dt in dts:
+        for dt in dates:
             idx.append(dt)
             if counts:
                 vals.append(self.on_date(dt, only_count=True))
@@ -202,35 +175,48 @@ class Result(DataFrame):
         ret = Series(vals, index=idx)
         return ret.sort_index()
 
-    def get_date_ranges(self, start, end, scale='daily', include_bounds=True):
+    def get_dates_range(self, scale='auto', start=None, end=None):
         '''
         Returns a list of dates sampled according to the specified parameters.
 
+        :param String scale: {'auto', 'maximum', 'daily', 'weekly', 'monthly',
+                'quarterly', 'yearly'}
+            Scale specifies the sampling intervals.
+            'auto' will heuritically choose such scale that will give you
+            fast results.
         :param String start:
             First date that will be included.
         :param String end:
             Last date that will be included
-        :param String scale: {'daily', 'weekly', 'monthly', 'quarterly',
-                              'yearly'}
-            Scale specifies the sampling intervals.
         :param Boolean include_bounds:
             Include start and end in the result if they are not included yet.
         '''
-        if scale not in ['daily', 'weekly', 'monthly', 'quarterly', 'yearly']:
+        if scale not in ['auto', 'daily', 'weekly', 'monthly', 'quarterly',
+                         'yearly']:
             raise ValueError('Incorrect scale: %s' % scale)
-        start = Timestamp(start)
-        end = Timestamp(end)
+        start = self._start.min() if start is None else start
+        end = max(self._end.dropna().max(),
+                  self._start.max()) if end is None else end
+        start = start if self.check_in_bounds(start) else self._lbound
+        end = end if self.check_in_bounds(end) else self._rbound
+
+        if scale == 'auto' or scale == 'maximum':
+            start_dts = list(self._start.dropna().values)
+            end_dts = list(self._end.dropna().values)
+            dts = map(Timestamp, set(start_dts + end_dts))
+            dts = filter(lambda ts: self.check_in_bounds(ts) and
+                         ts >= start and ts <= end, dts)
+        if scale == 'auto':
+            scale = self._auto_select_scale(dts, start, end)
+        if scale == 'maximum':
+            return dts
+
         freq = dict(daily='D', weekly='W', monthly='M', quarterly='3M',
                     yearly='12M')
         offset = dict(daily=off.Day(), weekly=off.Week(),
                       monthly=off.MonthEnd(), quarterly=off.QuarterEnd(),
                       yearly=off.YearEnd())
         ret = list(pd.date_range(start + offset[scale], end, freq=freq[scale]))
-        if include_bounds:
-            if start not in ret:
-                ret = [start] + ret
-            if end not in ret:
-                ret = ret + [end]
         ret = filter(lambda ts: self.check_in_bounds(ts), ret)
         return ret
 
