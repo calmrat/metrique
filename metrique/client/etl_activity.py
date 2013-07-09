@@ -60,7 +60,7 @@ def _activity_import_doc(cube, time_doc, activities):
         if inconsistent:
             msg = 'Inconsistency: %s %s: %s -> %s, object has %s' % (
                 last_doc['_oid'], field, removed, added, last_val)
-            logger.warn(msg)
+            logger.debug(msg)
             if '_corrupted' not in new_doc:
                 new_doc['_corrupted'] = {}
             new_doc['_corrupted'][field] = added
