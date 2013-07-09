@@ -78,7 +78,8 @@ def find(self, query, fields=None, date=None, most_recent=False,
         else:
             result = Result(result)
 
-        # FIXME: What's happening here?
+        # this lets the result object know which dates were queried,
+        # so that it can set its bounds.
         result.date(date)
 
         return result

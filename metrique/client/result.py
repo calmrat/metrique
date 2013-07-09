@@ -93,13 +93,11 @@ class Result(DataFrame):
             if len(split) == 1:
                 self._lbound = Timestamp(date)
                 self._rbound = Timestamp(date)
-            elif split[0] == '':
-                self._rbound = Timestamp(split[1])
-            elif split[1] == '':
-                self._lbound = Timestamp(split[0])
             else:
-                self._lbound = Timestamp(split[0])
-                self._rbound = Timestamp(split[1])
+                if split[0] != '':
+                    self._lbound = Timestamp(split[0])
+                if split[1] != '':
+                    self._rbound = Timestamp(split[1])
 
     def check_in_bounds(self, date):
         ''' Check that left and right bounds are sane '''
