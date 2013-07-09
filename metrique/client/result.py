@@ -152,7 +152,8 @@ class Result(DataFrame):
         else:
             return 'yearly'
 
-    def history(self, scale='auto', counts=True, start=None, end=None):
+    def history(self, scale='auto', counts=True, start=None, end=None,
+                dts=None):
         '''
         Works only on a Result that has _start and _end columns.
         most_recent=False should be set for this to work
@@ -169,22 +170,27 @@ class Result(DataFrame):
             First date that will be included.
         :param String end:
             Last date that will be included
+        :param: List dates:
+            If specified, ignores all other parameters and uses the
+            list of dates directly.
         '''
-        start = self._start.min() if start is None else start
-        end = max(self._end.max(), self._start.max()) if end is None else end
-        start = start if self.check_in_bounds(start) else self._lbound
-        end = end if self.check_in_bounds(end) else self._rbound
+        if dts is None:
+            start = self._start.min() if start is None else start
+            end = max(self._end.max(),
+                      self._start.max()) if end is None else end
+            start = start if self.check_in_bounds(start) else self._lbound
+            end = end if self.check_in_bounds(end) else self._rbound
 
-        if scale == 'auto' or scale == 'maximum':
-            start_dts = list(self._start[~self._start.isnull()].values)
-            end_dts = list(self._end[~self._end.isnull()].values)
-            dts = map(Timestamp, set(start_dts + end_dts))
-            dts = filter(lambda ts: self.check_in_bounds(ts) and
-                         ts >= start and ts <= end, dts)
-        if scale == 'auto':
-            scale = self._auto_select_scale(dts, start, end)
-        if scale != 'maximum':
-            dts = self.get_date_ranges(start, end, scale)
+            if scale == 'auto' or scale == 'maximum':
+                start_dts = list(self._start[~self._start.isnull()].values)
+                end_dts = list(self._end[~self._end.isnull()].values)
+                dts = map(Timestamp, set(start_dts + end_dts))
+                dts = filter(lambda ts: self.check_in_bounds(ts) and
+                             ts >= start and ts <= end, dts)
+            if scale == 'auto':
+                scale = self._auto_select_scale(dts, start, end)
+            if scale != 'maximum':
+                dts = self.get_date_ranges(start, end, scale)
 
         idx, vals = [], []
         for dt in dts:
@@ -204,7 +210,8 @@ class Result(DataFrame):
             First date that will be included.
         :param String end:
             Last date that will be included
-        :param String scale: {'daily', 'weekly', 'monthly', 'quarterly', 'yearly'}
+        :param String scale: {'daily', 'weekly', 'monthly', 'quarterly',
+                              'yearly'}
             Scale specifies the sampling intervals.
         :param Boolean include_bounds:
             Include start and end in the result if they are not included yet.
@@ -213,19 +220,18 @@ class Result(DataFrame):
             raise ValueError('Incorrect scale: %s' % scale)
         start = Timestamp(start)
         end = Timestamp(end)
-        freq = dict(weekly='W', monthly='M', quarterly='3M', yearly='12M')
-        offset = dict(weekly=off.Week(), monthly=off.MonthEnd(),
-                      quarterly=off.QuarterEnd(), yearly=off.YearEnd())
-        if scale == 'daily':
-            ret = pd.date_range(start, end, freq='D')
-        else:
-            ret = pd.date_range(start + offset[scale], end, freq=freq[scale])
-        ret = list(ret)
+        freq = dict(daily='D', weekly='W', monthly='M', quarterly='3M',
+                    yearly='12M')
+        offset = dict(daily=off.Day(), weekly=off.Week(),
+                      monthly=off.MonthEnd(), quarterly=off.QuarterEnd(),
+                      yearly=off.YearEnd())
+        ret = list(pd.date_range(start + offset[scale], end, freq=freq[scale]))
         if include_bounds:
             if start not in ret:
                 ret = [start] + ret
             if end not in ret:
                 ret = ret + [end]
+        ret = filter(lambda ts: self.check_in_bounds(ts), ret)
         return ret
 
     ######################## FILTERS ##########################
@@ -253,10 +259,10 @@ class Result(DataFrame):
         Leaves only those entities that has some version with _end equal None
         or with _end larger than the right cutoff.
         '''
+        mask = self._end.isnull()
         if self._rbound is not None:
-            oids = self[self._end.isnull() | (self._end > self._rbound)]._oid.tolist()
-        else:
-            oids = self[self._end.isnull()]._oid.tolist()
+            mask = mask | (self._end > self._rbound)
+        oids = set(self[mask]._oid.tolist())
         return self[self._oid.apply(lambda oid: oid in oids)]
 
     @filtered
