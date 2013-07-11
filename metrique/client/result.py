@@ -280,7 +280,7 @@ class Result(DataFrame):
             last[col_name] = age
             return last
 
-        cut_ts = datetime.now() if self._rbound is None else self._rbound
+        cut_ts = datetime.utcnow() if self._rbound is None else self._rbound
         res = pd.concat([prep(df) for _, df in self.groupby(self._oid)])
         return res
 
