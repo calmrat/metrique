@@ -227,8 +227,13 @@ class BaseSql(BaseCube):
                     if isinstance(mtime_columns, basestring):
                         mtime_columns = [mtime_columns]
                     if last_update:
+                        # HACK: to reduce inconsistencies; make delta
+                        # resolution to the minute (ignore seconds)
+                        # THIS does mean we'll be pulling duplicates
+                        # but that's less problematic than missing
+                        # updates because of delays between extract->saveobjects
                         last_update = last_update.strftime(
-                            '%Y-%m-%d %H:%M:%S %z')
+                            '%Y-%m-%d %H:%M:00 %z')
                         dt_format = "yyyy-MM-dd HH:mm:ss z"
                         for _column in mtime_columns:
                             _sql = "%s > parseTimestamp('%s', '%s')" % (
