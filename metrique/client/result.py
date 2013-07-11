@@ -226,10 +226,7 @@ class Result(DataFrame):
             dictionary (or Pandas Series) with each bucket size
         '''
         gby = self.groupby(column).size()
-        if to_dict:
-            return gby.to_dict()
-        else:
-            return gby
+        return gby.to_dict() if to_dict else gby
 
     @mask_filter
     def ids(self, ids, _filter=True):
@@ -308,15 +305,31 @@ class Result(DataFrame):
         return res
 
     @filtered
-    def first_versions(self):
+    def one_version(self, index=0):
+        '''
+        Leaves only one version for each entity.
+
+        :param int index:
+            List-like index of the version.
+            0 means first version, -1 means last.
+        '''
+        def prep(df):
+            start = sorted(df._start.tolist())[index]
+            return df[df._start == start]
+
+        return pd.concat([prep(df) for _, df in self.groupby(self._oid)])
+
+    def first_version(self):
         '''
         Leaves only the first version for each entity.
         '''
-        def prep(df):
-            return df[df._start == df._start.min()]
+        return self.one_version(0)
 
-        res = pd.concat([prep(df) for _, df in self.groupby(self._oid)])
-        return res
+    def last_version(self):
+        '''
+        Leaves only the last version for each entity.
+        '''
+        return self.one_version(-1)
 
     @filtered
     def started_after(self, dt):
