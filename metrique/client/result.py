@@ -79,7 +79,7 @@ class Result(DataFrame):
         with open(path, 'w') as f:
             json.dump(self._result_data, f)
 
-    def date(self, date):
+    def set_date_bounds(self, date):
         '''
         Pass in the date used in the original query.
 
@@ -93,11 +93,10 @@ class Result(DataFrame):
             if len(split) == 1:
                 self._lbound = Timestamp(date)
                 self._rbound = Timestamp(date)
-            else:
-                if split[0] != '':
-                    self._lbound = Timestamp(split[0])
-                if split[1] != '':
-                    self._rbound = Timestamp(split[1])
+            elif split[0] != '':
+                self._lbound = Timestamp(split[0])
+            elif split[1] != '':
+                self._rbound = Timestamp(split[1])
 
     def check_in_bounds(self, date):
         ''' Check that left and right bounds are sane '''
