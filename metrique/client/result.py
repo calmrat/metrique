@@ -325,9 +325,8 @@ class Result(DataFrame):
         specified date.
         '''
         starts = self._start.groupby(self._oid).min()
-        ids = starts[starts > dt].index.tolist()
-        res = self[self._oid.apply(lambda v: v in ids)]
-        return res
+        oids = starts[starts > dt].index.tolist()
+        return self[self._oid.apply(lambda v: v in oids)]
 
     @filtered
     def filter(self, mask):
