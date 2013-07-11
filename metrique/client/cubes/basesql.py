@@ -98,7 +98,7 @@ class BaseSql(BaseCube):
 
     def extract(self, fields='__all__', force=False, id_delta=None,
                 last_update=None, workers=MAX_WORKERS):
-        saved = 0
+        saved = []
         fields = self.parse_fields(fields)
         if self.config.async:
             with ThreadPoolExecutor(workers) as executor:
@@ -119,6 +119,8 @@ class BaseSql(BaseCube):
                     continue
                 objects = self._extract(field, force, id_delta, last_update)
                 saved += self.save_objects(objects, update=True)
+
+        return saved
 
     def _extract(self, field, force=False, id_delta=None, last_update=None):
         '''
