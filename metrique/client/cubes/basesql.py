@@ -130,9 +130,14 @@ class BaseSql(BaseCube):
                     "force and id_delta can't be used simultaneously")
 
         if not last_update:
+            # list_cube_fields returns back a dict from the server that
+            # contains the most recent mtime for the given field, if any
+            # keys are fields; values are mtimes
             fields = self.list_cube_fields()
-            if fields:
+            try:
                 last_update = fields.get(field)
+            except Exception:
+                pass
 
         tzaware = hasattr(last_update, 'tzinfo') and last_update.tzinfo
         if last_update and not tzaware:
