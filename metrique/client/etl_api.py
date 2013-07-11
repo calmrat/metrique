@@ -59,7 +59,7 @@ def save_objects(self, objects, update=False,
     olen = len(objects)
     if not olen:
         logger.debug("... No objects to save")
-        return 0
+        return []
 
     t1 = time()
     if olen < batch:
