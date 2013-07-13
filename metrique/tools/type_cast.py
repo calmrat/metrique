@@ -2,6 +2,11 @@
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 # Author: "Chris Ward <cward@redhat.com>
 
+# FIXME: OBSOLETE? IS THIS USED ANYMORE?
+# Client is now responsible for ensure the data
+# is in the form it should be before dumping
+# it with save_objects
+
 from datetime import datetime
 from dateutil.parser import parse as dt_parse
 from metrique.tools.constants import UTC, NONE_VALUES

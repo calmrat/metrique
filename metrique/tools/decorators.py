@@ -11,6 +11,9 @@ def _memo(func, *args, **kw):
     else:
         # normalize to str to ensure hashability
         # (ie, 'list' type is unhashable)
+        # FIXME: THIS IS A HACK! but otherwise,
+        # arguments that get a list, for example,
+        # won't be able to be memoized...
         key = str(args)
     cache = func.cache  # attributed added by memoize
     if key in cache:

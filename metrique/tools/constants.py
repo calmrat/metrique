@@ -7,6 +7,8 @@ from datetime import datetime, date
 from datetime import time as dt_time
 from pytz import timezone
 
+# FIXME: OBSOLETE? WHAT IN HERE IS NOT USED ANYMORE? REMOVE IT
+
 
 UTC = timezone("UTC")
 EST = timezone("EST")

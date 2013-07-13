@@ -20,6 +20,13 @@ DEFAULT_CONFIG = {
 
 class BaseTEIID(BaseSql):
     '''
+    Driver which adds support for TEIID based sql cubes.
+
+    Overrides:
+        * connection parameters passed to __init__
+         - adds vdb
+        * proxy property, which connects using TEIID
+          driver instead of default SQL driver
     '''
     def __init__(self, db, host=None, vdb=None, port=None,
                  username=None, password=None, **kwargs):

@@ -10,6 +10,10 @@ from bson.objectid import ObjectId
 
 from metrique.tools.constants import RE_TYPE, RE_DATE_DATETIME
 
+# FIXME: IS THIS EVER EXPECTED TO BE PASSED BY CLIENT ANYMORE?
+# It was used... to handle when clients used a compiled regex
+# in their queries... but clients should be discouraged
+# from this... they can used regex("...")
 SRE_PATTERN_ID = '_sre.SRE_Pattern'
 HAS_SRE_OBJ = re.compile('(<%s (.+)>)' % SRE_PATTERN_ID)
 
@@ -37,8 +41,16 @@ class Encoder(json.JSONEncoder):
 
 
 def decoder(dct):
+    '''
+    Convert
+     * object ids back to mongo ObjectId() objects
+     * datetime strings to datetime objects
+    '''
     for k, v in dct.items():
         if isinstance(v, basestring) and RE_DATE_DATETIME.match(v):
+            # FIXME: SHOULD THIS BE pandas Time instead of dt_parse?
+            # to handle timestamps as well as dt strings?
+            # Are we correctly handling TZones? UTC? test....
             try:
                 dct[k] = dt_parse(v)
             except:

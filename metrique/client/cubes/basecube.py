@@ -25,10 +25,10 @@ class BaseCube(HTTPClient):
     @memo
     def get_property(self, property, field=None, default=None):
         '''
-        First try to get the field's fielddef property, if defined
-        Then try to get the default property, if defined
-        Then return the default for when neither is found
-        Or return None, if no default is defined
+        First try to use the field's property, if defined
+        Then try to use the default property, if defined
+        Then use the default for when neither is found
+        Or None, if no default is defined
         '''
         try:
             return self.fields[field][property]
@@ -38,6 +38,7 @@ class BaseCube(HTTPClient):
             except (TypeError, KeyError):
                 return default
 
+    # FIXME: IS THIS OBSOLETE? WHERE IS IT USED?
     @property
     @memo
     def fieldmap(self):
@@ -52,6 +53,10 @@ class BaseCube(HTTPClient):
         return fieldmap
 
     def setdefault(self, value, default, config_key=None):
+        ''' config helper. Set a cube property value
+            based on config, a given default or the
+            value provided itself.
+        '''
         if value is None:
             try:
                 return self.config[config_key]
@@ -72,6 +77,12 @@ class BaseCube(HTTPClient):
 
     def get_last_id(self, field=None):
         '''
+        Query metrique for the last known object id (_id, _oid)
+        in a given cube.
+
+        If a field is specified, find the mtime for
+        the given cube.field if there are actually
+        documents in the cube with the given field.
         '''
         logger.debug("Get last ID (%s): %s" % (self.name, field))
         if field:

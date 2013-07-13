@@ -6,6 +6,8 @@ import hashlib
 import pytz
 import uuid
 
+# FIXME: OBSOLETE? WHAT IN HERE IS NOT USED ANYMORE? REMOVE IT
+
 
 def doublequote(item):
     ''' convert a given obj to string, double-quoted'''

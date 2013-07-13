@@ -22,6 +22,15 @@ MAX_WORKERS = 1
 
 class BaseSql(BaseCube):
     '''
+    Base, common functionality driver for connecting
+    and extracting data from SQL databases.
+
+    **This class MUST be subclassed**.
+
+    .proxy must be defined, in order to know how
+    to get a connection object to the target sql db.
+
+    FIXME ... MORE DOCS TO COME
     '''
     def __init__(self, host, port, db, row_limit=0, **kwargs):
         self.host = host

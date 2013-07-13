@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 # Author:  Jan Grec <jgrec@redhat.com>
 
+# FIXME: OBSOLETE? See typecast.py
+
 from datetime import datetime
 from time import time
 from type_cast import type_cast

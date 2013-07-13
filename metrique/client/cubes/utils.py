@@ -12,7 +12,14 @@ SYSTEM_CUBES_PATH = os.path.expanduser(SYSTEM_CUBES_PATH)
 DEFAULT_MODULE = 'metrique.client.cubes'
 
 
+# FIXME: RENAME TO 'set_cubes_path'?
 def set_cube_path(path=None):
+    '''
+    Add a given path to sys.path to enable calls to import.
+
+    If no path provided, default to making *metrique.client.cubes*
+    get added to the current namespace.
+    '''
     if not path:
         path = CLIENT_CUBES_PATH
     path = os.path.expanduser(path)
@@ -45,6 +52,7 @@ def get_cube(module, cube, path=None):
     return getattr(_module, cube)
 
 
+# FIXME: OBSOLETE? IS THIS USED ANYWHERE?
 def check_paths(path=None):
     default_paths = [SYSTEM_CUBES_PATH, CLIENT_CUBES_PATH]
     if not path:
