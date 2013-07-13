@@ -3,10 +3,13 @@ Metrique
 
 Python/MongoDB Information Platform and Data Warehouse
 
-*Metrique helps you bring data, structured and unstructured into an 
-intuitive, indexable data object collection that supported transparent
-timebased snapshotting, advanced ad-hoc querying and is fully integrated 
-with the scientific python computing stack.*
+*Metrique help bring data into an intuitive, indexable 
+data object collection that supports quick snapshotting, 
+advanced ad-hoc querying, including (mongodb) aggregations
+and mapreduce, along with python, ipython, pandas,
+numpy, matplotlib, and so on, is fully integrated 
+with the scientific python computing stack. I hope
+so anyway. :)*
 
 **Author:** "Chris Ward" <cward@redhat.com>
 
@@ -16,57 +19,77 @@ with the scientific python computing stack.*
 Installation
 ------------
 
-**MongoDB**
-We assume you have a MongoDB server up and running. If it's running
-binded to 127.0.0.1 with noauth = true and ssl = false, metrique
-should find it automatically.
+You must first install MongoDB. Then, to continue, 
+make sure it's started.
 
-If it's not localhost, then you must remember to run `metrique-server-setup` after installing metrique.
 
 **Metrique**
-(optional) Install virtualenv and create a new virtual environment for metrique.
+(suggested) Install virtualenv and create a new virtual 
+environment for metrique. Activate it. 
 
-Then, install metrique. 
+Install metrique::
 
-    python-pip install metrique
+    python-pip install metrique -r requirements.txt
 
 .. note::
-     If you see 'gcc' error, try installing gcc and python-devel libraries first
+     Make sure you have gcc and python-devel libraries installed
 
 .. note::
      If you see 'Connection reset by peer' error, try option: --use-mirrors
 
-At this point, if you have default mongob setup and it's started, you 
-should be ready to go. Otherwise, run metrique-server-config.py.
+.. note::
+     If you see any other error, Google.
 
-Run::
+You should now be ready to go. 
+
+Run metrique-server-config.py if you changed any defaults.
+
+To start metrique, run::
     
-    $> metrique-server start [1|0] [1|0]
+    $[/metrique/server/bin] metrique-server start [2|1|0] [1|0]
 
-Where 1|0 for argv 0 and 1 are debug on and async on respectively
+Where argv are debug on+/on/off and async on/off respectively.
+
+It's suggested to run :mod:metrique-server-setup after install
+as well, especially if you changed any default values of your
+mongo or metrique servers, they're hosted on a different
+ip than `localhost`. 
 
 
 **Client**
+If the metrique server is running on anything other than 
+`http://127.0.0.1`, run `metrique-client-setup`.
 
-Metrique offers a http api, with a convenient pyclient that understands that api.
+Then,  launch a python shell. We suggest ipython notebook. 
 
-If metrique server is running on anything other than 127.0.0.1, run `metrique-client-setup`.
+As of this time, :mod:cubes can be found in global
+metrique namespace or local to the running user. 
 
-Then, assuming your server is configured and metrique-server is running, launch ipython::
+Default: `~/.metrique/cubes`
 
-    IN  [1] from metrique.client import pyclient
-    IN  [2] c = pyclient()
-    IN  [3] c.ping()
-    OUT [3] pong!
+To quickly make those cubes available in sys.path::
 
-If all is well, the metriqe server should return your ping!
+    IN  [] from metrique.client.cubes import set_cube_path
+    IN  [] set_cube_path()  # defaults to '~/.metrique/cubes'
 
-Now, you can run an example etl job, for example::
+Then, to load a cube for extraction, query or administration,
+import::
 
-    IN  [4] c.admin.etl.extract("git_commit")
+    IN  [] from git_repo.gitrepo import Commit
+    IN  [] g = Commit(config_file=None, uri=None)
+
+Ping the server to ensure your connected. If all 
+is well, metriqe server should pong your ping!::
+
+    IN  [] g.ping()
+    OUT [] pong!
+
+Try running an example ::mod:git_commit etl job, for example::
+
+    IN  [4] g.extract("git_commit")
 
 Then, analyse away::
 
     IN  [5] q = c.query.fetch('git_commit', 'author, committer_ts') 
-    IN  [6] q.groupby(['author']).size().plot(kind='bar')
+    IN  [6] q.groupby(['author']).size().plot(kind='barh')
     OUT [6] <matplotlib.axes.AxesSubplot at 0x6f77ad0>
