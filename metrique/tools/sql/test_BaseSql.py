@@ -26,9 +26,6 @@ class TestBaseSql(TestCase):
         # By default, configure is not implemented
         self.assertRaises(NotImplementedError, lambda: self.basesql.configure())
 
-    def test_reconnect(self):
-        # With empty BaseSql() raises AttributeError
-        self.assertRaises(AttributeError, lambda: self.basesql.reconnect())
 
     def test_fetchall(self):
         # By default, trying to get proxy will raise not implemented

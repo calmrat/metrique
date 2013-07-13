@@ -11,12 +11,9 @@ class BaseSql(object):
     '''
     Metrique SQL obj; contains helper methods for
      * executing SQL
-     * preparing simple select statements
-     * Automated caching
+     * preparing select statements for extraction of object
+       column/field values
     '''
-
-    def __init__(self):
-        self.enabled = True
 
     @property
     def proxy(self):
@@ -26,17 +23,19 @@ class BaseSql(object):
     def cursor(self):
         return self.proxy.cursor()
 
-        raise NotImplementedError("Driver has not yet provided a configure moethod!")
-
-    def reconnect(self):
-        # force the new connection by deleting the exiting one
-        del self._proxy
-
-    def fetchall(self, sql, row_limit, start=0):
+    # FIXME: why not use row_limit as a argument
+    # to fetchall()...
+    # set hard = True to add the SQL LIMIT clause,
+    # otherwise, don't add the hard limit, but only
+    # fetch/skip in fetch() instead?
+    def fetchall(self, sql, row_limit=0, start=0):
         '''
+        Shortcut for getting a cursor, cleaning the sql a bit,
+        adding the LIMIT clause, executing the sql, fetching
+        all the results
         '''
         logger.debug('Getting new sql cursor')
-        cursor = self.proxy.cursor()
+        cursor = self.cursor()
         logger.debug('... got a cursor!')
 
         sql = re.sub('\s+', ' ', sql).strip().encode('utf-8')
@@ -45,25 +44,10 @@ class BaseSql(object):
             sql = re.sub('$', ' LIMIT %i,%i' % (start, row_limit), sql)
 
         logger.debug('UPDATED SQL:\n %s' % sql.decode('utf-8'))
+        rows = None
         try:
-            logger.debug("Using existing connection")
             cursor.execute(sql)
-        except Exception as e:
-            #####
-            # FIXME: we need each subclass to be able to catch specific
-            # errors.... if there is a Programming Error for example...
-            # no need to reconnect, we know there's a syntax error
-            #####
-            # let's try to reconnect and run it again
-            logger.warn('Got an exception: %s' % e)
-            logger.warn('Trying to reconnect and execute(sql) again')
-            self.reconnect()
-            logger.debug('Getting new sql cursor')
-            cursor = self.proxy.cursor()
-            logger.debug('... got a cursor!')
-            logger.debug("Rerunning execute(sql)")
-            cursor.execute(sql)
-
-        rows = cursor.fetchall()
-        cursor.close()  # clean-up a little
+            rows = cursor.fetchall()
+        finally:
+            cursor.close()
         return rows

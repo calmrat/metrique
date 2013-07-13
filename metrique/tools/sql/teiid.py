@@ -12,7 +12,11 @@ from metrique.tools.sql.basesql import BaseSql
 
 class TEIID(BaseSql):
     '''
-    Connection object for Teiid database
+    Connection object for Teiid database. Uses psycopg2 postgres.
+
+    Only difference from basesql is self.vdb and connection
+    method. To connect, TEIID (psycopg2) expects a single string with
+    all the required arguments included.
     '''
     def __init__(self, vdb, db, host, username, password, port,
                  *args, **kwargs):
@@ -31,6 +35,11 @@ class TEIID(BaseSql):
 
     @property
     def proxy(self):
+        '''
+        Connect to TEIID, using psycopg2; run some teiid
+        specific calls to get ready for querying and return
+        the proxy.
+        '''
         logger.debug(
             ' TEIID Config: %s' % re.sub(
                 'password=[^ ]+', 'password=*****', self.connect_str))
@@ -48,5 +57,4 @@ class TEIID(BaseSql):
                 pass
         else:
             logger.debug(' ... Connected (Cached)')
-
         return self._proxy

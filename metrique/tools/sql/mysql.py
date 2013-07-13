@@ -2,6 +2,9 @@
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 # Author: "Chris Ward <cward@redhat.com>
 
+# FIXME: remove or update!
+
+
 import logging
 logger = logging.getLogger(__name__)
 
@@ -19,17 +22,9 @@ class Mysql(BaseSql):
 
     def __init__(self, config=None, *args, **kwargs):
         super(Mysql, self).__init__(*args, **kwargs)
-        #self.db = config['db']
-        #self.host = config['host']
-        #self.user = config['user']
-        #self.passwd = config['passwd']
-        #self.enabled = True
 
     @property
     def proxy(self):
-        if not self.enabled:
-            raise RuntimeError("SQL is not enabled/configured")
-
         if not (hasattr(self, '_proxy')):
             # FIXME: set a timeout??
             self._proxy = MySQLdb.connect(host=self.host, user=self.user,
