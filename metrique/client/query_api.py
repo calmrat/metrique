@@ -80,7 +80,7 @@ def find(self, query, fields=None, date=None, most_recent=False,
 
         # this lets the result object know which dates were queried,
         # so that it can set its bounds.
-        result.date(date)
+        result.set_date_bounds(date)
 
         return result
 

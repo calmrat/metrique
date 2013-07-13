@@ -53,20 +53,20 @@ def save_objects(self, objects, update=False,
     :param batch:
     :param integer workers: number of subprocesses to work on saving
     :param boolean timeline:
-    :rtype: integer - number of objects successfully saved
+    :rtype: list - list of object ids saved
 
     Save a list of objects the given metrique.cube
     '''
     olen = len(objects)
     if not olen:
         logger.debug("... No objects to save")
-        return 0
+        return []
 
     t1 = time()
     if olen < batch:
-        saved = self._post(CMD, 'saveobjects', cube=self.name,
-                           update=update, objects=objects,
-                           timeline=timeline)
+        self._post(CMD, 'saveobjects', cube=self.name,
+                   update=update, objects=objects,
+                   timeline=timeline)
     else:
         ###### FIXME: THINK ABOUT ME ######
         # Should we not even worry about implementing
@@ -78,7 +78,6 @@ def save_objects(self, objects, update=False,
         #
         # Should we remove this async option from the client?
         ######
-        saved = 0
         k = 0
         _k = batch
         with ThreadPoolExecutor(workers) as executor:
@@ -101,9 +100,11 @@ def save_objects(self, objects, update=False,
                     timeline=timeline))
 
             for future in as_completed(pool):
-                saved += future.result()
+                # just make sure we didn't hit any exceptions
+                future.result()
+
     logger.debug("... Saved %s docs in ~%is" % (olen, time() - t1))
-    return saved
+    return [o['_id'] for o in objects]
 
 
 def cube_drop(self):

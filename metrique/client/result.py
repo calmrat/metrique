@@ -79,7 +79,7 @@ class Result(DataFrame):
         with open(path, 'w') as f:
             json.dump(self._result_data, f)
 
-    def date(self, date):
+    def set_date_bounds(self, date):
         '''
         Pass in the date used in the original query.
 
@@ -93,11 +93,10 @@ class Result(DataFrame):
             if len(split) == 1:
                 self._lbound = Timestamp(date)
                 self._rbound = Timestamp(date)
-            else:
-                if split[0] != '':
-                    self._lbound = Timestamp(split[0])
-                if split[1] != '':
-                    self._rbound = Timestamp(split[1])
+            elif split[0] != '':
+                self._lbound = Timestamp(split[0])
+            elif split[1] != '':
+                self._rbound = Timestamp(split[1])
 
     def check_in_bounds(self, date):
         ''' Check that left and right bounds are sane '''
@@ -226,10 +225,7 @@ class Result(DataFrame):
             dictionary (or Pandas Series) with each bucket size
         '''
         gby = self.groupby(column).size()
-        if to_dict:
-            return gby.to_dict()
-        else:
-            return gby
+        return gby.to_dict() if to_dict else gby
 
     @mask_filter
     def ids(self, ids, _filter=True):
@@ -283,7 +279,7 @@ class Result(DataFrame):
             last[col_name] = age
             return last
 
-        cut_ts = datetime.now() if self._rbound is None else self._rbound
+        cut_ts = datetime.utcnow() if self._rbound is None else self._rbound
         res = pd.concat([prep(df) for _, df in self.groupby(self._oid)])
         return res
 
@@ -308,15 +304,31 @@ class Result(DataFrame):
         return res
 
     @filtered
-    def first_versions(self):
+    def one_version(self, index=0):
+        '''
+        Leaves only one version for each entity.
+
+        :param int index:
+            List-like index of the version.
+            0 means first version, -1 means last.
+        '''
+        def prep(df):
+            start = sorted(df._start.tolist())[index]
+            return df[df._start == start]
+
+        return pd.concat([prep(df) for _, df in self.groupby(self._oid)])
+
+    def first_version(self):
         '''
         Leaves only the first version for each entity.
         '''
-        def prep(df):
-            return df[df._start == df._start.min()]
+        return self.one_version(0)
 
-        res = pd.concat([prep(df) for _, df in self.groupby(self._oid)])
-        return res
+    def last_version(self):
+        '''
+        Leaves only the last version for each entity.
+        '''
+        return self.one_version(-1)
 
     @filtered
     def started_after(self, dt):
@@ -325,9 +337,8 @@ class Result(DataFrame):
         specified date.
         '''
         starts = self._start.groupby(self._oid).min()
-        ids = starts[starts > dt].index.tolist()
-        res = self[self._oid.apply(lambda v: v in ids)]
-        return res
+        oids = starts[starts > dt].index.tolist()
+        return self[self._oid.apply(lambda v: v in oids)]
 
     @filtered
     def filter(self, mask):

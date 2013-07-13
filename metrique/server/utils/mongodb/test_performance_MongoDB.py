@@ -56,7 +56,7 @@ class Test_MongoDB_Performance(TestCase):
 
     def save_result(self, case, time):
         """Stores results of performance tests in mongo database."""
-        result = {'date': datetime.now(), 'test': 'MongoDB-performance',
+        result = {'date': datetime.utcnow(), 'test': 'MongoDB-performance',
                   'case': case, 'result': time, 'range': TEST_RANGE}
         self.results.insert(result)
 

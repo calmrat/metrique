@@ -98,7 +98,7 @@ class BaseSql(BaseCube):
 
     def extract(self, fields='__all__', force=False, id_delta=None,
                 last_update=None, workers=MAX_WORKERS):
-        saved = 0
+        saved = []
         fields = self.parse_fields(fields)
         if self.config.async:
             with ThreadPoolExecutor(workers) as executor:
@@ -120,6 +120,8 @@ class BaseSql(BaseCube):
                 objects = self._extract(field, force, id_delta, last_update)
                 saved += self.save_objects(objects, update=True)
 
+        return saved
+
     def _extract(self, field, force=False, id_delta=None, last_update=None):
         '''
         SQL import method
@@ -130,9 +132,14 @@ class BaseSql(BaseCube):
                     "force and id_delta can't be used simultaneously")
 
         if not last_update:
+            # list_cube_fields returns back a dict from the server that
+            # contains the most recent mtime for the given field, if any
+            # keys are fields; values are mtimes
             fields = self.list_cube_fields()
-            if fields:
+            try:
                 last_update = fields.get(field)
+            except Exception:
+                pass
 
         tzaware = hasattr(last_update, 'tzinfo') and last_update.tzinfo
         if last_update and not tzaware:
@@ -220,8 +227,13 @@ class BaseSql(BaseCube):
                     if isinstance(mtime_columns, basestring):
                         mtime_columns = [mtime_columns]
                     if last_update:
+                        # HACK: to reduce inconsistencies; make delta
+                        # resolution to the minute (ignore seconds)
+                        # THIS does mean we'll be pulling duplicates
+                        # but that's less problematic than missing
+                        # updates because of delays between extract->saveobjects
                         last_update = last_update.strftime(
-                            '%Y-%m-%d %H:%M:%S %z')
+                            '%Y-%m-%d %H:%M:00 %z')
                         dt_format = "yyyy-MM-dd HH:mm:ss z"
                         for _column in mtime_columns:
                             _sql = "%s > parseTimestamp('%s', '%s')" % (

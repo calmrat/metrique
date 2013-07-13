@@ -59,11 +59,7 @@ def get_fields(cube, fields=None, check=False):
 
 
 def list_cube_fields(cube):
-    fields = {'_mtime': None}
-    known = ETL_ACTIVITY.find_one({'_id': cube})
-    if known:
-        fields.update(known)
-    return fields
+    return ETL_ACTIVITY.find_one({'_id': cube}, {'_id': False})
 
 
 def list_cubes():
