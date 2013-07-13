@@ -10,6 +10,10 @@ def plot_with_labels(figure, frame, value_field, labels_field):
     Takes figure with plot based on datetime data type and adds
     additional subplot from given frame's value_field, also adding
     labels from labels_field.
+
+    This is useful to apply 'milestone' or 'schedule' or
+    'event' information to give more context to time-series
+    plots.
     """
 
     # Extract first axes fro figure and use it to create second axes

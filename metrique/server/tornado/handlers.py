@@ -22,9 +22,11 @@ from metrique.tools.json import Encoder, decoder
 def async(f):
     '''
     Decorator for enabling async Tornado.Handlers
-    But if not metrique.config.async: disable async
+    If not metrique.config.async: disable async
 
     Requires: futures
+
+    Uses: async.threading
     '''
     @tornado.web.asynchronous
     @wraps(f)

@@ -15,17 +15,18 @@ MAX_WORKERS = 2
 CMD = 'admin/etl'
 
 
-def index_warehouse(self, fields=None):
+def index_warehouse(self, fields='__all__'):
     '''
     :param fields: str, or list of str, or str of comma-separated values
         Fields that should be indexed
 
     Index particular fields of a given cube, assuming
     indexing is enabled for the cube.fields
-    '''
-    if not fields:
-        fields = '__all__'
 
+    Default behavior is to return back __all__, which
+    gets translated to a list of all available fields
+
+    '''
     return self._get(CMD, 'index/warehouse', cube=self.name,
                      fields=fields)
 
@@ -67,6 +68,16 @@ def save_objects(self, objects, update=False,
                            update=update, objects=objects,
                            timeline=timeline)
     else:
+        ###### FIXME: THINK ABOUT ME ######
+        # Should we not even worry about implementing
+        # native parallellism into metrique.client?
+        # Let the running user worry about it instead?
+        # eg, user could do exactly what we're doing
+        # below, or they could prefer using ipython
+        # distributed, etc.
+        #
+        # Should we remove this async option from the client?
+        ######
         saved = 0
         k = 0
         _k = batch
@@ -100,3 +111,7 @@ def cube_drop(self):
     Drops current cube from warehouse
     '''
     return self._delete(CMD, 'cube/drop', cube=self.name)
+
+
+# Wrap pymongo.remove()
+# def remove(self,
