@@ -7,6 +7,7 @@
 import logging
 logger = logging.getLogger(__name__)
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime
 from time import time
 
 DEFAULT_BATCH = 100000
@@ -50,23 +51,27 @@ def save_objects(self, objects, update=False,
     '''
     :param list objects: list of dictionary-like objects to be stored
     :param boolean update: update already stored objects?
-    :param batch:
-    :param integer workers: number of subprocesses to work on saving
-    :param boolean timeline:
+    :param integer batch: maximum slice of objects to post at a time
+    :param integer workers: number of threaded workers to post in parallel
+    :param boolean timeline: target db to save objects is timeline
     :rtype: list - list of object ids saved
 
-    Save a list of objects the given metrique.cube
+    Save a list of objects the given metrique.cube.
+
+    Return back a list of object ids (_id|_oid) saved.
     '''
     olen = len(objects)
     if not olen:
         logger.debug("... No objects to save")
         return []
 
+    now = datetime.utcnow()
+
     t1 = time()
     if olen < batch:
-        self._post(CMD, 'saveobjects', cube=self.name,
-                   update=update, objects=objects,
-                   timeline=timeline)
+        saved = self._post(CMD, 'saveobjects', cube=self.name,
+                           update=update, objects=objects,
+                           timeline=timeline, mtime=now)
     else:
         ###### FIXME: THINK ABOUT ME ######
         # Should we not even worry about implementing
@@ -82,12 +87,14 @@ def save_objects(self, objects, update=False,
         _k = batch
         with ThreadPoolExecutor(workers) as executor:
             pool = []
+            # FIXME: why not
+            # while _k <= olen:
             while True:
                 pool.append(
                     executor.submit(
                         self._post, CMD, 'saveobjects', cube=self.name,
                         update=update, objects=objects[k:_k],
-                        timeline=timeline))
+                        timeline=timeline, mtime=now))
                 k = _k
                 _k += batch
                 if _k > olen:
@@ -97,14 +104,15 @@ def save_objects(self, objects, update=False,
                 executor.submit(
                     self._post, CMD, 'saveobjects', cube=self.name,
                     update=update, objects=objects[k:],
-                    timeline=timeline))
+                    timeline=timeline, mtime=now))
 
+            saved = []
             for future in as_completed(pool):
                 # just make sure we didn't hit any exceptions
-                future.result()
+                saved.extend(future.result())
 
-    logger.debug("... Saved %s docs in ~%is" % (olen, time() - t1))
-    return [o['_id'] for o in objects]
+    logger.debug("... Saved %s docs in ~%is" % (len(saved), time() - t1))
+    return saved
 
 
 def cube_drop(self):

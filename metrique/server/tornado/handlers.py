@@ -64,6 +64,14 @@ def request_authentication(handler):
     return False
 
 
+# user is not admin... lookup username in auth_keys
+def cube_check(handler, cube, lookup):
+    spec = {'_id': cube,
+            lookup: {'$exists': True}}
+    logger.debug("Cube Check: spec (%s)" % spec)
+    return handler.proxy.mongodb_config.c_auth_keys.find_one(spec)
+
+
 def authenticate(handler, username, password, permissions):
     ''' Helper-Function for determining whether a given
         user:password:permissions combination provides
@@ -82,14 +90,8 @@ def authenticate(handler, username, password, permissions):
             # we're admin user and so we get 'rw' to all cubes
             return True
 
-    # user is not admin... lookup username in auth_keys
-    def cube_check(cube, lookup):
-        spec = {'_id': cube,
-                lookup: {'$exists': True}}
-        logger.debug("Cube Check: spec (%s)" % spec)
-        return handler.proxy.mongodb_config.c_auth_keys.find_one(spec)
-    udoc = cube_check(cube, username)
-    adoc = cube_check('__all__', '__all__')
+    udoc = cube_check(handler, cube, username)
+    adoc = cube_check(handler, '__all__', '__all__')
 
     if udoc:
         user = udoc[username]
@@ -340,8 +342,9 @@ class ETLSaveObjects(MetriqueInitialized):
         objects = self.get_argument('objects')
         update = self.get_argument('update')
         timeline = self.get_argument('timeline')
+        mtime = self.get_argument('mtime')
         return etl_api.save_objects(cube=cube, objects=objects, update=update,
-                                    timeline=timeline)
+                                    timeline=timeline, mtime=mtime)
 
 
 class ETLCubeDrop(MetriqueInitialized):
