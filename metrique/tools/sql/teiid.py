@@ -20,7 +20,7 @@ class TEIID(BaseSql):
     '''
     def __init__(self, vdb, db, host, username, password, port,
                  *args, **kwargs):
-        super(TEIID, self).__init__(*args, **kwargs)
+        super(TEIID, self).__init__()
         self.vdb = vdb
         self.db = db
         self.host = host
