@@ -17,6 +17,15 @@ import pandas as pd
 import numpy as np
 
 
+def get_colors():
+    ''' Some nice colors, stored here for convenience.'''
+    colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd',
+              '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf']
+    alphas = ['#aec7e8', '#ffbb78', '#98df8a', '#ff9896', '#c5b0d5',
+              '#c49c94', '#f7b6d2', '#c7c7c7', '#dbdb8d', '#9edae5']
+    return colors, alphas
+
+
 def mask_filter(f):
     '''
         Generic function for getting back filtered frame
@@ -168,7 +177,7 @@ class Result(DataFrame):
             if counts:
                 vals.append(self.on_date(dt, only_count=True))
             else:
-                vals.append(list(self.on_date(dt)._id))
+                vals.append(list(self.on_date(dt)._oid))
         ret = Series(vals, index=idx)
         return ret.sort_index()
 
@@ -191,9 +200,9 @@ class Result(DataFrame):
         if scale not in ['auto', 'daily', 'weekly', 'monthly', 'quarterly',
                          'yearly']:
             raise ValueError('Incorrect scale: %s' % scale)
-        start = self._start.min() if start is None else start
+        start = self._start.min() if start is None else Timestamp(start)
         end = max(self._end.dropna().max(),
-                  self._start.max()) if end is None else end
+                  self._start.max()) if end is None else Timestamp(end)
         start = start if self.check_in_bounds(start) else self._lbound
         end = end if self.check_in_bounds(end) else self._rbound
 
@@ -214,6 +223,7 @@ class Result(DataFrame):
                       monthly=off.MonthEnd(), quarterly=off.QuarterEnd(),
                       yearly=off.YearEnd())
         ret = list(pd.date_range(start + offset[scale], end, freq=freq[scale]))
+        ret = [start] + ret + [end]
         ret = filter(lambda ts: self.check_in_bounds(ts), ret)
         return ret
 
