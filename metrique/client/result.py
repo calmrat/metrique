@@ -300,8 +300,7 @@ class Result(DataFrame):
                 cutoff = max(ends)
                 return df[df._start > cutoff]
 
-        res = pd.concat([prep(df) for _, df in self.groupby(self._oid)])
-        return res
+        return pd.concat([prep(df) for _, df in self.groupby(self._oid)])
 
     @filtered
     def one_version(self, index=0):
@@ -343,6 +342,10 @@ class Result(DataFrame):
     @filtered
     def filter(self, mask):
         return self[mask]
+
+    @filtered
+    def entity_apply(self, function):
+        return pd.concat([function(df) for _, df in self.groupby(self._oid)])
 
     ######################## Plotting #####################
 
