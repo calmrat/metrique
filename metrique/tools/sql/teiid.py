@@ -54,6 +54,9 @@ class TEIID(BaseSql):
             try:
                 self._proxy.set_isolation_level(0)
             except Exception:
+                # This only seems to be necessary on early versions of
+                # psycopg2 though
+                # So in the case that we hit an exception, just ignore them.
                 pass
         else:
             logger.debug(' ... Connected (Cached)')
