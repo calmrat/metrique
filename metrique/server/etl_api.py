@@ -250,7 +250,7 @@ def _snapshot(cube, ids):
             # in the off case that we don't already have a datetime
             # object, try to parse it as a string...
             try:
-                _mtime = pytz.UTC.localize(dt_parse(_mtime))
+                _mtime = dt_parse(_mtime).replace(tzinfo=pytz.UTC)
             except Exception:
                 raise TypeError(
                     'Expected datetime object/string, got: %s' % _mtime)
