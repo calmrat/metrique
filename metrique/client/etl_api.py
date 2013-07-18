@@ -9,6 +9,7 @@ logger = logging.getLogger(__name__)
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from time import time
+import pytz
 
 DEFAULT_BATCH = 100000
 MAX_WORKERS = 2
@@ -65,7 +66,8 @@ def save_objects(self, objects, update=False,
         logger.debug("... No objects to save")
         return []
 
-    now = datetime.utcnow()
+    # get 'now' utc timezone aware datetime object
+    now = pytz.UTC.localize(datetime.utcnow())
 
     t1 = time()
     if olen < batch:
