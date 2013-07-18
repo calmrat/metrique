@@ -156,7 +156,11 @@ def save_objects(cube, objects, update=False, timeline=False,
     etl_activity_update(cube, fields, mtime)
 
     # return object ids saved
-    return [o['_id'] for o in objects]
+    if timeline:
+        _id = '_oid'
+    else:
+        _id = '_id'
+    return [o[_id] for o in objects]
 
 
 def etl_activity_update(cube, fields, mtime):
@@ -262,8 +266,9 @@ def _snapshot(cube, ids):
         # FIXME: should this be hardcoded!? or passed in as an arg?
         batch_insert = _timeline_batch_insert(t, batch_insert, 1000)
 
-    # insert the last few remaining docs
-    _timeline_batch_insert(t, docs)
+    # insert the last few remaining docs in batch_insert that
+    # are less than the max batch size (eg, 1000) not already inserted
+    _timeline_batch_insert(t, batch_insert, 0)
 
 
 @job_save('etl_snapshot')
