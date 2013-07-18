@@ -129,7 +129,7 @@ class Result(DataFrame):
         if only_count:
             return np.sum(before_end & after_start)
         else:
-            return self[before_end & after_start]
+            return self.filter(before_end & after_start)
 
     def _auto_select_scale(self, dts, start=None, end=None, ideal=300):
         '''
