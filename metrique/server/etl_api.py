@@ -5,6 +5,7 @@
 import logging
 logger = logging.getLogger(__name__)
 from datetime import datetime
+from dateutil.parser import parse as dt_parse
 from bson.objectid import ObjectId
 import pytz
 
@@ -245,6 +246,14 @@ def _snapshot(cube, ids):
     for doc in docs:
         _id = doc.pop('_id')
         _mtime = doc.pop('_mtime')
+        if not isinstance(_mtime, datetime):
+            # in the off case that we don't already have a datetime
+            # object, try to parse it as a string...
+            try:
+                _mtime = pytz.UTC.localize(dt_parse(_mtime))
+            except Exception:
+                raise TypeError(
+                    'Expected datetime object/string, got: %s' % _mtime)
 
         # time_doc will contain first doc that has id >= _id,
         # it might be a document where id > _id
