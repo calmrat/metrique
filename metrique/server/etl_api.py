@@ -49,23 +49,20 @@ def _prep_object(obj, mtime, timeline):
         raise TypeError(
             "Expected objects as dict, got type(%s)" % type(obj))
     else:
-        pass
-
-    obj.update({'_mtime': mtime})
-
-    if not timeline and '_id' not in obj:
-        # generate and apply a mongodb (bson) ObjectId if
-        # one doesn't already exist.
-        # Usually, this is generated serverside, but we
-        # generate it here so we know those ids without
-        # having to wait for the round trip back from save_objects
-        # and the objectids generated here should be unique...
-        # downside is we push more data across the network, but
-        # we'd have to pull it back anyway, if generated serverside
-        # since ultimately we want to return back the object _ids list
-        # to client calling .save_objects()
-        obj['_id'] = ObjectId()
-    return obj
+        obj.update({'_mtime': mtime})
+        if not timeline and '_id' not in obj:
+            # generate and apply a mongodb (bson) ObjectId if
+            # one doesn't already exist.
+            # Usually, this is generated serverside, but we
+            # generate it here so we know those ids without
+            # having to wait for the round trip back from save_objects
+            # and the objectids generated here should be unique...
+            # downside is we push more data across the network, but
+            # we'd have to pull it back anyway, if generated serverside
+            # since ultimately we want to return back the object _ids list
+            # to client calling .save_objects()
+            obj['_id'] = ObjectId()
+        return obj
 
 
 def _update_objects(_cube, objects):
@@ -156,11 +153,11 @@ def save_objects(cube, objects, update=False, timeline=False,
     etl_activity_update(cube, fields, mtime)
 
     # return object ids saved
-    if timeline:
-        _id = '_oid'
-    else:
-        _id = '_id'
-    return [o[_id] for o in objects]
+    try:
+        ids = [o['_id'] for o in objects]
+    except KeyError:
+        ids = []
+    return ids
 
 
 def etl_activity_update(cube, fields, mtime):
