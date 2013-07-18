@@ -35,7 +35,7 @@ class BaseSql(object):
         all the results
         '''
         logger.debug('Getting new sql cursor')
-        cursor = self.cursor()
+        cursor = self.proxy.cursor()
         logger.debug('... got a cursor!')
 
         sql = re.sub('\s+', ' ', sql).strip().encode('utf-8')
