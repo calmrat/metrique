@@ -111,8 +111,11 @@ def save_objects(self, objects, update=False,
                 # just make sure we didn't hit any exceptions
                 saved.extend(future.result())
 
-    logger.debug("... Saved %s docs in ~%is" % (len(saved), time() - t1))
-    return saved
+    logger.debug("... Saved %s docs in ~%is" % (olen, time() - t1))
+    # timeline objects are expected to have _oid
+    # warehouse objects are expected to have _id
+    _id = '_oid' if timeline else '_id'
+    return [o[_id] for o in objects]
 
 
 def cube_drop(self):
