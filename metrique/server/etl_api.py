@@ -6,6 +6,7 @@ import logging
 logger = logging.getLogger(__name__)
 from datetime import datetime
 from bson.objectid import ObjectId
+import pytz
 
 from metrique.server.cubes import get_fields, get_cube, get_etl_activity
 from metrique.server.job import job_save
@@ -220,6 +221,10 @@ def _prep_timeline_obj(obj, _id, _mtime):
     '''
     # FIXME: why is .copy() necessary?
     _obj = obj.copy()
+    # normalize _mtime to be timezone aware... assume utc
+    tzaware = hasattr(_mtime, 'tzinfo') and _mtime.tzinfo
+    if _mtime and not tzaware:
+        _mtime = pytz.UTC.localize(_mtime)
     _obj.update({'_oid': _id,
                  '_start': _mtime,
                  '_end': None})
