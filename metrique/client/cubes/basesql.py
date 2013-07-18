@@ -8,6 +8,7 @@ logger = logging.getLogger(__name__)
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, date
 from datetime import time as dt_time
+import pytz
 import re
 import time
 
@@ -152,7 +153,9 @@ class BaseSql(BaseCube):
 
         tzaware = hasattr(last_update, 'tzinfo') and last_update.tzinfo
         if last_update and not tzaware:
-            raise TypeError('last_update dates must be timezone aware')
+            # convert tz unaware datetime to UTC tz aware datetime
+            # NOTE: again, assuming UTC!
+            last_update = pytz.UTC.localize(last_update)
 
         logger.debug("Last mtime (%s): %s" % (field, last_update))
 
@@ -240,7 +243,8 @@ class BaseSql(BaseCube):
                         # resolution to the minute (ignore seconds)
                         # THIS does mean we'll be pulling duplicates
                         # but that's less problematic than missing
-                        # updates because of delays between extract->saveobjects
+                        # updates because of delays between
+                        # extract->saveobjects
                         last_update = last_update.strftime(
                             '%Y-%m-%d %H:%M:00 %z')
                         dt_format = "yyyy-MM-dd HH:mm:ss z"
