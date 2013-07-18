@@ -53,11 +53,18 @@ def _prep_object(obj, mtime, timeline):
 
     obj.update({'_mtime': mtime})
 
-    if not timeline and not '_id' in obj:
+    if not timeline and '_id' not in obj:
+        # generate and apply a mongodb (bson) ObjectId if
+        # one doesn't already exist.
+        # Usually, this is generated serverside, but we
+        # generate it here so we know those ids without
+        # having to wait for the round trip back from save_objects
+        # and the objectids generated here should be unique...
+        # downside is we push more data across the network, but
+        # we'd have to pull it back anyway, if generated serverside
+        # since ultimately we want to return back the object _ids list
+        # to client calling .save_objects()
         obj['_id'] = ObjectId()
-    elif not '_oid' in obj:
-        raise ValueError("_oid is expected to be defined for objects"
-                         " being saved to timeline")
     return obj
 
 
