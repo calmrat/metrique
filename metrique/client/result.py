@@ -17,15 +17,6 @@ import pandas as pd
 import numpy as np
 
 
-def get_colors():
-    ''' Some nice colors, stored here for convenience.'''
-    colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd',
-              '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf']
-    alphas = ['#aec7e8', '#ffbb78', '#98df8a', '#ff9896', '#c5b0d5',
-              '#c49c94', '#f7b6d2', '#c7c7c7', '#dbdb8d', '#9edae5']
-    return colors, alphas
-
-
 def mask_filter(f):
     '''
         Generic function for getting back filtered frame
@@ -69,9 +60,9 @@ class Result(DataFrame):
         self._result_data = data
         # The converts are here so that None is converted to NaT
         if '_start' in self:
-            self._start = pd.to_datetime(self._start)
+            self._start = pd.to_datetime(self._start, utc=True)
         if '_end' in self:
-            self._end = pd.to_datetime(self._end)
+            self._end = pd.to_datetime(self._end, utc=True)
         self._lbound = self._rbound = None
 
     @classmethod
@@ -226,7 +217,8 @@ class Result(DataFrame):
                       monthly=off.MonthEnd(), quarterly=off.QuarterEnd(),
                       yearly=off.YearEnd())
         ret = list(pd.date_range(start + offset[scale], end, freq=freq[scale]))
-        ret = [start] + ret + [end]
+        ret = [start] + ret if start < ret[0] else ret
+        ret = ret + [end] if end > ret[-1] else ret
         ret = filter(lambda ts: self.check_in_bounds(ts), ret)
         return ret
 
