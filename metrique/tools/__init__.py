@@ -16,8 +16,8 @@ def doublequote(item):
 
 def csv2list(csv, delimiter=','):
     ''' convert a str(csv,csv) into a list of strings '''
-    if type(csv) in [list, tuple]:
-        return csv
+    if type(csv) in [list, tuple, set]:
+        return list(csv)
     return [s.strip() for s in csv.split(delimiter)]
 
 
@@ -39,7 +39,7 @@ def get_timezone_converter(from_timezone):
     utc = pytz.utc
     from_tz = pytz.timezone(from_timezone)
 
-    def timezone_converter(self, dt):
+    def timezone_converter(dt):
         try:
             return from_tz.localize(dt).astimezone(utc)
         except Exception:

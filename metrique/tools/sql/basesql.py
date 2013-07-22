@@ -19,9 +19,17 @@ class BaseSql(object):
     def proxy(self):
         raise NotImplementedError("Driver has not provided a proxy method!")
 
-    @property
     def cursor(self):
         return self.proxy.cursor()
+
+    def _validate_row_limit(self, row_limit):
+        # max number of rows to return per call (ie, LIMIT)
+        try:
+            row_limit = int(row_limit)
+        except (TypeError, ValueError):
+            raise ValueError(
+                "row_limit must be a number. Got (%s)" % row_limit)
+        return row_limit
 
     # FIXME: why not use row_limit as a argument
     # to fetchall()...
@@ -34,20 +42,18 @@ class BaseSql(object):
         adding the LIMIT clause, executing the sql, fetching
         all the results
         '''
-        logger.debug('Getting new sql cursor')
-        cursor = self.proxy.cursor()
-        logger.debug('... got a cursor!')
+        self._validate_row_limit(row_limit)
 
-        sql = re.sub('\s+', ' ', sql).strip().encode('utf-8')
+        with self.cursor() as k:
+            sql = re.sub('\s+', ' ', sql).strip().encode('utf-8')
 
-        if row_limit > 0:
-            sql = re.sub('$', ' LIMIT %i,%i' % (start, row_limit), sql)
+            if row_limit > 0:
+                sql = re.sub('$', ' LIMIT %i,%i' % (start, row_limit), sql)
 
-        logger.debug('UPDATED SQL:\n %s' % sql.decode('utf-8'))
-        rows = None
-        try:
-            cursor.execute(sql)
-            rows = cursor.fetchall()
-        finally:
-            cursor.close()
+            logger.debug('UPDATED SQL:\n %s' % sql.decode('utf-8'))
+
+            rows = None
+
+            k.execute(sql)
+            rows = k.fetchall()
         return rows

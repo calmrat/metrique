@@ -95,7 +95,7 @@ class BaseCube(HTTPClient):
             last_id = self.fetch(sort=[('_id', -1)], fields=[],
                                  limit=1, raw=True)
             if last_id:
-                last_id = last_id[0]
+                last_id = last_id[0]['_id']
         logger.debug(" ... Last ID: %s" % last_id)
         return last_id
 
