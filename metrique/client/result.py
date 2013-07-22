@@ -102,10 +102,13 @@ class Result(DataFrame):
             if len(split) == 1:
                 self._lbound = Timestamp(date)
                 self._rbound = Timestamp(date)
-            elif split[0] != '':
-                self._lbound = Timestamp(split[0])
-            elif split[1] != '':
-                self._rbound = Timestamp(split[1])
+            elif len(split) == 2:
+                if split[0] != '':
+                    self._lbound = Timestamp(split[0])
+                if split[1] != '':
+                    self._rbound = Timestamp(split[1])
+            else:
+                raise Exception('Date %s is not in the correct format' % date)
 
     def check_in_bounds(self, date):
         ''' Check that left and right bounds are sane '''
@@ -258,7 +261,7 @@ class Result(DataFrame):
     @filtered
     def last_versions_with_age(self, col_name='age'):
         '''
-        Leaves only the latest version for each entity.
+        Leaves only the latest version for each object.
         Adds a new column which represents age.
         The age is computed by subtracting _start of the oldest version
         from one of these possibilities:
@@ -296,7 +299,7 @@ class Result(DataFrame):
     @filtered
     def last_chain(self):
         '''
-        Leaves only the last chain for each entity.
+        Leaves only the last chain for each object.
         Chain is a series of consecutive versions
             (_end of one is _start of another) .
         '''
@@ -315,7 +318,7 @@ class Result(DataFrame):
     @filtered
     def one_version(self, index=0):
         '''
-        Leaves only one version for each entity.
+        Leaves only one version for each object.
 
         :param int index:
             List-like index of the version.
@@ -329,13 +332,13 @@ class Result(DataFrame):
 
     def first_version(self):
         '''
-        Leaves only the first version for each entity.
+        Leaves only the first version for each object.
         '''
         return self.one_version(0)
 
     def last_version(self):
         '''
-        Leaves only the last version for each entity.
+        Leaves only the last version for each object.
         '''
         return self.one_version(-1)
 
@@ -354,7 +357,14 @@ class Result(DataFrame):
         return self[mask]
 
     @filtered
-    def entity_apply(self, function):
+    def object_apply(self, function):
+        '''
+        Groups by _oid, then applies the function to each group
+        and finally concatenates the results.
+
+        :param (DataFrame -> DataFrame) function:
+            function that takes a DataFrame and returns a DataFrame
+        '''
         return pd.concat([function(df) for _, df in self.groupby(self._oid)])
 
     ######################## Plotting #####################
