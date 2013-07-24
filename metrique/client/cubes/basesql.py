@@ -4,17 +4,11 @@
 
 import logging
 logger = logging.getLogger(__name__)
-
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime, date
-from datetime import time as dt_time
-import pytz
 import re
 import time
 
 from metrique.client.cubes.basecube import BaseCube
 
-from metrique.tools.constants import UTC
 from metrique.tools.constants import INT_TYPE, FLOAT_TYPE
 
 DEFAULT_ROW_LIMIT = 100000
@@ -33,78 +27,54 @@ class BaseSql(BaseCube):
 
     FIXME ... MORE DOCS TO COME
     '''
-    def __init__(self, host, port, db, row_limit=0, **kwargs):
+    def __init__(self, host, port, db, row_limit=DEFAULT_ROW_LIMIT, **kwargs):
         self.host = host
         self.port = port
         self.db = db
-        self.row_limit = self.setdefault(row_limit, DEFAULT_ROW_LIMIT)
+        self.row_limit = row_limit
+
         super(BaseSql, self).__init__(**kwargs)
 
     @property
     def proxy(self):
         raise NotImplementedError("BaseSql has not defined a proxy")
 
-    def _sql_fetchall(self, sql, start, field, row_limit):
+    def _fetchall(self, sql, start, fields):
         '''
         '''
-        logger.debug('Fetching rows')
 
-        # return the raw as token if no convert is defined by driver (self)
-        convert = self.get_property('convert', field, None)
-
-        rows = list(self.proxy.fetchall(sql, row_limit, start))
-        k = len(rows)
-
+        logger.debug('Fetching rows...')
+        rows = self.proxy.fetchall(sql, self.row_limit, start)
         logger.debug('... fetched (%i)' % len(rows))
         if not rows:
             return []
 
+        k = len(rows)
+
         logger.debug('Preparing row data...')
         t0 = time.time()
-        _rows = []
-
-        for row in rows:
-            _rows.append(self._get_row(row, field, convert))
-
+        objects = [self._prep_row(row, fields) for row in rows]
         t1 = time.time()
         logger.debug('... Rows prepared %i docs (%i/sec)' % (
             k, float(k) / (t1 - t0)))
-        return _rows
+        return objects
 
-    def _get_row(self, row, field, convert):
-        id = row[0]  # id 'column' is expected first
-        raw = row[1]  # and raw token 'lookup' second
-        if type(raw) is date:
-            # force convert dates into datetimes... otherwise mongo barfs
-            raw = datetime.combine(raw, dt_time()).replace(tzinfo=UTC)
-        # convert based on driver defined conversion method
-        # and cast to appropriate data type
-        if convert:
-            tokens = convert(self, raw)
-        else:
-            tokens = raw
-
-        return {'id': id, 'field': field, 'tokens': tokens}
-
-    def grouper(self, rows):
-        ''' Group tokens by id/field '''
-        k = len(rows)
-        logger.debug('... ... ... Grouping started of %s rows!' % k)
-        grouped = {}
-        t0 = time.time()
-        for row in rows:
-            id = row['id']
-            field = row['field']
-            tokens = row['tokens']
-            grouped.setdefault(id, {})
-            grouped[id].setdefault(field, [])
-            if not tokens:  # if tokens is empty, don't update the list
-                continue
-            grouped[id][field].append(tokens)
-        t1 = time.time()
-        logger.debug('... ... ... Grouped %i docs (%i/sec)' % (
-            k, float(k) / (t1 - t0)))
-        return grouped
+    def _prep_row(self, row, fields):
+        '''
+        0th item is always the object '_id'
+        Otherwise, fields is expected to map 1:1 with row columns
+        '''
+        row = list(row)
+        obj = {'_id': row.pop(0)}
+        obj.update(dict([(fields[k], e) for k, e in enumerate(row, 0)]))
+        for field in obj:
+            convert = self.get_property('convert', field, None)
+            if convert:
+                obj[field] = convert(obj[field])
+            if obj[field] is '':
+                obj[field] = None  # normalize to None for empty strings
+            #container = self.get_property('container', field)
+        return obj
 
     def extract(self, fields='__all__', force=False, id_delta=None,
                 last_update=None, workers=MAX_WORKERS):
@@ -119,195 +89,249 @@ class BaseSql(BaseCube):
             saved += self.save_objects(objects, update=True)
         return saved
 
-    def _extract(self, field, force=False, id_delta=None, last_update=None):
+    def _extract(self, fields, force=False, id_delta=None, last_update=None):
         '''
-        SQL import method
         '''
-        if id_delta:
-            if force:
-                raise RuntimeError(
-                    "force and id_delta can't be used simultaneously")
+        _fields = list(
+            set(self.parse_fields(fields)) & set(self.fields.keys()))
 
-        if not last_update:
+        if id_delta and force:
+            raise RuntimeError(
+                "force and id_delta can't be used simultaneously")
+
+        mtime = None
+        if last_update:
+            mtime = last_update
+        else:
             # list_cube_fields returns back a dict from the server that
-            # contains the most recent mtime for the given field, if any
+            # contains the most recent mtime for the given field, if any.
             # keys are fields; values are mtimes
-            fields = self.list_cube_fields()
-            try:
-                last_update = fields.get(field)
-            except Exception:
-                pass
+            # from all fields, get the oldest and use it as 'last update' of
+            # any cube object.
+            c_fields = self.list_cube_fields()
+            if c_fields:
+                mtimes = sorted([v for v in c_fields.values()])
+                mtime = mtimes[0]
+                tzaware = (mtime and
+                           hasattr(mtime, 'tzinfo') and
+                           mtime.tzinfo)
+                if not tzaware:
+                    raise TypeError(
+                        'last_update dates must be timezone '
+                        'aware. Got: %s' % mtime)
+        logger.debug("mtime: %s" % mtime)
 
-        tzaware = hasattr(last_update, 'tzinfo') and last_update.tzinfo
-        if last_update and not tzaware:
-            # convert tz unaware datetime to UTC tz aware datetime
-            # NOTE: again, assuming UTC!
-            last_update = pytz.UTC.localize(last_update)
-
-        logger.debug("Last mtime (%s): %s" % (field, last_update))
-
-        db = self.get_property('db', field)
-        table = self.get_property('table', field)
-        db_table = '%s.%s' % (db, table)
-        column = self.get_property('column', field)
-        table_column = '%s.%s' % (table, column)
-
-        # max number of rows to return per call (ie, LIMIT)
-        row_limit = self.get_property('row_limit', field, self.row_limit)
-        if not row_limit:
-            row_limit = DEFAULT_ROW_LIMIT
-        try:
-            row_limit = int(row_limit)
-        except (TypeError, ValueError):
-            raise ValueError(
-                "row_limit must be a number. Got (%s)" % row_limit)
-
-        sql_where = []
-        sql_groupby = ''
-        _sql = self.get_property('sql', field)
-        if not _sql:
-            sql = 'SELECT %s, %s.%s FROM %s' % (
-                table_column, table, field, db_table)
-        else:
-            if isinstance(_sql, basestring):
-                _sql = [_sql]
-            sql = 'SELECT %s, %s FROM ' % (table_column, _sql[0])
-            _from = [db_table]
-
-            # FIXME: THIS IS UGLY! use a dict... or sqlalchemy
-            if len(_sql) >= 2 and _sql[1]:
-                _from.extend(_sql[1])
-            sql += ', '.join(_from)
-            sql += ' '
-
-            if len(_sql) >= 3 and _sql[2]:
-                sql += ' '.join(_sql[2])
-            sql += ' '
-
-            if len(_sql) >= 4 and _sql[3]:
-                sql_where.append('(%s)' % ' OR '.join(_sql[3]))
-
-            if len(_sql) >= 5 and _sql[4]:
-                sql_groupby = _sql[4]
-
-        delta_filter = []
-        delta_filter_sql = None
-
-        # force full update
-        if force:
-            _delta = False
-        else:
-            _delta = self.get_property('delta', field, True)
-
-        if _delta:
-            # delta is enabled
-            # the following deltas are mutually exclusive
-            if id_delta:
-                delta_sql = "(%s IN (%s))" % (table_column, id_delta)
-                delta_filter.append(delta_sql)
-            elif self.get_property('delta_new_ids', field):
-                # if we delta_new_ids is on, but there is no 'last_id',
-                # then we need to do a FULL run...
-                last_id = self.get_last_id(field)
-                if last_id:
-                    try:
-                            last_id = int(last_id)
-                    except (TypeError, ValueError):
-                            pass
-
-                    if type(last_id) in [INT_TYPE, FLOAT_TYPE]:
-                        last_id_sql = "%s > %s" % (table_column, last_id)
-                    else:
-                        last_id_sql = "%s > '%s'" % (table_column, last_id)
-                    delta_filter.append(last_id_sql)
-
-                mtime_columns = self.get_property('delta_mtime', field)
-                if mtime_columns:
-                    if isinstance(mtime_columns, basestring):
-                        mtime_columns = [mtime_columns]
-                    if last_update:
-                        # HACK: to reduce inconsistencies; make delta
-                        # resolution to the minute (ignore seconds)
-                        # THIS does mean we'll be pulling duplicates
-                        # but that's less problematic than missing
-                        # updates because of delays between
-                        # extract->saveobjects
-                        last_update = last_update.strftime(
-                            '%Y-%m-%d %H:%M:00 %z')
-                        dt_format = "yyyy-MM-dd HH:mm:ss z"
-                        for _column in mtime_columns:
-                            _sql = "%s > parseTimestamp('%s', '%s')" % (
-                                _column, last_update, dt_format)
-                            delta_filter.append(_sql)
-
-        if delta_filter:
-            delta_filter_sql = ' OR '.join(delta_filter)
-            sql_where.append('(%s)' % delta_filter_sql)
-
-        if sql_where:
-            sql += ' WHERE %s ' % ' AND '.join(sql_where)
-
-        if sql_groupby:
-            sql += ' GROUP BY %s ' % sql_groupby
-
-        if self.get_property('sort', field, True):
-            sql += " ORDER BY %s ASC" % table_column
-
-        # whether to query for distinct rows only or not; default, no
-        if self.get_property('distinct', field, False):
-            sql = re.sub('^SELECT', 'SELECT DISTINCT', sql)
+        sql = self._gen_sql(_fields, force, id_delta, mtime)
 
         start = 0
         _stop = False
         rows = []
 
-        # FIXME: prefetch the next set of rows while importing to mongo
-        logger.debug('... ... Starting SQL fetchall routine!')
+        #container = self.get_property('container', field)
 
-        container = self.get_property('container', field)
-
-        objects = []
+        _rows = []
         while not _stop:
             try:
-                rows = self._sql_fetchall(sql, start, field, row_limit)
+                rows = self._fetchall(sql, start, _fields)
             except Exception as e:
                 logger.error('SQL ERROR: %s' % e)
                 return []
+            else:
+                _rows.extend(rows)
 
             k = len(rows)
-            if k > 0:
-                grouped = self.grouper(rows)
-                t0 = time.time()
-                _id_k = 0
-                for _id in grouped.iterkeys():
-                    _id_k += 1
-                    for field in grouped[_id].iterkeys():
-                        tokens = grouped[_id][field]
-                        if not tokens:
-                            tokens = None
-                        elif container and type(tokens) is not list:
-                            tokens = [tokens]
-                        elif not container and type(tokens) is list:
-                            if len(tokens) > 1:
-                                raise TypeError(
-                                    "Tokens contains too many values (%s); "
-                                    "(set container=True?)" % (tokens))
-                            else:
-                                tokens = tokens[0]
-                        objects.append({'_id': _id, field: tokens})
-                t1 = time.time()
-                logger.debug('... ... Processed %i docs (%i/sec)' % (
-                    k, k / (t1 - t0)))
-            else:
-                logger.debug('... ... No rows; nothing to process')
-
-            if k < row_limit:
+            if k < self.row_limit:
                 _stop = True
             else:
                 start += k
-                if k != row_limit:  # theoretically, k == row_limit
+                if k != self.row_limit:  # theoretically, k == self.row_limit
                     logger.warn(
                         "rows count seems incorrect! "
                         "row_limit: %s, row returned: %s" % (
-                            row_limit, k))
+                            self.row_limit, k))
+
+        objects = []
+
+        # FIXME: CONTAINER?
+        __rows = {}
+        for row in _rows:
+            __rows.setdefault(row['_id'], []).append(row)
+
+        for k, v in __rows.iteritems():
+            if len(v) > 1:
+                o = v.pop(0)
+                for e in v:
+                    for _k, _v in e.iteritems():
+                        if _k == '_id':
+                            # these are always the same...
+                            continue
+                        elif o[_k] != _v:
+                            if type(o[_k]) is list:
+                                if _v not in o[_k]:
+                                    o[_k].append(_v)
+                                else:
+                                    continue
+                            else:
+                                o[_k] = [o[_k], _v]
+
+                            try:
+                                del o[_k][o[_k].index(None)]
+                                # if we have more than one value, drop any
+                                # redundant None (null) values, if any
+                            except (ValueError):
+                                pass
+
+                objects.append(o)
+            else:
+                objects.append(v)
         return objects
+
+    def _get_sql_clause(self, clause, default=None):
+        '''
+        '''
+        clauses = []
+        for f in self.fields.keys():
+            try:
+                _clause = self.fields[f]['sql'].get(clause)
+            except KeyError:
+                if default:
+                    _clause = default
+                else:
+                    raise
+            if type(_clause) is list:
+                clauses.extend(_clause)
+            else:
+                clauses.append(_clause)
+        clauses = list(set(clauses))
+        try:
+            del clauses[clauses.index(None)]
+        except ValueError:
+            pass
+        return clauses
+
+    def _get_id_delta_sql(self, table, column, id_delta):
+        '''
+        '''
+        # the following deltas are mutually exclusive
+        return ["(%s.%s IN (%s))" % (table, column, id_delta)]
+
+    def _get_last_id_sql(self):
+        '''
+        '''
+        table = self.get_property('table')
+        _id = self.get_property('column')
+        last_id = self.get_last_id()
+        if last_id and self.get_property('delta_new_ids', True):
+            # if we delta_new_ids is on, but there is no 'last_id',
+            # then we need to do a FULL run...
+            try:  # try to convert to integer... if not, assume unicode value
+                last_id = int(last_id)
+            except (TypeError, ValueError):
+                pass
+            if type(last_id) in [INT_TYPE, FLOAT_TYPE]:
+                last_id_sql = "%s.%s > %s" % (table, _id, last_id)
+            else:
+                last_id_sql = "%s.%s > '%s'" % (table, _id, last_id)
+            return [last_id_sql]
+        else:
+            return []
+
+    def _get_mtime_sql(self, mtime):
+        '''
+        '''
+        mtime_columns = self.get_property('delta_mtime', None, True)
+        if not (mtime_columns and mtime):
+            return []
+        if isinstance(mtime_columns, basestring):
+            mtime_columns = [mtime_columns]
+        mtime = mtime.strftime(
+            '%Y-%m-%d %H:%M:%S %z')
+        dt_format = "yyyy-MM-dd HH:mm:ss z"
+        filters = []
+        for _column in mtime_columns:
+            _sql = "%s > parseTimestamp('%s', '%s')" % (
+                _column, mtime, dt_format)
+            filters.append(_sql)
+        return filters
+
+    def _get_delta_sql(self, mtime=None):
+        '''
+        '''
+        delta_filter = []
+        # last_id delta
+        delta_filter.extend(self._get_last_id_sql())
+        # mtime based delta
+        delta_filter.extend(self._get_mtime_sql(mtime))
+        return delta_filter
+
+    def _gen_sql(self, fields, force, id_delta, mtime):
+        '''
+        '''
+        db = self.get_property('db')
+        table = self.get_property('table')
+        _id = self.get_property('column')
+
+        selects = ['%s.%s' % (table, _id)]
+
+        for f in fields:
+            try:
+                self.fields[f]['sql']
+            except KeyError:
+                selects.append('%s.%s' % (table, f))
+            else:
+                s = self.fields[f]['sql'].get('select')
+                if re.match('!', s):
+                    # if we start with a bang, append the line directly
+                    s = re.sub('^!', '', s)
+                    selects.append(s)
+                else:
+                    selects.append('%s.%s' % (f, s))
+        selects = ', '.join(selects)
+
+        froms = ['%s.%s' % (db, table)]
+        froms = 'FROM ' + ', '.join(froms)
+
+        left_joins = []
+        for f in fields:
+            try:
+                self.fields[f]['sql']
+            except KeyError:
+                pass
+            else:
+                lj = self.fields[f]['sql'].get('left_join', [])
+                for i in lj:
+                    if isinstance(i, basestring):
+                        left_joins.append(i)
+                    else:
+                        left_joins.append(
+                            'LEFT JOIN %s %s ON %s.%s = %s' % (
+                                i[0], f, f, i[1], i[2]))
+        left_joins = ' '.join(left_joins)
+
+        where = []
+
+        # the following deltas are mutually exclusive
+        if id_delta:
+            delta_filter = self._get_id_delta_sql(table, _id, id_delta)
+        elif not force and self.get_property('delta', None, True):
+            delta_filter = self._get_delta_sql(mtime)
+        else:
+            delta_filter = []
+
+        if delta_filter:
+            where = 'WHERE ' + ' OR '.join(delta_filter)
+
+        sql = 'SELECT %s %s %s %s' % (selects, froms, left_joins, where)
+
+        #groupbys = ', '.join(self._get_sql_clause('groupby'))
+        #if groupbys:
+        #    sql += ' GROUP BY %s ' % ', '.join(groupbys)
+
+        if self.get_property('sort', None, False):
+            sql += " ORDER BY %s.%s ASC" % (table, _id)
+
+        # whether to query for distinct rows only or not; default, no
+        if self.get_property('distinct', None, False):
+            sql = re.sub('^SELECT', 'SELECT DISTINCT', sql)
+
+        return sql
