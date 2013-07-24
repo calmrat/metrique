@@ -108,28 +108,15 @@ class BaseSql(BaseCube):
 
     def extract(self, fields='__all__', force=False, id_delta=None,
                 last_update=None, workers=MAX_WORKERS):
+        '''
+        '''
         saved = []
         fields = self.parse_fields(fields)
-        if self.config.async:
-            with ThreadPoolExecutor(workers) as executor:
-                future_builds = []
-                for field in fields:
-                    future_builds.append(executor.submit(
-                        self._extract, field, force, id_delta, last_update))
-                for future in as_completed(future_builds):
-                    try:
-                        objects = future.result()
-                    except Exception as e:
-                        logger.error("ERROR: %s" % (e))
-                    else:
-                        saved += self.save_objects(objects, update=True)
-        else:
-            for field in self.fields:
-                if fields and field not in fields:
-                    continue
-                objects = self._extract(field, force, id_delta, last_update)
-                saved += self.save_objects(objects, update=True)
-
+        for field in self.fields:
+            if fields and field not in fields:
+                continue
+            objects = self._extract(field, force, id_delta, last_update)
+            saved += self.save_objects(objects, update=True)
         return saved
 
     def _extract(self, field, force=False, id_delta=None, last_update=None):
@@ -323,5 +310,4 @@ class BaseSql(BaseCube):
                         "rows count seems incorrect! "
                         "row_limit: %s, row returned: %s" % (
                             row_limit, k))
-
         return objects
