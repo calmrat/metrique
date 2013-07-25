@@ -5,7 +5,7 @@
 from logging import getLogger
 logger = getLogger(__name__)
 
-from metrique.client.cubes.basesql import BaseSql
+from metrique.client.cubes.basesql2 import BaseSql
 from metrique.tools.sql.teiid import TEIID
 
 DEFAULT_CONFIG = {

@@ -42,7 +42,7 @@ def get_timezone_converter(from_timezone):
     utc = pytz.utc
     from_tz = pytz.timezone(from_timezone)
 
-    def timezone_converter(self, dt):
+    def timezone_converter(dt):
         try:
             return from_tz.localize(dt).astimezone(utc)
         except Exception:
