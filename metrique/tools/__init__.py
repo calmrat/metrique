@@ -52,3 +52,20 @@ def get_timezone_converter(from_timezone):
 
 def perc(numerator, denominator):
     return (float(numerator) / denominator) * 100
+
+
+def cube_pkg_mod_cls(cube):
+    '''
+    Convert 'pkg_mod' -> pkg, mod, Cls
+
+    eg: tw_tweet -> tw, tweet, Tweet
+
+    Use for dynamically importing cube classes
+
+    Assumes `Metrique Cube Naming Convention` is used
+    '''
+    _cube = cube.split('_')
+    pkg, mod = _cube[0], ''.join(_cube[1:])
+    cls = mod[0].upper() + mod[1:]
+    return pkg, mod, cls
+
