@@ -24,6 +24,9 @@ def set_cube_path(path=None):
         path = CLIENT_CUBES_PATH
     path = os.path.expanduser(path)
     sys.path.append(path)
+    # also append system cubes path for easy/consistent importing
+    sys.path.append(SYSTEM_CUBES_PATH)
+    sys.path = list(set(sys.path))  # make sure we don't have dups...
     return path
 
 
