@@ -66,6 +66,5 @@ def cube_pkg_mod_cls(cube):
     '''
     _cube = cube.split('_')
     pkg, mod = _cube[0], ''.join(_cube[1:])
-    cls = mod[0].upper() + mod[1:]
+    cls = mod[0].upper() + '_'.join(mod[1:])
     return pkg, mod, cls
-
