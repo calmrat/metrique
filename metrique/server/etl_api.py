@@ -49,7 +49,8 @@ def _prep_object(obj, mtime, timeline):
         raise ValueError("Empty object")
     elif not isinstance(obj, dict):
         raise TypeError(
-            "Expected objects as dict, got type(%s)" % type(obj))
+            "Expected dict object, got type(%s)."
+            "\nObject: %s" % (type(obj), obj))
     else:
         obj.update({'_mtime': mtime})
         if not timeline and '_id' not in obj:

@@ -18,7 +18,10 @@ def csv2list(csv, delimiter=','):
     ''' convert a str(csv,csv) into a list of strings '''
     if type(csv) in [list, tuple, set]:
         return list(csv)
-    return [s.strip() for s in csv.split(delimiter)]
+    elif csv:
+        return [s.strip() for s in csv.split(delimiter)]
+    else:
+        return None
 
 
 def list2csv(_list, quote=False):
@@ -39,7 +42,7 @@ def get_timezone_converter(from_timezone):
     utc = pytz.utc
     from_tz = pytz.timezone(from_timezone)
 
-    def timezone_converter(dt):
+    def timezone_converter(self, dt):
         try:
             return from_tz.localize(dt).astimezone(utc)
         except Exception:

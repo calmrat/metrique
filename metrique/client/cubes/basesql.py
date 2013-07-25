@@ -39,7 +39,7 @@ class BaseSql(BaseCube):
     def proxy(self):
         raise NotImplementedError("BaseSql has not defined a proxy")
 
-    def _fetchall(self, sql, start, fields):
+    def _fetchall(self, sql, start, exclude_fields, field_order):
         '''
         '''
 
@@ -53,51 +53,47 @@ class BaseSql(BaseCube):
 
         logger.debug('Preparing row data...')
         t0 = time.time()
-        objects = [self._prep_row(row, fields) for row in rows]
+        objects = [self._prep_row(row, exclude_fields, field_order) for row in rows]
         t1 = time.time()
         logger.debug('... Rows prepared %i docs (%i/sec)' % (
             k, float(k) / (t1 - t0)))
         return objects
 
-    def _prep_row(self, row, fields):
+    def _prep_row(self, row, exclude_fields, field_order):
         '''
         0th item is always the object '_id'
         Otherwise, fields is expected to map 1:1 with row columns
         '''
         row = list(row)
         obj = {'_id': row.pop(0)}
-        obj.update(dict([(fields[k], e) for k, e in enumerate(row, 0)]))
-        for field in obj:
+        for k, e in enumerate(row, 0):
+            field = field_order[k]
             convert = self.get_property('convert', field, None)
             if convert:
-                obj[field] = convert(obj[field])
-            if obj[field] is '':
-                obj[field] = None  # normalize to None for empty strings
+                e = convert(self, e)
+            if e is '':
+                e = None  # normalize to None for empty strings
+            obj.update({field: e})
             #container = self.get_property('container', field)
         return obj
 
-    def extract(self, fields='__all__', force=False, id_delta=None,
+    def extract(self, exclude_fields=None, force=False, id_delta=None,
                 last_update=None, workers=MAX_WORKERS):
         '''
         '''
-        saved = []
-        fields = self.parse_fields(fields)
-        for field in self.fields:
-            if fields and field not in fields:
-                continue
-            objects = self._extract(field, force, id_delta, last_update)
-            saved += self.save_objects(objects, update=True)
-        return saved
+        objects = self._extract(exclude_fields, force, id_delta, last_update)
+        return self.save_objects(objects)
 
-    def _extract(self, fields, force=False, id_delta=None, last_update=None):
+    def _extract(self, exclude_fields=None, force=False,
+                 id_delta=None, last_update=None):
         '''
         '''
-        _fields = list(
-            set(self.parse_fields(fields)) & set(self.fields.keys()))
-
         if id_delta and force:
             raise RuntimeError(
                 "force and id_delta can't be used simultaneously")
+
+        exclude_fields = self.parse_fields(exclude_fields)
+        field_order = list(set(self.fields) - set(exclude_fields))
 
         mtime = None
         if last_update:
@@ -121,7 +117,7 @@ class BaseSql(BaseCube):
                         'aware. Got: %s' % mtime)
         logger.debug("mtime: %s" % mtime)
 
-        sql = self._gen_sql(_fields, force, id_delta, mtime)
+        sql = self._gen_sql(force, id_delta, mtime, field_order)
 
         start = 0
         _stop = False
@@ -131,13 +127,8 @@ class BaseSql(BaseCube):
 
         _rows = []
         while not _stop:
-            try:
-                rows = self._fetchall(sql, start, _fields)
-            except Exception as e:
-                logger.error('SQL ERROR: %s' % e)
-                return []
-            else:
-                _rows.extend(rows)
+            rows = self._fetchall(sql, start, exclude_fields, field_order)
+            _rows.extend(rows)
 
             k = len(rows)
             if k < self.row_limit:
@@ -183,7 +174,7 @@ class BaseSql(BaseCube):
 
                 objects.append(o)
             else:
-                objects.append(v)
+                objects.append(v[0])
         return objects
 
     def _get_sql_clause(self, clause, default=None):
@@ -239,7 +230,7 @@ class BaseSql(BaseCube):
     def _get_mtime_sql(self, mtime):
         '''
         '''
-        mtime_columns = self.get_property('delta_mtime', None, True)
+        mtime_columns = self.get_property('delta_mtime', None, [])
         if not (mtime_columns and mtime):
             return []
         if isinstance(mtime_columns, basestring):
@@ -264,7 +255,7 @@ class BaseSql(BaseCube):
         delta_filter.extend(self._get_mtime_sql(mtime))
         return delta_filter
 
-    def _gen_sql(self, fields, force, id_delta, mtime):
+    def _gen_sql(self, force, id_delta, mtime, field_order):
         '''
         '''
         db = self.get_property('db')
@@ -273,11 +264,14 @@ class BaseSql(BaseCube):
 
         selects = ['%s.%s' % (table, _id)]
 
-        for f in fields:
+        for f in field_order:
             try:
-                self.fields[f]['sql']
+                assert isinstance(self.fields[f]['sql'], dict)
             except KeyError:
                 selects.append('%s.%s' % (table, f))
+            except AssertionError:
+                selects.append('%s.%s' % (table,
+                                          self.fields[f]['sql']))
             else:
                 s = self.fields[f]['sql'].get('select')
                 if re.match('!', s):
@@ -292,10 +286,10 @@ class BaseSql(BaseCube):
         froms = 'FROM ' + ', '.join(froms)
 
         left_joins = []
-        for f in fields:
+        for f in field_order:
             try:
-                self.fields[f]['sql']
-            except KeyError:
+                assert isinstance(self.fields[f]['sql'], dict)
+            except (KeyError, AssertionError):
                 pass
             else:
                 lj = self.fields[f]['sql'].get('left_join', [])
@@ -308,8 +302,6 @@ class BaseSql(BaseCube):
                                 i[0], f, f, i[1], i[2]))
         left_joins = ' '.join(left_joins)
 
-        where = []
-
         # the following deltas are mutually exclusive
         if id_delta:
             delta_filter = self._get_id_delta_sql(table, _id, id_delta)
@@ -320,6 +312,8 @@ class BaseSql(BaseCube):
 
         if delta_filter:
             where = 'WHERE ' + ' OR '.join(delta_filter)
+        else:
+            where = ''
 
         sql = 'SELECT %s %s %s %s' % (selects, froms, left_joins, where)
 
