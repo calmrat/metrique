@@ -53,7 +53,9 @@ class BaseSql(BaseCube):
 
         logger.debug('Preparing row data...')
         t0 = time.time()
-        objects = [self._prep_row(row, exclude_fields, field_order) for row in rows]
+        objects = [self._prep_row(row,
+                                  exclude_fields,
+                                  field_order) for row in rows]
         t1 = time.time()
         logger.debug('... Rows prepared %i docs (%i/sec)' % (
             k, float(k) / (t1 - t0)))
@@ -74,7 +76,6 @@ class BaseSql(BaseCube):
             if e is '':
                 e = None  # normalize to None for empty strings
             obj.update({field: e})
-            #container = self.get_property('container', field)
         return obj
 
     def extract(self, exclude_fields=None, force=False, id_delta=None,
@@ -121,10 +122,6 @@ class BaseSql(BaseCube):
 
         start = 0
         _stop = False
-        rows = []
-
-        #container = self.get_property('container', field)
-
         _rows = []
         while not _stop:
             rows = self._fetchall(sql, start, exclude_fields, field_order)
@@ -143,7 +140,6 @@ class BaseSql(BaseCube):
 
         objects = []
 
-        # FIXME: CONTAINER?
         __rows = {}
         for row in _rows:
             __rows.setdefault(row['_id'], []).append(row)
@@ -175,6 +171,19 @@ class BaseSql(BaseCube):
                 objects.append(o)
             else:
                 objects.append(v[0])
+        else:
+            # walk through all the objects one more time... converting
+            # those expected to be container
+            for i, o in enumerate(objects):
+                for f, v in o.iteritems():
+                    container = self.get_property('container', f)
+                    v_is_list = type(v) is list
+                    if container and not v_is_list:
+                        objects[i][f] = [v]
+                    elif not container and v_is_list:
+                        raise ValueError(
+                            "Expected single value (%s), got list (%s)" % (
+                                f, v))
         return objects
 
     def _get_sql_clause(self, clause, default=None):
