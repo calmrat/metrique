@@ -78,7 +78,7 @@ class BaseSql(BaseCube):
         return obj
 
     def extract(self, exclude_fields=None, force=False, id_delta=None,
-                last_update=None, workers=MAX_WORKERS):
+                last_update=None, workers=MAX_WORKERS, **kwargs):
         '''
         '''
         objects = self._extract(exclude_fields, force, id_delta, last_update)

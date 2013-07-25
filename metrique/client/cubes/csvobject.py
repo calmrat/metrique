@@ -26,7 +26,7 @@ class CSVObject(BaseCSV):
 
     fields = {}
 
-    def extract(self, uri, _id=None, cube=None):
+    def extract(self, uri, _id=None, cube=None, **kwargs):
         if cube:
             self.name = cube
         logger.debug("Loading CSV: %s" % uri)

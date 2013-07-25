@@ -44,16 +44,15 @@ class BaseSql(object):
         '''
         self._validate_row_limit(row_limit)
 
-        with self.cursor() as k:
-            sql = re.sub('\s+', ' ', sql).strip().encode('utf-8')
-
-            if row_limit > 0:
-                sql = re.sub('$', ' LIMIT %i,%i' % (start, row_limit), sql)
-
-            logger.debug('UPDATED SQL:\n %s' % sql.decode('utf-8'))
-
-            rows = None
-
+	k = self.cursor()
+        sql = re.sub('\s+', ' ', sql).strip().encode('utf-8')
+        if row_limit > 0:
+            sql = re.sub('$', ' LIMIT %i,%i' % (start, row_limit), sql)
+        logger.debug('UPDATED SQL:\n %s' % sql.decode('utf-8'))
+        rows = None
+        try:
             k.execute(sql)
             rows = k.fetchall()
+	finally:
+            k.close()
         return rows
