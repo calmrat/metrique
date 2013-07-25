@@ -6,9 +6,10 @@ import os
 import sys
 
 from metrique.tools.defaults import CLIENT_CUBES_PATH, SYSTEM_CUBES_PATH
+from metrique.tools import cube_pkg_mod_cls
+
 CLIENT_CUBES_PATH = os.path.expanduser(CLIENT_CUBES_PATH)
 SYSTEM_CUBES_PATH = os.path.expanduser(SYSTEM_CUBES_PATH)
-
 DEFAULT_MODULE = 'metrique.client.cubes'
 
 
@@ -30,7 +31,7 @@ def set_cube_path(path=None):
     return path
 
 
-def get_cube(module, cube, path=None):
+def get_cube(cube, path=None):
     '''
     Wraps __import__ to dynamically locate and load a client cube.
 
@@ -42,17 +43,13 @@ def get_cube(module, cube, path=None):
         Name of the cube Class to be imported from given module (eg, 'Build')
 
     '''
-    assert set_cube_path(path)
+    set_cube_path(path)
 
-    try:
-        _module = __import__(module, {}, {}, [cube])
-    except ImportError as e:
-        module = '%s.%s' % (DEFAULT_MODULE, module)
-        try:
-            _module = __import__(module, {}, {}, [cube])
-        except:
-            raise ImportError(e)
-    return getattr(_module, cube)
+    pkg, mod, cls = cube_pkg_mod_cls(cube)
+    _pkg = __import__(pkg, fromlist=[mod])
+    _mod = getattr(_pkg, mod)
+    _cls = getattr(_mod, cls)
+    return _cls
 
 
 # FIXME: OBSOLETE? IS THIS USED ANYWHERE?
