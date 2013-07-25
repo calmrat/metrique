@@ -311,6 +311,23 @@ class BaseSql(BaseCube):
                                 i[0], f, f, i[1], i[2]))
         left_joins = ' '.join(left_joins)
 
+        joins = []
+        for f in field_order:
+            try:
+                assert isinstance(self.fields[f]['sql'], dict)
+            except (KeyError, AssertionError):
+                pass
+            else:
+                lj = self.fields[f]['sql'].get('join', [])
+                for i in lj:
+                    if isinstance(i, basestring):
+                        joins.append(i)
+                    else:
+                        joins.append(
+                            'JOIN %s %s ON %s.%s = %s' % (
+                                i[0], f, f, i[1], i[2]))
+        joins = ' '.join(joins)
+
         # the following deltas are mutually exclusive
         if id_delta:
             delta_filter = self._get_id_delta_sql(table, _id, id_delta)
@@ -324,7 +341,7 @@ class BaseSql(BaseCube):
         else:
             where = ''
 
-        sql = 'SELECT %s %s %s %s' % (selects, froms, left_joins, where)
+        sql = 'SELECT %s %s %s %s %s' % (selects, froms, left_joins, joins, where)
 
         #groupbys = ', '.join(self._get_sql_clause('groupby'))
         #if groupbys:
