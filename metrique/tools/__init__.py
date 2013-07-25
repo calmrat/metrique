@@ -58,13 +58,16 @@ def cube_pkg_mod_cls(cube):
     '''
     Convert 'pkg_mod' -> pkg, mod, Cls
 
-    eg: tw_tweet -> tw, tweet, Tweet
+    eg:
+        tw_tweet -> tw, tweet, Tweet
+        tw_tweet_users -> tw, tweet_users, TweetUsers
 
     Use for dynamically importing cube classes
 
     Assumes `Metrique Cube Naming Convention` is used
     '''
     _cube = cube.split('_')
-    pkg, mod = _cube[0], ''.join(_cube[1:])
-    cls = mod[0].upper() + '_'.join(mod[1:])
+    pkg = _cube[0]
+    mod = '_'.join(_cube[1:])
+    cls = ''.join([s[0].upper() + s[1:] for s in _cube[1:]])
     return pkg, mod, cls
