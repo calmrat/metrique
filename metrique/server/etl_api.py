@@ -153,7 +153,8 @@ def save_objects(cube, objects, update=False, timeline=False,
     logger.debug('[%s] Saved %s objects' % (cube, len(objects)))
 
     # store info about which cube.fields got updated and when
-    etl_activity_update(cube, fields, mtime)
+    _etl = etl_activity_update(cube, fields, mtime)
+    logger.debug('ETL Activity Update: %s' % _etl)
 
     # return object ids saved
     try:

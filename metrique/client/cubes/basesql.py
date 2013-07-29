@@ -167,6 +167,7 @@ class BaseSql(BaseCube):
                         raise ValueError(
                             "Expected single value (%s), got list (%s)" % (
                                 f, v))
+        return objects
 
     def _extract(self, force, id_delta, mtime, field_order):
         '''
