@@ -9,3 +9,10 @@ client side configuration and opensource cubes.
 '''
 
 from result import Result
+from metrique.client.cubes import set_cube_path
+
+# auto_load default cube paths (eg, ~/.metrique/cubes
+try:
+    set_cube_path()
+except:
+    pass

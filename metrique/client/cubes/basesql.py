@@ -39,7 +39,7 @@ class BaseSql(BaseCube):
     def proxy(self):
         raise NotImplementedError("BaseSql has not defined a proxy")
 
-    def _fetchall(self, sql, start, exclude_fields, field_order):
+    def _fetchall(self, sql, start, field_order):
         '''
         '''
 
@@ -54,14 +54,13 @@ class BaseSql(BaseCube):
         logger.debug('Preparing row data...')
         t0 = time.time()
         objects = [self._prep_row(row,
-                                  exclude_fields,
                                   field_order) for row in rows]
         t1 = time.time()
         logger.debug('... Rows prepared %i docs (%i/sec)' % (
             k, float(k) / (t1 - t0)))
         return objects
 
-    def _prep_row(self, row, exclude_fields, field_order):
+    def _prep_row(self, row, field_order):
         '''
         0th item is always the object '_id'
         Otherwise, fields is expected to map 1:1 with row columns
@@ -82,13 +81,6 @@ class BaseSql(BaseCube):
                 last_update=None, workers=MAX_WORKERS, **kwargs):
         '''
         '''
-        objects = self._extract(exclude_fields, force, id_delta, last_update)
-        return self.save_objects(objects)
-
-    def _extract(self, exclude_fields=None, force=False,
-                 id_delta=None, last_update=None):
-        '''
-        '''
         if id_delta and force:
             raise RuntimeError(
                 "force and id_delta can't be used simultaneously")
@@ -105,46 +97,36 @@ class BaseSql(BaseCube):
             # keys are fields; values are mtimes
             # from all fields, get the oldest and use it as 'last update' of
             # any cube object.
-            c_fields = self.list_cube_fields()
-            if c_fields:
-                mtimes = sorted([v for v in c_fields.values()])
-                mtime = mtimes[0]
-                tzaware = (mtime and
-                           hasattr(mtime, 'tzinfo') and
-                           mtime.tzinfo)
-                if not tzaware:
-                    raise TypeError(
-                        'last_update dates must be timezone '
-                        'aware. Got: %s' % mtime)
+            c_fields = self.list_cube_fields(exclude_fields)
+            mtimes = sorted(
+                [v for f, v in c_fields.items()])
+            mtime = mtimes[0]
+            tzaware = (mtime and
+                       hasattr(mtime, 'tzinfo') and
+                       mtime.tzinfo)
+            if c_fields and not tzaware:
+                raise TypeError(
+                    'last_update dates must be timezone '
+                    'aware. Got: %s' % mtime)
         logger.debug("mtime: %s" % mtime)
 
-        sql = self._gen_sql(force, id_delta, mtime, field_order)
+        objects = self._extract(force, id_delta, mtime, field_order)
 
-        start = 0
-        _stop = False
-        _rows = []
-        while not _stop:
-            rows = self._fetchall(sql, start, exclude_fields, field_order)
-            _rows.extend(rows)
+        return self.save_objects(objects)
 
-            k = len(rows)
-            if k < self.row_limit:
-                _stop = True
-            else:
-                start += k
-                if k != self.row_limit:  # theoretically, k == self.row_limit
-                    logger.warn(
-                        "rows count seems incorrect! "
-                        "row_limit: %s, row returned: %s" % (
-                            self.row_limit, k))
+    def _build_rows(self, rows):
+        _rows = {}
+        for row in rows:
+            _rows.setdefault(row['_id'], []).append(row)
+        return _rows
 
+    def _build_objects(self, rows):
+        '''
+        Given a set of rows/columns, build metrique object dictionaries
+        Normalize null values to be type(None).
+        '''
         objects = []
-
-        __rows = {}
-        for row in _rows:
-            __rows.setdefault(row['_id'], []).append(row)
-
-        for k, v in __rows.iteritems():
+        for k, v in rows.iteritems():
             if len(v) > 1:
                 o = v.pop(0)
                 for e in v:
@@ -167,7 +149,8 @@ class BaseSql(BaseCube):
                                 # redundant None (null) values, if any
                             except (ValueError):
                                 pass
-
+                        else:
+                            pass
                 objects.append(o)
             else:
                 objects.append(v[0])
@@ -184,7 +167,30 @@ class BaseSql(BaseCube):
                         raise ValueError(
                             "Expected single value (%s), got list (%s)" % (
                                 f, v))
-        return objects
+
+    def _extract(self, force, id_delta, mtime, field_order):
+        '''
+        '''
+        sql = self._gen_sql(force, id_delta, mtime, field_order)
+
+        start = 0
+        _stop = False
+        _rows = []
+        while not _stop:
+            rows = self._fetchall(sql, start, field_order)
+            _rows.extend(rows)
+
+            k = len(rows)
+            if k < self.row_limit:
+                _stop = True
+            else:
+                start += k
+                # theoretically, k == self.row_limit
+                assert k == self.row_limit
+
+        __rows = self._build_rows(_rows)
+
+        return self._build_objects(__rows)
 
     def _get_sql_clause(self, clause, default=None):
         '''
@@ -341,7 +347,8 @@ class BaseSql(BaseCube):
         else:
             where = ''
 
-        sql = 'SELECT %s %s %s %s %s' % (selects, froms, left_joins, joins, where)
+        sql = 'SELECT %s %s %s %s %s' % (
+            selects, froms, left_joins, joins, where)
 
         #groupbys = ', '.join(self._get_sql_clause('groupby'))
         #if groupbys:

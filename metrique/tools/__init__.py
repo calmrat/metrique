@@ -20,8 +20,11 @@ def csv2list(csv, delimiter=','):
         return list(csv)
     elif csv:
         return [s.strip() for s in csv.split(delimiter)]
-    else:
+    elif csv is None:
         return None
+    else:
+        raise ValueError(
+            "Failed to convert csv string to list; got %s" % csv)
 
 
 def list2csv(_list, quote=False):

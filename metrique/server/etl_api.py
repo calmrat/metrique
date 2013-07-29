@@ -175,8 +175,9 @@ def etl_activity_update(cube, fields, mtime):
     '''
     fields = list(set(fields))
     spec = {'_id': cube}
-    update = {'$set':
-              dict([(f, mtime) for f in fields if not RE_PROP.match(f)])}
+    mtimes = dict([(f, mtime) for f in fields if not RE_PROP.match(f)])
+    mtimes.update({'_mtime': mtime})
+    update = {'$set': mtimes}
     return ETL_ACTIVITY.update(spec, update, upsert=True, safe=True)
 
 
