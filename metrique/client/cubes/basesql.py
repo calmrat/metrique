@@ -97,10 +97,10 @@ class BaseSql(BaseCube):
             # keys are fields; values are mtimes
             # from all fields, get the oldest and use it as 'last update' of
             # any cube object.
-            c_fields = self.list_cube_fields(exclude_fields)
+            c_fields = self.list_cube_fields(exclude_fields=exclude_fields)
             mtimes = sorted(
                 [v for f, v in c_fields.items()])
-            mtime = mtimes[0]
+            mtime = mtimes[0] if mtimes else None
             tzaware = (mtime and
                        hasattr(mtime, 'tzinfo') and
                        mtime.tzinfo)

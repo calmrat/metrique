@@ -60,7 +60,7 @@ def save_objects(self, objects, update=False,
 
     Return back a list of object ids (_id|_oid) saved.
     '''
-    olen = len(objects)
+    olen = len(objects) if objects else None
     if not olen:
         logger.debug("... No objects to save")
         return []

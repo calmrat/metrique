@@ -62,7 +62,7 @@ def get_fields(cube, fields=None, check=False):
 def list_cube_fields(cube, exclude_fields=[]):
     cube_fields = ETL_ACTIVITY.find_one({'_id': cube}, {'_id': False})
     if not exclude_fields:
-        return []
+        return {}
 
     exclude_fields = csv2list(exclude_fields)
     for f in exclude_fields:
