@@ -4,6 +4,7 @@
 
 import logging
 logger = logging.getLogger(__name__)
+
 import re
 import time
 
@@ -49,32 +50,69 @@ class BaseSql(BaseCube):
         if not rows:
             return []
 
+        for k, row in enumerate(rows):
+            _row = []
+            for column in row:
+                if type(column) is buffer:
+                    # unwrap/convert the aggregated string 'buffer'
+                    # objects to string
+                    column = str(column).replace('"', '').strip()
+                    if not column:
+                        column = None
+                    else:
+                        column = column.split('\n')
+                _row.append(column)
+            rows[k] = _row
+
         k = len(rows)
 
         logger.debug('Preparing row data...')
         t0 = time.time()
-        objects = [self._prep_row(row,
-                                  field_order) for row in rows]
+        objects = [self._prep_object(row, field_order) for row in rows]
         t1 = time.time()
         logger.debug('... Rows prepared %i docs (%i/sec)' % (
             k, float(k) / (t1 - t0)))
         return objects
 
-    def _prep_row(self, row, field_order):
+    def _prep_object(self, row, field_order):
         '''
         0th item is always the object '_id'
         Otherwise, fields is expected to map 1:1 with row columns
         '''
         row = list(row)
         obj = {'_id': row.pop(0)}
-        for k, e in enumerate(row, 0):
+        for k, column in enumerate(row, 0):
             field = field_order[k]
-            convert = self.get_property('convert', field, None)
-            if convert:
-                e = convert(self, e)
-            if e is '':
-                e = None  # normalize to None for empty strings
-            obj.update({field: e})
+            container = self.get_property('container', field)
+            column_is_list = type(column) is list
+            if container and not column_is_list:
+                # and normalize to be a singleton list
+                column = [column] if column else None
+            elif not container and column_is_list:
+                raise ValueError(
+                    "Expected single value (%s), got list (%s)" % (
+                        field, column))
+            #else:    pass  # column = column
+
+            _type = self.get_property('type', field)
+            if column and container and _type:
+                column = map(_type, column)
+            elif column and _type and type(column) is not _type:
+                column = _type(column)
+            else:
+                pass
+
+            convert = self.get_property('convert', field)
+            if convert and container:
+                column = map(convert, self, column)
+            elif convert:
+                column = convert(self, column)
+            #else: pass
+
+            if not column:
+                obj.update({field: None})
+            else:
+                obj.update({field: column})
         return obj
 
     def extract(self, exclude_fields=None, force=False, id_delta=None,
@@ -136,9 +174,12 @@ class BaseSql(BaseCube):
                             continue
                         elif o[_k] != _v:
                             if type(o[_k]) is list:
-                                if _v not in o[_k]:
+                                if type(_v) is list:
+                                    o[_k].extend(_v)
+                                elif _v not in o[_k]:
                                     o[_k].append(_v)
                                 else:
+                                    # skip non-unique duplicate values
                                     continue
                             else:
                                 o[_k] = [o[_k], _v]
@@ -154,19 +195,19 @@ class BaseSql(BaseCube):
                 objects.append(o)
             else:
                 objects.append(v[0])
-        else:
-            # walk through all the objects one more time... converting
-            # those expected to be container
-            for i, o in enumerate(objects):
-                for f, v in o.iteritems():
-                    container = self.get_property('container', f)
-                    v_is_list = type(v) is list
-                    if container and not v_is_list:
-                        objects[i][f] = [v]
-                    elif not container and v_is_list:
-                        raise ValueError(
-                            "Expected single value (%s), got list (%s)" % (
-                                f, v))
+        #else:
+        #    # walk through all the objects one more time... converting
+        #    # those expected to be container
+        #    for i, o in enumerate(objects):
+        #        for f, v in o.iteritems():
+        #            container = self.get_property('container', f)
+        #            v_is_list = type(v) is list
+        #            if container and not v_is_list:
+        #                objects[i][f] = [v]
+        #            elif not container and v_is_list:
+        #                raise ValueError(
+        #                    "Expected single value (%s), got list (%s)" % (
+        #                        f, v))
         return objects
 
     def _extract(self, force, id_delta, mtime, field_order):
@@ -278,28 +319,32 @@ class BaseSql(BaseCube):
         table = self.get_property('table')
         _id = self.get_property('column')
 
-        selects = ['%s.%s' % (table, _id)]
+        base_select = '%s.%s' % (table, _id)
+        selects = [base_select]
+        #groupbys = copy(selects)
 
         for f in field_order:
             try:
                 assert isinstance(self.fields[f]['sql'], dict)
             except KeyError:
-                selects.append('%s.%s' % (table, f))
+                select = '%s.%s' % (table, f)
             except AssertionError:
-                selects.append('%s.%s' % (table,
-                                          self.fields[f]['sql']))
+                select = '%s.%s' % (table, self.fields[f]['sql'])
             else:
                 s = self.fields[f]['sql'].get('select')
                 if re.match('!', s):
                     # if we start with a bang, append the line directly
-                    s = re.sub('^!', '', s)
-                    selects.append(s)
+                    select = re.sub('^!', '', s)
+                elif self.get_property('container', f):
+                    select = '%s_grouped.%s' % (f, s)
                 else:
-                    selects.append('%s.%s' % (f, s))
+                    select = '%s.%s' % (f, s)
+
+            selects.append(select)
         selects = ', '.join(selects)
 
-        froms = ['%s.%s' % (db, table)]
-        froms = 'FROM ' + ', '.join(froms)
+        base_from = '%s.%s' % (db, table)
+        froms = 'FROM ' + ', '.join([base_from])
 
         left_joins = []
         for f in field_order:
@@ -311,11 +356,35 @@ class BaseSql(BaseCube):
                 lj = self.fields[f]['sql'].get('left_join', [])
                 for i in lj:
                     if isinstance(i, basestring):
+                        # use the string in its raw form
                         left_joins.append(i)
+                        continue
+
+
+                    if self.get_property('container', f):
+                        __select = self.fields[f]['sql'].get('select')
+                        _select = '''
+(SELECT %s, TEXTAGG(FOR(%s.%s)) AS %s
+%s
+JOIN %s %s ON %s.%s = %s
+GROUP BY %s)
+                        ''' % (base_select, f, __select, __select,
+                               froms,
+                               i[0], f, f, i[1], base_select,
+                               base_select)
+                        _select_name = base_select
+                        _on_equals = '%s_grouped.%s' % (f, i[2])
+                        _field = '%s_grouped' % f
                     else:
-                        left_joins.append(
-                            'LEFT JOIN %s %s ON %s.%s = %s' % (
-                                i[0], f, f, i[1], i[2]))
+                        _field = f
+                        _select = i[0]
+                        _select_name = '%s.%s' % (f, i[1])
+                        _on_equals = i[2]
+
+                    _lj = 'LEFT JOIN %s %s ON %s = %s' % (
+                        _select, _field, _select_name, _on_equals)
+
+                    left_joins.append(_lj)
         left_joins = ' '.join(left_joins)
 
         joins = []
@@ -348,12 +417,10 @@ class BaseSql(BaseCube):
         else:
             where = ''
 
+        #sql = 'SELECT %s %s %s %s %s GROUP BY %s' % (
+        #    selects, froms, left_joins, joins, where, groupbys)
         sql = 'SELECT %s %s %s %s %s' % (
             selects, froms, left_joins, joins, where)
-
-        #groupbys = ', '.join(self._get_sql_clause('groupby'))
-        #if groupbys:
-        #    sql += ' GROUP BY %s ' % ', '.join(groupbys)
 
         if self.get_property('sort', None, False):
             sql += " ORDER BY %s.%s ASC" % (table, _id)

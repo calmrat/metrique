@@ -69,7 +69,8 @@ def list_cube_fields(cube, exclude_fields=[]):
         try:
             del cube_fields[f]
         except KeyError:
-            raise ValueError("Invalid field: %s" % f)
+            # just ignore any invalid fields
+            pass
     return cube_fields
 
 
