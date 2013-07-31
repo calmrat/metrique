@@ -300,7 +300,18 @@ class BaseSql(BaseCube):
             _sql = "%s > parseTimestamp('%s', '%s')" % (
                 _column, mtime, dt_format)
             filters.append(_sql)
-        return filters
+
+        db = self.get_property('db')
+        table = self.get_property('table')
+        _id = self.get_property('column')
+
+        sql = """SELECT %s.%s FROM %s.%s
+               WHERE %s""" % (table, _id, db, table,
+                              ' OR '.join(filters))
+        rows = self.proxy.fetchall(sql)
+        ids = ','.join(map(str, [x[0] for x in rows]))
+        sql = "%s.%s IN (%s)" % (table, _id, ids)
+        return [sql]
 
     def _get_delta_sql(self, mtime=None):
         '''
