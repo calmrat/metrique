@@ -355,27 +355,33 @@ class BaseSql(BaseCube):
             else:
                 lj = self.fields[f]['sql'].get('left_join', [])
                 for i in lj:
-                    if isinstance(i, basestring):
-                        # use the string in its raw form
-                        left_joins.append(i)
-                        continue
-
-
                     if self.get_property('container', f):
-                        __select = self.fields[f]['sql'].get('select')
-                        _select = '''
-(SELECT %s, TEXTAGG(FOR(%s.%s)) AS %s
-%s
-JOIN %s %s ON %s.%s = %s
-GROUP BY %s)
-                        ''' % (base_select, f, __select, __select,
-                               froms,
-                               i[0], f, f, i[1], base_select,
-                               base_select)
-                        _select_name = base_select
-                        _on_equals = '%s_grouped.%s' % (f, i[2])
-                        _field = '%s_grouped' % f
+                        if isinstance(i, basestring):
+                            # use the item in its raw form
+                            _select = ' (%s) ' % i
+                            _select_name = base_select
+                            _on_equals = '%s_grouped.%s' % (f, _id)
+                            _field = '%s_grouped' % f
+                        else:
+                            __select = self.fields[f]['sql'].get('select')
+                            _select = '''
+                            (SELECT %s, TEXTAGG(FOR(%s.%s)) AS %s
+                            %s
+                            JOIN %s %s ON %s.%s = %s
+                            GROUP BY %s)
+                            ''' % (base_select, f, __select, __select,
+                                froms,
+                                i[0], f, f, i[1], base_select,
+                                base_select)
+                            _select_name = base_select
+                            _on_equals = '%s_grouped.%s' % (f, i[2])
+                            _field = '%s_grouped' % f
                     else:
+                        if isinstance(i, basestring):
+                            # use the string in its raw form
+                            left_joins.append(i)
+                            continue
+
                         _field = f
                         _select = i[0]
                         _select_name = '%s.%s' % (f, i[1])
