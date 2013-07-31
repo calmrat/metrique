@@ -146,7 +146,7 @@ class BaseSql(BaseCube):
                 raise TypeError(
                     'last_update dates must be timezone '
                     'aware. Got: %s' % mtime)
-        logger.debug("mtime: %s" % mtime)
+        logger.debug("(last update) mtime: %s" % mtime)
 
         objects = self._extract(force, id_delta, mtime, field_order)
 
