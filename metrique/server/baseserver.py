@@ -35,6 +35,6 @@ class BaseServer(object):
         # arg = username... return only cubes with 'r' access
         return list_cubes()
 
-    def list_cube_fields(self, cube):
+    def list_cube_fields(self, cube, exclude_fields=None):
         # arg = username... return only cubes with 'r' access
-        return list_cube_fields(cube)
+        return list_cube_fields(cube, exclude_fields)

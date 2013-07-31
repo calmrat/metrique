@@ -49,7 +49,8 @@ def _prep_object(obj, mtime, timeline):
         raise ValueError("Empty object")
     elif not isinstance(obj, dict):
         raise TypeError(
-            "Expected objects as dict, got type(%s)" % type(obj))
+            "Expected dict object, got type(%s)."
+            "\nObject: %s" % (type(obj), obj))
     else:
         obj.update({'_mtime': mtime})
         if not timeline and '_id' not in obj:
@@ -152,7 +153,8 @@ def save_objects(cube, objects, update=False, timeline=False,
     logger.debug('[%s] Saved %s objects' % (cube, len(objects)))
 
     # store info about which cube.fields got updated and when
-    etl_activity_update(cube, fields, mtime)
+    _etl = etl_activity_update(cube, fields, mtime)
+    logger.debug('ETL Activity Update: %s' % _etl)
 
     # return object ids saved
     try:
@@ -174,8 +176,9 @@ def etl_activity_update(cube, fields, mtime):
     '''
     fields = list(set(fields))
     spec = {'_id': cube}
-    update = {'$set':
-              dict([(f, mtime) for f in fields if not RE_PROP.match(f)])}
+    mtimes = dict([(f, mtime) for f in fields if not RE_PROP.match(f)])
+    mtimes.update({'_mtime': mtime})
+    update = {'$set': mtimes}
     return ETL_ACTIVITY.update(spec, update, upsert=True, safe=True)
 
 

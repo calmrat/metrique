@@ -139,17 +139,20 @@ class HTTPClient(object):
         ''' List all valid cubes for a given metrique instance '''
         return self._get('cube')
 
-    def list_cube_fields(self, cube=None):
+    def list_cube_fields(self, cube=None, exclude_fields=None):
         ''' List all valid fields for a given cube
 
         Paremeters
         ----------
         cube : str
             Name of the cube you want to query
+        exclude_fields : str or list
+            List (or csv) of fields to exclude from the results
         '''
         if not cube:
             cube = self.name
-        return self._get('cube', cube=cube)
+        return self._get('cube', cube=cube,
+                         exclude_fields=exclude_fields)
 
     def parse_fields(self, fields):
         if not fields:

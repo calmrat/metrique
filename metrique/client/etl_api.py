@@ -6,7 +6,6 @@
 
 import logging
 logger = logging.getLogger(__name__)
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from time import time
 import pytz
@@ -61,7 +60,7 @@ def save_objects(self, objects, update=False,
 
     Return back a list of object ids (_id|_oid) saved.
     '''
-    olen = len(objects)
+    olen = len(objects) if objects else None
     if not olen:
         logger.debug("... No objects to save")
         return []
@@ -75,49 +74,26 @@ def save_objects(self, objects, update=False,
                            update=update, objects=objects,
                            timeline=timeline, mtime=now)
     else:
-        ###### FIXME: THINK ABOUT ME ######
-        # Should we not even worry about implementing
-        # native parallellism into metrique.client?
-        # Let the running user worry about it instead?
-        # eg, user could do exactly what we're doing
-        # below, or they could prefer using ipython
-        # distributed, etc.
-        #
-        # Should we remove this async option from the client?
-        ######
         k = 0
         _k = batch
-        with ThreadPoolExecutor(workers) as executor:
-            pool = []
-            # FIXME: why not
-            # while _k <= olen:
-            while True:
-                pool.append(
-                    executor.submit(
-                        self._post, CMD, 'saveobjects', cube=self.name,
-                        update=update, objects=objects[k:_k],
-                        timeline=timeline, mtime=now))
-                k = _k
-                _k += batch
-                if _k > olen:
-                    break
 
-            pool.append(
-                executor.submit(
-                    self._post, CMD, 'saveobjects', cube=self.name,
-                    update=update, objects=objects[k:],
-                    timeline=timeline, mtime=now))
-
-            saved = []
-            for future in as_completed(pool):
-                # just make sure we didn't hit any exceptions
-                saved.extend(future.result())
+        saved = []
+        while k <= olen:
+            saved.extend(self.post(CMD, 'saveobjects', cube=self.name,
+                         update=update, objects=objects[k:_k],
+                         timeline=timeline, mtime=now))
+            k = _k
+            _k += batch
+        else:
+            saved.extend(self._post(CMD, 'saveobjects', cube=self.name,
+                         update=update, objects=objects[k:],
+                         timeline=timeline, mtime=now))
 
     logger.debug("... Saved %s docs in ~%is" % (olen, time() - t1))
     # timeline objects are expected to have _oid
     # warehouse objects are expected to have _id
     _id = '_oid' if timeline else '_id'
-    return [o[_id] for o in objects]
+    return sorted(list(set([o[_id] for o in objects])))
 
 
 def cube_drop(self):

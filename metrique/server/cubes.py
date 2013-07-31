@@ -7,6 +7,7 @@ logger = logging.getLogger(__name__)
 
 from metrique.server.config import mongodb
 from metrique.server.defaults import MONGODB_CONF
+from metrique.tools import csv2list
 
 mongodb_config = mongodb(MONGODB_CONF)
 ETL_ACTIVITY = mongodb_config.c_etl_activity
@@ -58,8 +59,16 @@ def get_fields(cube, fields=None, check=False):
     return _fields
 
 
-def list_cube_fields(cube):
-    return ETL_ACTIVITY.find_one({'_id': cube}, {'_id': False})
+def list_cube_fields(cube, exclude_fields=[]):
+    cube_fields = ETL_ACTIVITY.find_one({'_id': cube}, {'_id': False})
+    exclude_fields = csv2list(exclude_fields)
+    for f in exclude_fields:
+        try:
+            del cube_fields[f]
+        except KeyError:
+            # just ignore any invalid fields
+            pass
+    return cube_fields
 
 
 def list_cubes():

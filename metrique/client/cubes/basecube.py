@@ -84,7 +84,8 @@ class BaseCube(HTTPClient):
         the given cube.field if there are actually
         documents in the cube with the given field.
         '''
-        logger.debug("Get last ID (%s): %s" % (self.name, field))
+        logger.debug(
+            "Get last ID: cube(%s) field(%s)" % (self.name, field))
         if field:
             last_id = self.find("%s == exists(True)" % field,
                                 fields=[], sort=[('_id', -1)],
@@ -95,7 +96,7 @@ class BaseCube(HTTPClient):
             last_id = self.fetch(sort=[('_id', -1)], fields=[],
                                  limit=1, raw=True)
             if last_id:
-                last_id = last_id[0]
+                last_id = last_id[0]['_id']
         logger.debug(" ... Last ID: %s" % last_id)
         return last_id
 
