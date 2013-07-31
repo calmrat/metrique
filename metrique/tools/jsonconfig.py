@@ -28,25 +28,35 @@ class JSONConfig(MutableMapping):
                  autosave=False, force=False):
         if not config_file:
             raise ValueError("No config file defined")
-        if not re.search('%s$' % JSON_EXT, config_file, re.I):
+        elif isinstance(config_file, JSONConfig):
+            config_file = config_file._config_file
+        elif not re.search('%s$' % JSON_EXT, config_file, re.I):
             config_file = '.'.join((config_file, JSON_EXT))
+        else:
+            raise TypeError(
+                "Unknown config_file type; got: %s" % type(config_file))
+
         self._config_file = config_file
         self._autosave = autosave
         self._force = force
 
+        self._set_dir_path(config_dir)
+        self._set_default_config(default)
+        self._set_path()
+        self._load()
+
+    def _set_dir_path(self, config_dir):
         if not config_dir:
             config_dir = os.path.expanduser(CONFIG_DIR)
         self._dir_path = config_dir
 
+    def _set_default_config(self, default):
         if default and isinstance(default, dict):
             self.config = default
         elif default and isinstance(default, JSONConfig):
             self.config = default.config
         else:
             self.config = {}
-
-        self._set_path()
-        self._load()
 
     def __getitem__(self, key):
         return self.config[key]
