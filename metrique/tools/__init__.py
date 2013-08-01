@@ -21,7 +21,7 @@ def csv2list(csv, delimiter=','):
     elif csv:
         return [s.strip() for s in csv.split(delimiter)]
     elif csv is None:
-        return None
+        return []
     else:
         raise ValueError(
             "Failed to convert csv string to list; got %s" % csv)

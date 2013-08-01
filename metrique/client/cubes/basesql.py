@@ -5,6 +5,7 @@
 import logging
 logger = logging.getLogger(__name__)
 
+from functools import partial
 import re
 import time
 
@@ -103,8 +104,9 @@ class BaseSql(BaseCube):
                 pass
 
             convert = self.get_property('convert', field)
-            if convert and container:
-                column = map(convert, self, column)
+            if column and convert and container:
+                _convert = partial(convert, self)
+                column = map(_convert, column)
             elif convert:
                 column = convert(self, column)
             #else: pass
@@ -369,12 +371,16 @@ class BaseSql(BaseCube):
                     if self.get_property('container', f):
                         if isinstance(i, basestring):
                             # use the item in its raw form
-                            _select = ' (%s) ' % i
-                            _select_name = base_select
-                            _on_equals = '%s_grouped.%s' % (f, _id)
-                            _field = '%s_grouped' % f
+                            #_select = ' (%s) ' % i
+                            #_select_name = base_select
+                            #_on_equals = '%s_grouped.%s' % (f, _id)
+                            #_field = '%s_grouped' % f
+                            left_joins.append(i)
+                            continue
                         else:
                             __select = self.fields[f]['sql'].get('select')
+                            _on = base_select if len(i) < 5 else '%s.%s' % (table, i[4])
+                            _l_on_col = i[1] if len(i) < 4 else i[3]
                             _select = '''
                             (SELECT %s, TEXTAGG(FOR(%s.%s)) AS %s
                             %s
@@ -382,10 +388,12 @@ class BaseSql(BaseCube):
                             GROUP BY %s)
                             ''' % (base_select, f, __select, __select,
                                 froms,
-                                i[0], f, f, i[1], base_select,
+                                i[0], f, f, _l_on_col, _on,
                                 base_select)
                             _select_name = base_select
-                            _on_equals = '%s_grouped.%s' % (f, i[2])
+
+                            _db = i[3] if len(i) > 3 else i[2]
+                            _on_equals = '%s_grouped.%s' % (f, _db)
                             _field = '%s_grouped' % f
                     else:
                         if isinstance(i, basestring):
