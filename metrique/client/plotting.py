@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 # Authors: "Jan Grec" <jgrec@redhat.com>
+# Authors: "Juraj Niznan" <jniznan@redhat.com>
 
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -23,7 +24,7 @@ CNAMES = {'blue': 0, 'b': 0,
           'cyan': 9}
 
 
-class Plotter():
+class Plotter(object):
     '''
     Convenince plotting wrapper.
     '''
@@ -38,6 +39,22 @@ class Plotter():
         self.counter = 0
         self.fill = fill
         plt.figure(figsize=figsize)
+
+    def get_color(self, color):
+        '''
+        Returns a color to use.
+
+        :param integer/string color:
+            Color for the plot. Can be an index for the color from COLORS
+            or a key(string) from CNAMES.
+        '''
+        if color is None:
+            color = self.counter
+        if isinstance(color, str):
+            color = CNAMES[color]
+        self.counter = color + 1
+        color %= len(COLORS)
+        return color
 
     def plot(self, series, label='', color=None, index=None, style=None):
         '''
@@ -56,12 +73,7 @@ class Plotter():
         :param string style:
             Style forwarded to the plt.plot.
         '''
-        if color is None:
-            color = self.counter
-        if isinstance(color, str):
-            color = CNAMES[color]
-        self.counter = color + 1
-        color %= len(COLORS)
+        color = self.get_color(color)
         if not isinstance(series, pd.Series):
             series = pd.Series(series, index=index)
         series.plot(label=label, c=COLORS[color], linewidth=2, style=style)
@@ -69,20 +81,124 @@ class Plotter():
             plt.fill_between(series.index, 0, series, facecolor=ALPHAS[color])
             plt.gca().set_ylim(bottom=0)
 
-    def line(self, x, y, label=None, color='grey'):
+    def line(self, x, label=None, y='bottom', color='grey', ax=None):
         '''
         Creates a vertical line in the plot.
 
         :param x:
             The x coordinate of the line. Should be in the same units
             as the x-axis.
-        :param y:
-            The y coordinate of the text-label.
         :param string label:
             The label to be displayed.
+        :param y:
+            May be 'top', 'bottom' or int.
+            The y coordinate of the text-label.
         :param color color:
             The color of the line.
         '''
-        plt.axvline(x, color=color)
+        if ax is None:
+            ax = plt
+            y0, y1 = ax.ylim()
+        else:
+            y0, y1 = ax.get_ylim()
+        ax.axvline(x, color=color)
         if label is not None:
-            plt.annotate('\n' + label, (x, y), rotation=90)
+            verticalalignment = 'bottom'
+            if y == 'bottom':
+                y = y0 + (y1 - y0) / 25.
+            if y == 'top':
+                verticalalignment = 'top'
+                y = y0 + (y1 - y0) * 24 / 25.
+            ax.annotate('\n' + label, (x, y), rotation=90,
+                        verticalalignment=verticalalignment)
+
+    def lines(self, lines_dict, y='bottom', color='grey'):
+        '''
+        Creates vertical lines in the plot.
+
+        :param lines_dict:
+            A dictionary of label, x-coordinate pairs.
+        :param y:
+            May be 'top', 'bottom' or int.
+            The y coordinate of the text-labels.
+        :param color color:
+            The color of the lines.
+        '''
+        for l, x in lines_dict.items():
+            self.line(x, l, y, color)
+
+
+class DiffPlotter(Plotter):
+    def __init__(self, figsize=(10, 7), fill=False, title='', autodiffs=True):
+        '''
+        :param (int, int) figsize:
+            The size of the figure.
+        :param boolean fill:
+            Indicates whether the area under individual plots should be filled.
+        :param string title:
+            Title for the plot.
+        :param boolean autodiffs:
+            Indicates whether the diffs should be computed automatically if
+            they are not specified.
+        '''
+        super(DiffPlotter, self).__init__(figsize=figsize, fill=fill)
+        self.autodiffs = autodiffs
+        self.ax1 = plt.subplot2grid((4, 1), (0, 0), rowspan=3)
+        plt.title(title)
+        plt.setp(self.ax1.get_xticklabels(), visible=False)
+        self.ax2 = plt.subplot2grid((4, 1), (3, 0), sharex=self.ax1)
+        plt.subplots_adjust(hspace=.15)
+
+    def plot(self, series, series_diff=None, label='', color=None, index=None,
+             style=None):
+        '''
+        Wrapper around plot.
+
+        :param pandas.Series/list series:
+            The series to be plotted. If passed in as a list, the parameter
+            `index` must be also passed in.
+        :param string label:
+            The label of for the plot.
+        :param integer/string color:
+            Color for the plot. Can be an index for the color from COLORS
+            or a key(string) from CNAMES.
+        :param list index:
+            Must be specified if `series` is a list. Otherwise not used.
+        :param string style:
+            Style forwarded to the plt.plot.
+        '''
+        color = self.get_color(color)
+        if not isinstance(series, pd.Series):
+            series = pd.Series(series, index=index)
+        series.plot(label=label, c=COLORS[color], linewidth=2, style=style,
+                    ax=self.ax1)
+        if self.fill:
+            self.ax1.fill_between(series.index, 0, series,
+                                  facecolor=ALPHAS[color])
+            self.ax1.gca().set_ylim(bottom=0)
+        if series_diff is None and self.autodiffs:
+            series_diff = series.diff()
+        if series_diff is not None:
+            series_diff.plot(label=label, c=COLORS[color], linewidth=2,
+                             style=style, ax=self.ax2)
+
+    def line(self, x, label=None, y='bottom', color='grey'):
+        '''
+        Creates a vertical line in the plot.
+
+        :param x:
+            The x coordinate of the line. Should be in the same units
+            as the x-axis.
+        :param string label:
+            The label to be displayed.
+        :param y:
+            May be 'top', 'bottom' or int.
+            The y coordinate of the text-label.
+        :param color color:
+            The color of the line.
+        '''
+        super(DiffPlotter, self).line(x, label, y, color, self.ax1)
+        super(DiffPlotter, self).line(x, '', 0, color, self.ax2)
+
+    def legend(self, **kwargs):
+        self.ax1.legend(**kwargs)
