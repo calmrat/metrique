@@ -175,7 +175,7 @@ class DiffPlotter(Plotter):
         if self.fill:
             self.ax1.fill_between(series.index, 0, series,
                                   facecolor=ALPHAS[color])
-            self.ax1.gca().set_ylim(bottom=0)
+            self.ax1.set_ylim(bottom=0)
         if series_diff is None and self.autodiffs:
             series_diff = series.diff()
         if series_diff is not None:
