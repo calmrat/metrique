@@ -46,7 +46,7 @@ def _prep_object(obj, mtime, timeline):
     an _mtime datetime value
     '''
     if not obj:
-        raise ValueError("Empty object")
+        return {}
     elif not isinstance(obj, dict):
         raise TypeError(
             "Expected dict object, got type(%s)."
@@ -141,7 +141,7 @@ def save_objects(cube, objects, update=False, timeline=False,
     if not mtime:
         mtime = datetime.utcnow()
 
-    objects = [_prep_object(obj, mtime, timeline) for obj in objects]
+    objects = [_prep_object(obj, mtime, timeline) for obj in objects if obj]
 
     _cube = get_cube(cube, admin=True, timeline=timeline)
 

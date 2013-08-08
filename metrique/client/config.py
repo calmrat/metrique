@@ -142,10 +142,8 @@ class Config(JSONConfig):
             level = logging.INFO
         elif n == 1:
             level = logging.DEBUG
-            logger.debug("Debug: metrique")
         elif n == 2:
             logger = logging.getLogger()
             level = logging.DEBUG
-            logger.debug("Debug: metrique, tornado")
         logger.setLevel(level)
         self.config['debug'] = n

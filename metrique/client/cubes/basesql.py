@@ -84,38 +84,53 @@ class BaseSql(BaseCube):
         obj = {'_id': row.pop(0)}
         for k, column in enumerate(row, 0):
             field = field_order[k]
-            container = self.get_property('container', field)
-            column_is_list = type(column) is list
-            if container and not column_is_list:
-                # and normalize to be a singleton list
-                column = [column] if column else None
-            elif not container and column_is_list:
-                raise ValueError(
-                    "Expected single value (%s), got list (%s)" % (
-                        field, column))
-            #else:    pass  # column = column
 
-            _type = self.get_property('type', field)
-            if column and container and _type:
-                column = map(_type, column)
-            elif column and _type and type(column) is not _type:
-                column = _type(column)
-            else:
-                pass
-
-            convert = self.get_property('convert', field)
-            if column and convert and container:
-                _convert = partial(convert, self)
-                column = map(_convert, column)
-            elif convert:
-                column = convert(self, column)
-            #else: pass
+            column = self._normalize_container(column, field)
+            column = self._type(column, field)
+            column = self._convert(column, field)
 
             if not column:
                 obj.update({field: None})
             else:
                 obj.update({field: column})
         return obj
+
+    def _type(self, value, field):
+        container = self.get_property('container', field)
+        _type = self.get_property('type', field)
+        if value and container and _type:
+            value = map(_type, value)
+        elif value and _type and type(value) is not _type:
+            value = _type(value)
+        else:
+            value = value
+        return value
+
+    def _normalize_container(self, value, field):
+        container = self.get_property('container', field)
+        value_is_list = type(value) is list
+        if container and not value_is_list:
+            # and normalize to be a singleton list
+            value = [value] if value else None
+        elif not container and value_is_list:
+            raise ValueError(
+                "Expected single value (%s), got list (%s)" % (
+                    field, value))
+        else:
+            value = value
+        return value
+
+    def _convert(self, value, field):
+        convert = self.get_property('convert', field)
+        container = self.get_property('container', field)
+        if value and convert and container:
+            _convert = partial(convert, self)
+            value = map(_convert, value)
+        elif convert:
+            value = convert(self, value)
+        else:
+            value = value
+        return value
 
     def extract(self, exclude_fields=None, force=False, id_delta=None,
                 last_update=None, workers=MAX_WORKERS, **kwargs):
@@ -166,51 +181,44 @@ class BaseSql(BaseCube):
         Normalize null values to be type(None).
         '''
         objects = []
-        for k, v in rows.iteritems():
-            if len(v) > 1:
-                o = v.pop(0)
-                for e in v:
-                    for _k, _v in e.iteritems():
-                        if _k == '_id':
-                            # these are always the same...
-                            continue
-                        elif o[_k] != _v:
-                            if type(o[_k]) is list:
-                                if type(_v) is list:
-                                    o[_k].extend(_v)
-                                elif _v not in o[_k]:
-                                    o[_k].append(_v)
-                                else:
-                                    # skip non-unique duplicate values
-                                    continue
-                            else:
-                                o[_k] = [o[_k], _v]
-
-                            try:
-                                del o[_k][o[_k].index(None)]
-                                # if we have more than one value, drop any
-                                # redundant None (null) values, if any
-                            except (ValueError):
-                                pass
-                        else:
-                            pass
-                objects.append(o)
+        for col_rows in rows.itervalues():
+            if len(col_rows) > 1:
+                obj = self._normalize_object(col_rows)
+                objects.append(obj)
             else:
-                objects.append(v[0])
-        #else:
-        #    # walk through all the objects one more time... converting
-        #    # those expected to be container
-        #    for i, o in enumerate(objects):
-        #        for f, v in o.iteritems():
-        #            container = self.get_property('container', f)
-        #            v_is_list = type(v) is list
-        #            if container and not v_is_list:
-        #                objects[i][f] = [v]
-        #            elif not container and v_is_list:
-        #                raise ValueError(
-        #                    "Expected single value (%s), got list (%s)" % (
-        #                        f, v))
+                objects.append(col_rows[0])
         return objects
+
+    def __row_iter(self, rows):
+        for row in rows:
+            for field, tokens in row.iteritems():
+                # _id field doesn't require normalization
+                if field != '_id':
+                    yield field, tokens
+
+    def _normalize_object(self, rows):
+        o = rows.pop(0)
+        for field, tokens in self.__row_iter(rows):
+            if o[field] == tokens:
+                continue
+
+            if type(o[field]) is list:
+                if type(tokens) is list:
+                    o[field].extend(tokens)
+                elif tokens not in o[field]:
+                    o[field].append(tokens)
+                else:
+                    # skip non-unique duplicate values
+                    continue
+            else:
+                o[field] = [o[field], tokens]
+
+            #try:
+            #    del o[field][o[field].index(None)]
+            #    # if we have more than one value, drop any
+            #    # redundant None (null) values, if any
+            #except (ValueError):
+            #    pass
 
     def _extract(self, force, id_delta, mtime, field_order):
         '''
@@ -325,17 +333,12 @@ class BaseSql(BaseCube):
         delta_filter.extend(self._get_mtime_sql(mtime))
         return delta_filter
 
-    def _gen_sql(self, force, id_delta, mtime, field_order):
-        '''
-        '''
-        db = self.get_property('db')
+    def _get_sql_selects(self, field_order):
         table = self.get_property('table')
         _id = self.get_property('column')
 
         base_select = '%s.%s' % (table, _id)
         selects = [base_select]
-        #groupbys = copy(selects)
-
         for f in field_order:
             try:
                 assert isinstance(self.fields[f]['sql'], dict)
@@ -352,13 +355,10 @@ class BaseSql(BaseCube):
                     select = '%s_grouped.%s' % (f, s)
                 else:
                     select = '%s.%s' % (f, s)
-
             selects.append(select)
-        selects = ', '.join(selects)
+        return ', '.join(selects)
 
-        base_from = '%s.%s' % (db, table)
-        froms = 'FROM ' + ', '.join([base_from])
-
+    def _get_sql_left_joins(self, field_order):
         left_joins = []
         for f in field_order:
             try:
@@ -368,66 +368,38 @@ class BaseSql(BaseCube):
             else:
                 lj = self.fields[f]['sql'].get('left_join', [])
                 for i in lj:
-                    if self.get_property('container', f):
-                        if isinstance(i, basestring):
-                            # use the item in its raw form
-                            #_select = ' (%s) ' % i
-                            #_select_name = base_select
-                            #_on_equals = '%s_grouped.%s' % (f, _id)
-                            #_field = '%s_grouped' % f
-                            left_joins.append(i)
-                            continue
-                        else:
-                            __select = self.fields[f]['sql'].get('select')
-                            _on = base_select if len(i) < 5 else '%s.%s' % (table, i[4])
-                            _l_on_col = i[1] if len(i) < 4 else i[3]
-                            _select = '''
-                            (SELECT %s, TEXTAGG(FOR(%s.%s)) AS %s
-                            %s
-                            JOIN %s %s ON %s.%s = %s
-                            GROUP BY %s)
-                            ''' % (base_select, f, __select, __select,
-                                froms,
-                                i[0], f, f, _l_on_col, _on,
-                                base_select)
-                            _select_name = base_select
-
-                            _db = i[3] if len(i) > 3 else i[2]
-                            _on_equals = '%s_grouped.%s' % (f, _db)
-                            _field = '%s_grouped' % f
-                    else:
-                        if isinstance(i, basestring):
-                            # use the string in its raw form
-                            left_joins.append(i)
-                            continue
-
+                    container = self.get_property('container', f)
+                    is_str = isinstance(i, basestring)
+                    if not (container or is_str):
                         _field = f
                         _select = i[0]
                         _select_name = '%s.%s' % (f, i[1])
                         _on_equals = i[2]
 
-                    _lj = 'LEFT JOIN %s %s ON %s = %s' % (
-                        _select, _field, _select_name, _on_equals)
-
-                    left_joins.append(_lj)
-        left_joins = ' '.join(left_joins)
-
-        joins = []
-        for f in field_order:
-            try:
-                assert isinstance(self.fields[f]['sql'], dict)
-            except (KeyError, AssertionError):
-                pass
-            else:
-                lj = self.fields[f]['sql'].get('join', [])
-                for i in lj:
-                    if isinstance(i, basestring):
-                        joins.append(i)
+                        _lj = 'LEFT JOIN %s %s ON %s = %s' % (
+                            _select, _field, _select_name, _on_equals)
+                    elif container and not is_str:
+                        raise ValueError(
+                            "[%s] Write textagg(for) "
+                            "join statements by hand!" % f)
                     else:
-                        joins.append(
-                            'JOIN %s %s ON %s.%s = %s' % (
-                                i[0], f, f, i[1], i[2]))
-        joins = ' '.join(joins)
+                        _lj = i
+                    left_joins.append(_lj)
+        return ' '.join(left_joins)
+
+    def _gen_sql(self, force, id_delta, mtime, field_order):
+        '''
+        '''
+        db = self.get_property('db')
+        table = self.get_property('table')
+        _id = self.get_property('column')
+
+        selects = self._get_sql_selects(field_order)
+
+        base_from = '%s.%s' % (db, table)
+        froms = 'FROM ' + ', '.join([base_from])
+
+        left_joins = self._get_sql_left_joins(field_order)
 
         # the following deltas are mutually exclusive
         if id_delta:
@@ -442,10 +414,8 @@ class BaseSql(BaseCube):
         else:
             where = ''
 
-        #sql = 'SELECT %s %s %s %s %s GROUP BY %s' % (
-        #    selects, froms, left_joins, joins, where, groupbys)
-        sql = 'SELECT %s %s %s %s %s' % (
-            selects, froms, left_joins, joins, where)
+        sql = 'SELECT %s %s %s %s' % (
+            selects, froms, left_joins, where)
 
         if self.get_property('sort', None, False):
             sql += " ORDER BY %s.%s ASC" % (table, _id)

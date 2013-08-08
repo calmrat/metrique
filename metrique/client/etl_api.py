@@ -93,7 +93,7 @@ def save_objects(self, objects, update=False,
     # timeline objects are expected to have _oid
     # warehouse objects are expected to have _id
     _id = '_oid' if timeline else '_id'
-    return sorted(list(set([o[_id] for o in objects])))
+    return sorted(list(set([o[_id] for o in objects if o])))
 
 
 def cube_drop(self):
