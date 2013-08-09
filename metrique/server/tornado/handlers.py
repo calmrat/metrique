@@ -368,10 +368,13 @@ class CubeHandler(MetriqueInitialized):
     @async
     def get(self):
         cube = self.get_argument('cube')
+        _mtime = self.get_argument('_mtime')
         exclude_fields = self.get_argument('exclude_fields')
         if cube is None:
             # return a list of cubes
             return self.proxy.list_cubes()
         else:
             # return a list of fields in a cube
-            return self.proxy.list_cube_fields(cube, exclude_fields)
+            return self.proxy.list_cube_fields(cube,
+                                               exclude_fields,
+                                               _mtime)

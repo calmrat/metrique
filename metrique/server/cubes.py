@@ -44,7 +44,7 @@ def get_fields(cube, fields=None, check=False):
     if fields:
         cube_fields = list_cube_fields(cube)
         if fields == '__all__':
-            _fields = cube_fields
+            _fields = cube_fields.keys()
         else:
             fields = strip_split(fields)
             if not check:
@@ -59,8 +59,12 @@ def get_fields(cube, fields=None, check=False):
     return _fields
 
 
-def list_cube_fields(cube, exclude_fields=[]):
-    cube_fields = ETL_ACTIVITY.find_one({'_id': cube}, {'_id': False})
+def list_cube_fields(cube, exclude_fields=[], _mtime=False):
+    spec = {'_id': cube}
+    _filter = {'_id': 0}
+    if not _mtime:
+        _filter.update({'_mtime': 0})
+    cube_fields = ETL_ACTIVITY.find_one(spec, _filter)
     if not cube_fields:
         cube_fields = {}
     exclude_fields = csv2list(exclude_fields)

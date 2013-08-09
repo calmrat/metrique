@@ -139,7 +139,8 @@ class HTTPClient(object):
         ''' List all valid cubes for a given metrique instance '''
         return self._get('cube')
 
-    def list_cube_fields(self, cube=None, exclude_fields=None):
+    def list_cube_fields(self, cube=None,
+                         exclude_fields=None, _mtime=False):
         ''' List all valid fields for a given cube
 
         Paremeters
@@ -148,11 +149,14 @@ class HTTPClient(object):
             Name of the cube you want to query
         exclude_fields : str or list
             List (or csv) of fields to exclude from the results
+        mtime : bool
+            Include mtime details
         '''
         if not cube:
             cube = self.name
         return self._get('cube', cube=cube,
-                         exclude_fields=exclude_fields)
+                         exclude_fields=exclude_fields,
+                         _mtime=_mtime)
 
     def parse_fields(self, fields):
         if not fields:
@@ -161,8 +165,12 @@ class HTTPClient(object):
             return self.fields
         else:
             fields = set(csv2list(fields))
-            if not fields <= set(self.fields.keys()):
+            cube_fields = set(self.fields.keys())
+            err_fields = [f for f in fields if f not in cube_fields]
+            if err_fields:
                 logger.warn(
                     "Skipping invalid fields in set: %s" % (
-                        set(self.fields) - fields))
+                        err_fields))
+                logger.warn('%s\n%s' % (cube_fields, fields))
+            raise
             return fields
