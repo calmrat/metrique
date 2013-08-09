@@ -44,13 +44,7 @@ class HTTPClient(object):
                  config_file=None, config_dir=None,
                  **kwargs):
 
-        if not config_file:
-            config_file = DEFAULT_CONFIG_FILE
-        else:
-            config_file = config_file
-
-        self.config = Config(config_file, config_dir, force=force)
-
+        self.load_config(config_file, config_dir, force)
         self.config.debug = debug
         self.config.async = async
 
@@ -60,6 +54,11 @@ class HTTPClient(object):
             self.config.api_username = username
         if password:
             self.config.api_password = password
+
+    def load_config(self, config_file, config_dir=None, force=False):
+        if not config_file:
+            config_file = DEFAULT_CONFIG_FILE
+        self.config = Config(config_file, config_dir, force)
 
     def _kwargs_json(self, **kwargs):
         try:
