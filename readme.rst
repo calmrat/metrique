@@ -1,5 +1,4 @@
-.. image:: /static/img/metrique_logo.png
-    :align: right
+.. image:: metrique/server/static/img/metrique_logo.png
 
 Metrique
 ========

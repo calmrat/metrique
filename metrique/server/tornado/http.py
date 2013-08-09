@@ -40,25 +40,30 @@ class HTTPServer(MetriqueServer):
         # FIXME: v1 should be config option
         debug = self.metrique_config.debug == 2
         gzip = self.metrique_config.gzip
-        self._web_app = tornado.web.Application([
-            (r"/api/v1/ping/?", PingHandler, init),
-            (r"/api/v1/job/status/(\w+)", JobStatusHandler, init),
-            (r"/api/v1/query/find", QueryFindHandler, init),
-            (r"/api/v1/query/count", QueryCountHandler, init),
-            (r"/api/v1/query/aggregate", QueryAggregateHandler, init),
-            (r"/api/v1/query/fetch", QueryFetchHandler, init),
-            (r"/api/v1/query/distinct", QueryDistinctHandler, init),
-            (r"/api/v1/admin/users/add", UsersAddHandler, init),
-            (r"/api/v1/admin/etl/index/warehouse",
-                ETLIndexWarehouseHandler, init),
-            (r"/api/v1/admin/etl/snapshot", ETLSnapshotHandler, init),
-            (r"/api/v1/admin/etl/activityimport",
-                ETLActivityImportHandler, init),
-            (r"/api/v1/admin/etl/saveobjects", ETLSaveObjects, init),
-            (r"/api/v1/admin/etl/cube/drop", ETLCubeDrop, init),
-            (r"/api/v1/cube", CubeHandler, init),
-        ], gzip=gzip, debug=debug)
-        # FIXME: set gzip as metrique_config property, default True
+        static_path = self.metrique_config.static_path
+        self._web_app = tornado.web.Application(
+            gzip=gzip,
+            debug=debug,
+            static_path=static_path,
+            handlers=[
+                (r"/api/v1/ping/?", PingHandler, init),
+                (r"/api/v1/job/status/(\w+)", JobStatusHandler, init),
+                (r"/api/v1/query/find", QueryFindHandler, init),
+                (r"/api/v1/query/count", QueryCountHandler, init),
+                (r"/api/v1/query/aggregate", QueryAggregateHandler, init),
+                (r"/api/v1/query/fetch", QueryFetchHandler, init),
+                (r"/api/v1/query/distinct", QueryDistinctHandler, init),
+                (r"/api/v1/admin/users/add", UsersAddHandler, init),
+                (r"/api/v1/admin/etl/index/warehouse",
+                    ETLIndexWarehouseHandler, init),
+                (r"/api/v1/admin/etl/snapshot", ETLSnapshotHandler, init),
+                (r"/api/v1/admin/etl/activityimport",
+                    ETLActivityImportHandler, init),
+                (r"/api/v1/admin/etl/saveobjects", ETLSaveObjects, init),
+                (r"/api/v1/admin/etl/cube/drop", ETLCubeDrop, init),
+                (r"/api/v1/cube", CubeHandler, init),
+            ],
+        )
         port = self.metrique_config.http_port
         address = self.metrique_config.http_host
         if self.metrique_config.ssl:

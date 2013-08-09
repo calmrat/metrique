@@ -109,6 +109,12 @@ class metrique(JSONConfig):
         self.config['http_port'] = value
 
     @property
+    def static_path(self):
+        abspath = os.path.dirname(os.path.abspath(__file__))
+        static_path = os.path.join(abspath, 'static/')
+        return self._default('static_path', static_path)
+
+    @property
     def ssl(self):
         return self._default('ssl', False)
 
