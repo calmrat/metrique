@@ -74,3 +74,8 @@ def cube_pkg_mod_cls(cube):
     mod = '_'.join(_cube[1:])
     cls = ''.join([s[0].upper() + s[1:] for s in _cube[1:]])
     return pkg, mod, cls
+
+
+def batch_gen(data, batch_size):
+    for i in range(0, len(data), batch_size):
+        yield data[i:i + batch_size]

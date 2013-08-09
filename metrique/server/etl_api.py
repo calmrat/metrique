@@ -84,7 +84,7 @@ def _update_objects(_cube, objects):
         _cube.update({'_id': obj.pop('_id')},
                      {'$set': obj}, upsert=True,
                      manipulate=False)
-    return fields
+    return list(set(fields))
 
 
 def _save_objects(_cube, objects):
@@ -112,7 +112,7 @@ def _save_objects(_cube, objects):
             batch.append(obj)
     if batch:
         _cube.insert(batch, manipulate=False)
-    return fields
+    return list(set(fields))
 
 
 @job_save('etl_save_objects')

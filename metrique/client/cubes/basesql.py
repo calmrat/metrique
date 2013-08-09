@@ -133,7 +133,8 @@ class BaseSql(BaseCube):
         return value
 
     def extract(self, exclude_fields=None, force=False, id_delta=None,
-                last_update=None, workers=MAX_WORKERS, **kwargs):
+                last_update=None, workers=MAX_WORKERS, update=False,
+                **kwargs):
         '''
         '''
         if id_delta and force:
@@ -167,7 +168,7 @@ class BaseSql(BaseCube):
 
         objects = self._extract(force, id_delta, mtime, field_order)
 
-        return self.save_objects(objects)
+        return self.save_objects(objects, update=update)
 
     def _build_rows(self, rows):
         _rows = {}

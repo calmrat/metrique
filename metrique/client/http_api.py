@@ -162,6 +162,7 @@ class HTTPClient(object):
         else:
             fields = set(csv2list(fields))
             if not fields <= set(self.fields.keys()):
-                raise ValueError(
-                    "Invalid field in set: %s" % (set(self.fields) - fields))
+                logger.warn(
+                    "Skipping invalid fields in set: %s" % (
+                        set(self.fields) - fields))
             return fields
