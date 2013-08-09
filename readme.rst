@@ -1,3 +1,6 @@
+.. image:: /static/img/metrique_logo.png
+    :align: right
+
 Metrique
 ========
 
