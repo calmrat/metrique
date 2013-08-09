@@ -8,9 +8,13 @@ from decorator import decorator
 def _memo(func, *args, **kw):
     # sort and convert list items to tuple for hashability
     if type(kw) is list:
-        kw = tuple(sorted(kw))
+        kw = frozenset(kw)
+    args = list(args)
+    for k, arg in enumerate(args):
+        if type(arg) is list:
+            args[k] = frozenset(arg)
     # frozenset is used to ensure hashability
-    key = args, frozenset(kw.iteritems())
+    key = frozenset(args), frozenset(kw.iteritems())
     cache = func.cache  # attributed added by memoize
     if key in cache:
         return cache[key]
