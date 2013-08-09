@@ -31,11 +31,6 @@ class BaseSql(object):
                 "row_limit must be a number. Got (%s)" % row_limit)
         return row_limit
 
-    # FIXME: why not use row_limit as a argument
-    # to fetchall()...
-    # set hard = True to add the SQL LIMIT clause,
-    # otherwise, don't add the hard limit, but only
-    # fetch/skip in fetch() instead?
     def fetchall(self, sql, row_limit=0, start=0):
         '''
         Shortcut for getting a cursor, cleaning the sql a bit,
@@ -44,7 +39,7 @@ class BaseSql(object):
         '''
         self._validate_row_limit(row_limit)
 
-	k = self.cursor()
+        k = self.cursor()
         sql = re.sub('\s+', ' ', sql).strip().encode('utf-8')
         if row_limit > 0:
             sql = re.sub('$', ' LIMIT %i,%i' % (start, row_limit), sql)
@@ -53,6 +48,6 @@ class BaseSql(object):
         try:
             k.execute(sql)
             rows = k.fetchall()
-	finally:
+        finally:
             k.close()
         return rows

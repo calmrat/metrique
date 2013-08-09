@@ -81,6 +81,9 @@ class JSONConfig(MutableMapping):
     def __str__(self):
         return str(self.config)
 
+    def __hash__(self):
+        return hash(tuple(sorted(self.config.items())))
+
     def setdefault(self, key, value):
         self.config.setdefault(key, value)
 

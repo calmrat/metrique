@@ -23,7 +23,6 @@ def count(cube, query):
     logger.debug('Running Count')
     pql_parser = pql.SchemaFreeParser()
     try:
-        # FIXME: make it a schema aware parser
         spec = pql_parser.parse(query)
     except Exception as e:
         raise ValueError("Invalid Query (%s)" % str(e))
@@ -44,8 +43,6 @@ def _get_date_pql_string(date, prefix=' and '):
         return ''
 
     dt_str = date.replace('T', ' ')
-
-    # FIXME: file a bug against pql to support +00:00 timezone in string too
     dt_str = re.sub('(\+\d\d:\d\d)?$', '', dt_str)
 
     before = lambda d: '_start <= date("%s")' % d

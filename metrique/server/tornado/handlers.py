@@ -180,19 +180,6 @@ class PingHandler(MetriqueInitialized):
         return self.proxy.ping()
 
 
-class JobStatusHandler(MetriqueInitialized):
-    ''' RequestHandler wrapper handling client job status requests '''
-    @auth('rw')
-    @async
-    def get(self, job_key):
-        raise NotImplementedError
-        # FIXME
-        # the api call below '.job.status' is not available yet
-        job_json = self.proxy.job.status(job_key)
-        job = json.loads(job_json)
-        return job['result']
-
-
 class QueryAggregateHandler(MetriqueInitialized):
     '''
         RequestHandler for running mongodb aggregation

@@ -35,6 +35,11 @@ class metrique(JSONConfig):
         return self._default('pid_file', _pf)
 
     @property
+    def server_thread_count(self):
+        from multiprocessing import cpu_count
+        return self._default('server_thread_count', cpu_count() * 10)
+
+    @property
     def async(self):
         return self._default('async', True)
 

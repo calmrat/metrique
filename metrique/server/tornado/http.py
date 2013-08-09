@@ -12,7 +12,6 @@ import tornado.web
 from metrique.server.metriqueserver import MetriqueServer
 
 from handlers import PingHandler
-from handlers import JobStatusHandler
 from handlers import QueryAggregateHandler, QueryFindHandler
 from handlers import QueryFetchHandler, QueryCountHandler
 from handlers import QueryDistinctHandler
@@ -37,7 +36,6 @@ class HTTPServer(MetriqueServer):
         ''' Config and Views'''
         logger.debug("Tornado: Web App setup")
         init = dict(proxy=self)
-        # FIXME: v1 should be config option
         debug = self.metrique_config.debug == 2
         gzip = self.metrique_config.gzip
         static_path = self.metrique_config.static_path
@@ -47,7 +45,6 @@ class HTTPServer(MetriqueServer):
             static_path=static_path,
             handlers=[
                 (r"/api/v1/ping/?", PingHandler, init),
-                (r"/api/v1/job/status/(\w+)", JobStatusHandler, init),
                 (r"/api/v1/query/find", QueryFindHandler, init),
                 (r"/api/v1/query/count", QueryCountHandler, init),
                 (r"/api/v1/query/aggregate", QueryAggregateHandler, init),

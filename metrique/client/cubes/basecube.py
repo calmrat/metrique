@@ -5,7 +5,6 @@
 import logging
 logger = logging.getLogger(__name__)
 
-from collections import defaultdict
 
 from metrique.client.http_api import HTTPClient
 from metrique.tools.decorators import memo
@@ -37,20 +36,6 @@ class BaseCube(HTTPClient):
                 return self.defaults[property]
             except (TypeError, KeyError):
                 return default
-
-    # FIXME: IS THIS OBSOLETE? WHERE IS IT USED?
-    @property
-    @memo
-    def fieldmap(self):
-        '''
-        Dictionary of field_id: field_name
-        '''
-        fieldmap = defaultdict(str)
-        for field in self.fields:
-            field_id = self.get_property('what', field)
-            if field_id is not None:
-                fieldmap[field_id] = field
-        return fieldmap
 
     def setdefault(self, value, default, config_key=None):
         ''' config helper. Set a cube property value

@@ -7,17 +7,10 @@ logging.basicConfig()
 logger = logging.getLogger(__name__)
 
 from concurrent.futures import ThreadPoolExecutor
-from multiprocessing import cpu_count
 import os
 
 from metrique.server.baseserver import BaseServer
 from metrique.server.defaults import BACKUP_COUNT, MAX_BYTES
-
-# FIXME: add as metrique_config property
-# NOTE: this means the tornado server will only be able to
-# handle this number of requests simultaneously
-# HACK
-MAX_WORKERS = cpu_count() * 10
 
 
 class MetriqueServer(BaseServer):
@@ -64,7 +57,8 @@ class MetriqueServer(BaseServer):
             hdlr.setFormatter(self.metrique_config.log_formatter)
             logger.addHandler(hdlr)
         self._set_pid()
-        self.executor = ThreadPoolExecutor(MAX_WORKERS)
+        k = self.metrique_config.server_thread_count
+        self.executor = ThreadPoolExecutor(k)
         logger.debug("Metrique Server - Started")
 
     def stop(self):

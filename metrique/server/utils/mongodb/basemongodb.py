@@ -32,7 +32,6 @@ class BaseMongoDB(object):
 
     @property
     def db(self):
-        # FIXME: memoize
         if not hasattr(self, '_db_proxy'):
             try:
                 self._proxy = Connection(self._host, self._port,

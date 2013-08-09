@@ -11,7 +11,6 @@ import time
 
 from metrique.client.cubes.basecube import BaseCube
 
-from metrique.tools.constants import INT_TYPE, FLOAT_TYPE
 
 DEFAULT_ROW_LIMIT = 100000
 MAX_WORKERS = 1
@@ -287,7 +286,7 @@ class BaseSql(BaseCube):
                 last_id = int(last_id)
             except (TypeError, ValueError):
                 pass
-            if type(last_id) in [INT_TYPE, FLOAT_TYPE]:
+            if type(last_id) in [int, float]:
                 last_id_sql = "%s.%s > %s" % (table, _id, last_id)
             else:
                 last_id_sql = "%s.%s > '%s'" % (table, _id, last_id)

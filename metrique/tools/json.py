@@ -5,17 +5,9 @@
 import datetime
 from dateutil.parser import parse as dt_parse
 import simplejson as json
-import re
 from bson.objectid import ObjectId
 
-from metrique.tools.constants import RE_TYPE, RE_DATE_DATETIME
-
-# FIXME: IS THIS EVER EXPECTED TO BE PASSED BY CLIENT ANYMORE?
-# It was used... to handle when clients used a compiled regex
-# in their queries... but clients should be discouraged
-# from this... they can used regex("...")
-SRE_PATTERN_ID = '_sre.SRE_Pattern'
-HAS_SRE_OBJ = re.compile('(<%s (.+)>)' % SRE_PATTERN_ID)
+from metrique.tools.constants import RE_DATE_DATETIME
 
 
 class Encoder(json.JSONEncoder):
@@ -33,8 +25,6 @@ class Encoder(json.JSONEncoder):
             encoded = obj.isoformat()
         elif isinstance(obj, set):
             encoded = list(obj)
-        elif type(obj) is RE_TYPE:
-            encoded = '<%s %s>' % (SRE_PATTERN_ID, obj.pattern)
         else:
             encoded = unicode(obj)
         return encoded
@@ -48,9 +38,6 @@ def decoder(dct):
     '''
     for k, v in dct.items():
         if isinstance(v, basestring) and RE_DATE_DATETIME.match(v):
-            # FIXME: SHOULD THIS BE pandas Time instead of dt_parse?
-            # to handle timestamps as well as dt strings?
-            # Are we correctly handling TZones? UTC? test....
             try:
                 dct[k] = dt_parse(v)
             except:
