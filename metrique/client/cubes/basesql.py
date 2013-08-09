@@ -149,14 +149,11 @@ class BaseSql(BaseCube):
             mtime = last_update
         else:
             # list_cube_fields returns back a dict from the server that
-            # contains the most recent mtime for the given field, if any.
-            # keys are fields; values are mtimes
-            # from all fields, get the oldest and use it as 'last update' of
-            # any cube object.
-            c_fields = self.list_cube_fields(exclude_fields=exclude_fields)
-            mtimes = sorted(
-                [v for f, v in c_fields.items()])
-            mtime = mtimes[0] if mtimes else None
+            # contains a global _mtime that represents the last time
+            # any field was updated.
+            c_fields = self.list_cube_fields(exclude_fields=exclude_fields,
+                                             _mtime=True)
+            mtime = c_fields.get('_mtime')
             tzaware = (mtime and
                        hasattr(mtime, 'tzinfo') and
                        mtime.tzinfo)
@@ -272,7 +269,10 @@ class BaseSql(BaseCube):
         '''
         '''
         # the following deltas are mutually exclusive
-        return ["(%s.%s IN (%s))" % (table, column, id_delta)]
+        if id_delta:
+            return ["(%s.%s IN (%s))" % (table, column, id_delta)]
+        else:
+            return []
 
     def _get_last_id_sql(self):
         '''
@@ -320,9 +320,12 @@ class BaseSql(BaseCube):
                WHERE %s""" % (table, _id, db, table,
                               ' OR '.join(filters))
         rows = self.proxy.fetchall(sql)
-        ids = ','.join(map(str, [x[0] for x in rows]))
-        sql = "%s.%s IN (%s)" % (table, _id, ids)
-        return [sql]
+        if rows:
+            ids = ','.join(map(str, [x[0] for x in rows]))
+            sql = "%s.%s IN (%s)" % (table, _id, ids)
+            return [sql]
+        else:
+            return []
 
     def _get_delta_sql(self, mtime=None):
         '''
