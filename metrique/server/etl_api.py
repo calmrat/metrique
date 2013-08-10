@@ -4,6 +4,7 @@
 
 import logging
 logger = logging.getLogger(__name__)
+from copy import copy
 from datetime import datetime
 from dateutil.parser import parse as dt_parse
 from bson.objectid import ObjectId
@@ -52,7 +53,19 @@ def _prep_object(obj, mtime, timeline):
             "Expected dict object, got type(%s)."
             "\nObject: %s" % (type(obj), obj))
     else:
-        obj.update({'_mtime': mtime})
+        # calculate the objects hash, before adding additional
+        # meta data
+        if '_id' in obj and type(obj['_id']) is ObjectId:
+            _obj = copy(obj)
+            del _obj['_id']
+            _hash = hash(frozenset(_obj.items()))
+        else:
+            _hash = hash(frozenset(obj.items()))
+        obj.update({'_hash': _hash})
+
+        # FIXME: do a hash check here?
+        # eg, if object exists, who has saved it (who can admin it)?
+
         if not timeline and '_id' not in obj:
             # generate and apply a mongodb (bson) ObjectId if
             # one doesn't already exist.
@@ -65,6 +78,8 @@ def _prep_object(obj, mtime, timeline):
             # since ultimately we want to return back the object _ids list
             # to client calling .save_objects()
             obj['_id'] = ObjectId()
+        # add the time when the object was last manipulated
+        obj.update({'_mtime': mtime})
         return obj
 
 
@@ -137,8 +152,7 @@ def save_objects(cube, objects, update=False, timeline=False,
     elif not type(objects) in [list, tuple]:
         raise TypeError("Expected list or tuple, got type(%s): %s" %
                         (type(objects), objects))
-
-    if not mtime:
+    elif not mtime:
         mtime = datetime.utcnow()
 
     objects = [_prep_object(obj, mtime, timeline) for obj in objects if obj]

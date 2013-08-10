@@ -6,6 +6,7 @@ import logging
 logger = logging.getLogger(__name__)
 import csv
 import cStringIO
+import os
 import re
 from urllib2 import urlopen
 
@@ -31,6 +32,7 @@ class BaseCSV(BaseCube):
             content = urlopen(uri).readlines()
         else:
             uri = re.sub('^file://', '', uri)
+            uri = os.path.expanduser(uri)
             content = open(uri).readlines()
         return self.loadi(content)
 
@@ -93,11 +95,14 @@ class BaseCSV(BaseCube):
                 fields, exp_fields))
         return rows, fields, dialect
 
-    def set_column(self, objects, key, value):
+    def set_column(self, objects, key, value, **kwargs):
         '''
         Save an additional column/field to all objects in memory
         '''
-        if key == '_id':
+        if type(value) is type:
+            # we have a class, use an instance of that class
+            [o.update({key: str(value(**kwargs))}) for o in objects]
+        elif key == '_id':
             try:
                 [o.update({key: o[value]}) for o in objects]
             except KeyError:
