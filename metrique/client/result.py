@@ -65,20 +65,6 @@ class Result(DataFrame):
             self._end = pd.to_datetime(self._end, utc=True)
         self._lbound = self._rbound = None
 
-    @classmethod
-    def from_result_file(cls, path):
-        ''' Load saved json data from file '''
-        path = os.path.expanduser(path)
-        with open(path) as f:
-            data = json.load(f)
-            return Result(data)
-
-    def to_result_file(self, path):
-        ''' Save json data to file '''
-        path = os.path.expanduser(path)
-        with open(path, 'w') as f:
-            json.dump(self._result_data, f)
-
     def set_date_bounds(self, date):
         '''
         Pass in the date used in the original query.
