@@ -30,6 +30,15 @@ class Encoder(json.JSONEncoder):
         return encoded
 
 
+def _id_convert(dct):
+    if '_id' in dct:
+        try:
+            dct['_id'] = ObjectId(dct['_id'])
+        except:
+            pass
+    return dct
+
+
 def decoder(dct):
     '''
     Convert
@@ -42,9 +51,9 @@ def decoder(dct):
                 dct[k] = dt_parse(v)
             except:
                 pass
-    if '_id' in dct:
-        try:
-            dct['_id'] = ObjectId(dct['_id'])
-        except:
+        elif type(v) is list:
+            dct[k] = tuple(v)
+        else:
             pass
+    dct = _id_convert(dct)
     return dct

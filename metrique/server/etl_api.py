@@ -38,6 +38,18 @@ def index_warehouse(cube, fields):
     return result
 
 
+def hash_obj(obj):
+    '''
+    calculate the objects hash based on all field values,
+    not including adding additional meta data, like, _id
+    IF its a 'randomly generated' ObjectId and _mtime, etc.
+    '''
+    _obj = copy(obj)
+    if '_id' in obj and type(obj['_id']) is ObjectId:
+        del _obj['_id']
+    return hash(frozenset(obj.items()))
+
+
 def _prep_object(obj, mtime, timeline):
     '''
     :param dict obj: dictionary that will be converted to mongodb doc
@@ -53,15 +65,7 @@ def _prep_object(obj, mtime, timeline):
             "Expected dict object, got type(%s)."
             "\nObject: %s" % (type(obj), obj))
     else:
-        # calculate the objects hash, before adding additional
-        # meta data
-        if '_id' in obj and type(obj['_id']) is ObjectId:
-            _obj = copy(obj)
-            del _obj['_id']
-            _hash = hash(frozenset(_obj.items()))
-        else:
-            _hash = hash(frozenset(obj.items()))
-        obj.update({'_hash': _hash})
+        obj['_hash'] = hash_obj(obj)
 
         # FIXME: do a hash check here?
         # eg, if object exists, who has saved it (who can admin it)?
