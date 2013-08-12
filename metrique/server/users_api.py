@@ -10,12 +10,16 @@ from metrique.server.defaults import VALID_PERMISSIONS
 from metrique.tools import hash_password
 
 
-@job_save('users_add')
-def add(self, cube, username, password=None, permissions='r'):
+@job_save('user_add')
+def add(handler, cube, username, password=None, permissions='r'):
+    if not username:
+        return -1
+
     if permissions not in VALID_PERMISSIONS:
         raise ValueError(
             "Expected acl == %s. Got %s" % (
                 (VALID_PERMISSIONS, permissions)))
+
     if password:
         salt, password = hash_password(password)
     else:
@@ -27,5 +31,6 @@ def add(self, cube, username, password=None, permissions='r'):
               username: {'salt': salt,
                          'password': password,
                          'permissions': permissions}}}
-    return self.mongodb_config.c_auth_keys.update(
+    c_auth_keys = handler.proxy.mongodb_config.c_auth_keys
+    return c_auth_keys.update(
         spec, update, upsert=True)

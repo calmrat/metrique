@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 CMD = 'admin/users'
 
 
-def add(self, user, password, permissions):
+def add(self, user, password=None, permissions='r'):
     '''
     Add user permissions (or update if exists)
     Assigne that user a password (salt+hash)

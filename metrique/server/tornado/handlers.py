@@ -7,6 +7,7 @@ import base64
 logger = logging.getLogger(__name__)
 
 from functools import wraps
+import kerberos
 import simplejson as json
 import tornado
 import traceback
@@ -60,16 +61,62 @@ def async(f):
 def request_authentication(handler):
     ''' Helper-Function for settig 401 - Request for authentication '''
     handler.set_status(401)
-    handler.set_header('WWW-Authenticate', 'Basic realm="Metrique"')
+    # FIXME: set REALM in config
+    handler.set_header('WWW-Authenticate', 'Basic realm="REDHAT.COM"')
     return False
 
 
-# user is not admin... lookup username in auth_keys
 def cube_check(handler, cube, lookup):
+    '''
+    Check if user is listed to access to a given cube
+    '''
     spec = {'_id': cube,
             lookup: {'$exists': True}}
     logger.debug("Cube Check: spec (%s)" % spec)
     return handler.proxy.mongodb_config.c_auth_keys.find_one(spec)
+
+
+def _auth_admin(handler, username, password):
+    '''
+    admin pass is stored in metrique server config
+    admin user gets 'rw' to all cubes
+    '''
+    admin_user = handler.proxy.metrique_config.admin_user
+    admin_pass = handler.proxy.metrique_config.admin_password
+    if username == admin_user:
+        if password == admin_pass:
+            return True
+        else:
+            return -1
+    else:
+        return 0
+
+
+def _auth_kerb(handler, username, password):
+    krb_realm = handler.proxy.metrique_config.krb_realm
+    if not krb_realm:
+        return 0
+
+    try:
+        ret = kerberos.checkPassword(username,
+                                     password, '',
+                                     krb_realm)
+        return ret
+    except kerberos.BasicAuthError as e:
+        logger.debug('KRB ERROR: %s' % e)
+        return -1
+
+
+def _auth_basic(handler, password, user_dict):
+    if not user_dict:
+        return -1
+    else:
+        salt = user_dict.get('salt')
+        _, p_hash = hash_password(password, salt)
+        if user_dict.get('password') == p_hash:
+            return True
+        else:
+            return -1
 
 
 def authenticate(handler, username, password, permissions):
@@ -77,18 +124,8 @@ def authenticate(handler, username, password, permissions):
         user:password:permissions combination provides
         client with enough privleges to execute
         the requested command against the given cube '''
-    # if auth isn't on, let anyone do anything!
-    if not handler.proxy.metrique_config.auth:
-        return True
-
     # GLOBAL DEFAULT
     cube = handler.get_argument('cube')
-    if username == handler.proxy.metrique_config.admin_user:
-        admin_password = handler.proxy.metrique_config.admin_password
-        if password == admin_password:
-            # admin pass is stored in plain text
-            # we're admin user and so we get 'rw' to all cubes
-            return True
 
     udoc = cube_check(handler, cube, username)
     adoc = cube_check(handler, '__all__', '__all__')
@@ -98,23 +135,35 @@ def authenticate(handler, username, password, permissions):
     elif adoc:
         user = adoc['__all__']
     else:
+        user = None
+
+    if _auth_admin(handler, username, password) is True:
+        # ... or if user is admin with correct admin pass
+        pass
+    elif _auth_kerb(handler, username, password) is True:
+        # or if user is kerberous auth'd
+        pass
+    elif _auth_basic(handler, password, user) is True:
+        # or if the user is authed by metrique (built-in; auth_keys)
+        pass
+    else:
         return False
 
-    # permissions is a single string
-    assert isinstance(permissions, basestring)
-    VP = VALID_PERMISSIONS
-    has_perms = VP.index(user['permissions']) >= VP.index(permissions)
-
-    if not user['password'] and has_perms:
+    if user:
+        # permissions is a single string
+        assert isinstance(permissions, basestring)
+        VP = VALID_PERMISSIONS
+        has_perms = VP.index(user['permissions']) >= VP.index(permissions)
+        if has_perms:
+            # password is defined, make sure user's pass matches it
+            # and that the user has the right permissions defined
+            return True
+        else:
+            return -1
+    else:
+        # FIXME: FOR NOW, HACK, all non-cube actions are available to
+        # authenticated users
         return True
-
-    _, p_hash = hash_password(password, user['salt'])
-    p_match = user['password'] == p_hash
-    if p_match and has_perms:
-        # password is defined, make sure user's pass matches it
-        # and that the user has the right permissions defined
-        return True
-    return False
 
 
 def auth(permissions='r'):
@@ -122,6 +171,10 @@ def auth(permissions='r'):
     def decorator(f):
         @wraps(f)
         def wrapper(handler, *args, **kwargs):
+            if not handler.proxy.metrique_config.auth:
+                # if auth isn't on, let anyone do anything!
+                return f(handler, *args, **kwargs)
+
             auth_header = handler.request.headers.get('Authorization')
             if auth_header is None or not auth_header.startswith('Basic '):
                 #No HTTP Basic Authentication header
@@ -129,10 +182,13 @@ def auth(permissions='r'):
 
             auth = base64.decodestring(auth_header[6:])
             username, password = auth.split(':', 2)
+
             privleged = authenticate(handler, username, password, permissions)
             logger.debug("User (%s): Privleged (%s)" % (username, privleged))
             if privleged:
                 return f(handler, *args, **kwargs)
+            elif privleged is -1:
+                raise tornado.web.HTTPError(401)
             else:
                 return request_authentication(handler)
         return wrapper
@@ -271,7 +327,7 @@ class UsersAddHandler(MetriqueInitialized):
         user = self.get_argument('user')
         password = self.get_argument('password')
         permissions = self.get_argument('permissions', 'r')
-        return users_api.add(cube, user,
+        return users_api.add(self, cube, user,
                              password, permissions)
 
 

@@ -114,6 +114,10 @@ class metrique(JSONConfig):
         self.config['http_port'] = value
 
     @property
+    def krb_realm(self):
+        return self._default('krb_realm', '')
+
+    @property
     def static_path(self):
         abspath = os.path.dirname(os.path.abspath(__file__))
         static_path = os.path.join(abspath, 'static/')
