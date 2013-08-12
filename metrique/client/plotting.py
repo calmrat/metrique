@@ -81,6 +81,30 @@ class Plotter(object):
             plt.fill_between(series.index, 0, series, facecolor=ALPHAS[color])
             plt.gca().set_ylim(bottom=0)
 
+    def plots(self, list_of_label_series, stacked=False, colors=None):
+        '''
+        Plots all the series from the list.
+        The assumption is that all of the series share the same index.
+
+        :param list list_of_label_series:
+            A list of (label, series) pairs which should be plotted
+        :param bool stacked:
+            If true then the resulting graph will be stacked
+        :params list list_of_colors:
+            A list of colors to use.
+        '''
+        colors = range(len(list_of_label_series)) if colors is None else colors
+        if stacked:
+            ssum = 0
+            lst = []
+            for label, series in list_of_label_series:
+                ssum += series
+                lst.append((label, ssum))
+            list_of_label_series = lst
+        for color, label, series in zip(colors,
+                                        *zip(*list_of_label_series))[::-1]:
+            self.plot(series, label, color)
+
     def line(self, x, label=None, y='bottom', color='grey', ax=None):
         '''
         Creates a vertical line in the plot.
