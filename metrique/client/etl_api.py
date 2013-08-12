@@ -16,20 +16,38 @@ MAX_WORKERS = 2
 CMD = 'admin/etl'
 
 
-def index_warehouse(self, fields='__all__'):
+def list_index(self, db='timeline'):
     '''
-    :param fields: str, or list of str, or str of comma-separated values
-        Fields that should be indexed
+    List indexes for either timeline or warehouse.
 
-    Index particular fields of a given cube, assuming
-    indexing is enabled for the cube.fields
-
-    Default behavior is to return back __all__, which
-    gets translated to a list of all available fields
-
+    :param string db:
+        'timeline' or 'warehouse'
     '''
-    return self._get(CMD, 'index/warehouse', cube=self.name,
-                     fields=fields)
+    return self._get(CMD, 'index', cube=self.name, db=db)
+
+
+def ensure_index(self, key_or_list, db='timeline'):
+    '''
+    Ensures that an index exists on this cube.
+
+    :param string/list key_or_list:
+        Either a single key or a list of (key, direction) pairs.
+    :param string db:
+        'timeline' or 'warehouse'
+    '''
+    return self._get(CMD, 'index', cube=self.name, db=db, ensure=key_or_list)
+
+
+def drop_index(self, index_or_name, db='timeline'):
+    '''
+    Drops the specified index on this cube.
+
+    :param string/list index_or_name:
+        index (or name of index) to drop
+    :param string db:
+        'timeline' or 'warehouse'
+    '''
+    return self._get(CMD, 'index', cube=self.name, db=db, drop=index_or_name)
 
 
 def snapshot(self, ids=None):

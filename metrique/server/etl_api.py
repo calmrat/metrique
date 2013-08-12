@@ -18,24 +18,35 @@ from metrique.tools.constants import YELLOW, ENDC, RE_PROP
 ETL_ACTIVITY = get_etl_activity()
 
 
-@job_save('etl_index_warehouse')
-def index_warehouse(cube, fields):
+@job_save('etl_index')
+def index(cube, db, ensure=None, drop=None):
     '''
     :param str cube: name of cube (collection) to index
     :param list fields: list of individual fields to index
 
     ..note: _id key index is generated automatically by mongo
     '''
-    _cube = get_cube(cube, admin=True)
+    if db == 'timeline':
+        timeline = True
+    elif db == 'warehouse':
+        timeline = False
+    else:
+        raise Exception('db must be either "timeline" or "warehouse".')
 
-    result = {}
-    for field in get_fields(cube, fields):
-        logger.info(' %s... Indexing Warehouse (%s)%s' %
-                    (YELLOW, field, ENDC))
-        key = [(field, -1)]
-        name = '%s-tokens' % field
-        result[field] = _cube.ensure_index(key, name=name)
-    return result
+    cube = get_cube(cube, admin=True, timeline=timeline)
+
+    if drop is not None:
+        if isinstance(drop, list):
+            drop = map(tuple, drop)
+        cube.drop_index(drop)
+
+    if ensure is not None:
+        if isinstance(ensure, list):
+            ensure = map(tuple, ensure)
+        logger.warn(ensure)
+        cube.ensure_index(ensure)
+
+    return cube.index_information()
 
 
 def hash_obj(obj):

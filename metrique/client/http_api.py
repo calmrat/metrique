@@ -32,7 +32,9 @@ class HTTPClient(object):
     fetch = query_api.fetch
     distinct = query_api.distinct
     aggregate = query_api.aggregate
-    index_warehouse = etl_api.index_warehouse
+    list_index = etl_api.list_index
+    ensure_index = etl_api.ensure_index
+    drop_index = etl_api.drop_index
     snapshot = etl_api.snapshot
     activity_import = etl_activity.activity_import
     save_objects = etl_api.save_objects

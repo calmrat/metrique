@@ -275,7 +275,7 @@ class UsersAddHandler(MetriqueInitialized):
                              password, permissions)
 
 
-class ETLIndexWarehouseHandler(MetriqueInitialized):
+class ETLIndexHandler(MetriqueInitialized):
     '''
         RequestHandler for ensuring mongodb indexes
         in warehouse for a given cube
@@ -284,8 +284,10 @@ class ETLIndexWarehouseHandler(MetriqueInitialized):
     @async
     def get(self):
         cube = self.get_argument('cube')
-        fields = self.get_argument('fields', '')
-        return etl_api.index_warehouse(cube, fields)
+        db = self.get_argument('db')
+        ensure = self.get_argument('ensure')
+        drop = self.get_argument('drop')
+        return etl_api.index(cube, db, ensure, drop)
 
 
 class ETLSnapshotHandler(MetriqueInitialized):
