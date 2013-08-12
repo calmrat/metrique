@@ -65,10 +65,9 @@ def _prep_object(obj, mtime, timeline):
             "Expected dict object, got type(%s)."
             "\nObject: %s" % (type(obj), obj))
     else:
-        obj['_hash'] = hash_obj(obj)
-
-        # FIXME: do a hash check here?
-        # eg, if object exists, who has saved it (who can admin it)?
+        # DISABLED
+        # FIXME: test what happens if a object contains nested structures/dicts
+        #obj['_hash'] = hash_obj(obj)
 
         if not timeline and '_id' not in obj:
             # generate and apply a mongodb (bson) ObjectId if
