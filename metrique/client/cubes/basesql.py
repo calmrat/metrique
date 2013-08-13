@@ -5,6 +5,7 @@
 import logging
 logger = logging.getLogger(__name__)
 
+from dateutil.parser import parse as dt_parse
 from functools import partial
 import re
 import time
@@ -139,6 +140,8 @@ class BaseSql(BaseCube):
                 "force and id_delta can't be used simultaneously")
         if isinstance(id_delta, basestring):
             id_delta = id_delta.split(',')
+        elif isinstance(id_delta, int):
+            id_delta = [id_delta]
         if not delta_batch_size:
             delta_batch_size = self.config.sql_delta_batch_size
         return id_delta, delta_batch_size
@@ -146,7 +149,10 @@ class BaseSql(BaseCube):
     def _fetch_mtime(self, last_update, exclude_fields):
         mtime = None
         if last_update:
-            mtime = last_update
+            if isinstance(last_update, basestring):
+                mtime = dt_parse(last_update)
+            else:
+                mtime = last_update
         else:
             # list_cube_fields returns back a dict from the server that
             # contains a global _mtime that represents the last time
@@ -154,13 +160,16 @@ class BaseSql(BaseCube):
             c_fields = self.list_cube_fields(exclude_fields=exclude_fields,
                                              _mtime=True)
             mtime = c_fields.get('_mtime')
+            if isinstance(mtime, basestring):
+                mtime = dt_parse(mtime)
             tzaware = (mtime and
                        hasattr(mtime, 'tzinfo') and
                        mtime.tzinfo)
             if c_fields and not tzaware:
                 raise TypeError(
                     'last_update dates must be timezone '
-                    'aware. Got: %s' % mtime)
+                    'aware. Got: type(%s), %s' % (
+                        type(mtime), mtime))
         logger.debug("(last update) mtime: %s" % mtime)
         return mtime
 
@@ -191,16 +200,17 @@ class BaseSql(BaseCube):
             while tries_left > 0:
                 failed = []
                 local_done = 0
-                for batch in batch_gen(sorted(id_delta),
+                for batch in batch_gen(id_delta,
                                        delta_batch_size):
                     try:
                         objects.extend(self._extract(force, batch,
                                                      field_order))
-                    except Exception:
+                    except Exception as e:
                         failed.extend(batch)
                         logger.warn(
-                            'BATCH Failed (%i). Tries remaining: %i' % (
-                                len(failed), tries_left))
+                            '%s\nBATCH Failed (%i). Tries remaining: %i' % (
+                                e, len(failed), tries_left))
+                        tries_left -= 1
                     else:
                         done.extend(batch)
                         local_done += len(batch)
@@ -321,8 +331,9 @@ class BaseSql(BaseCube):
         '''
         '''
         if id_delta:
+            id_delta = sorted(set(id_delta))
             if type(id_delta) is list:
-                id_delta = ','.join(map(str, set(id_delta)))
+                id_delta = ','.join(map(str, id_delta))
             return ["(%s.%s IN (%s))" % (table, column, id_delta)]
         else:
             return []

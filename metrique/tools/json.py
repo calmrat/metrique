@@ -23,7 +23,9 @@ def json_encode(obj):
     elif isinstance(obj, ObjectId):
         return unicode(obj)
     elif isinstance(obj, Cursor):
-        return tuple(obj)
+        _obj = tuple(obj)
+        obj.close()
+        return _obj
     else:
         return json_encoder.default(obj)
 

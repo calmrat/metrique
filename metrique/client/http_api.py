@@ -176,4 +176,4 @@ class HTTPClient(object):
                     "Skipping invalid fields in set: %s" % (
                         err_fields))
                 logger.warn('%s\n%s' % (cube_fields, fields))
-            return fields
+            return sorted(fields)
