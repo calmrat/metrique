@@ -17,12 +17,13 @@ class Encoder(json.JSONEncoder):
         if isinstance(obj, dt):
             return {'$date': mktime(obj.timetuple())}
         else:
-            return obj 
+            return json.JSONEncoder.default(self, obj)
 
 
 def decoder(dct):
-    ''' 
+    '''
     Convert datetime dicts to datetime objects
     '''
-    return dt.fromtimestamp(dct['$date'], tz=tzutc()) if len(dct) == 1 and '$date' in dct else dct 
-
+    if len(dct) == 1 and '$date' in dct:
+        return dt.fromtimestamp(dct['$date'], tz=tzutc())
+    return dct
