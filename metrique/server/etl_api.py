@@ -10,10 +10,10 @@ from dateutil.parser import parse as dt_parse
 from bson.objectid import ObjectId
 import pytz
 
-from metrique.server.cubes import get_fields, get_cube, get_etl_activity
+from metrique.server.cubes import get_cube, get_etl_activity
 from metrique.server.job import job_save
 
-from metrique.tools.constants import YELLOW, ENDC, RE_PROP
+from metrique.tools.constants import RE_PROP
 
 ETL_ACTIVITY = get_etl_activity()
 
@@ -21,29 +21,35 @@ ETL_ACTIVITY = get_etl_activity()
 @job_save('etl_index')
 def index(cube, db, ensure=None, drop=None):
     '''
-    :param str cube: name of cube (collection) to index
-    :param list fields: list of individual fields to index
-
-    ..note: _id key index is generated automatically by mongo
+    :param str cube:
+        name of cube (collection) to index
+    :param string db:
+        'timeline' or 'warehouse'
+    :param string/list ensure:
+        Either a single key or a list of (key, direction) pairs (lists)
+        to ensure index on.
+    :param string/list drop:
+        index (or name of index) to drop
     '''
     if db == 'timeline':
         timeline = True
     elif db == 'warehouse':
         timeline = False
     else:
-        raise Exception('db must be either "timeline" or "warehouse".')
+        raise ValueError('db must be either "timeline" or "warehouse".')
 
     cube = get_cube(cube, admin=True, timeline=timeline)
 
     if drop is not None:
-        if isinstance(drop, list):
-            drop = map(tuple, drop)
+        # when drop is a list of tuples, the json
+        # serialization->deserialization process leaves us with a list of
+        # lists, so we need to convert it back to a list of tuples.
+        drop = map(tuple, drop) if isinstance(drop, list) else drop
         cube.drop_index(drop)
 
     if ensure is not None:
-        if isinstance(ensure, list):
-            ensure = map(tuple, ensure)
-        logger.warn(ensure)
+        # same as for drop:
+        ensure = map(tuple, ensure) if isinstance(ensure, list) else ensure
         cube.ensure_index(ensure)
 
     return cube.index_information()
