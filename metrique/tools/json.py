@@ -9,6 +9,9 @@ from dateutil.tz import tzutc
 from time import mktime
 
 from bson.objectid import ObjectId
+from pymongo.cursor import Cursor
+
+json_encoder = json.JSONEncoder()
 
 
 def json_encode(obj):
@@ -19,8 +22,10 @@ def json_encode(obj):
         return {'$date': mktime(obj.timetuple())}
     elif isinstance(obj, ObjectId):
         return unicode(obj)
+    elif isinstance(obj, Cursor):
+        return tuple(obj)
     else:
-        return json.JSONEncoder.default(obj)
+        return json_encoder.default(obj)
 
 
 def decoder(dct):

@@ -10,6 +10,8 @@ import re
 from metrique.server.cubes import get_fields, get_cube
 from metrique.server.job import job_save
 
+BATCH_SIZE = 16777216  # hard limit is 16M...
+
 
 @job_save('query distinct')
 def distinct(cube, field):
@@ -96,10 +98,8 @@ def find(cube, query, fields=None, date=None,
     if one:
         result = _cube.find_one(spec, fields, sort=sort)
     else:
-        docs = _cube.find(spec, fields, sort=sort)
-        docs.batch_size(10000000)  # hard limit is 16M...
-        result = tuple(docs)
-        docs.close()
+        result = _cube.find(spec, fields, sort=sort)
+        result.batch_size(BATCH_SIZE)
     return result
 
 
@@ -139,11 +139,9 @@ def fetch(cube, fields=None, date=None, sort=None, skip=0, limit=0, ids=None):
         fields += ['_start', '_end', '_oid']
         spec.update(pql.find(_get_date_pql_string(date, '')))
 
-    docs = _cube.find(spec, fields, sort=sort,
-                      skip=skip, limit=limit)
-    docs.batch_size(10000000)  # hard limit is 16M...
-    result = tuple(docs)
-    docs.close()
+    result = _cube.find(spec, fields, sort=sort,
+                        skip=skip, limit=limit)
+    result.batch_size(BATCH_SIZE)
     return result
 
 
