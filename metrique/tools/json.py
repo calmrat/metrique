@@ -8,6 +8,7 @@ from datetime import datetime as dt
 from dateutil.tz import tzutc
 from time import mktime
 
+from bson.objectid import ObjectId
 
 class Encoder(json.JSONEncoder):
     '''
@@ -16,6 +17,8 @@ class Encoder(json.JSONEncoder):
     def default(self, obj):
         if isinstance(obj, dt):
             return {'$date': mktime(obj.timetuple())}
+        elif isinstance(obj, ObjectId):
+            return unicode(obj)
         else:
             return json.JSONEncoder.default(self, obj)
 
