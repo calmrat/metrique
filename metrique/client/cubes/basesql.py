@@ -322,7 +322,7 @@ class BaseSql(BaseCube):
         '''
         if id_delta:
             if type(id_delta) is list:
-                id_delta = ','.join(map(str, id_delta))
+                id_delta = ','.join(map(str, set(id_delta)))
             return ["(%s.%s IN (%s))" % (table, column, id_delta)]
         else:
             return []
@@ -369,7 +369,7 @@ class BaseSql(BaseCube):
         table = self.get_property('table')
         _id = self.get_property('column')
 
-        sql = """SELECT %s.%s FROM %s.%s
+        sql = """SELECT DISTINCT %s.%s FROM %s.%s
                WHERE %s""" % (table, _id, db, table,
                               ' OR '.join(filters))
         rows = self.proxy.fetchall(sql)
