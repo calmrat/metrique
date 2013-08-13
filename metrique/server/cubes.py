@@ -8,11 +8,13 @@ logger = logging.getLogger(__name__)
 from metrique.server.config import mongodb
 from metrique.server.defaults import MONGODB_CONF
 from metrique.tools import csv2list
+from metrique.tools.decorators import memo
 
 mongodb_config = mongodb(MONGODB_CONF)
 ETL_ACTIVITY = mongodb_config.c_etl_activity
 
 
+@memo
 def get_cube(cube, admin=True, timeline=False):
     ''' return back a mongodb connection to give cube collection '''
     if timeline:

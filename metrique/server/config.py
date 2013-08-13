@@ -15,7 +15,6 @@ from defaults import DATA_USER, ADMIN_USER, TIMELINE_DB
 from defaults import PID_FILE
 from defaults import SSL_CERT, SSL_CERT_KEY
 
-from metrique.tools.decorators import memo
 from metrique.tools.defaults import METRIQUE_HTTP_HOST, METRIQUE_HTTP_PORT
 from metrique.tools.defaults import MONGODB_HOST
 from metrique.tools.jsonconfig import JSONConfig
@@ -232,7 +231,6 @@ class mongodb(JSONConfig):
         return self._default('db_timeline', TIMELINE_DB)
 
     @property
-    @memo
     def db_metrique_admin(self):
         return BaseMongoDB(host=self.host, db=self.db_metrique,
                            user=self.admin_user,
@@ -241,7 +239,6 @@ class mongodb(JSONConfig):
                            ssl=self.ssl)
 
     @property
-    @memo
     def db_warehouse_admin(self):
         return BaseMongoDB(host=self.host, db=self.db_warehouse,
                            user=self.admin_user,
@@ -250,7 +247,6 @@ class mongodb(JSONConfig):
                            ssl=self.ssl)
 
     @property
-    @memo
     def db_warehouse_data(self):
         return BaseMongoDB(host=self.host, db=self.db_warehouse,
                            user=self.data_user,
@@ -258,7 +254,6 @@ class mongodb(JSONConfig):
                            ssl=self.ssl)
 
     @property
-    @memo
     def db_timeline_admin(self):
         return BaseMongoDB(host=self.host, db=self.db_timeline,
                            user=self.admin_user,
@@ -267,7 +262,6 @@ class mongodb(JSONConfig):
                            ssl=self.ssl)
 
     @property
-    @memo
     def db_timeline_data(self):
         return BaseMongoDB(host=self.host, db=self.db_timeline,
                            user=self.data_user,
@@ -291,21 +285,17 @@ class mongodb(JSONConfig):
         return self._default('collection_auth_keys', AUTH_KEYS_COLLECTION)
 
     @property
-    @memo
     def c_job_activity(self):
         return self.db_metrique_admin[self.collection_jobs]
 
     @property
-    @memo
     def c_logs(self):
         return self.db_metrique_admin[self.collection_logs]
 
     @property
-    @memo
     def c_etl_activity(self):
         return self.db_metrique_admin[self.collection_etl]
 
     @property
-    @memo
     def c_auth_keys(self):
         return self.db_metrique_admin[self.collection_auth_keys]

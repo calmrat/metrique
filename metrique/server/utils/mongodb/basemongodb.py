@@ -39,10 +39,9 @@ class BaseMongoDB(object):
                                          tz_aware=True,
                                          network_timeout=self._timeout)
             except errors.ConnectionFailure as e:
-                raise errors.ConnectionFailure("MongoDB Failed to connect (%s): %s" % (self._host, e))
-
+                raise errors.ConnectionFailure(
+                    "MongoDB Failed to connect (%s): %s" % (self._host, e))
             self._db_proxy = self._auth_db()
-
         # return the connected, authenticated database object
         return self._db_proxy
 
@@ -60,12 +59,12 @@ class BaseMongoDB(object):
             admin_db = self._proxy[self._admin_db]
             if not admin_db.authenticate(self._user, self._password):
                 raise RuntimeError(
-                    "MongoDB failed to authenticate with user (%s)" % self._user)
+                    "MongoDB failed to authenticate user (%s)" % self._user)
         else:
-            if not self._proxy[self._db].authenticate(self._user, self._password):
+            if not self._proxy[self._db].authenticate(self._user,
+                                                      self._password):
                 raise RuntimeError(
-                    "MongoDB failed to authenticate with user (%s)" % self._user)
-
+                    "MongoDB failed to authenticate user (%s)" % self._user)
         return self._proxy[self._db]
 
     def set_collection(self, collection):

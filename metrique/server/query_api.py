@@ -33,9 +33,11 @@ def count(cube, query):
 
     docs = _cube.find(spec)
     if docs:
-        return docs.count()
+        result = docs.count()
     else:
-        return 0
+        result = 0
+    docs.close()
+    return result
 
 
 def _get_date_pql_string(date, prefix=' and '):
@@ -92,11 +94,13 @@ def find(cube, query, fields=None, date=None,
     logger.debug('Query: %s' % spec)
 
     if one:
-        return _cube.find_one(spec, fields, sort=sort)
+        result = _cube.find_one(spec, fields, sort=sort)
     else:
         docs = _cube.find(spec, fields, sort=sort)
         docs.batch_size(10000000)  # hard limit is 16M...
-        return tuple(docs)
+        result = tuple(docs)
+        docs.close()
+    return result
 
 
 def parse_ids(ids, delimeter=','):
@@ -138,7 +142,9 @@ def fetch(cube, fields=None, date=None, sort=None, skip=0, limit=0, ids=None):
     docs = _cube.find(spec, fields, sort=sort,
                       skip=skip, limit=limit)
     docs.batch_size(10000000)  # hard limit is 16M...
-    return tuple(docs)
+    result = tuple(docs)
+    docs.close()
+    return result
 
 
 @job_save('query aggregate')
