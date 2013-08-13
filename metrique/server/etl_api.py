@@ -13,7 +13,7 @@ import pytz
 from metrique.server.cubes import get_cube, get_etl_activity
 from metrique.server.job import job_save
 
-from metrique.tools.constants import RE_PROP
+from metrique.tools.constants import RE_PROP, RE_OBJECT_ID
 
 ETL_ACTIVITY = get_etl_activity()
 
@@ -85,6 +85,11 @@ def _prep_object(obj, mtime, timeline):
         # DISABLED
         # FIXME: test what happens if a object contains nested structures/dicts
         #obj['_hash'] = hash_obj(obj)
+
+        # if the object has _id and it looks like ObjectId then convert it
+        if '_id' in obj:
+            if RE_OBJECT_ID.match(obj['_id']):
+                obj['_id'] = ObjectId(obj['_id'])
 
         if not timeline and '_id' not in obj:
             # generate and apply a mongodb (bson) ObjectId if

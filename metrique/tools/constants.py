@@ -21,3 +21,5 @@ RE_DATE_DATETIME = re.compile(
     '(\d\d\d\d)-(\d\d)-(\d\d)((T| )?(\d\d):(\d\d):(\d\d)Z?)?')
 
 RE_PROP = re.compile('^_')
+
+RE_OBJECT_ID = re.compile('^[0-9a-fA-F]{24}$')

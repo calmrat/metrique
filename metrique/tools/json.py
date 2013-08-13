@@ -2,58 +2,27 @@
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 # Author: "Chris Ward <cward@redhat.com>
 
-import datetime
-from dateutil.parser import parse as dt_parse
 import simplejson as json
-from bson.objectid import ObjectId
 
-from metrique.tools.constants import RE_DATE_DATETIME
+from datetime import datetime as dt
+from dateutil.tz import tzutc
+from time import mktime
 
 
 class Encoder(json.JSONEncoder):
     '''
-        Convert
-        * datetime.datetime and .date -> date.isoformat
-        * set -> list
-        * re_type -> sre_pattern_id (see constant)
-        # DEFAULT: unicode string representation of the object
+    Convert datetime.datetime to dict
     '''
     def default(self, obj):
-        if isinstance(obj, datetime.datetime):
-            encoded = obj.isoformat()
-        elif isinstance(obj, datetime.date):
-            encoded = obj.isoformat()
-        elif isinstance(obj, set):
-            encoded = list(obj)
+        if isinstance(obj, dt):
+            return {'$date': mktime(obj.timetuple())}
         else:
-            encoded = unicode(obj)
-        return encoded
-
-
-def _id_convert(dct):
-    if '_id' in dct:
-        try:
-            dct['_id'] = ObjectId(dct['_id'])
-        except:
-            pass
-    return dct
+            return obj 
 
 
 def decoder(dct):
+    ''' 
+    Convert datetime dicts to datetime objects
     '''
-    Convert
-     * object ids back to mongo ObjectId() objects
-     * datetime strings to datetime objects
-    '''
-    for k, v in dct.items():
-        if isinstance(v, basestring) and RE_DATE_DATETIME.match(v):
-            try:
-                dct[k] = dt_parse(v)
-            except:
-                pass
-        elif type(v) is list:
-            dct[k] = tuple(v)
-        else:
-            pass
-    dct = _id_convert(dct)
-    return dct
+    return dt.fromtimestamp(dct['$date'], tz=tzutc()) if len(dct) == 1 and '$date' in dct else dct 
+
