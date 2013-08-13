@@ -15,7 +15,7 @@ from metrique.server.defaults import VALID_PERMISSIONS
 from metrique.server import query_api, etl_api, users_api
 
 from metrique.tools import hash_password
-from metrique.tools.json import Encoder, decoder
+from metrique.tools.json import json_encode, decoder
 
 
 # FIXME: create jobsave meta data here! rather rapping handler gets
@@ -37,7 +37,7 @@ def async(f):
                     _result = future.result()
                     # Result is always expected to be json encoded!
                     logger.debug('Encoding results... ')
-                    result = json.dumps(_result, cls=Encoder,
+                    result = json.dumps(_result, default=json_encode,
                                         ensure_ascii=False)
                     logger.debug('Encoding results... Done')
                 except Exception:
@@ -54,7 +54,8 @@ def async(f):
         else:
             _result = f(self, *args, **kwargs)
             # Result is always expected to be json encoded!
-            result = json.dumps(_result, cls=Encoder, ensure_ascii=False)
+            result = json.dumps(_result, default=json_encode,
+                                ensure_ascii=False)
             self.write(result)
             self.finish()
     return wrapper

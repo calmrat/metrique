@@ -14,7 +14,7 @@ from metrique.client import etl_activity
 
 from metrique.tools import csv2list
 from metrique.tools.defaults import DEFAULT_CONFIG_FILE
-from metrique.tools.json import Encoder, decoder
+from metrique.tools.json import json_encode, decoder
 
 # FIXME: IDEAS
 # commands should return back an object immediately which
@@ -64,12 +64,14 @@ class HTTPClient(object):
 
     def _kwargs_json(self, **kwargs):
         try:
-            return dict([(k, json.dumps(v, cls=Encoder, ensure_ascii=False))
+            return dict([(k, json.dumps(v,
+                                        default=json_encode,
+                                        ensure_ascii=False))
                         for k, v in kwargs.items()])
         except UnicodeDecodeError:
             pass
 
-        return dict([(k, json.dumps(v, cls=Encoder, ensure_ascii=False,
+        return dict([(k, json.dumps(v, default=json_encode, ensure_ascii=False,
                                     encoding="ISO-8859-1"))
                     for k, v in kwargs.items()])
 

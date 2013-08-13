@@ -13,7 +13,7 @@ import sys
 import traceback
 
 from metrique.tools.constants import UTC
-from metrique.tools.json import Encoder
+from metrique.tools.json import json_encode
 
 from metrique.server.config import mongodb
 from metrique.server.defaults import MONGODB_CONF
@@ -65,7 +65,8 @@ class Job(object):
         # certain content can have unpredictable keys names
         # that cause mongo issues if the data structures
         # are 'nested document' like so... dump as json
-        _args = json.dumps(self.args, cls=Encoder, ensure_ascii=False)
+        _args = json.dumps(self.args, default=json_encode,
+                           ensure_ascii=False)
 
         _payload.update({
             '_id': self.objectid,
@@ -89,7 +90,8 @@ class Job(object):
             # issue.
             tb = traceback.format_exc(sys.exc_info())
             logger.error(tb)
-            raise RuntimeError("Payload failed to save; dumping ERROR (%s)" % str(e))
+            raise RuntimeError(
+                "Payload failed to save; dumping ERROR (%s)" % str(e))
 
     def complete(self):
         self.active = False
@@ -104,6 +106,7 @@ class Job(object):
 def get_job(action, job_key=None):
     return Job(action, job_key)
 
+
 def job_save(name):
     def decorator(func):
         def wrapper(*args, **kwargs):
@@ -114,5 +117,3 @@ def job_save(name):
             return result
         return wrapper
     return decorator
-
-

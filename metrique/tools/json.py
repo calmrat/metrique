@@ -10,17 +10,17 @@ from time import mktime
 
 from bson.objectid import ObjectId
 
-class Encoder(json.JSONEncoder):
+
+def json_encode(obj):
     '''
-    Convert datetime.datetime to dict
+    Convert datetime.datetime to timestamp
     '''
-    def default(self, obj):
-        if isinstance(obj, dt):
-            return {'$date': mktime(obj.timetuple())}
-        elif isinstance(obj, ObjectId):
-            return unicode(obj)
-        else:
-            return json.JSONEncoder.default(self, obj)
+    if isinstance(obj, dt):
+        return {'$date': mktime(obj.timetuple())}
+    elif isinstance(obj, ObjectId):
+        return unicode(obj)
+    else:
+        return json.JSONEncoder.default(obj)
 
 
 def decoder(dct):
