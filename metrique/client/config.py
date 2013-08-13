@@ -147,3 +147,13 @@ class Config(JSONConfig):
             level = logging.DEBUG
         logger.setLevel(level)
         self.config['debug'] = n
+
+    @property
+    def sql_delta_batch_size(self):
+        ''' The number of objects to query at a time in sql.id_delta '''
+        return self._default('sql_delta_batch_size', 1000)
+
+    @property
+    def sql_delta_batch_retries(self):
+        ''' The number of tries to make when running a query when it fails '''
+        return self._default('sql_delta_batch_retries', 3)

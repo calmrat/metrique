@@ -11,6 +11,8 @@ import time
 
 from metrique.client.cubes.basecube import BaseCube
 
+from metrique.tools import batch_gen
+
 
 DEFAULT_ROW_LIMIT = 100000
 MAX_WORKERS = 1
@@ -131,18 +133,17 @@ class BaseSql(BaseCube):
             value = value
         return value
 
-    def extract(self, exclude_fields=None, force=False, id_delta=None,
-                last_update=None, workers=MAX_WORKERS, update=False,
-                **kwargs):
-        '''
-        '''
+    def _delta_init(self, id_delta, force, delta_batch_size):
         if id_delta and force:
             raise RuntimeError(
                 "force and id_delta can't be used simultaneously")
+        if isinstance(id_delta, basestring):
+            id_delta = id_delta.split(',')
+        if not delta_batch_size:
+            delta_batch_size = self.config.sql_delta_batch_size
+        return id_delta, delta_batch_size
 
-        exclude_fields = self.parse_fields(exclude_fields)
-        field_order = list(set(self.fields) - set(exclude_fields))
-
+    def _fetch_mtime(self, last_update, exclude_fields):
         mtime = None
         if last_update:
             mtime = last_update
@@ -161,12 +162,63 @@ class BaseSql(BaseCube):
                     'last_update dates must be timezone '
                     'aware. Got: %s' % mtime)
         logger.debug("(last update) mtime: %s" % mtime)
+        return mtime
 
-        objects = self._extract(force, id_delta, mtime, field_order)
+    def extract(self, exclude_fields=None, force=False, id_delta=[],
+                last_update=None, workers=MAX_WORKERS, update=False,
+                delta_batch_size=None, **kwargs):
+        '''
+        '''
+        exclude_fields = self.parse_fields(exclude_fields)
+        id_delta, delta_batch_size = self._delta_init(
+            id_delta, force, delta_batch_size)
+
+        mtime = self._fetch_mtime(last_update, exclude_fields)
+        id_delta.extend(self._get_mtime_id_delta(mtime))
+
+        # this is to set the 'index' of sql columns so we can extract
+        # out the sql rows and know which column : field
+        field_order = list(set(self.fields) - set(exclude_fields))
+
+        if id_delta:
+            objects = []
+            tries_left = self.config.sql_delta_batch_retries
+            # Sometimes we have hiccups. Try, Try and Try again
+            # to succeed, then fail.
+            # FIXME: run these in a thread and kill them after
+            # a given 'timeout' period passes.
+            done = []
+            while tries_left > 0:
+                failed = []
+                local_done = 0
+                for batch in batch_gen(sorted(id_delta),
+                                       delta_batch_size):
+                    try:
+                        objects.extend(self._extract(force, batch,
+                                                     field_order))
+                    except Exception:
+                        failed.extend(batch)
+                        logger.warn(
+                            'BATCH Failed (%i). Tries remaining: %i' % (
+                                len(failed), tries_left))
+                    else:
+                        done.extend(batch)
+                        local_done += len(batch)
+                        logger.debug(
+                            'BATCH SUCCESS. %i of %i' % (
+                                local_done, len(id_delta)))
+                else:
+                    if failed:
+                        id_delta = failed
+                    else:
+                        break
+        else:
+            objects = self._extract(force, id_delta, field_order)
 
         return self.save_objects(objects, update=update)
 
     def _build_rows(self, rows):
+        logger.debug('Building dict_rows from sql_rows(%i)' % len(rows))
         _rows = {}
         for row in rows:
             _rows.setdefault(row['_id'], []).append(row)
@@ -177,6 +229,7 @@ class BaseSql(BaseCube):
         Given a set of rows/columns, build metrique object dictionaries
         Normalize null values to be type(None).
         '''
+        logger.debug('Building objects from rows(%i)' % len(rows))
         objects = []
         for col_rows in rows.itervalues():
             if len(col_rows) > 1:
@@ -217,10 +270,10 @@ class BaseSql(BaseCube):
             #except (ValueError):
             #    pass
 
-    def _extract(self, force, id_delta, mtime, field_order):
+    def _extract(self, force, id_delta, field_order):
         '''
         '''
-        sql = self._gen_sql(force, id_delta, mtime, field_order)
+        sql = self._gen_sql(force, id_delta, field_order)
 
         start = 0
         _stop = False
@@ -238,8 +291,8 @@ class BaseSql(BaseCube):
                 assert k == self.row_limit
 
         __rows = self._build_rows(_rows)
-
-        return self._build_objects(__rows)
+        objects = self._build_objects(__rows)
+        return objects
 
     def _get_sql_clause(self, clause, default=None):
         '''
@@ -267,8 +320,9 @@ class BaseSql(BaseCube):
     def _get_id_delta_sql(self, table, column, id_delta):
         '''
         '''
-        # the following deltas are mutually exclusive
         if id_delta:
+            if type(id_delta) is list:
+                id_delta = ','.join(map(str, id_delta))
             return ["(%s.%s IN (%s))" % (table, column, id_delta)]
         else:
             return []
@@ -294,7 +348,7 @@ class BaseSql(BaseCube):
         else:
             return []
 
-    def _get_mtime_sql(self, mtime):
+    def _get_mtime_id_delta(self, mtime):
         '''
         '''
         mtime_columns = self.get_property('delta_mtime', None, [])
@@ -320,21 +374,10 @@ class BaseSql(BaseCube):
                               ' OR '.join(filters))
         rows = self.proxy.fetchall(sql)
         if rows:
-            ids = ','.join(map(str, [x[0] for x in rows]))
-            sql = "%s.%s IN (%s)" % (table, _id, ids)
-            return [sql]
+            ids = [x[0] for x in rows]
+            return ids
         else:
             return []
-
-    def _get_delta_sql(self, mtime=None):
-        '''
-        '''
-        delta_filter = []
-        # last_id delta
-        delta_filter.extend(self._get_last_id_sql())
-        # mtime based delta
-        delta_filter.extend(self._get_mtime_sql(mtime))
-        return delta_filter
 
     def _get_sql_selects(self, field_order):
         table = self.get_property('table')
@@ -390,9 +433,10 @@ class BaseSql(BaseCube):
                     left_joins.append(_lj)
         return ' '.join(left_joins)
 
-    def _gen_sql(self, force, id_delta, mtime, field_order):
+    def _gen_sql(self, force, id_delta, field_order):
         '''
         '''
+        logger.debug('Generating SQL...')
         db = self.get_property('db')
         table = self.get_property('table')
         _id = self.get_property('column')
@@ -404,13 +448,11 @@ class BaseSql(BaseCube):
 
         left_joins = self._get_sql_left_joins(field_order)
 
-        # the following deltas are mutually exclusive
+        delta_filter = []
         if id_delta:
-            delta_filter = self._get_id_delta_sql(table, _id, id_delta)
-        elif not force and self.get_property('delta', None, True):
-            delta_filter = self._get_delta_sql(mtime)
-        else:
-            delta_filter = []
+            delta_filter.extend(self._get_id_delta_sql(table, _id, id_delta))
+        if not force and self.get_property('delta', None, True):
+            delta_filter.extend(self._get_last_id_sql())
 
         if delta_filter:
             where = 'WHERE ' + ' OR '.join(delta_filter)

@@ -82,5 +82,12 @@ def batch_gen(data, batch_size):
         for batch in batch_gen(iter, 100):
             do_something(batch)
     '''
+    if not data:
+        return
+
+    if batch_size == -1:
+        # override: yield the whole list
+        yield data
+
     for i in range(0, len(data), batch_size):
         yield data[i:i + batch_size]
