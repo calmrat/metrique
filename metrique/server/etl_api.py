@@ -88,10 +88,9 @@ def _prep_object(obj, mtime, timeline):
 
         # if the object has _id and it looks like ObjectId then convert it
         if '_id' in obj:
-            if RE_OBJECT_ID.match(obj['_id']):
+            if isinstance(obj['_id'], str) and RE_OBJECT_ID.match(obj['_id']):
                 obj['_id'] = ObjectId(obj['_id'])
-
-        if not timeline and '_id' not in obj:
+        elif not timeline:
             # generate and apply a mongodb (bson) ObjectId if
             # one doesn't already exist.
             # Usually, this is generated serverside, but we
