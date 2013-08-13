@@ -36,13 +36,16 @@ def async(f):
                 try:
                     _result = future.result()
                     # Result is always expected to be json encoded!
+                    logger.debug('Encoding results... ')
                     result = json.dumps(_result, cls=Encoder,
                                         ensure_ascii=False)
+                    logger.debug('Encoding results... Done')
                 except Exception:
                     result = traceback.format_exc()
                     logger.error(result)
                     raise tornado.web.HTTPError(500, result)
                 finally:
+                    logger.debug('Writing results to client... ')
                     self.write(result)
                 self.finish()
 
