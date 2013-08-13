@@ -173,11 +173,13 @@ class BaseSql(BaseCube):
         logger.debug("(last update) mtime: %s" % mtime)
         return mtime
 
-    def extract(self, exclude_fields=None, force=False, id_delta=[],
+    def extract(self, exclude_fields=None, force=False, id_delta=None,
                 last_update=None, workers=MAX_WORKERS, update=False,
                 delta_batch_size=None, **kwargs):
         '''
         '''
+        if not id_delta:
+            id_delta = []
         exclude_fields = self.parse_fields(exclude_fields)
         id_delta, delta_batch_size = self._delta_init(
             id_delta, force, delta_batch_size)

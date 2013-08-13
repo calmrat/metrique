@@ -7,7 +7,6 @@ logger = logging.getLogger(__name__)
 
 
 from metrique.client.http_api import HTTPClient
-from metrique.tools.decorators import memo
 
 
 class BaseCube(HTTPClient):
@@ -21,7 +20,6 @@ class BaseCube(HTTPClient):
             self.name = cube
         super(BaseCube, self).__init__(**kwargs)
 
-    @memo
     def get_property(self, property, field=None, default=None):
         '''
         First try to use the field's property, if defined
