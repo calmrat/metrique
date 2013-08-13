@@ -6,7 +6,7 @@ import simplejson as json
 
 from datetime import datetime as dt
 from dateutil.tz import tzutc
-from time import mktime
+from calendar import timegm
 
 from bson.objectid import ObjectId
 from pymongo.cursor import Cursor
@@ -19,7 +19,7 @@ def json_encode(obj):
     Convert datetime.datetime to timestamp
     '''
     if isinstance(obj, dt):
-        return {'$date': mktime(obj.timetuple())}
+        return {'$date': timegm(obj.timetuple())}
     elif isinstance(obj, ObjectId):
         return unicode(obj)
     elif isinstance(obj, Cursor):
