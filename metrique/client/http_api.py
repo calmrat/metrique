@@ -92,6 +92,7 @@ class HTTPClient(object):
             raise rq.exceptions.ConnectionError(
                 'Failed to connect (%s). Try https://?' % _url)
         _response.raise_for_status()
+        logger.warn('response arrived')
         # responses are always expected to be json encoded
         return json.loads(_response.text, object_hook=decoder)
 
