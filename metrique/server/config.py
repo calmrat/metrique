@@ -14,6 +14,7 @@ from defaults import ETL_ACTIVITY_COLLECTION, MAX_SIZE, MAX_DOCS
 from defaults import DATA_USER, ADMIN_USER, TIMELINE_DB
 from defaults import PID_FILE
 from defaults import SSL_CERT, SSL_CERT_KEY
+from defaults import MONGODB_CONF
 
 from metrique.tools.defaults import METRIQUE_HTTP_HOST, METRIQUE_HTTP_PORT
 from metrique.tools.defaults import MONGODB_HOST
@@ -174,6 +175,11 @@ class metrique(JSONConfig):
 
 
 class mongodb(JSONConfig):
+    def __init__(self, config_file=MONGODB_CONF, config_dir=None, *args,
+                 **kwargs):
+        super(mongodb, self).__init__(config_file, config_dir,
+                                      *args, **kwargs)
+
     @property
     def host(self):
         return self._default('host', MONGODB_HOST)
@@ -299,3 +305,11 @@ class mongodb(JSONConfig):
     @property
     def c_auth_keys(self):
         return self.db_metrique_admin[self.collection_auth_keys]
+
+    @property
+    def tl_batch_size(self):
+        return self._default('tl_batch_size', 1000)
+
+    @property
+    def snapshot_batch_size(self):
+        return self._default('snapshot_batch_size', 100000)

@@ -6,11 +6,10 @@ import logging
 logger = logging.getLogger(__name__)
 
 from metrique.server.config import mongodb
-from metrique.server.defaults import MONGODB_CONF
 from metrique.tools import csv2list
 from metrique.tools.decorators import memo
 
-mongodb_config = mongodb(MONGODB_CONF)
+mongodb_config = mongodb()
 
 
 @memo
