@@ -452,7 +452,6 @@ class BaseSql(BaseCube):
         logger.debug('Generating SQL...')
         db = self.get_property('db')
         table = self.get_property('table')
-        _id = self.get_property('column')
 
         selects = self._get_sql_selects(field_order)
 
@@ -462,24 +461,37 @@ class BaseSql(BaseCube):
         left_joins = self._get_sql_left_joins(field_order)
 
         delta_filter = []
-        if id_delta:
-            delta_filter.extend(self._get_id_delta_sql(table, _id, id_delta))
-        if not force and self.get_property('delta', None, True):
-            delta_filter.extend(self._get_last_id_sql())
+        where = ''
+        if not force:
+            # apply delta sql clause's if we're not forcing a full run
+            if id_delta:
+                delta_filter.extend(
+                    self._get_id_delta_sql(table, id_delta))
 
-        if delta_filter:
-            where = 'WHERE ' + ' OR '.join(delta_filter)
-        else:
-            where = ''
+            if self.get_property('delta', None, True):
+                delta_filter.extend(self._get_last_id_sql())
+
+            if delta_filter:
+                where = 'WHERE ' + ' OR '.join(delta_filter)
 
         sql = 'SELECT %s %s %s %s' % (
             selects, froms, left_joins, where)
 
-        if self.get_property('sort', None, False):
-            sql += " ORDER BY %s.%s ASC" % (table, _id)
-
-        # whether to query for distinct rows only or not; default, no
-        if self.get_property('distinct', None, False):
-            sql = re.sub('^SELECT', 'SELECT DISTINCT', sql)
+        sql += self._sql_sort(table)
+        sql = self._sql_distinct(sql)
 
         return sql
+
+    def _sql_distinct(self, sql):
+        # whether to query for distinct rows only or not; default, no
+        if self.get_property('distinct', None, False):
+            return re.sub('^SELECT', 'SELECT DISTINCT', sql)
+        else:
+            return sql
+
+    def _sql_sort(self, table):
+        _id = self.get_property('column')
+        if self.get_property('sort', None, False):
+            return " ORDER BY %s.%s ASC" % (table, _id)
+        else:
+            return ""
