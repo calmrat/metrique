@@ -11,7 +11,6 @@ from metrique.tools import csv2list
 from metrique.tools.decorators import memo
 
 mongodb_config = mongodb(MONGODB_CONF)
-ETL_ACTIVITY = mongodb_config.c_etl_activity
 
 
 @memo
@@ -30,7 +29,7 @@ def get_cube(cube, admin=True, timeline=False):
 
 
 def get_etl_activity():
-    return ETL_ACTIVITY
+    return mongodb_config.c_etl_activity
 
 
 def strip_split(item):
@@ -66,7 +65,7 @@ def list_cube_fields(cube, exclude_fields=[], _mtime=False):
     _filter = {'_id': 0}
     if not _mtime:
         _filter.update({'_mtime': 0})
-    cube_fields = ETL_ACTIVITY.find_one(spec, _filter)
+    cube_fields = get_etl_activity().find_one(spec, _filter)
     if not cube_fields:
         cube_fields = {}
     exclude_fields = csv2list(exclude_fields)

@@ -15,8 +15,6 @@ from metrique.server.job import job_save
 
 from metrique.tools.constants import RE_PROP, RE_OBJECT_ID
 
-ETL_ACTIVITY = get_etl_activity()
-
 
 @job_save('etl_index')
 def index(cube, db, ensure=None, drop=None):
@@ -217,7 +215,7 @@ def etl_activity_update(cube, fields, mtime):
     mtimes = dict([(f, mtime) for f in fields if not RE_PROP.match(f)])
     mtimes.update({'_mtime': mtime})
     update = {'$set': mtimes}
-    return ETL_ACTIVITY.update(spec, update, upsert=True, safe=True)
+    return get_etl_activity().update(spec, update, upsert=True, safe=True)
 
 
 @job_save('etl_drop')
