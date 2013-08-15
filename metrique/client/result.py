@@ -6,8 +6,6 @@ import logging
 logger = logging.getLogger(__name__)
 
 from decorator import decorator
-import simplejson as json
-import os
 from datetime import datetime
 
 from pandas import DataFrame, Series
@@ -15,6 +13,8 @@ import pandas.tseries.offsets as off
 from pandas.tslib import Timestamp
 import pandas as pd
 import numpy as np
+
+from IPython.display import HTML
 
 
 def mask_filter(f):
@@ -350,3 +350,6 @@ class Result(DataFrame):
     def plot_column(self, column, **kwargs):
         x = self.group_size(column)
         return x.plot(**kwargs)
+
+    def as_html(self):
+        return HTML(self.to_html())
