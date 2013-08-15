@@ -13,6 +13,7 @@ import pandas.tseries.offsets as off
 from pandas.tslib import Timestamp
 import pandas as pd
 import numpy as np
+from calendar import timegm
 
 from IPython.display import HTML
 
@@ -51,6 +52,10 @@ def filtered(f):
         return ret
 
     return decorator(_filter, f)
+
+
+def to_timestamp(d):
+    return timegm(d.utctimetuple())
 
 
 class Result(DataFrame):
@@ -137,7 +142,8 @@ class Result(DataFrame):
         else:
             return 'yearly'
 
-    def history(self, dates=None, counts=True):
+    def history(self, dates=None, counts=True,
+                predict_since=None, lin_reg_days=20):
         '''
         Works only on a Result that has _start and _end columns.
         most_recent=False should be set for this to work
@@ -147,6 +153,13 @@ class Result(DataFrame):
         :param Boolean counts:
             If True counts will be returned
             If False ids will be returned
+        :param datetime predict_since:
+            If not None, the values on the dates after this will be estimated
+            using linear regression.
+            If not None, the parameter counts must be set to True.
+        :param integer lin_reg_days:
+            Specifies how many past days should be used in the linear
+            regression.
         '''
         if dates is None:
             dates = self.get_dates_range()
@@ -159,7 +172,40 @@ class Result(DataFrame):
             else:
                 vals.append(list(self.on_date(dt)._oid))
         ret = Series(vals, index=idx)
+        if predict_since is not None:
+            if not counts:
+                raise ValueError('counts must be True if predict_future_since'
+                                 'is not None.')
+            ret = self.predict_future(ret, predict_since, lin_reg_days)
         return ret.sort_index()
+
+    def predict_future(self, series, since, days=20):
+        '''
+        Predicts future using linear regression.
+
+        :param pandas.Series series:
+            A series in which the values will be places.
+            The index will not be touched.
+            Only the values on dates > `since` will be predicted.
+        :param datetime since:
+            The starting date from which the future will be predicted.
+        :param integer days:
+            Specifies how many past days should be used in the linear
+            regression.
+        '''
+        last_days = pd.date_range(end=since, periods=days)
+        hist = self.history(last_days)
+
+        xi = np.array([to_timestamp(d) for d in hist.index])
+        A = np.array([xi, np.ones(len(hist))])
+        y = hist.values
+        w = np.linalg.lstsq(A.T, y)[0]
+
+        for d in series.index[series.index > since]:
+            series[d] = w[0] * to_timestamp(d) + w[1]
+            series[d] = 0 if series[d] < 0 else series[d]
+
+        return series
 
     def get_dates_range(self, scale='auto', start=None, end=None):
         '''

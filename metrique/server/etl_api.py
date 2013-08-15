@@ -12,8 +12,11 @@ import pytz
 
 from metrique.server.cubes import get_cube, get_etl_activity
 from metrique.server.job import job_save
+from metrique.server.config import mongodb
 
 from metrique.tools.constants import RE_PROP, RE_OBJECT_ID
+
+mongodb_config = mongodb()
 
 
 @job_save('etl_index')
@@ -228,7 +231,7 @@ def drop(cube):
     return get_cube(cube).drop()
 
 
-def _timeline_batch_insert(t, docs, size=0):
+def _timeline_batch_insert(t, docs, size=1):
     '''
     :param timeline pymongo.collection: timeline collection
     :param list objects: list of dictionary-like objects to be stored
@@ -237,10 +240,7 @@ def _timeline_batch_insert(t, docs, size=0):
     Simply batch insert into the timeline if the number of
     docs exceeds the given size parameter.
     '''
-    # FIXME: shouldn't this be >=?
-    # if we have size=1000, we won't actually
-    # batch insert until we hit 1001...
-    if len(docs) > size:
+    if len(docs) >= size:
         t.insert(docs)
         return []
     else:
@@ -259,16 +259,14 @@ def _prep_timeline_obj(obj, _id, _mtime):
     the 'current' version, which matches the same object's
     state in warehouse.
     '''
-    # FIXME: why is .copy() necessary?
-    _obj = obj.copy()
     # normalize _mtime to be timezone aware... assume utc
     tzaware = hasattr(_mtime, 'tzinfo') and _mtime.tzinfo
     if _mtime and not tzaware:
         _mtime = pytz.UTC.localize(_mtime)
-    _obj.update({'_oid': _id,
-                 '_start': _mtime,
-                 '_end': None})
-    return _obj
+    obj.update({'_oid': _id,
+                '_start': _mtime,
+                '_end': None})
+    return obj
 
 
 def _snapshot(cube, ids):
@@ -281,6 +279,7 @@ def _snapshot(cube, ids):
     time_docs_iter = iter(time_docs)
     _oid = -1
 
+    batch_size = mongodb_config.tl_batch_size
     batch_insert = []
     for doc in docs:
         _id = doc.pop('_id')
@@ -294,8 +293,8 @@ def _snapshot(cube, ids):
                 raise TypeError(
                     'Expected datetime object/string, got: %s' % _mtime)
 
-        # time_doc will contain first doc that has id >= _id,
-        # it might be a document where id > _id
+        # time_doc will contain first doc that has _oid >= _id,
+        # it might be a document where _oid > _id
         while _oid < _id:
             try:
                 time_doc = time_docs_iter.next()
@@ -313,12 +312,11 @@ def _snapshot(cube, ids):
         else:
             batch_insert.append(_prep_timeline_obj(doc, _id, _mtime))
 
-        # FIXME: should this be hardcoded!? or passed in as an arg?
-        batch_insert = _timeline_batch_insert(t, batch_insert, 1000)
+        batch_insert = _timeline_batch_insert(t, batch_insert, batch_size)
 
     # insert the last few remaining docs in batch_insert that
     # are less than the max batch size (eg, 1000) not already inserted
-    _timeline_batch_insert(t, batch_insert, 0)
+    _timeline_batch_insert(t, batch_insert, 1)
 
 
 @job_save('etl_snapshot')
@@ -345,10 +343,11 @@ def snapshot(cube, ids=None):
         docs = _cube.find(fields=['_id'])
         logger.debug('... Found %s docs' % docs.count())
 
+        bsize = mongodb_config.snapshot_batch_size
         ids_to_snapshot = []
         for done, doc in enumerate(docs):
             ids_to_snapshot.append(doc['_id'])
-            if done % 100000 == 99999:
+            if (done + 1) % bsize == 0:
                 _snapshot(cube, ids_to_snapshot)
                 ids_to_snapshot = []
                 logger.debug('... %s done' % (done + 1))
