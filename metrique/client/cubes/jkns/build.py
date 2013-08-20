@@ -13,7 +13,7 @@ import simplejson as json
 from metrique.client.cubes.basejson import BaseJSON
 
 DEFAULT_CONFIG = {
-    'url': 'http://builds.apache.org',
+    'uri': 'http://builds.apache.org',
     'port': '80',
     'api_path': '/api/json',
 }
@@ -37,11 +37,10 @@ class Build(BaseJSON):
     """
     name = 'jkns_build'
 
-    def __init__(self, url=None, port=None, api_path=None, **kwargs):
-        super(Build, self).__init__(**kwargs)
-        if not url:
-            url = DEFAULT_CONFIG['url']
-        self.url = url
+    def extract(self, uri=None, port=None, api_path=None, **kwargs):
+        if not uri:
+            uri = DEFAULT_CONFIG['uri']
+        self.uri = uri
 
         if not port:
             port = DEFAULT_CONFIG['port']
@@ -51,12 +50,11 @@ class Build(BaseJSON):
             api_path = DEFAULT_CONFIG['api_path']
         self.api_path = api_path
 
-    def extract(self, **kwargs):
-        # get all known jobs
         args = 'tree=jobs[name,builds[number]]'
-        url = '%s:%s%s?%s' % (self.url, self.port, self.api_path, args)
-        self.logger.debug("Getting Jenkins Job details (%s)" % url)
-        content = json.loads(urlopen(url).readlines()[0], strict=False)
+        uri = '%s:%s%s?%s' % (self.uri, self.port, self.api_path, args)
+        self.logger.debug("Getting Jenkins Job details (%s)" % uri)
+        # get all known jobs
+        content = json.loads(urlopen(uri).readlines()[0], strict=False)
         jobs = content['jobs']
 
         with ThreadPoolExecutor(MAX_WORKERS) as executor:
@@ -99,10 +97,10 @@ class Build(BaseJSON):
         _args += ',actions[*]'  # for pulling build name info
         _job_path = '/job/%s/%s' % (job_name, build_number)
 
-        job_url = '%s:%s%s%s?%s' % (self.url, self.port, _job_path,
+        job_uri = '%s:%s%s%s?%s' % (self.uri, self.port, _job_path,
                                     self.api_path, _args)
         try:
-            build_content = json.loads(urlopen(job_url).readlines()[0],
+            build_content = json.loads(urlopen(job_uri).readlines()[0],
                                        strict=False)
         except HTTPError:
             return {}
@@ -131,13 +129,13 @@ class Build(BaseJSON):
         _build['estimatedDuration'] = build_content.get('estimatedDuration')
         ts = build_content.get('timestamp')  # from milliseconds ...
         _build['timestamp'] = datetime.fromtimestamp(ts / 1000)  # to seconds
-        _build['url'] = build_content.get('url')
+        _build['uri'] = build_content.get('uri')
 
-        report_url = '%s:%s%s/testReport/%s?%s' % (self.url, self.port,
+        report_url = '%s:%s%s/testReport/%s?%s' % (self.uri, self.port,
                                                    _job_path, self.api_path,
                                                    _args)
         try:
-            report_content = json.loads(urlopen(report_url).readlines()[0],
+            report_content = json.loads(urlopen(report_uri).readlines()[0],
                                         strict=False)
         except HTTPError:
             report_content = {}
