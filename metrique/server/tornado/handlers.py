@@ -78,6 +78,8 @@ def _auth_admin(handler, username, password):
     admin pass is stored in metrique server config
     admin user gets 'rw' to all cubes
     '''
+    if not password:
+        return -1
     admin_user = handler.proxy.metrique_config.admin_user
     admin_pass = handler.proxy.metrique_config.admin_password
     if username == admin_user:
@@ -90,6 +92,8 @@ def _auth_admin(handler, username, password):
 
 
 def _auth_kerb(handler, username, password):
+    if not password:
+        return -1
     krb_realm = handler.proxy.metrique_config.krb_realm
     if not krb_realm:
         return 0
