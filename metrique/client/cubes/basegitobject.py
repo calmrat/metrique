@@ -3,8 +3,6 @@
 # Author: "Chris Ward <cward@redhat.com>
 
 from dulwich.repo import Repo   # , GitCmdObjectDB
-import logging
-logger = logging.getLogger(__name__)
 import os
 import subprocess
 
@@ -26,21 +24,21 @@ class BaseGitObject(BaseCube):
     def get_repo(self, uri, fetch=True):
         repo_path = os.path.join(TMP_DIR, str(abs(hash(uri))))
         self.repo_path = repo_path
-        logger.info('GIT URI: %s' % uri)
+        self.logger.debug('GIT URI: %s' % uri)
         if fetch:
             if not os.path.exists(repo_path):
-                logger.info('Cloning git repo to %s' % repo_path)
+                self.logger.info('Cloning git repo to %s' % repo_path)
                 cmd = 'git clone %s %s' % (uri, repo_path)
                 rc = subprocess.call(cmd.split(' '))
                 if rc != 0:
                     raise IOError("Failed to clone repo")
             else:
                 os.chdir(repo_path)
-                logger.info(' ... Fetching git repo (%s)' % repo_path)
+                self.logger.info(' ... Fetching git repo (%s)' % repo_path)
                 cmd = 'git pull'
                 rc = subprocess.call(cmd.split(' '))
                 if rc != 0:
                     raise RuntimeError('Failed to fetch repo')
-                logger.info(' ... Fetch complete')
+                self.logger.debug(' ... Fetch complete')
 
         return Repo(repo_path)

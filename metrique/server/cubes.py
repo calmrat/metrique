@@ -6,29 +6,25 @@ import logging
 logger = logging.getLogger(__name__)
 
 from metrique.server.config import mongodb
-from metrique.server.defaults import MONGODB_CONF
 from metrique.tools import csv2list
 
-mongodb_config = mongodb(MONGODB_CONF)
-ETL_ACTIVITY = mongodb_config.c_etl_activity
+mongodb_config = mongodb()
 
 
 def get_cube(cube, admin=True, timeline=False):
     ''' return back a mongodb connection to give cube collection '''
-    if timeline:
-        if admin:
-            return mongodb_config.db_timeline_admin.db[cube]
-        else:
-            return mongodb_config.db_timeline_data.db[cube]
+    if admin:
+        return mongodb_config.db_timeline_admin.db[cube]
     else:
-        if admin:
-            return mongodb_config.db_warehouse_admin.db[cube]
-        else:
-            return mongodb_config.db_warehouse_data.db[cube]
+        return mongodb_config.db_timeline_data.db[cube]
+
+
+def get_auth_keys():
+    return mongodb_config.c_auth_keys
 
 
 def get_etl_activity():
-    return ETL_ACTIVITY
+    return mongodb_config.c_etl_activity
 
 
 def strip_split(item):
@@ -40,7 +36,8 @@ def strip_split(item):
 
 def get_fields(cube, fields=None, check=False):
     ''' return back a list of known fields in documents of a given cube '''
-    _fields = {}
+    logger.debug('... fields: %s' % fields)
+    _fields = []
     if fields:
         cube_fields = list_cube_fields(cube)
         if fields == '__all__':
@@ -56,6 +53,10 @@ def get_fields(cube, fields=None, check=False):
                         raise ValueError('Invalid field: %s' % field)
                     else:
                         _fields.append(field)
+    _fields += ['_oid', '_start', '_end']
+    _fields = dict([(f, 1) for f in set(_fields)])
+    _fields['_id'] = _fields['_id'] if '_id' in _fields else 0
+    logger.debug('... matched fields (%s)' % _fields)
     return _fields
 
 
@@ -64,7 +65,7 @@ def list_cube_fields(cube, exclude_fields=[], _mtime=False):
     _filter = {'_id': 0}
     if not _mtime:
         _filter.update({'_mtime': 0})
-    cube_fields = ETL_ACTIVITY.find_one(spec, _filter)
+    cube_fields = get_etl_activity().find_one(spec, _filter)
     if not cube_fields:
         cube_fields = {}
     exclude_fields = csv2list(exclude_fields)
@@ -74,6 +75,7 @@ def list_cube_fields(cube, exclude_fields=[], _mtime=False):
         except KeyError:
             # just ignore any invalid fields
             pass
+    cube_fields.update({'_id': 1, '_oid': 1, '_start': 1, '_end': 1})
     return cube_fields
 
 
@@ -82,5 +84,5 @@ def list_cubes():
         Get a list of cubes server exports
         (optionally) filter out cubes user can't 'r' access
     '''
-    names = mongodb_config.db_warehouse_data.db.collection_names()
+    names = mongodb_config.db_timeline_data.db.collection_names()
     return [n for n in names if not n.startswith('system')]

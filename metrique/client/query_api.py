@@ -45,7 +45,7 @@ def count(self, query):
     return self._get(CMD, 'count', cube=self.name, query=query)
 
 
-def find(self, query, fields=None, date=None, most_recent=False,
+def find(self, query, fields=None, date=None,
          sort=None, one=False, raw=False, **kwargs):
     '''
     Run a `pql` based query on the given cube.
@@ -68,8 +68,7 @@ def find(self, query, fields=None, date=None, most_recent=False,
         be returned
     '''
     result = self._get(CMD, 'find', cube=self.name, query=query,
-                       fields=fields, date=date, most_recent=most_recent,
-                       sort=sort, one=one)
+                       fields=fields, date=date, sort=sort, one=one)
     if raw:
         return result
     else:

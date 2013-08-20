@@ -2,11 +2,14 @@
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 # Author: "Chris Ward" <cward@redhat.com>
 
+from calendar import timegm
+from datetime import datetime
+from dateutil.parser import parse as dt_parse
+from dateutil.tz import tzutc
+from bson.objectid import ObjectId
 import hashlib
 import pytz
 import uuid
-
-# FIXME: OBSOLETE? WHAT IN HERE IS NOT USED ANYMORE? REMOVE IT
 
 
 def doublequote(item):
@@ -82,5 +85,38 @@ def batch_gen(data, batch_size):
         for batch in batch_gen(iter, 100):
             do_something(batch)
     '''
+    if not data:
+        return
+
+    if batch_size == -1:
+        # override: yield the whole list
+        yield data
+
     for i in range(0, len(data), batch_size):
         yield data[i:i + batch_size]
+
+
+def ts2dt(ts):
+    if isinstance(ts, datetime):  # its a dt already
+        return ts
+    elif isinstance(ts, basestring):  # convert to float first
+        return ts2dt(float(ts))
+    else:
+        return datetime.fromtimestamp(ts, tz=tzutc())
+
+
+def dt2ts(dt):
+    if isinstance(dt, (int, long, float, complex)):  # its a ts already
+        return dt
+    elif isinstance(dt, basestring):  # convert to datetime first
+        return dt2ts(dt_parse(dt))
+    else:
+        return timegm(dt.timetuple())
+
+
+def oid():
+    '''
+    Creates a new ObjectId and casts it to string (so that it is easily
+    serializable).
+    '''
+    return str(ObjectId())

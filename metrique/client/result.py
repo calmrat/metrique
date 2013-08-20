@@ -6,8 +6,6 @@ import logging
 logger = logging.getLogger(__name__)
 
 from decorator import decorator
-import simplejson as json
-import os
 from datetime import datetime
 
 from pandas import DataFrame, Series
@@ -15,6 +13,12 @@ import pandas.tseries.offsets as off
 from pandas.tslib import Timestamp
 import pandas as pd
 import numpy as np
+from calendar import timegm
+
+from IPython.display import HTML
+
+NUMPY_NUMERICAL = [np.float16, np.float32, np.float64, np.float128,
+                   np.int8, np.int16, np.int32, np.int64]
 
 
 def mask_filter(f):
@@ -53,31 +57,26 @@ def filtered(f):
     return decorator(_filter, f)
 
 
+def to_timestamp(d):
+    return timegm(d.utctimetuple())
+
+
 class Result(DataFrame):
     ''' Custom DataFrame implementation for Metrique '''
     def __init__(self, data=None):
         super(Result, self).__init__(data)
         self._result_data = data
         # The converts are here so that None is converted to NaT
-        if '_start' in self:
-            self._start = pd.to_datetime(self._start, utc=True)
-        if '_end' in self:
-            self._end = pd.to_datetime(self._end, utc=True)
+        self.to_datetime('_start')
+        self.to_datetime('_end')
         self._lbound = self._rbound = None
 
-    @classmethod
-    def from_result_file(cls, path):
-        ''' Load saved json data from file '''
-        path = os.path.expanduser(path)
-        with open(path) as f:
-            data = json.load(f)
-            return Result(data)
-
-    def to_result_file(self, path):
-        ''' Save json data to file '''
-        path = os.path.expanduser(path)
-        with open(path, 'w') as f:
-            json.dump(self._result_data, f)
+    def to_datetime(self, column):
+        if column in self:
+            if self[column].dtype in NUMPY_NUMERICAL:
+                self[column] = pd.to_datetime(self[column], unit='s')
+            else:
+                self[column] = pd.to_datetime(self[column], utc=True)
 
     def set_date_bounds(self, date):
         '''
@@ -151,7 +150,8 @@ class Result(DataFrame):
         else:
             return 'yearly'
 
-    def history(self, dates=None, counts=True):
+    def history(self, dates=None, counts=True,
+                predict_since=None, lin_reg_days=20):
         '''
         Works only on a Result that has _start and _end columns.
         most_recent=False should be set for this to work
@@ -161,6 +161,13 @@ class Result(DataFrame):
         :param Boolean counts:
             If True counts will be returned
             If False ids will be returned
+        :param datetime predict_since:
+            If not None, the values on the dates after this will be estimated
+            using linear regression.
+            If not None, the parameter counts must be set to True.
+        :param integer lin_reg_days:
+            Specifies how many past days should be used in the linear
+            regression.
         '''
         if dates is None:
             dates = self.get_dates_range()
@@ -173,7 +180,40 @@ class Result(DataFrame):
             else:
                 vals.append(list(self.on_date(dt)._oid))
         ret = Series(vals, index=idx)
+        if predict_since is not None:
+            if not counts:
+                raise ValueError('counts must be True if predict_future_since'
+                                 'is not None.')
+            ret = self.predict_future(ret, predict_since, lin_reg_days)
         return ret.sort_index()
+
+    def predict_future(self, series, since, days=20):
+        '''
+        Predicts future using linear regression.
+
+        :param pandas.Series series:
+            A series in which the values will be places.
+            The index will not be touched.
+            Only the values on dates > `since` will be predicted.
+        :param datetime since:
+            The starting date from which the future will be predicted.
+        :param integer days:
+            Specifies how many past days should be used in the linear
+            regression.
+        '''
+        last_days = pd.date_range(end=since, periods=days)
+        hist = self.history(last_days)
+
+        xi = np.array([to_timestamp(d) for d in hist.index])
+        A = np.array([xi, np.ones(len(hist))])
+        y = hist.values
+        w = np.linalg.lstsq(A.T, y)[0]
+
+        for d in series.index[series.index > since]:
+            series[d] = w[0] * to_timestamp(d) + w[1]
+            series[d] = 0 if series[d] < 0 else series[d]
+
+        return series
 
     def get_dates_range(self, scale='auto', start=None, end=None):
         '''
@@ -233,10 +273,11 @@ class Result(DataFrame):
         return gby.to_dict() if to_dict else gby
 
     @mask_filter
-    def ids(self, ids, _filter=True):
-        ''' filter for only objects with matching object ids '''
+    def oids(self, oids, _filter=True):
+        ''' filter for only objects with matching object oids '''
         # there *should* be an easier way to do this, without lambda...
-        return self['_id'].map(lambda x: True if x in ids else False)
+        # .. you could do oids.__contains__
+        return self['_oid'].map(lambda x: x in oids)
 
     @filtered
     def unfinished(self):
@@ -364,3 +405,6 @@ class Result(DataFrame):
     def plot_column(self, column, **kwargs):
         x = self.group_size(column)
         return x.plot(**kwargs)
+
+    def as_html(self):
+        return HTML(self.to_html())

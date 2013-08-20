@@ -81,7 +81,31 @@ class Plotter(object):
             plt.fill_between(series.index, 0, series, facecolor=ALPHAS[color])
             plt.gca().set_ylim(bottom=0)
 
-    def line(self, x, label=None, y='bottom', color='grey', ax=None):
+    def plots(self, list_of_label_series, stacked=False, colors=None):
+        '''
+        Plots all the series from the list.
+        The assumption is that all of the series share the same index.
+
+        :param list list_of_label_series:
+            A list of (label, series) pairs which should be plotted
+        :param bool stacked:
+            If true then the resulting graph will be stacked
+        :params list list_of_colors:
+            A list of colors to use.
+        '''
+        colors = range(len(list_of_label_series)) if colors is None else colors
+        if stacked:
+            ssum = 0
+            lst = []
+            for label, series in list_of_label_series:
+                ssum += series
+                lst.append((label, ssum))
+            list_of_label_series = lst
+        for color, label, series in zip(colors,
+                                        *zip(*list_of_label_series))[::-1]:
+            self.plot(series, label, color)
+
+    def line(self, x, label=None, y='bottom', color='grey', ax=None, **kwargs):
         '''
         Creates a vertical line in the plot.
 
@@ -101,7 +125,7 @@ class Plotter(object):
             y0, y1 = ax.ylim()
         else:
             y0, y1 = ax.get_ylim()
-        ax.axvline(x, color=color)
+        ax.axvline(x, color=color, **kwargs)
         if label is not None:
             verticalalignment = 'bottom'
             if y == 'bottom':
@@ -112,7 +136,7 @@ class Plotter(object):
             ax.annotate('\n' + label, (x, y), rotation=90,
                         verticalalignment=verticalalignment)
 
-    def lines(self, lines_dict, y='bottom', color='grey'):
+    def lines(self, lines_dict, y='bottom', color='grey', **kwargs):
         '''
         Creates vertical lines in the plot.
 
@@ -125,7 +149,7 @@ class Plotter(object):
             The color of the lines.
         '''
         for l, x in lines_dict.items():
-            self.line(x, l, y, color)
+            self.line(x, l, y, color, **kwargs)
 
 
 class DiffPlotter(Plotter):
@@ -182,7 +206,7 @@ class DiffPlotter(Plotter):
             series_diff.plot(label=label, c=COLORS[color], linewidth=2,
                              style=style, ax=self.ax2)
 
-    def line(self, x, label=None, y='bottom', color='grey'):
+    def line(self, x, label=None, y='bottom', color='grey', **kwargs):
         '''
         Creates a vertical line in the plot.
 
@@ -197,8 +221,8 @@ class DiffPlotter(Plotter):
         :param color color:
             The color of the line.
         '''
-        super(DiffPlotter, self).line(x, label, y, color, self.ax1)
-        super(DiffPlotter, self).line(x, '', 0, color, self.ax2)
+        super(DiffPlotter, self).line(x, label, y, color, self.ax1, **kwargs)
+        super(DiffPlotter, self).line(x, '', 0, color, self.ax2, **kwargs)
 
     def legend(self, **kwargs):
         self.ax1.legend(**kwargs)

@@ -2,9 +2,6 @@
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 # Author: "Chris Ward <cward@redhat.com>
 
-from logging import getLogger
-logger = getLogger(__name__)
-
 from metrique.client.cubes.basesql import BaseSql
 from metrique.tools.sql.teiid import TEIID
 
@@ -42,5 +39,5 @@ class BaseTEIID(BaseSql):
     def proxy(self):
         self._proxy = TEIID(vdb=self.vdb, db=self.db, host=self.host,
                             port=self.port, username=self.username,
-                            password=self.password)
+                            password=self.password, logger=self.logger)
         return self._proxy

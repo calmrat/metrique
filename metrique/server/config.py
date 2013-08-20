@@ -6,7 +6,7 @@ import logging
 import os
 
 from defaults import LOGDIR_SAVEAS
-from defaults import ADMIN_DB, WAREHOUSE_DB, METRIQUE_DB
+from defaults import ADMIN_DB, METRIQUE_DB
 from defaults import JOB_ACTIVITY_COLLECTION
 from defaults import LOGS_COLLECTION, AUTH_KEYS_COLLECTION
 from defaults import LOG_FORMATTER
@@ -14,8 +14,8 @@ from defaults import ETL_ACTIVITY_COLLECTION, MAX_SIZE, MAX_DOCS
 from defaults import DATA_USER, ADMIN_USER, TIMELINE_DB
 from defaults import PID_FILE
 from defaults import SSL_CERT, SSL_CERT_KEY
+from defaults import MONGODB_CONF
 
-from metrique.tools.decorators import memo
 from metrique.tools.defaults import METRIQUE_HTTP_HOST, METRIQUE_HTTP_PORT
 from metrique.tools.defaults import MONGODB_HOST
 from metrique.tools.jsonconfig import JSONConfig
@@ -179,6 +179,11 @@ class metrique(JSONConfig):
 
 
 class mongodb(JSONConfig):
+    def __init__(self, config_file=MONGODB_CONF, config_dir=None, *args,
+                 **kwargs):
+        super(mongodb, self).__init__(config_file, config_dir,
+                                      *args, **kwargs)
+
     @property
     def host(self):
         return self._default('host', MONGODB_HOST)
@@ -228,15 +233,10 @@ class mongodb(JSONConfig):
         return self._default('db_metrique', METRIQUE_DB)
 
     @property
-    def db_warehouse(self):
-        return self._default('db_warehouse', WAREHOUSE_DB)
-
-    @property
     def db_timeline(self):
         return self._default('db_timeline', TIMELINE_DB)
 
     @property
-    @memo
     def db_metrique_admin(self):
         return BaseMongoDB(host=self.host, db=self.db_metrique,
                            user=self.admin_user,
@@ -245,24 +245,6 @@ class mongodb(JSONConfig):
                            ssl=self.ssl)
 
     @property
-    @memo
-    def db_warehouse_admin(self):
-        return BaseMongoDB(host=self.host, db=self.db_warehouse,
-                           user=self.admin_user,
-                           password=self.admin_password,
-                           admin_db=self.db_admin,
-                           ssl=self.ssl)
-
-    @property
-    @memo
-    def db_warehouse_data(self):
-        return BaseMongoDB(host=self.host, db=self.db_warehouse,
-                           user=self.data_user,
-                           password=self.data_password,
-                           ssl=self.ssl)
-
-    @property
-    @memo
     def db_timeline_admin(self):
         return BaseMongoDB(host=self.host, db=self.db_timeline,
                            user=self.admin_user,
@@ -271,7 +253,6 @@ class mongodb(JSONConfig):
                            ssl=self.ssl)
 
     @property
-    @memo
     def db_timeline_data(self):
         return BaseMongoDB(host=self.host, db=self.db_timeline,
                            user=self.data_user,
@@ -295,21 +276,17 @@ class mongodb(JSONConfig):
         return self._default('collection_auth_keys', AUTH_KEYS_COLLECTION)
 
     @property
-    @memo
     def c_job_activity(self):
         return self.db_metrique_admin[self.collection_jobs]
 
     @property
-    @memo
     def c_logs(self):
         return self.db_metrique_admin[self.collection_logs]
 
     @property
-    @memo
     def c_etl_activity(self):
         return self.db_metrique_admin[self.collection_etl]
 
     @property
-    @memo
     def c_auth_keys(self):
         return self.db_metrique_admin[self.collection_auth_keys]

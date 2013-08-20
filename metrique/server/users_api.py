@@ -7,14 +7,12 @@ logger = logging.getLogger(__name__)
 
 from metrique.server.job import job_save
 from metrique.server.defaults import VALID_PERMISSIONS
+from metrique.server.cubes import get_auth_keys
 from metrique.tools import hash_password
 
 
-@job_save('user_add')
-def add(handler, cube, username, password=None, permissions='r'):
-    if not username:
-        return -1
-
+@job_save('users_add')
+def add(cube, username, password=None, permissions='r'):
     if permissions not in VALID_PERMISSIONS:
         raise ValueError(
             "Expected acl == %s. Got %s" % (
@@ -31,6 +29,4 @@ def add(handler, cube, username, password=None, permissions='r'):
               username: {'salt': salt,
                          'password': password,
                          'permissions': permissions}}}
-    c_auth_keys = handler.proxy.mongodb_config.c_auth_keys
-    return c_auth_keys.update(
-        spec, update, upsert=True)
+    return get_auth_keys().update(spec, update, upsert=True)

@@ -9,6 +9,9 @@ import re
 
 from metrique.server.cubes import get_fields, get_cube
 from metrique.server.job import job_save
+from metrique.tools import dt2ts
+
+BATCH_SIZE = 16777216  # hard limit is 16M...
 
 
 @job_save('query distinct')
@@ -33,20 +36,24 @@ def count(cube, query):
 
     docs = _cube.find(spec)
     if docs:
-        return docs.count()
+        result = docs.count()
     else:
-        return 0
+        result = 0
+    docs.close()
+    return result
 
 
 def _get_date_pql_string(date, prefix=' and '):
+    if date is None:
+        return prefix + '_end == None'
     if date == '~':
         return ''
 
     dt_str = date.replace('T', ' ')
     dt_str = re.sub('(\+\d\d:\d\d)?$', '', dt_str)
 
-    before = lambda d: '_start <= date("%s")' % d
-    after = lambda d: '(_end >= date("%s") or _end == None)' % d
+    before = lambda d: '_start <= %s' % dt2ts(d)
+    after = lambda d: '(_end >= %s or _end == None)' % dt2ts(d)
     split = date.split('~')
     logger.warn(split)
     if len(split) == 1:
@@ -60,25 +67,27 @@ def _get_date_pql_string(date, prefix=' and '):
     return prefix + ret
 
 
-@job_save('query find')
-def find(cube, query, fields=None, date=None,
-         most_recent=True, sort=None, one=False):
-    logger.debug('Running Find (%s)' % cube)
+def _check_sort(sort):
     if not sort:
-        sort = [('_id', 1)]
+        sort = [('_oid', 1)]
 
     try:
         assert len(sort[0]) == 2
     except (AssertionError, IndexError, TypeError):
         raise ValueError("Invalid sort value; try [('_id': -1)]")
 
-    logger.debug('... fields: %s' % fields)
-    fields = sorted(get_fields(cube, fields))
-    logger.debug('... matched fields (%s)' % fields)
+    return sort
 
-    if date is not None:
-        query += _get_date_pql_string(date)
-        fields += ['_start', '_end', '_oid']
+
+@job_save('query find')
+def find(cube, query, fields=None, date=None, sort=None, one=False):
+    logger.debug('Running Find (%s)' % cube)
+
+    sort = _check_sort(sort)
+    _cube = get_cube(cube)
+    fields = get_fields(cube, fields)
+
+    query += _get_date_pql_string(date)
 
     logger.debug("PQL Query: %s" % query)
     pql_parser = pql.SchemaFreeParser()
@@ -87,16 +96,15 @@ def find(cube, query, fields=None, date=None,
     except Exception as e:
         raise ValueError("Invalid Query (%s): %s" % (str(e), query))
 
-    _cube = get_cube(cube, timeline=(date is not None))
-
     logger.debug('Query: %s' % spec)
 
     if one:
-        return _cube.find_one(spec, fields, sort=sort)
+        result = _cube.find_one(spec, fields, sort=sort)
     else:
-        docs = _cube.find(spec, fields, sort=sort)
-        docs.batch_size(10000000)  # hard limit is 16M...
-        return tuple(docs)
+        result = _cube.find(spec, fields, sort=sort)
+        result.batch_size(BATCH_SIZE)
+        result = tuple(result)
+    return result
 
 
 def parse_ids(ids, delimeter=','):
@@ -111,34 +119,18 @@ def parse_ids(ids, delimeter=','):
 def fetch(cube, fields=None, date=None, sort=None, skip=0, limit=0, ids=None):
     logger.debug('Running Fetch (skip:%s, limit:%s, ids:%s)' % (
         skip, limit, len(ids)))
-    logger.debug('... Fields: %s' % fields)
 
-    _cube = get_cube(cube, timeline=(date is not None))
-
+    sort = _check_sort(sort)
+    _cube = get_cube(cube)
     fields = get_fields(cube, fields)
-    logger.debug('Return Fields: %s' % fields)
 
-    if not sort:
-        sort = [('_id', 1)]
+    spec = {'_oid': {'$in': parse_ids(ids)}} if ids else {}
+    spec.update(pql.find(_get_date_pql_string(date, '')))
 
-    try:
-        assert len(sort[0]) == 2
-    except (AssertionError, IndexError, TypeError):
-        raise ValueError("Invalid sort value; try [('_id': -1)]")
-
-    if ids:
-        spec = {'_id': {'$in': parse_ids(ids)}}
-    else:
-        spec = {}
-
-    if date:
-        fields += ['_start', '_end', '_oid']
-        spec.update(pql.find(_get_date_pql_string(date, '')))
-
-    docs = _cube.find(spec, fields, sort=sort,
-                      skip=skip, limit=limit)
-    docs.batch_size(10000000)  # hard limit is 16M...
-    return tuple(docs)
+    result = _cube.find(spec, fields, sort=sort, skip=skip, limit=limit)
+    result.batch_size(BATCH_SIZE)
+    result = tuple(result)
+    return result
 
 
 @job_save('query aggregate')

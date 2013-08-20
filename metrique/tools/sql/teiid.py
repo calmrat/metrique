@@ -2,9 +2,6 @@
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 # Author: "Chris Ward <cward@redhat.com>
 
-import logging
-logger = logging.getLogger(__name__)
-
 import psycopg2
 import re
 from metrique.tools.sql.basesql import BaseSql
@@ -19,8 +16,8 @@ class TEIID(BaseSql):
     all the required arguments included.
     '''
     def __init__(self, vdb, db, host, username, password, port,
-                 *args, **kwargs):
-        super(TEIID, self).__init__()
+                 **kwargs):
+        super(TEIID, self).__init__(**kwargs)
         self.vdb = vdb
         self.db = db
         self.host = host
@@ -40,14 +37,14 @@ class TEIID(BaseSql):
         specific calls to get ready for querying and return
         the proxy.
         '''
-        logger.debug(
+        self.logger.debug(
             ' TEIID Config: %s' % re.sub(
                 'password=[^ ]+', 'password=*****', self.connect_str))
 
         if not (hasattr(self, '_proxy') and self._proxy.status):
             # FIXME: set a timeout??
             self._proxy = psycopg2.connect(self.connect_str)
-            logger.debug(' ... Connected (New)')
+            self.logger.debug(' ... Connected (New)')
             # Teiid does not support setting this value at all and unless we
             # specify ISOLATION_LEVEL_AUTOCOMMIT (zero), psycopg2 will send a
             # SET command the teiid server doesn't understand.
@@ -59,5 +56,5 @@ class TEIID(BaseSql):
                 # So in the case that we hit an exception, just ignore them.
                 pass
         else:
-            logger.debug(' ... Connected (Cached)')
+            self.logger.debug(' ... Connected (Cached)')
         return self._proxy

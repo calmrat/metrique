@@ -14,12 +14,7 @@ from metrique.client import etl_activity
 
 from metrique.tools import csv2list
 from metrique.tools.defaults import DEFAULT_CONFIG_FILE
-from metrique.tools.json import Encoder, decoder
-
-# FIXME: IDEAS
-# commands should return back an object immediately which
-# runs the command and sets obj.result when complete
-# fetch results could be an iterator? fetching only X items at a time
+from metrique.tools.json import json_encode
 
 
 class HTTPClient(object):
@@ -32,20 +27,24 @@ class HTTPClient(object):
     fetch = query_api.fetch
     distinct = query_api.distinct
     aggregate = query_api.aggregate
-    index_warehouse = etl_api.index_warehouse
-    snapshot = etl_api.snapshot
+    list_index = etl_api.list_index
+    ensure_index = etl_api.ensure_index
+    drop_index = etl_api.drop_index
     activity_import = etl_activity.activity_import
     save_objects = etl_api.save_objects
+    remove_objects = etl_api.remove_objects
     cube_drop = etl_api.cube_drop
     user_add = users_api.add
 
     def __init__(self, host=None, username=None, password=None,
-                 async=True, force=False, debug=1,
+                 async=True, force=False, debug=-1,
                  config_file=None, config_dir=None,
                  **kwargs):
 
         self.load_config(config_file, config_dir, force)
-        self.config.debug = debug
+        logging.basicConfig()
+        self.logger = logging.getLogger('metrique.%s' % self.__module__)
+        self.config.debug = self.logger, debug
         self.config.async = async
 
         if host:
@@ -62,18 +61,20 @@ class HTTPClient(object):
 
     def _kwargs_json(self, **kwargs):
         try:
-            return dict([(k, json.dumps(v, cls=Encoder, ensure_ascii=False))
+            return dict([(k, json.dumps(v, default=json_encode,
+                                        ensure_ascii=False))
                         for k, v in kwargs.items()])
         except UnicodeDecodeError:
             pass
 
-        return dict([(k, json.dumps(v, cls=Encoder, ensure_ascii=False,
+        return dict([(k, json.dumps(v, default=json_encode,
+                                    ensure_ascii=False,
                                     encoding="ISO-8859-1"))
                     for k, v in kwargs.items()])
 
     def _args_url(self, *args):
         _url = os.path.join(self.config.api_url, *args)
-        logger.debug("URL: %s" % _url)
+        self.logger.debug("URL: %s" % _url)
         return _url
 
     def _get(self, *args, **kwargs):
@@ -90,8 +91,8 @@ class HTTPClient(object):
             raise rq.exceptions.ConnectionError(
                 'Failed to connect (%s). Try https://?' % _url)
         _response.raise_for_status()
-        # responses are always expected to be json encoded
-        return json.loads(_response.text, object_hook=decoder)
+        self.logger.debug('response arrived')
+        return json.loads(_response.text)
 
     def _post(self, *args, **kwargs):
         '''
@@ -123,7 +124,8 @@ class HTTPClient(object):
 
         try:
             _response = rq.delete(_url, params=kwargs_json,
-                                  auth=(username, password), verify=False)
+                                  auth=(username, password),
+                                  verify=False)
         except rq.exceptions.ConnectionError:
             raise rq.exceptions.ConnectionError(
                 'Failed to connect (%s). Try https://?' % _url)
@@ -167,8 +169,8 @@ class HTTPClient(object):
             cube_fields = set(self.fields.keys())
             err_fields = [f for f in fields if f not in cube_fields]
             if err_fields:
-                logger.warn(
+                self.logger.warn(
                     "Skipping invalid fields in set: %s" % (
                         err_fields))
-                logger.warn('%s\n%s' % (cube_fields, fields))
-            return fields
+                self.logger.warn('%s\n%s' % (cube_fields, fields))
+            return sorted(fields)

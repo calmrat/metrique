@@ -30,8 +30,11 @@ class JSONConfig(MutableMapping):
             raise ValueError("No config file defined")
         elif isinstance(config_file, JSONConfig):
             config_file = config_file._config_file
-        elif not re.search('%s$' % JSON_EXT, config_file, re.I):
-            config_file = '.'.join((config_file, JSON_EXT))
+        elif isinstance(config_file, basestring):
+            if not re.search('%s$' % JSON_EXT, config_file, re.I):
+                config_file = '.'.join((config_file, JSON_EXT))
+            else:
+                config_file = os.path.expanduser(config_file)
         else:
             raise TypeError(
                 "Unknown config_file type; got: %s" % type(config_file))
