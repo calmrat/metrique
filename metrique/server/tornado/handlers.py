@@ -143,11 +143,14 @@ def authenticate(handler, username, password, permissions):
 
     if _auth_admin(handler, username, password) is True:
         # ... or if user is admin with correct admin pass
+        logger.debug('AUTH: admin')
         pass
     elif _auth_kerb(handler, username, password) is True:
         # or if user is kerberous auth'd
+        logger.debug('AUTH: krb')
         pass
     elif _auth_basic(handler, password, user) is True:
+        logger.debug('AUTH: basic')
         # or if the user is authed by metrique (built-in; auth_keys)
         pass
     else:
@@ -329,8 +332,7 @@ class UsersAddHandler(MetriqueInitialized):
         user = self.get_argument('user')
         password = self.get_argument('password')
         permissions = self.get_argument('permissions', 'r')
-        return users_api.add(self, cube, user,
-                             password, permissions)
+        return users_api.add(cube, user, password, permissions)
 
 
 class ETLIndexHandler(MetriqueInitialized):
