@@ -17,9 +17,8 @@ from handlers import QueryFetchHandler, QueryCountHandler
 from handlers import QueryDistinctHandler
 from handlers import UsersAddHandler
 from handlers import ETLIndexHandler
-from handlers import ETLSnapshotHandler
 from handlers import ETLActivityImportHandler
-from handlers import ETLSaveObjects, ETLCubeDrop
+from handlers import ETLSaveObjects, ETLRemoveObjects, ETLCubeDrop
 from handlers import CubeHandler
 
 
@@ -52,10 +51,10 @@ class HTTPServer(MetriqueServer):
                 (r"/api/v1/query/distinct", QueryDistinctHandler, init),
                 (r"/api/v1/admin/users/add", UsersAddHandler, init),
                 (r"/api/v1/admin/etl/index", ETLIndexHandler, init),
-                (r"/api/v1/admin/etl/snapshot", ETLSnapshotHandler, init),
                 (r"/api/v1/admin/etl/activityimport",
                     ETLActivityImportHandler, init),
                 (r"/api/v1/admin/etl/saveobjects", ETLSaveObjects, init),
+                (r"/api/v1/admin/etl/removeobjects", ETLRemoveObjects, init),
                 (r"/api/v1/admin/etl/cube/drop", ETLCubeDrop, init),
                 (r"/api/v1/cube", CubeHandler, init),
             ],

@@ -2,8 +2,6 @@
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 # Author: "Chris Ward <cward@redhat.com>
 
-import logging
-logger = logging.getLogger(__name__)
 from datetime import datetime
 import re
 import os
@@ -31,13 +29,13 @@ class Commit(BaseGitObject):
     }
 
     def extract(self, uri, fetch=True, **kwargs):
-        logger.debug("Extracting GIT repo: %s" % uri)
+        self.logger.debug("Extracting GIT repo: %s" % uri)
         repo = self.get_repo(uri, fetch)
         last_ts = self.find('uri == "%s"' % uri, fields='_commit_ts',
                             sort=[('_commit_ts', -1)], one=True, raw=True)
         if last_ts:
             last_ts = last_ts['_commit_ts'] + 0.1
-        logger.debug("Last Commit Date: %s" % last_ts)
+        self.logger.debug("Last Commit Date: %s" % last_ts)
         self.stats = {}
         batch = []
         for walk_entry in repo.get_walker(since=last_ts):

@@ -15,7 +15,6 @@ from metrique.server.defaults import VALID_PERMISSIONS
 from metrique.server import query_api, etl_api, users_api
 
 from metrique.tools import hash_password
-from metrique.tools.json import json_encode, decoder
 
 
 # FIXME: create jobsave meta data here! rather rapping handler gets
@@ -35,17 +34,14 @@ def async(f):
             def future_end(future):
                 try:
                     _result = future.result()
-                    # Result is always expected to be json encoded!
-                    logger.debug('Encoding results... ')
-                    result = json.dumps(_result, default=json_encode,
-                                        ensure_ascii=False)
-                    logger.debug('Encoding results... Done')
+                    logger.debug('JSON dump: START... ')
+                    result = json.dumps(_result, ensure_ascii=False)
+                    logger.debug('JSON dump: DONE')
                 except Exception:
                     result = traceback.format_exc()
                     logger.error(result)
                     raise tornado.web.HTTPError(500, result)
                 finally:
-                    logger.debug('Writing results to client... ')
                     self.write(result)
                 self.finish()
 
@@ -53,9 +49,9 @@ def async(f):
             tornado.ioloop.IOLoop.instance().add_future(future, future_end)
         else:
             _result = f(self, *args, **kwargs)
-            # Result is always expected to be json encoded!
-            result = json.dumps(_result, default=json_encode,
-                                ensure_ascii=False)
+            logger.debug('JSON dump: START... ')
+            result = json.dumps(_result, ensure_ascii=False)
+            logger.debug('JSON dump: DONE... ')
             self.write(result)
             self.finish()
     return wrapper
@@ -65,7 +61,6 @@ def request_authentication(handler):
     ''' Helper-Function for settig 401 - Request for authentication '''
     handler.set_status(401)
     handler.set_header('WWW-Authenticate', 'Basic realm="Metrique"')
-    return False
 
 
 # user is not admin... lookup username in auth_keys
@@ -95,10 +90,13 @@ def authenticate(handler, username, password, permissions):
             return True
 
     udoc = cube_check(handler, cube, username)
+    audoc = cube_check(handler, '__all__', username)
     adoc = cube_check(handler, '__all__', '__all__')
 
     if udoc:
         user = udoc[username]
+    if audoc:
+        user = audoc[username]
     elif adoc:
         user = adoc['__all__']
     else:
@@ -171,7 +169,7 @@ class MetriqueInitialized(tornado.web.RequestHandler):
             return _arg
 
         try:
-            arg = json.loads(_arg, object_hook=decoder)
+            arg = json.loads(_arg)
         except Exception as e:
             raise ValueError("Invalid JSON content (%s): %s" % (type(_arg), e))
         return arg
@@ -238,14 +236,12 @@ class QueryFindHandler(MetriqueInitialized):
         query = self.get_argument('query')
         fields = self.get_argument('fields', '')
         date = self.get_argument('date')
-        most_recent = self.get_argument('most_recent', True)
         sort = self.get_argument('sort', None)
         one = self.get_argument('one', False)
         return query_api.find(cube=cube,
                               query=query,
                               fields=fields,
                               date=date,
-                              most_recent=most_recent,
                               sort=sort,
                               one=one)
 
@@ -282,30 +278,15 @@ class UsersAddHandler(MetriqueInitialized):
 class ETLIndexHandler(MetriqueInitialized):
     '''
         RequestHandler for ensuring mongodb indexes
-        in warehouse for a given cube
+        in timeline collection for a given cube
     '''
     @auth('rw')
     @async
     def get(self):
         cube = self.get_argument('cube')
-        db = self.get_argument('db')
         ensure = self.get_argument('ensure')
         drop = self.get_argument('drop')
-        return etl_api.index(cube, db, ensure, drop)
-
-
-class ETLSnapshotHandler(MetriqueInitialized):
-    '''
-        RequestHandler for taking a snapshot
-        of warehouse data and copying objects
-        to the timeline
-    '''
-    @auth('rw')
-    @async
-    def get(self):
-        cube = self.get_argument('cube')
-        ids = self.get_argument('ids')
-        return etl_api.snapshot(cube=cube, ids=ids)
+        return etl_api.index(cube=cube, ensure=ensure, drop=drop)
 
 
 class ETLActivityImportHandler(MetriqueInitialized):
@@ -334,17 +315,28 @@ class ETLSaveObjects(MetriqueInitialized):
         cube = self.get_argument('cube')
         objects = self.get_argument('objects')
         update = self.get_argument('update')
-        timeline = self.get_argument('timeline')
         mtime = self.get_argument('mtime')
         return etl_api.save_objects(cube=cube, objects=objects, update=update,
-                                    timeline=timeline, mtime=mtime)
+                                    mtime=mtime)
+
+
+class ETLRemoveObjects(MetriqueInitialized):
+    '''
+        RequestHandler for saving a given
+        object to a metrique server cube
+    '''
+    @auth('rw')
+    @async
+    def delete(self):
+        cube = self.get_argument('cube')
+        ids = self.get_argument('ids')
+        backup = self.get_argument('backup')
+        return etl_api.remove_objects(cube=cube, ids=ids,
+                                      backup=backup)
 
 
 class ETLCubeDrop(MetriqueInitialized):
-    '''
-        RequestsHandler for droping given
-        cube from warehouse
-    '''
+    ''' RequestsHandler for droping given cube from timeline '''
     @auth('rw')
     @async
     def delete(self):

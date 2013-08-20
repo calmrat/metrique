@@ -5,11 +5,8 @@
 import simplejson as json
 
 from datetime import datetime as dt
-from dateutil.tz import tzutc
-from calendar import timegm
 
-from bson.objectid import ObjectId
-from pymongo.cursor import Cursor
+from metrique.tools import dt2ts
 
 json_encoder = json.JSONEncoder()
 
@@ -19,21 +16,6 @@ def json_encode(obj):
     Convert datetime.datetime to timestamp
     '''
     if isinstance(obj, dt):
-        return {'$date': timegm(obj.timetuple())}
-    elif isinstance(obj, ObjectId):
-        return unicode(obj)
-    elif isinstance(obj, Cursor):
-        _obj = tuple(obj)
-        obj.close()
-        return _obj
+        return dt2ts(obj)
     else:
         return json_encoder.default(obj)
-
-
-def decoder(dct):
-    '''
-    Convert datetime dicts to datetime objects
-    '''
-    if len(dct) == 1 and '$date' in dct:
-        return dt.fromtimestamp(dct['$date'], tz=tzutc())
-    return dct

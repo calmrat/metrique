@@ -130,23 +130,26 @@ class Config(JSONConfig):
         return self._default('debug', -1)
 
     @debug.setter
-    def debug(self, n):
-        ''' Update logger settings according to
-            False=Warn, True=Debug, else Info
-        '''
-        logging.basicConfig()
-        logger = logging.getLogger('metrique')
-        if n == -1:
-            level = logging.WARN
-        elif n == 0:
-            level = logging.INFO
-        elif n == 1:
-            level = logging.DEBUG
-        elif n == 2:
+    def debug(self, value):
+        ''' Update logger settings '''
+        #logging.basicConfig()
+        if isinstance(value, (tuple, list)):
+            logger, level = value
+        self._set_debug(level, logger)
+        self.config['debug'] = level
+
+    def _set_debug(self, level, logger=None):
+        #logging.basicConfig()
+        if not logger or level == 2:
             logger = logging.getLogger()
-            level = logging.DEBUG
-        logger.setLevel(level)
-        self.config['debug'] = n
+        if level in [-1, False]:
+            logger.setLevel(logging.WARN)
+        elif level in [0, None]:
+            logger.setLevel(logging.INFO)
+        elif level in [1, True]:
+            logger.setLevel(logging.DEBUG)
+        elif level == 2:
+            logger.setLevel(logging.DEBUG)
 
     @property
     def sql_delta_batch_size(self):

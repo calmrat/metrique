@@ -6,40 +6,31 @@ import logging
 logger = logging.getLogger(__name__)
 from copy import copy
 from datetime import datetime
-from dateutil.parser import parse as dt_parse
 from bson.objectid import ObjectId
-import pytz
 
 from metrique.server.cubes import get_cube, get_etl_activity
 from metrique.server.job import job_save
 from metrique.server.config import mongodb
 
-from metrique.tools.constants import RE_PROP, RE_OBJECT_ID
+from metrique.tools import dt2ts
+from metrique.tools import oid as new_oid
+from metrique.tools.constants import RE_PROP
 
 mongodb_config = mongodb()
 
 
 @job_save('etl_index')
-def index(cube, db, ensure=None, drop=None):
+def index(cube, ensure=None, drop=None):
     '''
     :param str cube:
         name of cube (collection) to index
-    :param string db:
-        'timeline' or 'warehouse'
     :param string/list ensure:
         Either a single key or a list of (key, direction) pairs (lists)
         to ensure index on.
     :param string/list drop:
         index (or name of index) to drop
     '''
-    if db == 'timeline':
-        timeline = True
-    elif db == 'warehouse':
-        timeline = False
-    else:
-        raise ValueError('db must be either "timeline" or "warehouse".')
-
-    cube = get_cube(cube, admin=True, timeline=timeline)
+    cube = get_cube(cube, admin=True)
 
     if drop is not None:
         # when drop is a list of tuples, the json
@@ -68,44 +59,35 @@ def hash_obj(obj):
     return hash(frozenset(obj.items()))
 
 
-def _prep_object(obj, mtime, timeline):
+def _prep_object(obj, mtime):
     '''
     :param dict obj: dictionary that will be converted to mongodb doc
-    :param datetime mtime: datetime to apply as mtime for objects
+    :param int mtime: timestamp to apply as _start for objects
 
-    Do some basic object validatation and add
-    an _mtime datetime value
+    Do some basic object validatation and add an _start timestamp value
     '''
-    if not obj:
-        return {}
-    elif not isinstance(obj, dict):
+    if not isinstance(obj, dict):
         raise TypeError(
             "Expected dict object, got type(%s)."
             "\nObject: %s" % (type(obj), obj))
-    else:
-        # DISABLED
-        # FIXME: test what happens if a object contains nested structures/dicts
-        #obj['_hash'] = hash_obj(obj)
 
-        # if the object has _id and it looks like ObjectId then convert it
-        if '_id' in obj:
-            if isinstance(obj['_id'], str) and RE_OBJECT_ID.match(obj['_id']):
-                obj['_id'] = ObjectId(obj['_id'])
-        elif not timeline:
-            # generate and apply a mongodb (bson) ObjectId if
-            # one doesn't already exist.
-            # Usually, this is generated serverside, but we
-            # generate it here so we know those ids without
-            # having to wait for the round trip back from save_objects
-            # and the objectids generated here should be unique...
-            # downside is we push more data across the network, but
-            # we'd have to pull it back anyway, if generated serverside
-            # since ultimately we want to return back the object _ids list
-            # to client calling .save_objects()
-            obj['_id'] = ObjectId()
-        # add the time when the object was last manipulated
-        obj.update({'_mtime': mtime})
-        return obj
+    if '_oid' not in obj:
+        raise ValueError('Object must have an _oid specified.')
+
+    # no object should have _mtime, we use _start
+    if '_mtime' in obj:
+        obj['_start'] = obj.pop('_mtime')
+
+    if '_start' not in obj:
+        # add the time when the object was last manipulated,
+        # if one isn't already included
+        obj['_start'] = mtime
+
+    if not isinstance(obj['_start'], (int, long, float, complex)):
+        raise TypeError(
+            'Expected "numerical" type, got: %s' % type(obj['_start']))
+
+    return obj
 
 
 def _update_objects(_cube, objects):
@@ -127,16 +109,111 @@ def _update_objects(_cube, objects):
     return list(set(fields))
 
 
-def _save_objects(_cube, objects):
+def _get_time_docs(_cube, oids):
     '''
-    :param cube: cube object (pymongo collection connection)
-    :param list objects: list of dictionary-like objects
+    A generator that yields the docs with with _end == None in the order
+    of the specfied oids.
+    If such an object does not exist for a particular oid, it yields None.
 
+    :param pymongo.collection _cube:
+        cube object (pymongo collection connection)
+    :param list oids:
+        A list of '_oid' field values.
+    '''
+    time_docs = _cube.find({'_oid': {'$in': oids}, '_end': None},
+                           sort=[('_oid', 1)])
+    time_docs_iter = iter(time_docs)
+    _oid = -1
+    for oid in oids:
+        # time_doc will contain first doc that has _oid >= oid,
+        # it might be a document where _oid > oid
+        while _oid < oid:
+            try:
+                time_doc = time_docs_iter.next()
+                _oid = time_doc['_oid']
+            except StopIteration:
+                break
+        if oid == _oid:
+            yield time_doc
+        else:
+            yield None
+
+
+def _save_and_snapshot(_cube, objects):
+    '''
+    Each object in objects must have '_oid' and '_start' fields specified
+    and it can *not* have fields '_end' and '_id' specified.
+    In timeline(TL), the most recent version of an object has _end == None.
+    For each object this method tries to find the most recent version of it
+    in TL. If there is one, if the field-values specified in the new object
+    are different than those in th object from TL, it will end the old object
+    and insert the new one (fields that are not specified in the new object
+    are copied from the old one).
+    If there is not a version of the object in TL, it will just insert it.
+
+    :param pymongo.collection _cube:
+        cube object (pymongo collection connection)
+    :param list objects:
+        list of dictionary-like objects
+    '''
+    logger.debug('... Timeline Index: Start')
+    _cube.ensure_index([('_oid', 1), ('_end', 1)])
+    _cube.ensure_index([('_oid', 1), ('_start', 1)])
+    logger.debug('... Timeline Index: Done')
+
+    time_docs = _get_time_docs(_cube, [obj['_oid'] for obj in objects])
+
+    batch_insert = []
+    fields = []
+    for doc in objects:
+        _start = doc.pop('_start')
+        fields.extend(doc.keys())
+
+        time_doc = time_docs.next()
+
+        save_new = False
+        if time_doc is not None:
+            time_doc_items = time_doc.items()
+            if any(item not in time_doc_items for item in doc.iteritems()):
+                _cube.update({'_id': time_doc['_id']},
+                             {'$set': {'_end': _start}},
+                             upsert=True, manipulate=False)
+                save_new = True
+                # from time_doc, we must copy the fields that are not present
+                # in doc (in the case when we want to update only some of the
+                # fields)
+                time_doc.update(doc)
+                doc = time_doc
+        else:
+            save_new = True
+
+        if save_new:
+            doc.update({'_id': new_oid(),
+                        '_start': _start,
+                        '_end': None})
+            batch_insert.append(doc)
+
+    if batch_insert:
+        _cube.insert(batch_insert, manipulate=False)
+
+    return list(set(fields) - set(['_oid']))
+
+
+def _save_no_snapshot(_cube, objects):
+    '''
     Save all the objects (docs) into the given cube (mongodb collection)
+    Each object must have '_oid', '_start', '_end' fields.
+    The '_id' field is voluntary and its presence or absence determines
+    the save method (see below).
 
     Use `save` to overwrite the entire document with the new version
     or `insert` when we have a document without a _id, indicating
     it's a new document, rather than an update of an existing doc.
+
+    :param pymongo.collection _cube:
+        cube object (pymongo collection connection)
+    :param list objects:
+        list of dictionary-like objects
     '''
     # save rather than insert b/c insert would add dups (_id) docs
     # if for object's we've already stored
@@ -149,25 +226,75 @@ def _save_objects(_cube, objects):
         if '_id' in obj:
             _cube.save(obj, manipulate=False)
         else:
+            obj.update({'_id': new_oid()})
             batch.append(obj)
     if batch:
         _cube.insert(batch, manipulate=False)
     return list(set(fields))
 
 
+def _save_objects(_cube, objects):
+    '''
+    Save all the objects (docs) into the given cube (mongodb collection)
+    Each object must have '_oid' and '_start' fields.
+    If an object has an '_end' field, it will be saved without snapshot,
+    otherwise it will be saved with snapshot.
+    The '_id' field is allowed only if the object also has the '_end' field
+    and its presence or absence determines the save method.
+
+
+    :param pymongo.collection _cube:
+        cube object (pymongo collection connection)
+    :param list objects:
+        list of dictionary-like objects
+    '''
+    # Split the objects based on the presence of '_end' field:
+    no_snap = [obj for obj in objects if '_end' in obj]
+    fields1 = _save_no_snapshot(_cube, no_snap) if len(no_snap) > 0 else []
+    to_snap = [obj for obj in objects if '_end' not in obj]
+    fields2 = _save_and_snapshot(_cube, to_snap) if len(to_snap) > 0 else []
+    return list(set(fields1 + fields2))
+
+
+@job_save('etl_remove_objects')
+def remove_objects(cube, ids, backup=False):
+    '''
+    Remove all the objects (docs) from the given cube (mongodb collection)
+
+    :param pymongo.collection _cube:
+        cube object (pymongo collection connection)
+    :param list ids:
+        list of object ids
+    '''
+    if not ids:
+        return []
+    elif not type(ids) in [list, tuple]:
+        raise TypeError("Expected list or tuple, got type(%s): %s" %
+                        (type(ids), ids))
+    else:
+        spec = {'_oid': {'$in': ids}}
+        _cube = get_cube(cube)
+        if backup:
+            docs = _cube.find(spec)
+            if docs:
+                docs = tuple(docs)
+        else:
+            docs = []
+        get_cube(cube).remove(spec)
+        return docs
+
+
 @job_save('etl_save_objects')
-def save_objects(cube, objects, update=False, timeline=False,
-                 mtime=None):
+def save_objects(cube, objects, update=False, mtime=None):
     '''
     :param str cube: target cube (collection) to save objects to
     :param list objects: list of dictionary-like objects to be stored
     :param boolean update: update already stored objects?
-    :param boolean timeline: target db to save objects is timeline
     :param datetime mtime: datetime to apply as mtime for objects
     :rtype: list - list of object ids saved
 
     Get a list of dictionary objects from client and insert
-    or save them to the warehouse or timeline.
+    or save them to the timeline.
 
     Apply the given mtime to all objects or apply utcnow(). _mtime
     is used to support timebased 'delta' updates.
@@ -177,12 +304,12 @@ def save_objects(cube, objects, update=False, timeline=False,
     elif not type(objects) in [list, tuple]:
         raise TypeError("Expected list or tuple, got type(%s): %s" %
                         (type(objects), objects))
-    elif not mtime:
-        mtime = datetime.utcnow()
 
-    objects = [_prep_object(obj, mtime, timeline) for obj in objects if obj]
+    mtime = dt2ts(mtime) if mtime else dt2ts(datetime.utcnow())
 
-    _cube = get_cube(cube, admin=True, timeline=timeline)
+    objects = [_prep_object(obj, mtime) for obj in objects if obj]
+
+    _cube = get_cube(cube, admin=True)
 
     if update:
         fields = _update_objects(_cube, objects)
@@ -197,10 +324,10 @@ def save_objects(cube, objects, update=False, timeline=False,
 
     # return object ids saved
     try:
-        ids = [o['_id'] for o in objects]
+        oids = [o['_oid'] for o in objects]
     except KeyError:
-        ids = []
-    return ids
+        oids = []
+    return oids
 
 
 def etl_activity_update(cube, fields, mtime):
@@ -229,135 +356,3 @@ def drop(cube):
     Wraps pymongo's drop() for the given cube (collection)
     '''
     return get_cube(cube).drop()
-
-
-def _timeline_batch_insert(t, docs, size=1):
-    '''
-    :param timeline pymongo.collection: timeline collection
-    :param list objects: list of dictionary-like objects to be stored
-    :param int size: target size for batch inserts
-
-    Simply batch insert into the timeline if the number of
-    docs exceeds the given size parameter.
-    '''
-    if len(docs) >= size:
-        t.insert(docs)
-        return []
-    else:
-        return docs
-
-
-def _prep_timeline_obj(obj, _id, _mtime):
-    '''
-    :param dict doc: dictionary object targetted to be saved to timeline
-    :param str _id: object id
-    :param datetime _mtime: datetime of when the object was last modified
-
-    Update a doc with timeline specific properties. Specifically,
-    `_oid` (object id), `_mtime` (datetime object was updated)
-    and default `_end` of None, which signifies this object is
-    the 'current' version, which matches the same object's
-    state in warehouse.
-    '''
-    # normalize _mtime to be timezone aware... assume utc
-    tzaware = hasattr(_mtime, 'tzinfo') and _mtime.tzinfo
-    if _mtime and not tzaware:
-        _mtime = pytz.UTC.localize(_mtime)
-    obj.update({'_oid': _id,
-                '_start': _mtime,
-                '_end': None})
-    return obj
-
-
-def _snapshot(cube, ids):
-    w = get_cube(cube)
-    t = get_cube(cube, admin=True, timeline=True)
-
-    docs = w.find({'_id': {'$in': ids}}, sort=[('_id', 1)])
-    time_docs = t.find({'_end': None, '_oid': {'$in': ids}},
-                       sort=[('_oid', 1)])
-    time_docs_iter = iter(time_docs)
-    _oid = -1
-
-    batch_size = mongodb_config.tl_batch_size
-    batch_insert = []
-    for doc in docs:
-        _id = doc.pop('_id')
-        _mtime = doc.pop('_mtime')
-        if not isinstance(_mtime, datetime):
-            # in the off case that we don't already have a datetime
-            # object, try to parse it as a string...
-            try:
-                _mtime = dt_parse(_mtime).replace(tzinfo=pytz.UTC)
-            except Exception:
-                raise TypeError(
-                    'Expected datetime object/string, got: %s' % _mtime)
-
-        # time_doc will contain first doc that has _oid >= _id,
-        # it might be a document where _oid > _id
-        while _oid < _id:
-            try:
-                time_doc = time_docs_iter.next()
-                _oid = time_doc['_oid']
-            except StopIteration:
-                break
-
-        if _id == _oid:
-            time_doc_items = time_doc.items()
-            if any(item not in time_doc_items for item in doc.iteritems()):
-                batch_insert.append(_prep_timeline_obj(doc, _id, _mtime))
-                spec_now = {'_id': time_doc['_id']}
-                update_now = {'$set': {'_end': _mtime}}
-                t.update(spec_now, update_now, upsert=True)
-        else:
-            batch_insert.append(_prep_timeline_obj(doc, _id, _mtime))
-
-        batch_insert = _timeline_batch_insert(t, batch_insert, batch_size)
-
-    # insert the last few remaining docs in batch_insert that
-    # are less than the max batch size (eg, 1000) not already inserted
-    _timeline_batch_insert(t, batch_insert, 1)
-
-
-@job_save('etl_snapshot')
-def snapshot(cube, ids=None):
-    '''
-    :param str cube: target cube (collection) to save objects to
-    :param list, string ids: list or csv string of object ids to snap
-
-    Run a snapshot against the given cube. Essentially, find all
-    objects in the warehouse that differ from the most recent (_end: None)
-    objects in timeline. Dump full copies of the objects into timeline.
-    '''
-    logger.debug('Running snapshot')
-    _cube = get_cube(cube)
-
-    t = get_cube(cube, admin=True, timeline=True)
-    logger.debug('... Timeline Index: Start')
-    t.ensure_index([('_end', 1), ('_oid', 1)])
-    t.ensure_index([('_oid', 1), ('_start', 1)])
-    logger.debug('... Timeline Index: Done')
-
-    if ids is None:
-        # Run on all the ids
-        docs = _cube.find(fields=['_id'])
-        logger.debug('... Found %s docs' % docs.count())
-
-        bsize = mongodb_config.snapshot_batch_size
-        ids_to_snapshot = []
-        for done, doc in enumerate(docs):
-            ids_to_snapshot.append(doc['_id'])
-            if (done + 1) % bsize == 0:
-                _snapshot(cube, ids_to_snapshot)
-                ids_to_snapshot = []
-                logger.debug('... %s done' % (done + 1))
-        _snapshot(cube, ids_to_snapshot)
-        logger.debug('... %s done' % (done + 1))
-    elif type(ids) is list:
-        _snapshot(cube, ids)
-    elif isinstance(ids, basestring):
-        ids = map(int, ids.split(','))
-        _snapshot(cube, ids)
-    else:
-        raise ValueError(
-            "ids expected to be list or csv string. Got: %s" % type(ids))

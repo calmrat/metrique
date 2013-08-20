@@ -17,6 +17,9 @@ from calendar import timegm
 
 from IPython.display import HTML
 
+NUMPY_NUMERICAL = [np.float16, np.float32, np.float64, np.float128,
+                   np.int8, np.int16, np.int32, np.int64]
+
 
 def mask_filter(f):
     '''
@@ -64,11 +67,16 @@ class Result(DataFrame):
         super(Result, self).__init__(data)
         self._result_data = data
         # The converts are here so that None is converted to NaT
-        if '_start' in self:
-            self._start = pd.to_datetime(self._start, utc=True)
-        if '_end' in self:
-            self._end = pd.to_datetime(self._end, utc=True)
+        self.to_datetime('_start')
+        self.to_datetime('_end')
         self._lbound = self._rbound = None
+
+    def to_datetime(self, column):
+        if column in self:
+            if self[column].dtype in NUMPY_NUMERICAL:
+                self[column] = pd.to_datetime(self[column], unit='s')
+            else:
+                self[column] = pd.to_datetime(self[column], utc=True)
 
     def set_date_bounds(self, date):
         '''
@@ -265,10 +273,11 @@ class Result(DataFrame):
         return gby.to_dict() if to_dict else gby
 
     @mask_filter
-    def ids(self, ids, _filter=True):
-        ''' filter for only objects with matching object ids '''
+    def oids(self, oids, _filter=True):
+        ''' filter for only objects with matching object oids '''
         # there *should* be an easier way to do this, without lambda...
-        return self['_id'].map(lambda x: True if x in ids else False)
+        # .. you could do oids.__contains__
+        return self['_oid'].map(lambda x: x in oids)
 
     @filtered
     def unfinished(self):

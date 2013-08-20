@@ -14,7 +14,6 @@ SSL_CERT = '~/.metrique/cert.pem'
 VALID_PERMISSIONS = ('r', 'rw', 'admin')
 
 METRIQUE_DB = 'metrique'
-WAREHOUSE_DB = 'warehouse'
 TIMELINE_DB = 'timeline'
 ADMIN_DB = 'admin'
 

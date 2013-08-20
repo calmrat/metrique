@@ -2,21 +2,17 @@
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 # Author: "Chris Ward <cward@redhat.com>
 
-import logging
-logger = logging.getLogger(__name__)
-
 from dateutil.parser import parse as dt_parse
 from functools import partial
 import re
 import time
+import traceback
 
 from metrique.client.cubes.basecube import BaseCube
 
-from metrique.tools import batch_gen
-
+from metrique.tools import batch_gen, ts2dt
 
 DEFAULT_ROW_LIMIT = 100000
-MAX_WORKERS = 1
 
 
 class BaseSql(BaseCube):
@@ -47,9 +43,9 @@ class BaseSql(BaseCube):
         '''
         '''
 
-        logger.debug('Fetching rows...')
+        self.logger.debug('Fetching rows...')
         rows = self.proxy.fetchall(sql, self.row_limit, start)
-        logger.debug('... fetched (%i)' % len(rows))
+        self.logger.debug('... fetched (%i)' % len(rows))
         if not rows:
             return []
 
@@ -69,21 +65,21 @@ class BaseSql(BaseCube):
 
         k = len(rows)
 
-        logger.debug('Preparing row data...')
+        self.logger.debug('Preparing row data...')
         t0 = time.time()
         objects = [self._prep_object(row, field_order) for row in rows]
         t1 = time.time()
-        logger.debug('... Rows prepared %i docs (%i/sec)' % (
+        self.logger.debug('... Rows prepared %i docs (%i/sec)' % (
             k, float(k) / (t1 - t0)))
         return objects
 
     def _prep_object(self, row, field_order):
         '''
-        0th item is always the object '_id'
+        0th item is always the object '_oid'
         Otherwise, fields is expected to map 1:1 with row columns
         '''
         row = list(row)
-        obj = {'_id': row.pop(0)}
+        obj = {'_oid': row.pop(0)}
         for k, column in enumerate(row, 0):
             field = field_order[k]
 
@@ -100,12 +96,23 @@ class BaseSql(BaseCube):
     def _type(self, value, field):
         container = self.get_property('container', field)
         _type = self.get_property('type', field)
-        if value and container and _type:
-            value = map(_type, value)
-        elif value and _type and type(value) is not _type:
-            value = _type(value)
+        if None in [value, _type] or isinstance(value, _type):
+            # skip converting null values
+            # and skip converting if _type is null
+            return value
+        elif container:
+            # appy type to all values in the list
+            items = []
+            for item in value:
+                if isinstance(item, basestring):
+                    item = item.decode('utf8')
+                items.append(_type(item))
+            value = items
         else:
-            value = value
+            # apply type to the single value
+            if isinstance(value, basestring):
+                value = value.decode('utf8')
+            value = _type(value)
         return value
 
     def _normalize_container(self, value, field):
@@ -135,14 +142,11 @@ class BaseSql(BaseCube):
         return value
 
     def _delta_init(self, id_delta, force, delta_batch_size):
-        if id_delta and force:
-            raise RuntimeError(
-                "force and id_delta can't be used simultaneously")
         if isinstance(id_delta, basestring):
             id_delta = id_delta.split(',')
         elif isinstance(id_delta, int):
             id_delta = [id_delta]
-        if not delta_batch_size:
+        if delta_batch_size is None:
             delta_batch_size = self.config.sql_delta_batch_size
         return id_delta, delta_batch_size
 
@@ -160,80 +164,142 @@ class BaseSql(BaseCube):
             c_fields = self.list_cube_fields(exclude_fields=exclude_fields,
                                              _mtime=True)
             mtime = c_fields.get('_mtime')
-            if isinstance(mtime, basestring):
-                mtime = dt_parse(mtime)
-            tzaware = (mtime and
-                       hasattr(mtime, 'tzinfo') and
-                       mtime.tzinfo)
-            if c_fields and not tzaware:
-                raise TypeError(
-                    'last_update dates must be timezone '
-                    'aware. Got: type(%s), %s' % (
-                        type(mtime), mtime))
-        logger.debug("(last update) mtime: %s" % mtime)
+
+        if isinstance(mtime, (int, float)):
+            mtime = ts2dt(mtime)
+
+        self.logger.info("Last update mtime: %s" % mtime)
         return mtime
 
+    def _extract_id_delta(self, id_delta, delta_batch_size,
+                          force, field_order, retries):
+        objects = []
+        if not retries:
+            retries = self.config.sql_delta_batch_retries
+        # Sometimes we have hiccups. Try, Try and Try again
+        # to succeed, then fail.
+        # retires == -1 means unlimited retries
+        # FIXME: run these in a thread and kill them after
+        # a given 'timeout' period passes.
+        done = []
+        while retries != 0:
+            failed = []
+            local_done = 0
+            for batch in batch_gen(id_delta,
+                                   delta_batch_size):
+                try:
+                    objects.extend(self._extract(force, batch,
+                                                 field_order))
+                except Exception:
+                    failed.extend(batch)
+                    tb = traceback.format_exc()
+                    self.logger.warn(
+                        'ERROR: %s\nBATCH Failed (%i). '
+                        'Tries remaining: %i' % (
+                            tb, len(failed), retries))
+                    retries -= 1
+                else:
+                    done.extend(batch)
+                    local_done += len(batch)
+                    self.logger.debug(
+                        'BATCH SUCCESS. %i of %i' % (
+                            local_done, len(id_delta)))
+            else:
+                if failed:
+                    id_delta = failed
+                else:
+                    break
+        else:
+            rt = self.config.sql_delta_batch_retries
+            raise RuntimeError(
+                "Query Failed after %s retries." % rt)
+        return objects, failed
+
+    def _extract_loop(self, sql, start=0):
+        _stop = False
+        _rows = []
+        while not _stop:
+            rows = self.proxy.fetchall(sql, self.row_limit, start)
+            _rows.extend(rows)
+
+            k = len(rows)
+            if k < self.row_limit:
+                _stop = True
+            else:
+                start += k
+                # theoretically, k == self.row_limit
+                assert k == self.row_limit
+        return _rows
+
+    def _extract_row_ids(self, rows):
+        if rows:
+            return sorted([x[0] for x in rows])
+        else:
+            return []
+
     def extract(self, exclude_fields=None, force=False, id_delta=None,
-                last_update=None, workers=MAX_WORKERS, update=False,
-                delta_batch_size=None, **kwargs):
+                last_update=None, update=False, delta_batch_size=None,
+                retries=3, row_limit=None, parse_timestamp=None,
+                **kwargs):
         '''
+        Extract routine for SQL based cubes.
+
+        ... docs coming soon ...
+
+        Accept, but ignore unknown kwargs.
         '''
         if not id_delta:
             id_delta = []
+        if row_limit:
+            self.row_limit = row_limit
+        if parse_timestamp is None:
+            parse_timestamp = self.get_property('parse_timestamp', None, True)
+
         exclude_fields = self.parse_fields(exclude_fields)
         id_delta, delta_batch_size = self._delta_init(
             id_delta, force, delta_batch_size)
 
-        mtime = self._fetch_mtime(last_update, exclude_fields)
-        id_delta.extend(self._get_mtime_id_delta(mtime))
+        if force and not id_delta and delta_batch_size != 0:
+            # get a list of all object ids and batch extract them
+            table = self.get_property('table')
+            _id = self.get_property('column')
+            sql = 'SELECT DISTINCT %s.%s FROM %s.%s' % (
+                table, _id, self.db, table)
+            rows = self._extract_loop(sql)
+            id_delta = self._extract_row_ids(rows)
+        elif force and id_delta:
+            # force:True and id_delta:True == ONLY filter on id_delta
+            pass
+        elif not force:
+            # include objects updated since last mtime too
+            mtime = self._fetch_mtime(last_update, exclude_fields)
+            id_delta.extend(self._get_mtime_id_delta(mtime, parse_timestamp))
 
         # this is to set the 'index' of sql columns so we can extract
         # out the sql rows and know which column : field
         field_order = list(set(self.fields) - set(exclude_fields))
 
-        if id_delta:
-            objects = []
-            tries_left = self.config.sql_delta_batch_retries
-            # Sometimes we have hiccups. Try, Try and Try again
-            # to succeed, then fail.
-            # FIXME: run these in a thread and kill them after
-            # a given 'timeout' period passes.
-            done = []
-            while tries_left > 0:
-                failed = []
-                local_done = 0
-                for batch in batch_gen(id_delta,
-                                       delta_batch_size):
-                    try:
-                        objects.extend(self._extract(force, batch,
-                                                     field_order))
-                    except Exception as e:
-                        failed.extend(batch)
-                        logger.warn(
-                            '%s\nBATCH Failed (%i). Tries remaining: %i' % (
-                                e, len(failed), tries_left))
-                        tries_left -= 1
-                    else:
-                        done.extend(batch)
-                        local_done += len(batch)
-                        logger.debug(
-                            'BATCH SUCCESS. %i of %i' % (
-                                local_done, len(id_delta)))
-                else:
-                    if failed:
-                        id_delta = failed
-                    else:
-                        break
+        if id_delta and delta_batch_size != 0:
+            objects, failed = self._extract_id_delta(
+                id_delta, delta_batch_size, force,
+                field_order, retries)
         else:
             objects = self._extract(force, id_delta, field_order)
+            failed = []
+
+        # FIXME: Queue these up for the next extract call!?
+        if failed:
+            self.logger.error('FAILED: %s' % failed)
 
         return self.save_objects(objects, update=update)
 
     def _build_rows(self, rows):
-        logger.debug('Building dict_rows from sql_rows(%i)' % len(rows))
         _rows = {}
+        if not rows:
+            return _rows
+        self.logger.debug('Building dict_rows from sql_rows(%i)' % len(rows))
         for row in rows:
-            _rows.setdefault(row['_id'], []).append(row)
+            _rows.setdefault(row['_oid'], []).append(row)
         return _rows
 
     def _build_objects(self, rows):
@@ -241,8 +307,10 @@ class BaseSql(BaseCube):
         Given a set of rows/columns, build metrique object dictionaries
         Normalize null values to be type(None).
         '''
-        logger.debug('Building objects from rows(%i)' % len(rows))
         objects = []
+        if not rows:
+            return objects
+        self.logger.debug('Building objects from rows(%i)' % len(rows))
         for col_rows in rows.itervalues():
             if len(col_rows) > 1:
                 obj = self._normalize_object(col_rows)
@@ -254,8 +322,8 @@ class BaseSql(BaseCube):
     def __row_iter(self, rows):
         for row in rows:
             for field, tokens in row.iteritems():
-                # _id field doesn't require normalization
-                if field != '_id':
+                # _oid field doesn't require normalization
+                if field != '_oid':
                     yield field, tokens
 
     def _normalize_object(self, rows):
@@ -329,14 +397,15 @@ class BaseSql(BaseCube):
             pass
         return clauses
 
-    def _get_id_delta_sql(self, table, column, id_delta):
+    def _get_id_delta_sql(self, table, id_delta):
         '''
         '''
+        _id = self.get_property('column')
         if id_delta:
             id_delta = sorted(set(id_delta))
             if type(id_delta) is list:
                 id_delta = ','.join(map(str, id_delta))
-            return ["(%s.%s IN (%s))" % (table, column, id_delta)]
+            return ["(%s.%s IN (%s))" % (table, _id, id_delta)]
         else:
             return []
 
@@ -345,7 +414,7 @@ class BaseSql(BaseCube):
         '''
         table = self.get_property('table')
         _id = self.get_property('column')
-        last_id = self.get_last_id()
+        last_id = self.get_last_oid()
         if last_id and self.get_property('delta_new_ids', True):
             # if we delta_new_ids is on, but there is no 'last_id',
             # then we need to do a FULL run...
@@ -361,7 +430,7 @@ class BaseSql(BaseCube):
         else:
             return []
 
-    def _get_mtime_id_delta(self, mtime):
+    def _get_mtime_id_delta(self, mtime, parse_timestamp):
         '''
         '''
         mtime_columns = self.get_property('delta_mtime', None, [])
@@ -369,13 +438,18 @@ class BaseSql(BaseCube):
             return []
         if isinstance(mtime_columns, basestring):
             mtime_columns = [mtime_columns]
+
         mtime = mtime.strftime(
             '%Y-%m-%d %H:%M:%S %z')
         dt_format = "yyyy-MM-dd HH:mm:ss z"
         filters = []
+        if parse_timestamp:
+            mtime = "parseTimestamp('%s', '%s')" % (mtime, dt_format)
+        else:
+            mtime = "'%s'" % mtime
+
         for _column in mtime_columns:
-            _sql = "%s > parseTimestamp('%s', '%s')" % (
-                _column, mtime, dt_format)
+            _sql = "%s > %s" % (_column, mtime)
             filters.append(_sql)
 
         db = self.get_property('db')
@@ -449,7 +523,7 @@ class BaseSql(BaseCube):
     def _gen_sql(self, force, id_delta, field_order):
         '''
         '''
-        logger.debug('Generating SQL...')
+        self.logger.debug('Generating SQL...')
         db = self.get_property('db')
         table = self.get_property('table')
 
@@ -462,17 +536,20 @@ class BaseSql(BaseCube):
 
         delta_filter = []
         where = ''
-        if not force:
+        if force and id_delta:
+            delta_filter.extend(
+                self._get_id_delta_sql(table, id_delta))
+
+        elif not force:
             # apply delta sql clause's if we're not forcing a full run
             if id_delta:
                 delta_filter.extend(
                     self._get_id_delta_sql(table, id_delta))
-
             if self.get_property('delta', None, True):
                 delta_filter.extend(self._get_last_id_sql())
 
-            if delta_filter:
-                where = 'WHERE ' + ' OR '.join(delta_filter)
+        if delta_filter:
+            where = 'WHERE ' + ' OR '.join(delta_filter)
 
         sql = 'SELECT %s %s %s %s' % (
             selects, froms, left_joins, where)

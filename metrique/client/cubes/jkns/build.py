@@ -6,8 +6,6 @@ from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from dateutil.parser import parse as dt_parse
-import logging
-logger = logging.getLogger(__name__)
 from urllib2 import urlopen, HTTPError
 import re
 import simplejson as json
@@ -39,47 +37,6 @@ class Build(BaseJSON):
     """
     name = 'jkns_build'
 
-    defaults = {
-        'index': True,
-    }
-
-    fields = {
-        'building': {
-            'type': float,
-        },
-        'build': {},
-        'builtOn': {},
-        'description': {},
-        'duration': {
-            'type': float,
-        },
-        'executor': {},
-        'estimatedDuration': {
-            'type': float,
-        },
-        'failCount': {
-            'type': float,
-        },
-        'passCount': {
-            'type': float,
-        },
-        'skipCount': {
-            'type': float,
-        },
-        'id': {},
-        'job_name': {},
-        'job_build': {},
-        'number': {
-            'type': float,
-        },
-        'result': {},
-        'timestamp': {
-            'convert': lambda x: datetime.fromtimestamp(x / 1000),
-            'type': float,
-        },
-        'url': {},
-    }
-
     def __init__(self, url=None, port=None, api_path=None, **kwargs):
         super(Build, self).__init__(**kwargs)
         if not url:
@@ -98,7 +55,7 @@ class Build(BaseJSON):
         # get all known jobs
         args = 'tree=jobs[name,builds[number]]'
         url = '%s:%s%s?%s' % (self.url, self.port, self.api_path, args)
-        logger.debug("Getting Jenkins Job details (%s)" % url)
+        self.logger.debug("Getting Jenkins Job details (%s)" % url)
         content = json.loads(urlopen(url).readlines()[0], strict=False)
         jobs = content['jobs']
 
@@ -106,7 +63,7 @@ class Build(BaseJSON):
             results = defaultdict(int)
             for k, job in enumerate(jobs, 1):
                 job_name = job['name']
-                logger.debug(
+                self.logger.debug(
                     'JOB (%s): %s of %s with %s builds' % (job_name, k,
                                                            len(jobs),
                                                            len(job['builds'])))
@@ -127,17 +84,17 @@ class Build(BaseJSON):
         return results
 
     def get_build(self, job_name, build_number):
-        _id = '%s #%s' % (job_name, build_number)
+        _oid = '%s #%s' % (job_name, build_number)
 
         ## Check if we the job_build was already done building
         ## if it was, skip the import all together
-        query = '_id == "%s" and building != True'
+        query = '_oid == "%s" and building != True'
         if self.count(query):
-            #logger.debug('BUILD: %s (CACHED)' % _id)
+            #self.logger.debug('BUILD: %s (CACHED)' % _oid)
             return {}
 
         _build = {}
-        logger.debug('BUILD: %s' % _id)
+        self.logger.debug('BUILD: %s' % _oid)
         _args = 'tree=%s' % ','.join(self.fields)
         _args += ',actions[*]'  # for pulling build name info
         _job_path = '/job/%s/%s' % (job_name, build_number)
@@ -150,8 +107,7 @@ class Build(BaseJSON):
         except HTTPError:
             return {}
 
-        _build['_id'] = _id
-        _build['job_build'] = _id
+        _build['_oid'] = _oid
         _build['number'] = build_number
         _build['job_name'] = job_name
         _build['id'] = build_content.get('id')
@@ -173,7 +129,8 @@ class Build(BaseJSON):
         _build['executor'] = build_content.get('executor')
         _build['duration'] = build_content.get('duration')
         _build['estimatedDuration'] = build_content.get('estimatedDuration')
-        _build['timestamp'] = build_content.get('timestamp')
+        ts = build_content.get('timestamp')  # from milliseconds ...
+        _build['timestamp'] = datetime.fromtimestamp(ts / 1000)  # to seconds
         _build['url'] = build_content.get('url')
 
         report_url = '%s:%s%s/testReport/%s?%s' % (self.url, self.port,
@@ -195,5 +152,9 @@ class Build(BaseJSON):
 if __name__ == '__main__':
     from metrique.client.argparsers import cube_cli
     a = cube_cli.parse_args()
-    obj = Build(**vars(a))
-    obj.extract()
+    kwargs = {}
+    kwargs.update(a.cube_init_kwargs_config_file)
+    if a.debug:
+        kwargs.update({'debug': a.debug})
+    obj = Build(config_file=a.cube_config_file, **kwargs)
+    obj.extract(force=a.force)

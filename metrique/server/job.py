@@ -12,6 +12,7 @@ import simplejson as json
 import sys
 import traceback
 
+from metrique.tools import dt2ts
 from metrique.tools.constants import UTC
 from metrique.tools.json import json_encode
 
@@ -36,8 +37,8 @@ class Job(object):
             self.active = doc['active']
             self.error = doc['error']
         else:
-            self.objectid = ObjectId()
-            self.created = datetime.now(UTC)
+            self.objectid = str(ObjectId())
+            self.created = dt2ts(datetime.now(UTC))
             # which arguments are associated with this job
             self.args = None
             # will store datetime of completion, if there is one

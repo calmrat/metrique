@@ -2,8 +2,6 @@
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 # Author: "Chris Ward <cward@redhat.com>
 
-import logging
-logger = logging.getLogger(__name__)
 import csv
 import cStringIO
 import os
@@ -99,10 +97,12 @@ class BaseCSV(BaseCube):
         '''
         Save an additional column/field to all objects in memory
         '''
-        if type(value) is type:
-            # we have a class, use an instance of that class
+        print value, type(value)
+        if type(value) is type or hasattr(value, '__call__'):
+            # we have class or function; use the resulting object after
+            # init/exec
             [o.update({key: str(value(**kwargs))}) for o in objects]
-        elif key == '_id':
+        elif key == '_oid':
             try:
                 [o.update({key: o[value]}) for o in objects]
             except KeyError:

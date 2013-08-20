@@ -2,11 +2,10 @@
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 # Author: "Chris Ward" <cward@redhat.com>
 
-import logging
-logger = logging.getLogger(__name__)
-
+from collections import defaultdict
 
 from metrique.client.http_api import HTTPClient
+from metrique.tools.decorators import memo
 
 
 class BaseCube(HTTPClient):
@@ -35,6 +34,19 @@ class BaseCube(HTTPClient):
             except (TypeError, KeyError):
                 return default
 
+    @property
+    @memo
+    def fieldmap(self):
+        '''
+        Dictionary of field_id: field_name
+        '''
+        fieldmap = defaultdict(str)
+        for field in self.fields:
+            field_id = self.get_property('what', field)
+            if field_id is not None:
+                fieldmap[field_id] = field
+        return fieldmap
+
     def setdefault(self, value, default, config_key=None):
         ''' config helper. Set a cube property value
             based on config, a given default or the
@@ -48,40 +60,27 @@ class BaseCube(HTTPClient):
         else:
             return value
 
-    def last_mtime(self, cube=None, field=None):
-        '''get the last known warehouse object mtime'''
-        start = None
-        q = '%s == exists(True)' % field
-        doc = self.find(q, fields='_mtime', one=True, raw=True)
-        if doc:
-            start = doc['_mtime']
-        logger.debug('... Last object mtime: %s' % start)
-        return start
-
-    def get_last_id(self, field=None):
+    def get_last_oid(self, field=None):
         '''
-        Query metrique for the last known object id (_id, _oid)
+        Query metrique for the last known object id (_oid)
         in a given cube.
 
         If a field is specified, find the mtime for
         the given cube.field if there are actually
         documents in the cube with the given field.
         '''
-        logger.debug(
+        self.logger.debug(
             "Get last ID: cube(%s) field(%s)" % (self.name, field))
         if field:
-            last_id = self.find("%s == exists(True)" % field,
-                                fields=[], sort=[('_id', -1)],
-                                one=True, raw=True)
-            if last_id:
-                last_id = last_id.get('_id')
+            q = "%s == exists(True)" % field
         else:
-            last_id = self.fetch(sort=[('_id', -1)], fields=[],
-                                 limit=1, raw=True)
-            if last_id:
-                last_id = last_id[0]['_id']
-        logger.debug(" ... Last ID: %s" % last_id)
-        return last_id
+            q = "_start == exists(True)"
+        last_oid = self.find(q, fields=[], sort=[('_oid', -1)],
+                             one=True, raw=True)
+        if last_oid:
+            last_oid = last_oid.get('_oid')
+        self.logger.info(" ... Last ID: %s" % last_oid)
+        return last_oid
 
     def activity_get(self, ids=None, mtime=None):
         '''

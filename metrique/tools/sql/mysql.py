@@ -3,11 +3,6 @@
 # Author: "Chris Ward <cward@redhat.com>
 
 # FIXME: remove or update!
-
-
-import logging
-logger = logging.getLogger(__name__)
-
 # FIXME: add to deps: mysql
 import MySQLdb
 from metrique.tools.sql.basesql import BaseSql
@@ -31,8 +26,8 @@ class Mysql(BaseSql):
                                           passwd=self.passwd,
                                           db=self.db,
                                           use_unicode=True)
-            logger.debug(' ... Connected (New)')
+            self.logger.debug(' ... Connected (New)')
         else:
-            logger.debug(' ... Connected (Cached)')
+            self.logger.debug(' ... Connected (Cached)')
 
         return self._proxy

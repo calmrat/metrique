@@ -4,12 +4,10 @@
 # Author: "Chris Ward <cward@redhat.com>
 # GIT: http://git.engineering.redhat.com/?p=users/cward/Metrique.git
 
-import logging
-logger = logging.getLogger(__name__)
-from bson.objectid import ObjectId
 import os
 
 from metrique.client.cubes.basecsv import BaseCSV
+from metrique.tools import oid
 
 
 class CSVObject(BaseCSV):
@@ -25,18 +23,15 @@ class CSVObject(BaseCSV):
     # in defaults above. A check will be made to compare the
     # expected header to actual
 
-    def extract(self, uri, _id=None, cube=None, **kwargs):
+    def extract(self, uri, _oid=None, cube=None, **kwargs):
         '''
         '''
         if cube:
             self.name = cube
         uri = os.path.expanduser(uri)
-        logger.debug("Loading CSV: %s" % uri)
+        self.logger.debug("Loading CSV: %s" % uri)
         objects = self.loaduri(uri)
         # save the uri for reference too
         objects = self.set_column(objects, 'uri', uri)
-        if _id:
-            objects = self.set_column(objects, '_id', _id)
-        else:
-            objects = self.set_column(objects, '_id', ObjectId)
+        objects = self.set_column(objects, '_oid', _oid if _oid else oid)
         return self.save_objects(objects)

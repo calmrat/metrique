@@ -6,7 +6,7 @@ import logging
 import os
 
 from defaults import LOGDIR_SAVEAS
-from defaults import ADMIN_DB, WAREHOUSE_DB, METRIQUE_DB
+from defaults import ADMIN_DB, METRIQUE_DB
 from defaults import JOB_ACTIVITY_COLLECTION
 from defaults import LOGS_COLLECTION, AUTH_KEYS_COLLECTION
 from defaults import LOG_FORMATTER
@@ -229,10 +229,6 @@ class mongodb(JSONConfig):
         return self._default('db_metrique', METRIQUE_DB)
 
     @property
-    def db_warehouse(self):
-        return self._default('db_warehouse', WAREHOUSE_DB)
-
-    @property
     def db_timeline(self):
         return self._default('db_timeline', TIMELINE_DB)
 
@@ -242,21 +238,6 @@ class mongodb(JSONConfig):
                            user=self.admin_user,
                            password=self.admin_password,
                            admin_db=self.db_admin,
-                           ssl=self.ssl)
-
-    @property
-    def db_warehouse_admin(self):
-        return BaseMongoDB(host=self.host, db=self.db_warehouse,
-                           user=self.admin_user,
-                           password=self.admin_password,
-                           admin_db=self.db_admin,
-                           ssl=self.ssl)
-
-    @property
-    def db_warehouse_data(self):
-        return BaseMongoDB(host=self.host, db=self.db_warehouse,
-                           user=self.data_user,
-                           password=self.data_password,
                            ssl=self.ssl)
 
     @property
@@ -305,11 +286,3 @@ class mongodb(JSONConfig):
     @property
     def c_auth_keys(self):
         return self.db_metrique_admin[self.collection_auth_keys]
-
-    @property
-    def tl_batch_size(self):
-        return self._default('tl_batch_size', 1000)
-
-    @property
-    def snapshot_batch_size(self):
-        return self._default('snapshot_batch_size', 100000)

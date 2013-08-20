@@ -3,7 +3,6 @@
 # Author: "Chris Ward <cward@redhat.com>
 
 import logging
-logger = logging.getLogger(__name__)
 import re
 
 
@@ -14,6 +13,12 @@ class BaseSql(object):
      * preparing select statements for extraction of object
        column/field values
     '''
+
+    def __init__(self, logger=None):
+        if not logger:
+            self.logger = logging.getLogger(__name__)
+        else:
+            self.logger = logger
 
     @property
     def proxy(self):
@@ -43,7 +48,7 @@ class BaseSql(object):
         sql = re.sub('\s+', ' ', sql).strip().encode('utf-8')
         if row_limit > 0:
             sql = re.sub('$', ' LIMIT %i,%i' % (start, row_limit), sql)
-        logger.debug('UPDATED SQL:\n %s' % sql.decode('utf-8'))
+        self.logger.info('SQL:\n %s' % sql.decode('utf-8'))
         rows = None
         try:
             k.execute(sql)
