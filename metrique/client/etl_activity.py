@@ -33,7 +33,7 @@ def _activity_import_doc(cube, time_doc, activities):
     batch_updates = [time_doc]
     # We want to consider only activities that happend before time_doc
     # do not move this, because time_doc._start changes
-    # time_doc['start'] is a timestamp, whereas act[0] is a datetime
+    # time_doc['_start'] is a timestamp, whereas act[0] is a datetime
     td_start = ts2dt(time_doc['_start'])
     activities = filter(lambda act: (act[0] < td_start and
                                      act[1] in time_doc), activities)
@@ -112,7 +112,8 @@ def _activity_import(cube, ids, batch_size):
         if len(batched_updates) >= batch_size:
             cube.save_objects(batched_updates)
             batched_updates = []
-    cube.save_objects(batched_updates)
+    if batched_updates:
+        cube.save_objects(batched_updates)
 
 
 def activity_import(self, ids=None, save_batch_size=1000, chunk_size=1000):
@@ -148,7 +149,10 @@ def activity_import(self, ids=None, save_batch_size=1000, chunk_size=1000):
             _activity_import(self, (i, min(ids[1], i + chunk_size - 1)),
                              batch_size=save_batch_size)
     else:
-        ids = map(int, str(ids).split(','))
+        if not isinstance(ids, list):
+            raise ValueError(
+                "Expected ids to be None, tuple or list. Got %s" % type(list))
+
         for i in range(0, len(ids), chunk_size):
             _activity_import(self, ids[i:i + chunk_size],
                              batch_size=save_batch_size)

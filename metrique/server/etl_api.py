@@ -280,7 +280,7 @@ def remove_objects(cube, ids, backup=False):
                 docs = tuple(docs)
         else:
             docs = []
-        get_cube(cube).remove(spec)
+        get_cube(cube).remove(spec, safe=True)
         return docs
 
 

@@ -100,7 +100,7 @@ def milli2sec(ts):
     return float(float(ts) / 1000.)  # convert milli to seconds
 
 
-def ts2dt(ts, milli=False):
+def ts2dt(ts, milli=False, tz_aware=True):
     ''' convert timestamp int's (seconds) to datetime objects '''
     if not ts:
         return ts
@@ -111,7 +111,10 @@ def ts2dt(ts, milli=False):
         ts = float(ts) / 1000.  # convert milli to seconds
     else:
         ts = float(ts)  # already in seconds
-    return datetime.utcfromtimestamp(ts)
+    if tz_aware:
+        return datetime.fromtimestamp(ts, tz=pytz.utc)
+    else:
+        return datetime.utcfromtimestamp(ts)
 
 
 def dt2ts(dt):
