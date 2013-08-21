@@ -52,8 +52,8 @@ def _get_date_pql_string(date, prefix=' and '):
     dt_str = date.replace('T', ' ')
     dt_str = re.sub('(\+\d\d:\d\d)?$', '', dt_str)
 
-    before = lambda d: '_start <= %s' % dt2ts(d)
-    after = lambda d: '(_end >= %s or _end == None)' % dt2ts(d)
+    before = lambda d: '_start <= %f' % dt2ts(d)
+    after = lambda d: '(_end >= %f or _end == None)' % dt2ts(d)
     split = date.split('~')
     logger.warn(split)
     if len(split) == 1:

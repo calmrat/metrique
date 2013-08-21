@@ -5,7 +5,6 @@
 from calendar import timegm
 from datetime import datetime
 from dateutil.parser import parse as dt_parse
-from dateutil.tz import tzutc
 from bson.objectid import ObjectId
 import hashlib
 import pytz
@@ -96,16 +95,27 @@ def batch_gen(data, batch_size):
         yield data[i:i + batch_size]
 
 
-def ts2dt(ts):
-    if isinstance(ts, datetime):  # its a dt already
+def milli2sec(ts):
+    ''' normalize timestamps to timestamp int's (seconds) '''
+    return float(float(ts) / 1000.)  # convert milli to seconds
+
+
+def ts2dt(ts, milli=False):
+    ''' convert timestamp int's (seconds) to datetime objects '''
+    if not ts:
         return ts
-    elif isinstance(ts, basestring):  # convert to float first
-        return ts2dt(float(ts))
+    elif isinstance(ts, datetime):  # its a dt already
+        return ts
+    # ts must be float and in seconds
+    elif milli:
+        ts = float(ts) / 1000.  # convert milli to seconds
     else:
-        return datetime.fromtimestamp(ts, tz=tzutc())
+        ts = float(ts)  # already in seconds
+    return datetime.utcfromtimestamp(ts)
 
 
 def dt2ts(dt):
+    ''' convert datetime objects to timestamp int's (seconds) '''
     if isinstance(dt, (int, long, float, complex)):  # its a ts already
         return dt
     elif isinstance(dt, basestring):  # convert to datetime first
@@ -116,7 +126,7 @@ def dt2ts(dt):
 
 def oid():
     '''
-    Creates a new ObjectId and casts it to string (so that it is easily
-    serializable).
+    Creates a new ObjectId and casts it to string,
+    so it's easily serializable
     '''
     return str(ObjectId())

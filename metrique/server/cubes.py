@@ -55,7 +55,8 @@ def get_fields(cube, fields=None, check=False):
                         _fields.append(field)
     _fields += ['_oid', '_start', '_end']
     _fields = dict([(f, 1) for f in set(_fields)])
-    _fields['_id'] = _fields['_id'] if '_id' in _fields else 0
+    if '_id' not in _fields:
+        _fields['_id'] = 0
     logger.debug('... matched fields (%s)' % _fields)
     return _fields
 

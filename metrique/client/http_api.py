@@ -22,6 +22,8 @@ class HTTPClient(object):
     Base class that other metrique api wrapper sub-classes
     use to call special, shared call of _get (http request)
     '''
+    name = None
+
     find = query_api.find
     count = query_api.count
     fetch = query_api.fetch

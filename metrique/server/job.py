@@ -5,15 +5,13 @@
 import logging
 logger = logging.getLogger(__name__)
 
-from bson.objectid import ObjectId
 from copy import copy
 from datetime import datetime
 import simplejson as json
 import sys
 import traceback
 
-from metrique.tools import dt2ts
-from metrique.tools.constants import UTC
+from metrique.tools import dt2ts, oid
 from metrique.tools.json import json_encode
 
 from metrique.server.config import mongodb
@@ -37,8 +35,8 @@ class Job(object):
             self.active = doc['active']
             self.error = doc['error']
         else:
-            self.objectid = str(ObjectId())
-            self.created = dt2ts(datetime.now(UTC))
+            self.objectid = oid()
+            self.created = dt2ts(datetime.utcnow())
             # which arguments are associated with this job
             self.args = None
             # will store datetime of completion, if there is one
@@ -61,7 +59,7 @@ class Job(object):
 
     @property
     def payload(self):
-        now = datetime.now(UTC)
+        now = datetime.utcnow()
         _payload = copy(self._base_spec)
         # certain content can have unpredictable keys names
         # that cause mongo issues if the data structures
@@ -96,7 +94,7 @@ class Job(object):
 
     def complete(self):
         self.active = False
-        now = datetime.now(UTC)
+        now = datetime.utcnow()
         if not self.completed:
             # don't overwrite the completed datetime
             # but add it if we're completed for the first time

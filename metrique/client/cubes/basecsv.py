@@ -97,7 +97,6 @@ class BaseCSV(BaseCube):
         '''
         Save an additional column/field to all objects in memory
         '''
-        print value, type(value)
         if type(value) is type or hasattr(value, '__call__'):
             # we have class or function; use the resulting object after
             # init/exec

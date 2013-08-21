@@ -2,11 +2,12 @@
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 # Author: "Chris Ward <cward@redhat.com>
 
+from datetime import datetime
 import re
-from pytz import timezone
 
+from metrique.tools import dt2ts
 
-UTC = timezone("UTC")
+MAX_TS = dt2ts(datetime(9999, 12, 31, 23, 59, 59, 999999))
 
 # console escapes for colored output
 WHITE = '\033[97m'

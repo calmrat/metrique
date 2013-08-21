@@ -8,14 +8,13 @@ logger = logging.getLogger(__name__)
 
 from functools import wraps
 import kerberos
+from passlib.hash import sha256_crypt
 import simplejson as json
 import tornado
 import traceback
 
 from metrique.server.defaults import VALID_PERMISSIONS
 from metrique.server import query_api, etl_api, users_api
-
-from metrique.tools import hash_password
 
 
 def async(f):
@@ -63,16 +62,6 @@ def request_authentication(handler):
     handler.set_header('WWW-Authenticate', 'Basic realm="Metrique"')
 
 
-def cube_check(handler, cube, lookup):
-    '''
-    Check if user is listed to access to a given cube
-    '''
-    spec = {'_id': cube,
-            lookup: {'$exists': True}}
-    logger.debug("Cube Check: spec (%s)" % spec)
-    return handler.proxy.mongodb_config.c_auth_keys.find_one(spec)
-
-
 def _auth_admin(handler, username, password):
     '''
     admin pass is stored in metrique server config
@@ -112,12 +101,26 @@ def _auth_basic(handler, password, user_dict):
     if not user_dict:
         return -1
     else:
-        salt = user_dict.get('salt')
-        _, p_hash = hash_password(password, salt)
-        if user_dict.get('password') == p_hash:
-            return True
-        else:
-            return -1
+        p_hash = user_dict.get('password')
+        return sha256_crypt.verify(password, p_hash)
+
+
+def acl_check(handler, resource, lookup):
+    ''' Check if user is listed to access to a given resource '''
+    __all__ = '__all__'
+    resource = [resource, __all__]
+    _lookup = [{lookup:  {'$exists': True}},
+               {__all__: {'$exists': True}}]
+    spec = {'_id': {'$in': resource},
+            '$or': _lookup}
+
+    logger.debug("Cube Check: spec (%s)" % spec)
+    doc = handler.proxy.mongodb_config.c_auth_keys.find_one(spec)
+    if doc:
+        for l in [lookup, __all__]:
+            if l in doc:
+                return doc[l]
+    return doc
 
 
 def authenticate(handler, username, password, permissions):
@@ -125,26 +128,15 @@ def authenticate(handler, username, password, permissions):
         user:password:permissions combination provides
         client with enough privleges to execute
         the requested command against the given cube '''
-    # GLOBAL DEFAULT
     cube = handler.get_argument('cube')
-
-    udoc = cube_check(handler, cube, username)
-    audoc = cube_check(handler, '__all__', username)
-    adoc = cube_check(handler, '__all__', '__all__')
-
-    if udoc:
-        user = udoc[username]
-    if audoc:
-        user = audoc[username]
-    elif adoc:
-        user = adoc['__all__']
-    else:
-        user = None
+    user = acl_check(handler, cube, username)
 
     if _auth_admin(handler, username, password) is True:
         # ... or if user is admin with correct admin pass
         logger.debug('AUTH: admin')
-        pass
+        return True
+    elif cube and not user:
+        return -1
     elif _auth_kerb(handler, username, password) is True:
         # or if user is kerberous auth'd
         logger.debug('AUTH: krb')
@@ -154,23 +146,24 @@ def authenticate(handler, username, password, permissions):
         # or if the user is authed by metrique (built-in; auth_keys)
         pass
     else:
-        return False
+        return -1
 
-    if user:
-        # permissions is a single string
-        assert isinstance(permissions, basestring)
-        VP = VALID_PERMISSIONS
+    # permissions is a single string
+    assert isinstance(permissions, basestring)
+    VP = VALID_PERMISSIONS
+
+    try:
         has_perms = VP.index(user['permissions']) >= VP.index(permissions)
-        if has_perms:
-            # password is defined, make sure user's pass matches it
-            # and that the user has the right permissions defined
-            return True
-        else:
-            return -1
-    else:
-        # FIXME: FOR NOW, HACK, all non-cube actions are available to
-        # authenticated users
+    except (TypeError, KeyError):
+        # permissions is not defined; assume they're unpermitted
+        return -1
+
+    if has_perms:
+        # password is defined, make sure user's pass matches it
+        # and that the user has the right permissions defined
         return True
+    else:
+        return -1
 
 
 def auth(permissions='r'):
@@ -184,7 +177,7 @@ def auth(permissions='r'):
 
             auth_header = handler.request.headers.get('Authorization')
             if auth_header is None or not auth_header.startswith('Basic '):
-                #No HTTP Basic Authentication header
+                # No HTTP Basic Authentication header
                 return request_authentication(handler)
 
             auth = base64.decodestring(auth_header[6:])
@@ -192,12 +185,10 @@ def auth(permissions='r'):
 
             privleged = authenticate(handler, username, password, permissions)
             logger.debug("User (%s): Privleged (%s)" % (username, privleged))
-            if privleged:
+            if privleged in [True, 1]:
                 return f(handler, *args, **kwargs)
-            elif privleged is -1:
-                raise tornado.web.HTTPError(401)
             else:
-                return request_authentication(handler)
+                raise tornado.web.HTTPError(401)
         return wrapper
     return decorator
 
@@ -332,7 +323,7 @@ class UsersAddHandler(MetriqueInitialized):
         user = self.get_argument('user')
         password = self.get_argument('password')
         permissions = self.get_argument('permissions', 'r')
-        return users_api.add(cube, user, password, permissions)
+        return users_api.add(user, password, permissions, cube)
 
 
 class ETLIndexHandler(MetriqueInitialized):

@@ -165,8 +165,8 @@ class BaseSql(BaseCube):
                                              _mtime=True)
             mtime = c_fields.get('_mtime')
 
-        if isinstance(mtime, (int, float)):
-            mtime = ts2dt(mtime)
+        # convert timestamp to datetime object
+        mtime = ts2dt(mtime)
 
         self.logger.info("Last update mtime: %s" % mtime)
         return mtime

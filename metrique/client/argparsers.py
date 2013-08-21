@@ -16,7 +16,7 @@ class CubeInitConfigAction(argparse.Action):
 
 
 cube_cli = argparse.ArgumentParser(description='Cube CLI')
-cube_cli.add_argument('-d', '--debug', type=int, default=0)
+cube_cli.add_argument('-d', '--debug', type=int, default=2)
 cube_cli.add_argument('-a', '--async', action='store_true')
 cube_cli.add_argument('-f', '--force', action='store_true')
 cube_cli.add_argument('-c', '--cube-config-file', type=str)
