@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 CMD = 'admin/users'
 
 
-def add(self, user, password=None, permissions='r'):
+def add(self, user, password=None, permissions='r', cube=None):
     '''
     Add user permissions (or update if exists)
     Assigne that user a password (salt+hash)
@@ -27,5 +27,7 @@ def add(self, user, password=None, permissions='r'):
         Permissions decorate tornado object methods (result?)
         and add 'auth'
     '''
+    if not cube:
+        cube = self.name
     return self._get(CMD, 'add', cube=self.name, user=user,
                      password=password, permissions=permissions)
