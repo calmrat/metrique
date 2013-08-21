@@ -161,6 +161,11 @@ def _save_and_snapshot(_cube, objects):
     _cube.ensure_index([('_oid', 1), ('_start', 1)])
     logger.debug('... Timeline Index: Done')
 
+    logger.debug('... Snapshot %s objects.' % len(objects))
+
+    # we need to sort the objects by their _oid, this is essential
+    objects.sort(key=lambda x: x['_oid'])
+
     time_docs = _get_time_docs(_cube, [obj['_oid'] for obj in objects])
 
     batch_insert = []
@@ -219,6 +224,8 @@ def _save_no_snapshot(_cube, objects):
     # if for object's we've already stored
     # maybe 'insert' only objects which don't have
     # and _id
+    logger.debug('... No snapshot %s objects.' % len(objects))
+
     batch = []
     fields = []
     for obj in iter(objects):
