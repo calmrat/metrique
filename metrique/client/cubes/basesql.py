@@ -4,6 +4,7 @@
 
 from dateutil.parser import parse as dt_parse
 from functools import partial
+import pytz
 import re
 import time
 import traceback
@@ -439,9 +440,13 @@ class BaseSql(BaseCube):
         if isinstance(mtime_columns, basestring):
             mtime_columns = [mtime_columns]
 
+        if not (hasattr(mtime, 'tzinfo') and mtime.tzinfo):
+            # We need the timezone, to readjust relative to the server's tz
+            mtime = mtime.replace(tzinfo=pytz.utc)
         mtime = mtime.strftime(
             '%Y-%m-%d %H:%M:%S %z')
         dt_format = "yyyy-MM-dd HH:mm:ss z"
+
         filters = []
         if parse_timestamp:
             mtime = "parseTimestamp('%s', '%s')" % (mtime, dt_format)
