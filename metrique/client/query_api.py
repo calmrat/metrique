@@ -45,8 +45,8 @@ def count(self, query):
     return self._get(CMD, 'count', cube=self.name, query=query)
 
 
-def find(self, query, fields=None, date=None,
-         sort=None, one=False, raw=False, **kwargs):
+def find(self, query, fields=None, date=None, sort=None, one=False,
+         raw=False, explain=False, **kwargs):
     '''
     Run a `pql` based query on the given cube.
     Optionally:
@@ -55,21 +55,25 @@ def find(self, query, fields=None, date=None,
     * return back only the most recent date objects which
         match any given query, rather than all.
 
-    :param String query: The query in pql
-    :param fields: Fields that should be returne
+    :param string query:
+        The query in pql
+    :param list/string fields:
+        Fields that should be returned
     :type fields: str, or list of str, or str of comma-separated values
-    :param String date:
+    :param string date:
         Date (date range) that should be queried:
             date -> 'd', '~', '~d', 'd~', 'd~d'
             d -> '%Y-%m-%d %H:%M:%S,%f', '%Y-%m-%d %H:%M:%S', '%Y-%m-%d'
-    :param Boolean most_recent:
-        If true and there are multiple historical version of a single
-        object matching the query then only the most recent one will
-        be returned
+        If date==None then the most recent versions of the objects will be
+        queried.
+    :param bool explain:
+        If explain is True, the execution plan is returned instead of
+        the results (in raw form)
     '''
     result = self._get(CMD, 'find', cube=self.name, query=query,
-                       fields=fields, date=date, sort=sort, one=one)
-    if raw:
+                       fields=fields, date=date, sort=sort, one=one,
+                       explain=explain)
+    if raw or explain:
         return result
     else:
         if hasattr(self, '_result_class') and self._result_class is not None:

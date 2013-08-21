@@ -80,7 +80,8 @@ def _check_sort(sort):
 
 
 @job_save('query find')
-def find(cube, query, fields=None, date=None, sort=None, one=False):
+def find(cube, query, fields=None, date=None, sort=None, one=False,
+         explain=False):
     logger.debug('Running Find (%s)' % cube)
 
     sort = _check_sort(sort)
@@ -98,7 +99,9 @@ def find(cube, query, fields=None, date=None, sort=None, one=False):
 
     logger.debug('Query: %s' % spec)
 
-    if one:
+    if explain:
+        result = _cube.find(spec, fields, sort=sort).explain()
+    elif one:
         result = _cube.find_one(spec, fields, sort=sort)
     else:
         result = _cube.find(spec, fields, sort=sort)

@@ -290,12 +290,14 @@ class QueryFindHandler(MetriqueInitialized):
         date = self.get_argument('date')
         sort = self.get_argument('sort', None)
         one = self.get_argument('one', False)
+        explain = self.get_argument('explain', False)
         return query_api.find(cube=cube,
                               query=query,
                               fields=fields,
                               date=date,
                               sort=sort,
-                              one=one)
+                              one=one,
+                              explain=explain)
 
 
 class QueryDistinctHandler(MetriqueInitialized):
