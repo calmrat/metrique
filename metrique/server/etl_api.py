@@ -109,36 +109,6 @@ def _update_objects(_cube, objects):
     return list(set(fields))
 
 
-def _get_time_docs(_cube, oids):
-    '''
-    A generator that yields the docs with with _end == None in the order
-    of the specfied oids.
-    If such an object does not exist for a particular oid, it yields None.
-
-    :param pymongo.collection _cube:
-        cube object (pymongo collection connection)
-    :param list oids:
-        A list of '_oid' field values.
-    '''
-    time_docs = _cube.find({'_oid': {'$in': oids}, '_end': None},
-                           sort=[('_oid', 1)])
-    time_docs_iter = iter(time_docs)
-    _oid = -1
-    for oid in oids:
-        # time_doc will contain first doc that has _oid >= oid,
-        # it might be a document where _oid > oid
-        while _oid < oid:
-            try:
-                time_doc = time_docs_iter.next()
-                _oid = time_doc['_oid']
-            except StopIteration:
-                break
-        if oid == _oid:
-            yield time_doc
-        else:
-            yield None
-
-
 def _save_and_snapshot(_cube, objects):
     '''
     Each object in objects must have '_oid' and '_start' fields specified
@@ -161,47 +131,42 @@ def _save_and_snapshot(_cube, objects):
     _cube.ensure_index([('_oid', 1), ('_start', 1)])
     logger.debug('... Timeline Index: Done')
 
-    logger.debug('... Snapshot %s objects.' % len(objects))
+    logger.debug('... To snapshot: %s objects.' % len(objects))
 
-    # we need to sort the objects by their _oid, this is essential
-    objects.sort(key=lambda x: x['_oid'])
+    docmap = {doc['_oid']: doc for doc in objects}
+    time_docs = _cube.find({'_oid': {'$in': docmap.keys()}, '_end': None})
 
-    time_docs = _get_time_docs(_cube, [obj['_oid'] for obj in objects])
-
-    batch_insert = []
-    fields = []
-    for doc in objects:
+    for time_doc in time_docs:
+        _oid = time_doc['_oid']
+        try:
+            doc = docmap[_oid]
+        except KeyError:
+            logger.warn('Document with _oid %s has more than one version with'
+                        'end==None. Please repair your document.' % _oid)
+            continue
         _start = doc.pop('_start')
-        fields.extend(doc.keys())
 
-        time_doc = time_docs.next()
-
-        save_new = False
-        if time_doc is not None:
-            time_doc_items = time_doc.items()
-            if any(item not in time_doc_items for item in doc.iteritems()):
-                _cube.update({'_id': time_doc['_id']},
-                             {'$set': {'_end': _start}},
-                             upsert=True, manipulate=False)
-                save_new = True
-                # from time_doc, we must copy the fields that are not present
-                # in doc (in the case when we want to update only some of the
-                # fields)
-                time_doc.update(doc)
-                doc = time_doc
+        time_doc_items = time_doc.items()
+        if any(item not in time_doc_items for item in doc.iteritems()):
+            # document changed
+            _cube.update({'_id': time_doc['_id']},
+                         {'$set': {'_end': _start}},
+                         upsert=True, manipulate=False)
+            # from time_doc, we must copy the fields that are not present
+            # in doc (in the case when we want to update only some of the
+            # fields)
+            time_doc.update(doc)
+            time_doc['_start'] = _start
+            docmap[_oid] = time_doc
         else:
-            save_new = True
+            # document did not change
+            docmap.pop(_oid)
 
-        if save_new:
-            doc.update({'_id': new_oid(),
-                        '_start': _start,
-                        '_end': None})
-            batch_insert.append(doc)
+    [doc.update({'_id': new_oid(), '_end': None}) for doc in docmap.values()]
 
-    if batch_insert:
-        _cube.insert(batch_insert, manipulate=False)
-
-    return list(set(fields) - set(['_oid']))
+    if docmap:
+        _cube.insert(docmap.values(), manipulate=False)
+    logger.debug('... Snapped %s new versions.' % len(docmap))
 
 
 def _save_no_snapshot(_cube, objects):
@@ -227,9 +192,7 @@ def _save_no_snapshot(_cube, objects):
     logger.debug('... No snapshot %s objects.' % len(objects))
 
     batch = []
-    fields = []
     for obj in iter(objects):
-        fields.extend(obj.keys())
         if '_id' in obj:
             _cube.save(obj, manipulate=False)
         else:
@@ -237,7 +200,6 @@ def _save_no_snapshot(_cube, objects):
             batch.append(obj)
     if batch:
         _cube.insert(batch, manipulate=False)
-    return list(set(fields))
 
 
 def _save_objects(_cube, objects):
@@ -255,12 +217,17 @@ def _save_objects(_cube, objects):
     :param list objects:
         list of dictionary-like objects
     '''
+    fields = set()
+    [fields.add(k) for doc in objects for k in doc.keys()]
+    fields = list(filter(lambda k: k[0] != '_', fields))
+
     # Split the objects based on the presence of '_end' field:
     no_snap = [obj for obj in objects if '_end' in obj]
-    fields1 = _save_no_snapshot(_cube, no_snap) if len(no_snap) > 0 else []
+    _save_no_snapshot(_cube, no_snap) if len(no_snap) > 0 else []
     to_snap = [obj for obj in objects if '_end' not in obj]
-    fields2 = _save_and_snapshot(_cube, to_snap) if len(to_snap) > 0 else []
-    return list(set(fields1 + fields2))
+    _save_and_snapshot(_cube, to_snap) if len(to_snap) > 0 else []
+
+    return fields
 
 
 @job_save('etl_remove_objects')
