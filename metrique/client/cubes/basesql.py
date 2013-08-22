@@ -249,6 +249,9 @@ class BaseSql(BaseCube):
 
         Accept, but ignore unknown kwargs.
         '''
+        if 'debug' in kwargs:
+            self.config.debug = kwargs['debug']
+
         if not id_delta:
             id_delta = []
         if row_limit:
