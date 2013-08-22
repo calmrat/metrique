@@ -10,7 +10,7 @@ import simplejson as json
 
 from metrique.client.config import Config
 from metrique.client import query_api, etl_api, users_api
-from metrique.client import etl_activity
+from metrique.client import etl_activity, get_cube
 
 from metrique.tools import csv2list
 from metrique.tools.defaults import DEFAULT_CONFIG_FILE
@@ -38,11 +38,22 @@ class HTTPClient(object):
     cube_drop = etl_api.cube_drop
     user_add = users_api.add
 
+    def __new__(cls, *args, **kwargs):
+        '''
+        Return the specific cube class, if specified
+        '''
+        if 'cube' in kwargs and kwargs['cube']:
+            _cube = kwargs['cube']
+            kwargs['cube'] = None
+            cube_cls = get_cube(_cube)
+            return object.__new__(cube_cls, *args, **kwargs)
+        else:
+            return object.__new__(cls, *args, **kwargs)
+
     def __init__(self, host=None, username=None, password=None,
                  async=True, force=False, debug=-1,
                  config_file=None, config_dir=None,
-                 **kwargs):
-
+                 cube=None, **kwargs):
         self.load_config(config_file, config_dir, force)
         logging.basicConfig()
         self.logger = logging.getLogger('metrique.%s' % self.__module__)
