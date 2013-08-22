@@ -118,10 +118,6 @@ def acl_check(handler, resource, lookup):
 
     logger.debug("Cube Check: spec (%s)" % spec)
     doc = handler.proxy.mongodb_config.c_auth_keys.find_one(spec)
-    if doc:
-        for l in [lookup, __all__]:
-            if l in doc:
-                return doc[l]
     return doc
 
 
@@ -129,11 +125,25 @@ def authenticate(handler, username, password, permissions):
     ''' Helper-Function for determining whether a given
         user:password:permissions combination provides
         client with enough privleges to execute
-        the requested command against the given cube '''
+        the requested command against the given cube
+    '''
     cube = handler.get_argument('cube')
-    user = acl_check(handler, cube, username)
 
-    if _auth_admin(handler, username, password) is True:
+    doc = acl_check(handler, cube, username)
+    all_access = False
+    if doc and '__all__' in doc:
+        all_access = True
+        user = doc['__all__']
+    elif doc:
+        user = doc[username]
+    else:
+        user = {}
+
+    if all_access:
+        # we have an all access pass; just need to check
+        # privlege level, below
+        pass
+    elif _auth_admin(handler, username, password) is True:
         # ... or if user is admin with correct admin pass
         logger.debug('AUTH: admin')
         return True
