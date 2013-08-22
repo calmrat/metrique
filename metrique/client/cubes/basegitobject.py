@@ -2,15 +2,14 @@
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 # Author: "Chris Ward <cward@redhat.com>
 
-from dulwich.repo import Repo   # , GitCmdObjectDB
+from gittle.gittle import Gittle
 import os
 import subprocess
 
 from metrique.client.cubes.basecube import BaseCube
 from metrique.tools.decorators import memo
 
-TMP_DIR = '/tmp'
-DEFAULT_OBJECTS_PATH = '.git/objects'
+TMP_DIR = '~/.metrique/gitrepos/'
 
 
 class BaseGitObject(BaseCube):
@@ -41,4 +40,4 @@ class BaseGitObject(BaseCube):
                     raise RuntimeError('Failed to fetch repo')
                 self.logger.debug(' ... Fetch complete')
 
-        return Repo(repo_path)
+        return Gittle(repo_path)

@@ -12,21 +12,24 @@ from metrique.client.result import Result
 CMD = 'query'
 
 
-def aggregate(self, pipeline):
+def aggregate(self, pipeline, cube=None):
     '''
     Proxy for pymongodb's .aggregate framework call
     on a given cube
 
     :param list pipeline: The aggregation pipeline. $match, $project, etc.
+    :param string: cube name to use
     '''
-    result = self._get(CMD, 'aggregate', cube=self.name, pipeline=pipeline)
+    if not cube and self.name:
+        cube = self.name
+    result = self._get(CMD, 'aggregate', cube=cube, pipeline=pipeline)
     try:
         return result['result']
     except Exception:
         raise RuntimeError(result)
 
 
-def count(self, query, date=None):
+def count(self, query, cube=None, date=None):
     '''
     Run a `pql` based query on the given cube, but
     only return back the count (Integer)
@@ -41,12 +44,15 @@ def count(self, query, date=None):
         If true and there are multiple historical version of a single
         object matching the query then only the most recent one will
         be returned
+    :param string: cube name to use
     '''
-    return self._get(CMD, 'count', cube=self.name, query=query, date=date)
+    if not cube:
+        cube = self.name
+    return self._get(CMD, 'count', cube=cube, query=query, date=date)
 
 
 def find(self, query, fields=None, date=None, sort=None, one=False,
-         raw=False, explain=False, **kwargs):
+         raw=False, explain=False, cube=None, **kwargs):
     '''
     Run a `pql` based query on the given cube.
     Optionally:
@@ -69,8 +75,11 @@ def find(self, query, fields=None, date=None, sort=None, one=False,
     :param bool explain:
         If explain is True, the execution plan is returned instead of
         the results (in raw form)
+    :param string: cube name to use
     '''
-    result = self._get(CMD, 'find', cube=self.name, query=query,
+    if not cube:
+        cube = self.name
+    result = self._get(CMD, 'find', cube=cube, query=query,
                        fields=fields, date=date, sort=sort, one=one,
                        explain=explain)
     if raw or explain:
@@ -89,7 +98,7 @@ def find(self, query, fields=None, date=None, sort=None, one=False,
 
 
 def fetch(self, fields=None, date=None, sort=None, skip=0, limit=0, oids=None,
-          raw=False, **kwargs):
+          raw=False, cube=None, **kwargs):
     '''
     Fetch field values for (potentially) all objects
     of a given, with skip, limit, id "filter" arguments
@@ -100,14 +109,19 @@ def fetch(self, fields=None, date=None, sort=None, skip=0, limit=0, oids=None,
         Date (date range) that should be queried:
             date -> 'd', '~', '~d', 'd~', 'd~d'
             d -> '%Y-%m-%d %H:%M:%S,%f', '%Y-%m-%d %H:%M:%S', '%Y-%m-%d'
+    :param tuple sort: pymongo formated sort tuple
     :param Integer skip:
         number of items (sorted ASC) to skip
     :param Integer limit:
         number of items total to return, given skip
     :param List oids:
         specific list of oids we should fetch
+    :param boolean raw: return the documents in their (dict) form
+    :param string: cube name to use
     '''
-    result = self._get(CMD, 'fetch', cube=self.name, fields=fields,
+    if not cube:
+        cube = self.name
+    result = self._get(CMD, 'fetch', cube=cube, fields=fields,
                        date=date, sort=sort, skip=skip, limit=limit,
                        oids=oids)
     if raw:
@@ -119,11 +133,14 @@ def fetch(self, fields=None, date=None, sort=None, skip=0, limit=0, oids=None,
             return Result(result)
 
 
-def distinct(self, field):
+def distinct(self, field, cube=None):
     '''
     Return back all distinct token values of a given field
 
     :param String field:
         Field to get distinct token values from
+    :param string: cube name to use
     '''
-    return self._get(CMD, 'distinct', cube=self.name, field=field)
+    if not cube:
+        cube = self.name
+    return self._get(CMD, 'distinct', cube=cube, field=field)

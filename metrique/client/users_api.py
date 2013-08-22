@@ -23,11 +23,12 @@ def add(self, user, password=None, permissions='r', cube=None):
     :param String password:
         Password (plain text), if any of user
     :param String permission:
-        Permission set, as of v0.1 (r, rw, admin)
+        Permission set, as of v0.1 (None, r, rw, admin)
         Permissions decorate tornado object methods (result?)
         and add 'auth'
+    :param string: cube name to use
     '''
     if not cube:
         cube = self.name
-    return self._get(CMD, 'add', cube=self.name, user=user,
+    return self._get(CMD, 'add', cube=cube, user=user,
                      password=password, permissions=permissions)

@@ -133,7 +133,11 @@ def _save_and_snapshot(_cube, objects):
 
     logger.debug('... To snapshot: %s objects.' % len(objects))
 
-    docmap = {doc['_oid']: doc for doc in objects}
+    # py2.7 syntax; fails with 2.6
+    #docmap = {doc['_oid']: doc for doc in objects}
+    # py2.6 compatibility
+    docmap = dict([(doc['_oid'], doc) for doc in objects])
+
     time_docs = _cube.find({'_oid': {'$in': docmap.keys()}, '_end': None})
 
     for time_doc in time_docs:

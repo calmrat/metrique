@@ -61,6 +61,12 @@ class MetriqueServer(BaseServer):
         self.executor = ThreadPoolExecutor(k)
         logger.debug("Metrique Server - Started")
 
+        # Fail to start if we can't communicate with mongo
+        try:
+            assert self.mongodb_config.db_metrique_admin.db
+        except Exception as e:
+            raise SystemExit('%s\nFailed to communicate with MongoDB' % e)
+
     def stop(self):
         self._remove_pid()
         self.executor.shutdown()
