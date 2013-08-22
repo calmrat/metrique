@@ -24,40 +24,61 @@ class Commit(BaseGitObject):
     """
     name = 'git_commit'
 
-    def extract(self, uri, fetch=True, shas=None, force=False,
-            **kwargs):
+    def _build_batch(self, obj, **kwargs):
+        obj.update(kwargs)
+
+        sha = obj['sha']
+
+        obj['index'] = self.commits.index(sha)
+        obj['stats'] = self.get_stats(sha)
+        obj['diffs'] = self.repo.diff(sha)
+
+        msg = obj['message']
+        obj['acked_by'] = acked_by_re.findall(msg)
+        obj['signed_off_by'] = signed_off_by_re.findall(msg)
+        obj['resolves'] = resolves_re.findall(msg)
+        obj['related'] = related_re.findall(msg)
+        return obj
+
+
+    def _extract(self, uri, fetch, shas, force, **kwargs):
         if shas is None:
             shas = []
         self.logger.debug("Extracting GIT repo: %s" % uri)
         self.repo = self.get_repo(uri, fetch)
         self.commits = tuple(self.repo.commits())
         if not (force or shas):
-            last_ts = self.find(
-                    'uri == "%s"' % uri, fields='_commit_ts',
-                    sort=[('_commit_ts', -1)], one=True, raw=True)
-            if last_ts:
-                last_ts = last_ts['_commit_ts'] + 0.1
-            self.logger.debug("Last Commit Date: %s" % last_ts)
+            # FIXME: Get a list of all known shas (first 8char)
+            # and do set diff against all shas in repo currently
+            # then only extract the difference
+            known_shas = self.find(
+                    'uri == "%s"' % uri, fields='sha', raw=True)
+            known_shas = set([e['sha'] for e in known_shas])
+            self.logger.debug("Known Commits: %s" % len(known_shas))
+        repo_shas = set(self.repo.commits())
+        delta_shas = repo_shas - known_shas
         self.stats = {}
         batch = []
         objs = self.repo.commit_info()
-        for obj in objs:
-            obj['_oid'] = new_oid()
-            obj['uri'] = uri
-            sha = obj['sha']
-            index = self.commits.index(sha)
-            obj['stats'] = self.get_stats(sha)
-            msg = obj['message']
-
-            obj['acked_by'] = acked_by_re.findall(msg)
-            obj['signed_off_by'] = signed_off_by_re.findall(msg)
-            obj['resolves'] = resolves_re.findall(msg)
-            obj['related'] = related_re.findall(msg)
-
-            obj['diffs'] = self.repo.diff(sha)
-
-            batch.append(obj)
+        batch = [self._build_batch(obj, _oid=new_oid(), 
+            uri=uri) for obj in objs if obj['sha'] in delta_shas]
         return self.save_objects(batch)
+
+    def extract(self, uri, fetch=True, shas=None, force=False,
+            **kwargs):
+        if not isinstance(uri, (list, tuple)):
+            uri = [uri]
+        commits = []
+        for _uri in uri:
+            try:
+                c = self._extract(_uri, fetch, shas, force)
+            except Exception as e:
+                import traceback, sys
+                tb = traceback.format_exc(sys.exc_info())
+                self.logger.error('Extract FAILED: %s' % tb)
+            else:
+                commits.append(c)
+        return commits
 
     def save_stats(self, sha, stats):
         files = []
@@ -103,5 +124,9 @@ class Commit(BaseGitObject):
 if __name__ == '__main__':
     from metrique.client.argparsers import cube_cli
     a = cube_cli.parse_args()
-    obj = Commit(**vars(a))
-    obj.extract()
+    kwargs = {}
+    kwargs.update(a.cube_init_kwargs_config_file)
+    if a.debug:
+        kwargs.update({'debug': a.debug})
+    obj = Build(config_file=a.cube_config_file, **kwargs)
+    obj.extract(force=a.force)
