@@ -4,8 +4,6 @@
 
 ''' "Metrique ETL" related funtions '''
 
-import logging
-logger = logging.getLogger(__name__)
 from datetime import datetime
 from time import time
 import pytz
@@ -70,7 +68,7 @@ def save_objects(self, objects, update=False, batch=DEFAULT_BATCH,
         cube = self.name
     olen = len(objects) if objects else None
     if not olen:
-        logger.debug("... No objects to save")
+        self.logger.debug("... No objects to save")
         return []
 
     # get 'now' utc timezone aware datetime object
@@ -89,8 +87,7 @@ def save_objects(self, objects, update=False, batch=DEFAULT_BATCH,
                                 mtime=now)
             saved.extend(_saved)
 
-    logger.debug("... Saved %s docs in ~%is" % (olen, time() - t1))
-
+    self.logger.info("... Saved %s docs in ~%is" % (olen, time() - t1))
     return sorted(list(set([o['_oid'] for o in objects if o])))
 
 

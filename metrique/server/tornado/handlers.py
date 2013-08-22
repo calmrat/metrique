@@ -130,13 +130,16 @@ def _check_perms(doc, username, cube, permissions):
     if doc and '__all__' in doc:
         user = doc['__all__']
         is_ok = _check_acl(permissions, user)
+        no_auth = True
     elif doc:
         user = doc[username]
         is_ok = _check_acl(permissions, user)
+        no_auth = False
     elif cube:
         user = {}
         is_ok = -1
-    return user, is_ok
+        no_auth = False
+    return user, is_ok, no_auth
 
 
 def authenticate(handler, username, password, permissions):
@@ -154,10 +157,12 @@ def authenticate(handler, username, password, permissions):
         return is_admin
 
     doc = _get_resource_acl(handler, cube, username)
-    user, is_ok = _check_perms(doc, username, cube, permissions)
+    user, is_ok, no_auth = _check_perms(doc, username, cube, permissions)
 
     if not is_ok:
         return is_ok
+    elif no_auth:
+        return True
     elif _auth_kerb(handler, username, password) is True:
         # or if user is kerberous auth'd
         logger.debug(

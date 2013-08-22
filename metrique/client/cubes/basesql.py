@@ -14,6 +14,7 @@ from metrique.client.cubes.basecube import BaseCube
 from metrique.tools import batch_gen, ts2dt
 
 DEFAULT_ROW_LIMIT = 100000
+DEFAULT_RETRIES = -1
 
 
 class BaseSql(BaseCube):
@@ -240,7 +241,7 @@ class BaseSql(BaseCube):
 
     def extract(self, exclude_fields=None, force=False, id_delta=None,
                 last_update=None, update=False, delta_batch_size=None,
-                retries=3, row_limit=None, parse_timestamp=None,
+                retries=DEFAULT_RETRIES, row_limit=None, parse_timestamp=None,
                 **kwargs):
         '''
         Extract routine for SQL based cubes.

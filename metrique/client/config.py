@@ -132,23 +132,21 @@ class Config(JSONConfig):
     @debug.setter
     def debug(self, value):
         ''' Update logger settings '''
-        #logging.basicConfig()
         if isinstance(value, (tuple, list)):
-            logger, level = value
-        self._set_debug(level, logger)
-        self.config['debug'] = level
+            logger, value = value
+            self._set_debug(value, logger)
+        else:
+            self._set_debug(value)
+        self.config['debug'] = value
 
     def _set_debug(self, level, logger=None):
-        #logging.basicConfig()
         if not logger or level == 2:
             logger = logging.getLogger()
         if level in [-1, False]:
             logger.setLevel(logging.WARN)
         elif level in [0, None]:
             logger.setLevel(logging.INFO)
-        elif level in [1, True]:
-            logger.setLevel(logging.DEBUG)
-        elif level == 2:
+        elif level in [True, 1, 2]:
             logger.setLevel(logging.DEBUG)
 
     @property

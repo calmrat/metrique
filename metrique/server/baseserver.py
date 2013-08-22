@@ -5,6 +5,9 @@
 import logging
 logger = logging.getLogger(__name__)
 from datetime import datetime
+from socket import getfqdn
+
+FQDN = getfqdn()
 
 from metrique.server.config import metrique, mongodb
 from metrique.server.cubes import list_cubes, list_cube_fields
@@ -29,7 +32,7 @@ class BaseServer(object):
 
     def ping(self):
         logger.debug('got ping @ %s' % datetime.utcnow())
-        return 'pong'
+        return 'PONG (%s)' % FQDN
 
     def list_cubes(self):
         # arg = username... return only cubes with 'r' access
