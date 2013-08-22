@@ -2,6 +2,7 @@
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 # Author: "Chris Ward <cward@redhat.com>
 
+from psycopg2 import DatabaseError
 from metrique.client.cubes.basesql import BaseSql
 from metrique.tools.sql.teiid import TEIID
 
@@ -34,6 +35,7 @@ class BaseTEIID(BaseSql):
         self.password = self.setdefault(password, DEFAULT_CONFIG['password'])
         super(BaseTEIID, self).__init__(host=self.host, port=self.port,
                                         db=self.db, **kwargs)
+        self.retry_on_error = DatabaseError
 
     @property
     def proxy(self):

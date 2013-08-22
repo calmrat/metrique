@@ -19,7 +19,7 @@ DEFAULT_CONFIG = {
     'api_path': 'api/json',
 }
 
-MAX_WORKERS = 2
+MAX_WORKERS = 25
 
 
 def obj_hook(dct):
@@ -27,7 +27,11 @@ def obj_hook(dct):
     for k, v in dct.items():
         _k = str(k).replace('.', '_')
         if k == 'timestamp':
-            v = milli2sec(v)
+            try:
+                v = milli2sec(v)
+            except:
+                # some cases timestamp is a datetime str
+                v = dt2ts(v)
         if k == 'date':
             v = dt2ts(v)
         _dct[_k] = v
@@ -51,7 +55,12 @@ class Build(BaseJSON):
     name = 'jkns_build'
 
     def extract(self, uri=None, port=None, api_path=None,
-                force=False, **kwargs):
+                force=False, async=None, workers=None, **kwargs):
+        if async is None:
+            async = self.config.async
+        if workers is None:
+            workers = MAX_WORKERS
+
         if not uri:
             uri = DEFAULT_CONFIG['uri']
         self.uri = uri
@@ -73,7 +82,31 @@ class Build(BaseJSON):
         jobs = content['jobs']
         self.logger.info("... %i jobs found." % len(jobs))
 
-        with ThreadPoolExecutor(MAX_WORKERS) as executor:
+        if async:
+            results = self._extract_async(jobs, force, workers)
+        else:
+            results = self._extract(jobs, force)
+        return results
+
+    def _extract(self, jobs, force):
+        results = defaultdict(list)
+        for k, job in enumerate(jobs, 1):
+            job_name = job['name']
+            self.logger.debug(
+                '%s: %s of %s with %s builds' % (job_name, k,
+                                                 len(jobs),
+                                                 len(job['builds'])))
+            nums = [b['number'] for b in job['builds']]
+            builds = [self.get_build(job_name, n, force) for n in nums]
+            try:
+                results[job_name] += self.save_objects(builds)
+            except Exception as e:
+                self.logger.error(
+                    '(%s) Failed to save: %s:%s' % (e, job_name, builds))
+        return results
+
+    def _extract_async(self, jobs, force, workers):
+        with ThreadPoolExecutor(workers) as executor:
             results = defaultdict(list)
             for k, job in enumerate(jobs, 1):
                 job_name = job['name']
@@ -88,11 +121,13 @@ class Build(BaseJSON):
                         executor.submit(self.get_build, job_name, n, force))
 
                 for future in as_completed(future_builds):
-                    obj = future.result()
                     try:
-                        results[job_name] += self.save_objects([obj])
+                        build = future.result()
+                        if build:
+                            results[job_name] += self.save_objects([build])
                     except Exception as e:
-                        self.logger.error('(%s) Failed to save: %s' % (e, obj))
+                        self.logger.error(
+                            '(%s) Failed to save: %s' % (e, job_name))
         return results
 
     def get_build(self, job_name, build_number, force=False):
@@ -103,10 +138,9 @@ class Build(BaseJSON):
         query = '_oid == "%s" and building != True' % _oid
         if not force and self.count(query) > 0:
             self.logger.debug('(CACHED) BUILD: %s' % _oid)
-            return {}
+            return None
 
         _build = {}
-        self.logger.debug('BUILD: %s' % _oid)
         #_args = 'tree=%s' % ','.join(self.fields)
         _args = 'depth=1'
         _job_path = '/job/%s/%s' % (job_name, build_number)
@@ -121,25 +155,12 @@ class Build(BaseJSON):
                                        object_hook=obj_hook)
         except HTTPError as e:
             self.logger.error('OOPS! (%s) %s' % (job_uri, e))
-            build_content = {}
+            build_content = {'load_error': e}
 
         _build['_oid'] = _oid
         _build['job_name'] = job_name
         _build['job_uri'] = job_uri
         _build['number'] = build_number
-
-        # if we convert to seconds here, we need
-        # to convert to seconds in all nested sub
-        # doc timestamp fields as well....
-        # We need a way to automatically and arbitrarily
-        # discover timestamps and convert them...
-        # or manually find and convert them...
-
-        #if 'timestamp' in build_content:
-        #    ts = build_content.get('timestamp')  # from milliseconds ...
-        #    # convert from milliseconds to seconds
-        #    #build_content['timestamp'] = milli2sec(ts)
-
         _build.update(build_content)
 
         report_uri = '%s:%s%s/testReport/%s?%s' % (self.uri, self.port,
@@ -152,7 +173,7 @@ class Build(BaseJSON):
                                         object_hook=obj_hook)
         except HTTPError as e:
             self.logger.error('OOPS! (%s) %s' % (report_uri, e))
-            report_content = {}
+            report_content = {'load_error': e}
 
         _build['report_uri'] = report_uri
         _build['report'] = report_content

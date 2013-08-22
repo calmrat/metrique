@@ -34,7 +34,7 @@ class BaseSql(BaseCube):
         self.port = port
         self.db = db
         self.row_limit = row_limit
-
+        self.retry_on_error = Exception
         super(BaseSql, self).__init__(**kwargs)
 
     @property
@@ -192,7 +192,7 @@ class BaseSql(BaseCube):
                 try:
                     objects.extend(self._extract(force, batch,
                                                  field_order))
-                except Exception:
+                except self.retry_on_error:
                     failed.extend(batch)
                     tb = traceback.format_exc()
                     self.logger.warn(
@@ -203,7 +203,7 @@ class BaseSql(BaseCube):
                 else:
                     done.extend(batch)
                     local_done += len(batch)
-                    self.logger.debug(
+                    self.logger.info(
                         'BATCH SUCCESS. %i of %i' % (
                             local_done, len(id_delta)))
             else:
@@ -242,7 +242,7 @@ class BaseSql(BaseCube):
     def extract(self, exclude_fields=None, force=False, id_delta=None,
                 last_update=None, update=False, delta_batch_size=None,
                 retries=DEFAULT_RETRIES, row_limit=None, parse_timestamp=None,
-                **kwargs):
+                dry_run=False, **kwargs):
         '''
         Extract routine for SQL based cubes.
 
@@ -296,7 +296,10 @@ class BaseSql(BaseCube):
         if failed:
             self.logger.error('FAILED: %s' % failed)
 
-        return self.save_objects(objects, update=update)
+        if dry_run:
+            return objects
+        else:
+            return self.save_objects(objects, update=update)
 
     def _build_rows(self, rows):
         _rows = {}

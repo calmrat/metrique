@@ -97,6 +97,8 @@ def batch_gen(data, batch_size):
 
 def milli2sec(ts):
     ''' normalize timestamps to timestamp int's (seconds) '''
+    if not ts:
+        return ts
     return float(float(ts) / 1000.)  # convert milli to seconds
 
 

@@ -104,7 +104,6 @@ class HTTPClient(object):
             raise rq.exceptions.ConnectionError(
                 'Failed to connect (%s). Try https://?' % _url)
         _response.raise_for_status()
-        self.logger.debug('response arrived')
         return json.loads(_response.text)
 
     def _post(self, *args, **kwargs):
