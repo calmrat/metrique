@@ -98,7 +98,9 @@ def _auth_kerb(handler, username, password):
 
 
 def _auth_basic(handler, password, user_dict):
-    if not user_dict:
+    if not (password and user_dict and user_dict.get('password')):
+        # only authenticate if we actually have a password
+        # and user_dict.password to compare
         return -1
     else:
         p_hash = user_dict.get('password')
