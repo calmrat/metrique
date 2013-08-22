@@ -13,8 +13,10 @@ import simplejson as json
 import tornado
 import traceback
 
-from metrique.server.defaults import VALID_PERMISSIONS
+from metrique.server.defaults import VALID_PERMISSIONS as VP
 from metrique.server import query_api, etl_api, users_api
+
+__all__ = '__all__'
 
 
 def async(f):
@@ -67,8 +69,6 @@ def _auth_admin(handler, username, password):
     admin pass is stored in metrique server config
     admin user gets 'rw' to all cubes
     '''
-    if not password:
-        return -1
     admin_user = handler.proxy.metrique_config.admin_user
     admin_pass = handler.proxy.metrique_config.admin_password
     if username == admin_user:
@@ -107,18 +107,36 @@ def _auth_basic(handler, password, user_dict):
         return sha256_crypt.verify(password, p_hash)
 
 
-def acl_check(handler, resource, lookup):
+def _get_resource_acl(handler, resource, lookup):
     ''' Check if user is listed to access to a given resource '''
-    __all__ = '__all__'
     resource = [resource, __all__]
     _lookup = [{lookup:  {'$exists': True}},
                {__all__: {'$exists': True}}]
     spec = {'_id': {'$in': resource},
             '$or': _lookup}
-
     logger.debug("Cube Check: spec (%s)" % spec)
-    doc = handler.proxy.mongodb_config.c_auth_keys.find_one(spec)
-    return doc
+    return handler.proxy.mongodb_config.c_auth_keys.find_one(spec)
+
+
+def _check_acl(permissions, user):
+    try:
+        return VP.index(user['permissions']) >= VP.index(permissions)
+    except (TypeError, KeyError):
+        # permissions is not defined; assume they're unpermitted
+        return -1
+
+
+def _check_perms(doc, username, cube, permissions):
+    if doc and '__all__' in doc:
+        user = doc['__all__']
+        is_ok = _check_acl(permissions, user)
+    elif doc:
+        user = doc[username]
+        is_ok = _check_acl(permissions, user)
+    elif cube:
+        user = {}
+        is_ok = -1
+    return user, is_ok
 
 
 def authenticate(handler, username, password, permissions):
@@ -129,50 +147,26 @@ def authenticate(handler, username, password, permissions):
     '''
     cube = handler.get_argument('cube')
 
-    doc = acl_check(handler, cube, username)
-    all_access = False
-    if doc and '__all__' in doc:
-        all_access = True
-        user = doc['__all__']
-    elif doc:
-        user = doc[username]
-    else:
-        user = {}
-
-    if all_access:
-        # we have an all access pass; just need to check
-        # privlege level, below
-        pass
-    elif _auth_admin(handler, username, password) is True:
+    is_admin = _auth_admin(handler, username, password)
+    if is_admin in [True, -1]:
         # ... or if user is admin with correct admin pass
-        logger.debug('AUTH: admin')
-        return True
-    elif cube and not user:
-        return -1
+        logger.debug('AUTH OK: admin')
+        return is_admin
+
+    doc = _get_resource_acl(handler, cube, username)
+    user, is_ok = _check_perms(doc, username, cube, permissions)
+
+    if not is_ok:
+        return is_ok
     elif _auth_kerb(handler, username, password) is True:
         # or if user is kerberous auth'd
-        logger.debug('AUTH: krb')
-        pass
+        logger.debug(
+            'AUTH OK: krb (%s:%s)' % (username, cube))
+        return True
     elif _auth_basic(handler, password, user) is True:
-        logger.debug('AUTH: basic')
         # or if the user is authed by metrique (built-in; auth_keys)
-        pass
-    else:
-        return -1
-
-    # permissions is a single string
-    assert isinstance(permissions, basestring)
-    VP = VALID_PERMISSIONS
-
-    try:
-        has_perms = VP.index(user['permissions']) >= VP.index(permissions)
-    except (TypeError, KeyError):
-        # permissions is not defined; assume they're unpermitted
-        return -1
-
-    if has_perms:
-        # password is defined, make sure user's pass matches it
-        # and that the user has the right permissions defined
+        logger.debug(
+            'AUTH OK: basic (%s:%s)' % (username, cube))
         return True
     else:
         return -1
@@ -180,6 +174,9 @@ def authenticate(handler, username, password, permissions):
 
 def auth(permissions='r'):
     ''' Decorator for auth dependent Tornado.Handlers '''
+    # permissions must be a single string
+    assert isinstance(permissions, basestring)
+
     def decorator(f):
         @wraps(f)
         def wrapper(handler, *args, **kwargs):
