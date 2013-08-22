@@ -26,7 +26,7 @@ def aggregate(self, pipeline):
         raise RuntimeError(result)
 
 
-def count(self, query):
+def count(self, query, date=None):
     '''
     Run a `pql` based query on the given cube, but
     only return back the count (Integer)
@@ -42,7 +42,7 @@ def count(self, query):
         object matching the query then only the most recent one will
         be returned
     '''
-    return self._get(CMD, 'count', cube=self.name, query=query)
+    return self._get(CMD, 'count', cube=self.name, query=query, date=date)
 
 
 def find(self, query, fields=None, date=None, sort=None, one=False,
@@ -88,7 +88,7 @@ def find(self, query, fields=None, date=None, sort=None, one=False,
         return result
 
 
-def fetch(self, fields=None, date=None, sort=None, skip=0, limit=0, ids=[],
+def fetch(self, fields=None, date=None, sort=None, skip=0, limit=0, oids=None,
           raw=False, **kwargs):
     '''
     Fetch field values for (potentially) all objects
@@ -104,12 +104,12 @@ def fetch(self, fields=None, date=None, sort=None, skip=0, limit=0, ids=[],
         number of items (sorted ASC) to skip
     :param Integer limit:
         number of items total to return, given skip
-    :param List ids:
-        specific list of ids we should fetch
+    :param List oids:
+        specific list of oids we should fetch
     '''
     result = self._get(CMD, 'fetch', cube=self.name, fields=fields,
                        date=date, sort=sort, skip=skip, limit=limit,
-                       ids=ids)
+                       oids=oids)
     if raw:
         return result
     else:

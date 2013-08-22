@@ -22,11 +22,10 @@ def distinct(cube, field):
 
 
 @job_save('query count')
-def count(cube, query):
+def count(cube, query, date=None):
     logger.debug('Running Count')
-    pql_parser = pql.SchemaFreeParser()
     try:
-        spec = pql_parser.parse(query)
+        spec = pql.find(query + _get_date_pql_string(date))
     except Exception as e:
         raise ValueError("Invalid Query (%s)" % str(e))
 
@@ -35,10 +34,7 @@ def count(cube, query):
     logger.debug('Mongo Query: %s' % spec)
 
     docs = _cube.find(spec)
-    if docs:
-        result = docs.count()
-    else:
-        result = 0
+    result = docs.count() if docs else 0
     docs.close()
     return result
 
@@ -110,25 +106,29 @@ def find(cube, query, fields=None, date=None, sort=None, one=False,
     return result
 
 
-def parse_ids(ids, delimeter=','):
-    if isinstance(ids, basestring):
-        ids = [s.strip() for s in ids.split(delimeter)]
-    if type(ids) is not list:
+def _parse_oids(oids, delimeter=','):
+    if isinstance(oids, basestring):
+        oids = [s.strip() for s in oids.split(delimeter)]
+    if type(oids) is not list:
         raise TypeError("ids expected to be a list")
-    return ids
+    return oids
 
 
 @job_save('query fetch')
-def fetch(cube, fields=None, date=None, sort=None, skip=0, limit=0, ids=None):
-    logger.debug('Running Fetch (skip:%s, limit:%s, ids:%s)' % (
-        skip, limit, len(ids)))
+def fetch(cube, fields=None, date=None, sort=None, skip=0, limit=0, oids=None):
+    if oids is None:
+        oids = []
+    logger.debug('Running Fetch (skip:%s, limit:%s, oids:%s)' % (
+        skip, limit, len(oids)))
 
     sort = _check_sort(sort)
     _cube = get_cube(cube)
     fields = get_fields(cube, fields)
 
-    spec = {'_oid': {'$in': parse_ids(ids)}} if ids else {}
-    spec.update(pql.find(_get_date_pql_string(date, '')))
+    spec = {'_oid': {'$in': _parse_oids(oids)}} if oids else {}
+    dt_str = _get_date_pql_string(date, '')
+    if dt_str:
+        spec.update(pql.find(dt_str))
 
     result = _cube.find(spec, fields, sort=sort, skip=skip, limit=limit)
     result.batch_size(BATCH_SIZE)

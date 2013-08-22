@@ -258,9 +258,9 @@ class QueryFetchHandler(MetriqueInitialized):
         sort = self.get_argument('sort', None)
         skip = self.get_argument('skip', 0)
         limit = self.get_argument('limit', 0)
-        ids = self.get_argument('ids', [])
+        oids = self.get_argument('oids', [])
         return query_api.fetch(cube=cube, fields=fields, date=date,
-                               sort=sort, skip=skip, limit=limit, ids=ids)
+                               sort=sort, skip=skip, limit=limit, oids=oids)
 
 
 class QueryCountHandler(MetriqueInitialized):
@@ -273,7 +273,8 @@ class QueryCountHandler(MetriqueInitialized):
     def get(self):
         cube = self.get_argument('cube')
         query = self.get_argument('query')
-        return query_api.count(cube, query)
+        date = self.get_argument('date', None)
+        return query_api.count(cube=cube, query=query, date=date)
 
 
 class QueryFindHandler(MetriqueInitialized):
