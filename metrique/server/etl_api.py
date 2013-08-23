@@ -137,6 +137,7 @@ def _save_and_snapshot(_cube, objects):
     #docmap = {doc['_oid']: doc for doc in objects}
     # py2.6 compatibility
     docmap = dict([(doc['_oid'], doc) for doc in objects])
+    logger.debug('... To snapshot: %s objects.' % len(docmap))
 
     time_docs = _cube.find({'_oid': {'$in': docmap.keys()}, '_end': None})
 
@@ -169,8 +170,13 @@ def _save_and_snapshot(_cube, objects):
     [doc.update({'_id': new_oid(), '_end': None}) for doc in docmap.values()]
 
     if docmap:
-        _cube.insert(docmap.values(), manipulate=False)
+        _bulk_insert(_cube, docmap.values())
     logger.debug('... Snapped %s new versions.' % len(docmap))
+
+
+def _bulk_insert(_cube, docs, size=1000):
+    for i in range(0, len(docs), size):
+        _cube.insert(docs[i:i + size], manipulate=False)
 
 
 def _save_no_snapshot(_cube, objects):

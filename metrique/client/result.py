@@ -381,6 +381,7 @@ class Result(DataFrame):
         Leaves only those entities whose first version started after the
         specified date.
         '''
+        dt = Timestamp(dt)
         starts = self._start.groupby(self._oid).min()
         oids = starts[starts > dt].index.tolist()
         return self[self._oid.apply(lambda v: v in oids)]
