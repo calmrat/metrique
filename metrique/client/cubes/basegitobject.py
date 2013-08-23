@@ -21,8 +21,9 @@ import os
 import subprocess
 
 from metrique.client.cubes.basecube import BaseCube
+from metrique.tools.defaults import CONFIG_DIR
 
-TMP_DIR = '~/.metrique/gitrepos/'
+TMP_DIR = os.path.join(CONFIG_DIR, 'gitrepos/')
 
 
 class BaseGitObject(BaseCube):

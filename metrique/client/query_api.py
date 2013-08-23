@@ -133,7 +133,7 @@ def fetch(self, fields=None, date=None, sort=None, skip=0, limit=0, oids=None,
             return Result(result)
 
 
-def distinct(self, field, cube=None):
+def distinct(self, field, cube=None, sort=True):
     '''
     Return back all distinct token values of a given field
 
@@ -143,4 +143,8 @@ def distinct(self, field, cube=None):
     '''
     if not cube:
         cube = self.name
-    return self._get(CMD, 'distinct', cube=cube, field=field)
+    result = self._get(CMD, 'distinct', cube=cube, field=field)
+    if sort:
+        return sorted(result)
+    else:
+        return result

@@ -2,10 +2,11 @@
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 # Author: "Chris Ward <cward@redhat.com>
 
-from datetime import datetime
 import re
 import os
 import subprocess
+import sys
+import traceback
 
 from metrique.client.cubes.basegitobject import BaseGitObject
 from metrique.tools import oid as new_oid
@@ -24,11 +25,12 @@ class Commit(BaseGitObject):
     """
     name = 'git_commit'
 
-    def _build_batch(self, obj, **kwargs):
+    def _build_obj(self, obj, **kwargs):
         obj.update(kwargs)
 
         sha = obj['sha']
 
+        obj['repo_path'] = self.repo_path
         obj['index'] = self.commits.index(sha)
         obj['stats'] = self.get_stats(sha)
         obj['diffs'] = self.repo.diff(sha)
@@ -40,7 +42,6 @@ class Commit(BaseGitObject):
         obj['related'] = related_re.findall(msg)
         return obj
 
-
     def _extract(self, uri, fetch, shas, force, **kwargs):
         if shas is None:
             shas = []
@@ -51,8 +52,8 @@ class Commit(BaseGitObject):
             # FIXME: Get a list of all known shas (first 8char)
             # and do set diff against all shas in repo currently
             # then only extract the difference
-            known_shas = self.find(
-                    'uri == "%s"' % uri, fields='sha', raw=True)
+            known_shas = self.find('uri == "%s"' % uri,
+                                   fields='sha', raw=True)
             known_shas = set([e['sha'] for e in known_shas])
             self.logger.debug("Known Commits: %s" % len(known_shas))
         repo_shas = set(self.repo.commits())
@@ -60,20 +61,18 @@ class Commit(BaseGitObject):
         self.stats = {}
         batch = []
         objs = self.repo.commit_info()
-        batch = [self._build_batch(obj, _oid=new_oid(), 
-            uri=uri) for obj in objs if obj['sha'] in delta_shas]
+        batch = [self._build_obj(obj, _oid=new_oid(),
+                 uri=uri) for obj in objs if obj['sha'] in delta_shas]
         return self.save_objects(batch)
 
-    def extract(self, uri, fetch=True, shas=None, force=False,
-            **kwargs):
+    def extract(self, uri, fetch=True, shas=None, force=False, **kwargs):
         if not isinstance(uri, (list, tuple)):
             uri = [uri]
         commits = []
         for _uri in uri:
             try:
                 c = self._extract(_uri, fetch, shas, force)
-            except Exception as e:
-                import traceback, sys
+            except Exception:
                 tb = traceback.format_exc(sys.exc_info())
                 self.logger.error('Extract FAILED: %s' % tb)
             else:
@@ -128,5 +127,5 @@ if __name__ == '__main__':
     kwargs.update(a.cube_init_kwargs_config_file)
     if a.debug:
         kwargs.update({'debug': a.debug})
-    obj = Build(config_file=a.cube_config_file, **kwargs)
+    obj = Commit(config_file=a.cube_config_file, **kwargs)
     obj.extract(force=a.force)

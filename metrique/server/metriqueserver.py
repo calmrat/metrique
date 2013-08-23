@@ -65,7 +65,9 @@ class MetriqueServer(BaseServer):
         try:
             assert self.mongodb_config.db_metrique_admin.db
         except Exception as e:
-            raise SystemExit('%s\nFailed to communicate with MongoDB' % e)
+            host = self.mongodb_config.host
+            raise SystemExit(
+                '%s\nFailed to communicate with MongoDB (%s)' % (e, host))
 
     def stop(self):
         self._remove_pid()

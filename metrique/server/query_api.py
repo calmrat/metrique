@@ -18,7 +18,7 @@ BATCH_SIZE = 16777216  # hard limit is 16M...
 def distinct(cube, field):
     logger.debug('Running Distinct (%s.%s)' % (cube, field))
     _cube = get_cube(cube)
-    return sorted(_cube.distinct(field))
+    return _cube.distinct(field)
 
 
 @job_save('query count')

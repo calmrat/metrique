@@ -181,6 +181,7 @@ def auth(permissions='r'):
     ''' Decorator for auth dependent Tornado.Handlers '''
     # permissions must be a single string
     assert isinstance(permissions, basestring)
+    assert permissions in VP
 
     def decorator(f):
         @wraps(f)
