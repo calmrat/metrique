@@ -1,5 +1,5 @@
 # vim swap files
-*.swp
+*.sw*
 
 *.py[cod]
 
