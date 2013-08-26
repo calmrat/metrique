@@ -11,7 +11,7 @@ usermanagement, logging, etc.
 
 __pkg__ = 'metrique-server'
 
-__version__ = '0.1.3-alpha'
+__version__ = '0.1.3-alpha14'
 
 __pkgs__ = ['metrique.server']
 
@@ -34,7 +34,7 @@ __irequires__ = __requires__
 
 __scripts__ = [
     'metrique/server/bin/metrique-server',
-    'install/metrique-setup-server'
+    'install/metrique-setup-server',
 ]
 
 __deplinks__ = [
