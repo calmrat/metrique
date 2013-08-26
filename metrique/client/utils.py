@@ -2,18 +2,11 @@
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 # Author: "Chris Ward" <cward@redhat.com>
 
+from bson.objectid import ObjectId
 from calendar import timegm
 from datetime import datetime
 from dateutil.parser import parse as dt_parse
-from bson.objectid import ObjectId
-import hashlib
 import pytz
-import uuid
-
-
-def doublequote(item):
-    ''' convert a given obj to string, double-quoted'''
-    return '"%s"' % item
 
 
 def csv2list(csv, delimiter=','):
@@ -29,20 +22,6 @@ def csv2list(csv, delimiter=','):
             "Failed to convert csv string to list; got %s" % csv)
 
 
-def list2csv(_list, quote=False):
-    ''' convert a list of objects into a csv string '''
-    if quote:
-        _list = map(doublequote, _list)
-    return ','.join(map(str, _list))
-
-
-def hash_password(password, salt=None):
-    ''' salt sha512 hexdigest a password '''
-    if not salt:
-        salt = uuid.uuid4().hex
-    return salt, hashlib.sha512(password + salt).hexdigest()
-
-
 def get_timezone_converter(from_timezone):
     utc = pytz.utc
     from_tz = pytz.timezone(from_timezone)
@@ -55,27 +34,11 @@ def get_timezone_converter(from_timezone):
     return timezone_converter
 
 
-def perc(numerator, denominator):
-    return (float(numerator) / denominator) * 100
-
-
-def cube_pkg_mod_cls(cube):
-    '''
-    Convert 'pkg_mod' -> pkg, mod, Cls
-
-    eg:
-        tw_tweet -> tw, tweet, Tweet
-        tw_tweet_users -> tw, tweet_users, TweetUsers
-
-    Use for dynamically importing cube classes
-
-    Assumes `Metrique Cube Naming Convention` is used
-    '''
-    _cube = cube.split('_')
-    pkg = _cube[0]
-    mod = '_'.join(_cube[1:])
-    cls = ''.join([s[0].upper() + s[1:] for s in _cube[1:]])
-    return pkg, mod, cls
+def milli2sec(ts):
+    ''' normalize timestamps to timestamp int's (seconds) '''
+    if not ts:
+        return ts
+    return float(float(ts) / 1000.)  # convert milli to seconds
 
 
 def batch_gen(data, batch_size):
@@ -93,13 +56,6 @@ def batch_gen(data, batch_size):
 
     for i in range(0, len(data), batch_size):
         yield data[i:i + batch_size]
-
-
-def milli2sec(ts):
-    ''' normalize timestamps to timestamp int's (seconds) '''
-    if not ts:
-        return ts
-    return float(float(ts) / 1000.)  # convert milli to seconds
 
 
 def ts2dt(ts, milli=False, tz_aware=True):
@@ -129,7 +85,7 @@ def dt2ts(dt):
         return timegm(dt.timetuple())
 
 
-def oid():
+def new_oid():
     '''
     Creates a new ObjectId and casts it to string,
     so it's easily serializable

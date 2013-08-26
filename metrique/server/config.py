@@ -15,18 +15,23 @@ from defaults import DATA_USER, ADMIN_USER, TIMELINE_DB
 from defaults import PID_FILE
 from defaults import SSL_CERT, SSL_CERT_KEY
 from defaults import MONGODB_CONF
+from defaults import DEFAULT_CONFIG_DIR
+from defaults import MONGODB_HOST
+from defaults import METRIQUE_HTTP_HOST
+from defaults import METRIQUE_HTTP_PORT
 
-from metrique.tools.defaults import METRIQUE_HTTP_HOST, METRIQUE_HTTP_PORT
-from metrique.tools.defaults import MONGODB_HOST
-from metrique.tools.jsonconfig import JSONConfig
+from jsonconf import JSONConf
 
-from metrique.server.utils.mongodb.basemongodb import BaseMongoDB
+from metrique.server.mongodb.basemongodb import BaseMongoDB
 
 
-class metrique(JSONConfig):
-    def __init__(self, config_file, config_dir=None, *args, **kwargs):
+class metrique(JSONConf):
+    def __init__(self, config_file, config_dir=None,
+                 force=True, *args, **kwargs):
+        if not config_dir:
+            config_dir = DEFAULT_CONFIG_DIR
         super(metrique, self).__init__(config_file, config_dir,
-                                       *args, **kwargs)
+                                       force=force, *args, **kwargs)
         self._properties = {}
 
     @property
@@ -178,11 +183,11 @@ class metrique(JSONConfig):
         return self._default('log_to_file', 0)
 
 
-class mongodb(JSONConfig):
-    def __init__(self, config_file=MONGODB_CONF, config_dir=None, *args,
-                 **kwargs):
+class mongodb(JSONConf):
+    def __init__(self, config_file=MONGODB_CONF, config_dir=None,
+                 force=True, *args, **kwargs):
         super(mongodb, self).__init__(config_file, config_dir,
-                                      *args, **kwargs)
+                                      force=force, *args, **kwargs)
 
     @property
     def host(self):

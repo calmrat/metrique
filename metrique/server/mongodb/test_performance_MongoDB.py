@@ -8,7 +8,7 @@ from unittest import TestCase, TestLoader, TextTestRunner
 
 from metrique.server.Utils.MongoDB.BaseMongoDB import BaseMongoDB
 
-from metrique.tools.jsonconfig import JSONConfig
+from jsonconf import JSONConf
 
 config_dir = '~/.metrique/'
 config_dir = os.path.expanduser(config_dir)

@@ -4,17 +4,21 @@
 
 import logging
 logger = logging.getLogger(__name__)
+
+from bson.objectid import ObjectId
 from copy import copy
 from datetime import datetime
-from bson.objectid import ObjectId
+import re
 
 from metrique.server.cubes import get_cube, get_etl_activity
 from metrique.server.job import job_save
 from metrique.server.config import mongodb
 
-from metrique.tools import dt2ts
-from metrique.tools import oid as new_oid
-from metrique.tools.constants import RE_PROP
+from metrique.server.utils import dt2ts
+from metrique.server.utils import new_oid
+
+# obj props (client mutable) are prefixed w/ 1 underscore
+RE_PROP = re.compile('^_')
 
 mongodb_config = mongodb()
 

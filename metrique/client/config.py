@@ -6,19 +6,29 @@ import logging
 import os
 import re
 
-from metrique.tools.jsonconfig import JSONConfig
-from metrique.tools.defaults import METRIQUE_HTTP_PORT, METRIQUE_HTTP_HOST
-from metrique.tools.defaults import CLIENT_CUBES_PATH
+from jsonconf import JSONConf
+
+DEFAULT_CONFIG_DIR = '~/.metrique/'
+DEFAULT_CONFIG_FILE = 'http_api'
+
+CLIENT_CUBES_PATH = os.path.join(DEFAULT_CONFIG_DIR, 'cubes')
 
 API_VERSION = 'v1'
 API_REL_PATH = 'api'
 API_SSL = False
 
+METRIQUE_HTTP_HOST = '127.0.0.1'
+METRIQUE_HTTP_PORT = 8080
 
-class Config(JSONConfig):
+
+class Config(JSONConf):
     ''' Client config (property) class '''
-    def __init__(self, *args, **kwargs):
-        super(Config, self).__init__(*args, **kwargs)
+    def __init__(self, config_dir=None, force=True,
+                 *args, **kwargs):
+        if not config_dir:
+            config_dir = DEFAULT_CONFIG_DIR
+        super(Config, self).__init__(config_dir, force=force,
+                                      *args, **kwargs)
 
     @property
     def cubes_path(self):

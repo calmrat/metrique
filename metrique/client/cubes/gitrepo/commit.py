@@ -8,7 +8,7 @@ import os
 import subprocess
 
 from metrique.client.cubes.basegitobject import BaseGitObject
-from metrique.tools import oid as new_oid
+from metrique.tools import new_oid
 
 related_re = re.compile('Related: (.+)$', re.I)
 resolves_re = re.compile('Resolves: (.+)$', re.I)
@@ -60,7 +60,7 @@ class Commit(BaseGitObject):
         self.stats = {}
         batch = []
         objs = self.repo.commit_info()
-        batch = [self._build_batch(obj, _oid=new_oid(), 
+        batch = [self._build_batch(obj, _oid=new_oid(),
             uri=uri) for obj in objs if obj['sha'] in delta_shas]
         return self.save_objects(batch)
 

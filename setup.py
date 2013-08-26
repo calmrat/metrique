@@ -2,39 +2,25 @@
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 # Author: "Chris Ward <cward@redhat.com>
 
-from distutils.core import setup
-from pkgutil import walk_packages
-
-import metrique
-
-
-def find_packages(path='./', prefix=""):
-    yield prefix
-    prefix = prefix + "."
-    for _, name, ispkg in walk_packages(path, prefix):
-        if ispkg:
-            yield name
+import logging
+logging.basicConfig()
+logger = logging.getLogger(__name__)
 
 with open('readme.rst') as _file:
     readme = _file.read()
 
-from metrique import __version__ as version
-
 github = 'https://github.com/drpoovilleorg/metrique'
-download_url = '%s/archive/%s.tar.gz' % (github, version)
+download_url = '%s/archive/master.zip' % github
 
-setup(
-    name='metrique',
-    version=version,
-    packages=list(find_packages(metrique.__path__, metrique.__name__)),
+default_setup = dict(
     url='https://github.com/drpoovilleorg/metrique',
     license='GPLv3',
     author='Chris Ward',
     author_email='cward@redhat.com',
     download_url=download_url,
-    description='Python/MongoDB Information Platform',
+    description='Python/MongoDB Information Platform - Server',
     long_description=readme,
-    data_files=[('metrique', ['readme.rst', 'version.txt'])],
+    data_files=[],
     classifiers=[
         'Development Status :: 4 - Beta',
         'Intended Audience :: Science/Research',
@@ -52,12 +38,49 @@ setup(
     ],
     keywords=['data', 'mining', 'information', 'mongo',
               'etl', 'analysis', 'search', 'query'],
-    provides=['metrique'],
-    requires=['pandas', 'psycopg2', 'MySQLdb', 'tornado (>=3.0)', 'pql',
-              'argparse', 'dateutils', 'simplejson', 'pymongo',
-              'bson', 'decorator', 'requests', 'futures',
-              'dulwich', 'tz', 'celery'],
-    scripts=['metrique/server/bin/metrique-server',
-             'install/metrique-setup-server',
-             'install/metrique-setup-client']
 )
+
+
+if __name__ == '__main__':
+    import subprocess
+    import argparse
+
+    VALID_PKGS = ['all', 'server', 'client']
+    VALID_TYPES = ['sdist']
+
+    def build(pkg, _type):
+        setup_py = '%s_setup.py' % pkg
+        cmd = 'python %s build %s' % (setup_py, _type)
+        logger.warn(cmd)
+        return subprocess.call(cmd.split(' '))
+
+    def build_all(_type):
+        build_client(_type)
+        build_server(_type)
+
+    def build_server(_type):
+        return build('server', _type)
+
+    def build_client(_type):
+        return build('client', _type)
+
+    cli = argparse.ArgumentParser(description='Metrique setup.py cli')
+    cli.add_argument('--pkg',
+                     choices=VALID_PKGS,
+                     default='all')
+    cli.add_argument('--type',
+                     choices=VALID_TYPES,
+                     default='sdist')
+    cli.add_argument('--upload', action='store_true')
+
+    args = cli.parse_args()
+
+    assert args.pkg in VALID_PKGS
+    assert args.type in VALID_TYPES
+
+    if args.pkg == 'all':
+        build_all(_type=args.type)
+    elif args.pkg == 'client':
+        build_client(_type=args.type)
+    elif args.pkg == 'server':
+        build_server(_type=args.type)

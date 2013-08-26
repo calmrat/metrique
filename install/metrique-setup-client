@@ -5,8 +5,8 @@ from functools import partial
 from pprint import PrettyPrinter
 import sys
 
-from metrique.tools.defaults import DEFAULT_CONFIG_FILE
-from metrique.tools.jsonconfig import JSONConfig
+from metrique.http_api import DEFAULT_CONFIG_FILE
+from jsonconf import JSONConf
 
 pp = PrettyPrinter(indent=2)
 prompter = lambda x: raw_input(x)

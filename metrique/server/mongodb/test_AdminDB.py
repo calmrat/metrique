@@ -4,9 +4,9 @@
 import os
 from unittest import TestCase, main
 
-from metrique.server.utils.mongodb.basemongodb import BaseMongoDB
+from metrique.server.mongodb.basemongodb import BaseMongoDB
 
-from metrique.tools.jsonconfig import JSONConfig
+from jsonconf import JSONConf
 
 config_dir = '~/.metrique/'
 config_dir = os.path.expanduser(config_dir)
