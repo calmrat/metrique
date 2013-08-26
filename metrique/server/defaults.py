@@ -4,12 +4,17 @@
 
 import logging
 
+DEFAULT_CONFIG_DIR = '~/.metrique'
+MONGODB_HOST = '127.0.0.1'
+METRIQUE_HTTP_HOST = '127.0.0.1'
+METRIQUE_HTTP_PORT = 8080
+
 METRIQUE_CONF = 'metrique_config'
 MONGODB_CONF = 'mongodb_config'
-SERVER_CONFIG_PATH = '~/.metrique/'
-PID_FILE = '~/.metrique/server.pid'
-SSL_CERT_KEY = '~/.metrique/pkey.pem'
-SSL_CERT = '~/.metrique/cert.pem'
+SERVER_CONFIG_PATH = DEFAULT_CONFIG_DIR
+PID_FILE = '%s/server.pid' % DEFAULT_CONFIG_DIR
+SSL_CERT_KEY = '%s/.metrique/pkey.pem' % DEFAULT_CONFIG_DIR
+SSL_CERT = '%s/.metrique/cert.pem' % DEFAULT_CONFIG_DIR
 
 VALID_PERMISSIONS = (None, 'r', 'rw', 'admin')
 
@@ -36,6 +41,6 @@ LOG_FORMAT = u'%(processName)s:%(message)s'
 LOG_FORMATTER = logging.Formatter(LOG_FORMAT,
                                   DATE_FORMAT)
 
-LOGDIR_SAVEAS = '~/.metrique/logs/metriqued.log'
+LOGDIR_SAVEAS = '%s/logs/metriqued.log' % DEFAULT_CONFIG_DIR
 BACKUP_COUNT = 5
 MAX_BYTES = 1.049e+7

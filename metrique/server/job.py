@@ -11,11 +11,9 @@ import simplejson as json
 import sys
 import traceback
 
-from metrique.tools import dt2ts, oid
-from metrique.tools.json import json_encode
-
 from metrique.server.config import mongodb
 from metrique.server.defaults import MONGODB_CONF
+from metrique.server.utils import dt2ts, new_oid
 
 
 class Job(object):
@@ -35,7 +33,7 @@ class Job(object):
             self.active = doc['active']
             self.error = doc['error']
         else:
-            self.objectid = oid()
+            self.objectid = new_oid()
             self.created = dt2ts(datetime.utcnow())
             # which arguments are associated with this job
             self.args = None
@@ -50,7 +48,7 @@ class Job(object):
 
     @property
     def _base_spec(self):
-        return {'_id': self.objectid}
+        return {'_id': str(self.objectid)}
 
     def stop(self):
         logger.debug('STOP: %s' % self.objectid)
@@ -64,18 +62,15 @@ class Job(object):
         # certain content can have unpredictable keys names
         # that cause mongo issues if the data structures
         # are 'nested document' like so... dump as json
-        _args = json.dumps(self.args, default=json_encode,
-                           ensure_ascii=False)
+        _args = json.dumps(self.args, ensure_ascii=False)
 
         _payload.update({
-            '_id': self.objectid,
-            'atime': now,
-            'created': self.created,
+            'atime': dt2ts(now),
+            'created': dt2ts(self.created),
             'active': self.active,
             'completed': self.completed,
-            'error': self.error,
+            'error': str(self.error),
             'class': str(self.__class__),
-            'action': self.action,
             'args': _args,
         })
         return _payload

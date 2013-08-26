@@ -9,12 +9,12 @@ import requests as rq
 import simplejson as json
 
 from metrique.client.config import Config
+from metrique.client.config import DEFAULT_CONFIG_DIR, DEFAULT_CONFIG_FILE
 from metrique.client import query_api, etl_api, users_api
 from metrique.client import etl_activity, get_cube
 
-from metrique.tools import csv2list
-from metrique.tools.defaults import DEFAULT_CONFIG_FILE
-from metrique.tools.json import json_encode
+from metrique.client.utils import csv2list
+from metrique.client.json import json_encode
 
 
 class HTTPClient(object):
@@ -70,6 +70,8 @@ class HTTPClient(object):
     def load_config(self, config_file, config_dir=None, force=False):
         if not config_file:
             config_file = DEFAULT_CONFIG_FILE
+        if not config_dir:
+            config_dir = DEFAULT_CONFIG_DIR
         self.config = Config(config_file, config_dir, force)
 
     def _kwargs_json(self, **kwargs):

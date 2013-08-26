@@ -9,7 +9,7 @@ import re
 
 from metrique.server.cubes import get_fields, get_cube
 from metrique.server.job import job_save
-from metrique.tools import dt2ts
+from metrique.server.utils import dt2ts
 
 BATCH_SIZE = 16777216  # hard limit is 16M...
 

@@ -9,7 +9,7 @@ import sys
 import traceback
 
 from metrique.client.cubes.basegitobject import BaseGitObject
-from metrique.tools import oid as new_oid
+from metrique.tools import new_oid
 
 related_re = re.compile('Related: (.+)$', re.I)
 resolves_re = re.compile('Resolves: (.+)$', re.I)

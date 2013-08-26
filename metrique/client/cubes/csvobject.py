@@ -7,7 +7,7 @@
 import os
 
 from metrique.client.cubes.basecsv import BaseCSV
-from metrique.tools import oid
+from metrique.client.utils import new_oid
 
 
 class CSVObject(BaseCSV):
@@ -33,5 +33,5 @@ class CSVObject(BaseCSV):
         objects = self.loaduri(uri)
         # save the uri for reference too
         objects = self.set_column(objects, 'uri', uri)
-        objects = self.set_column(objects, '_oid', _oid if _oid else oid)
+        objects = self.set_column(objects, '_oid', _oid if _oid else new_oid)
         return self.save_objects(objects)

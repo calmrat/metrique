@@ -6,7 +6,7 @@ import simplejson as json
 
 from datetime import datetime as dt
 
-from metrique.tools import dt2ts
+from metrique.client.utils import dt2ts
 
 json_encoder = json.JSONEncoder()
 

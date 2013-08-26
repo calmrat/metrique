@@ -6,7 +6,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 from copy import deepcopy
-from metrique.tools import ts2dt, dt2ts
+from metrique.client.utils import ts2dt, dt2ts
 from datetime import datetime
 
 
