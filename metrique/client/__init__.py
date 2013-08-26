@@ -15,7 +15,7 @@ from metrique.client.config import CLIENT_CUBES_PATH
 
 __pkg__ = 'metrique-client'
 
-__version__ = '0.1.3-alpha'
+__version__ = '0.1.3-alpha14'
 
 __pkgs__ = ['metrique.client']
 
@@ -24,18 +24,25 @@ __provides__ = __pkgs__
 __desc__ = 'Python/MongoDB Information Platform - Client'
 
 __requires__ = [
-    'pandas (>=0.12.0)', 'psycopg2', 'MySQLdb',
-    'tornado (>=3.0)', 'pql', 'dateutils',
-    'bson', 'decorator', 'requests', 'simplejson',
-    'futures', 'dulwich', 'tz', 'celery',
-    'jsonconf',
+    'pandas (>=0.12)', 'psycopg2 (>=2.5)', 'mysqldb (>=1.2)',
+    'tornado (>=3.0)', 'pql (>=0.3.2)', 'dateutils (>=0.6.6)',
+    'bson (>=0.12)', 'decorator (>=3.4)', 'requests (>=1.2)',
+    'simplejson (>=3.3)', 'futures (>=2.1)', 'dulwich (>=0.9)',
+    'celery (>=3.0)', 'jsonconf (>=0.1.0)',
+    'pytz',
 ]
 
-__irequires__ = __requires__
+__irequires__ = [
+    'pandas>=0.12', 'psycopg2>=2.5', 'mysqldb>=1.2',
+    'tornado>=3.0', 'pql>=0.3.2', 'dateutils>=0.6.6',
+    'bson>=0.12', 'decorator>=3.4', 'requests>=1.2',
+    'simplejson>=3.3', 'futures>=2.1', 'dulwich>=0.9',
+    'celery>=3.0', 'jsonconf>=0.1.0',
+    'pytz>=2013b',
+]
 
 __scripts__ = [
-    'metrique/server/bin/metrique-server',
-    'install/metrique-setup-client'
+    'install/metrique-setup-client',
 ]
 
 __deplinks__ = [

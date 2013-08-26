@@ -5,6 +5,12 @@
 import logging
 logging.basicConfig()
 logger = logging.getLogger(__name__)
+from distutils.core import setup
+import os
+import shutil
+
+# CLIENT SPECIFIC
+import metrique.server as mclient
 
 with open('README') as _file:
     readme = _file.read()
@@ -18,7 +24,6 @@ default_setup = dict(
     author='Chris Ward',
     author_email='cward@redhat.com',
     download_url=download_url,
-    description='Python/MongoDB Information Platform - Server',
     long_description=readme,
     data_files=[],
     classifiers=[
@@ -38,49 +43,23 @@ default_setup = dict(
     ],
     keywords=['data', 'mining', 'information', 'mongo',
               'etl', 'analysis', 'search', 'query'],
+
+    dependency_links=mclient.__deplinks__,
+    description=mclient.__desc__,
+    install_requires=mclient.__irequires__,
+    name=mclient.__pkg__,
+    packages=mclient.__pkgs__,
+    provides=mclient.__provides__,
+    requires=mclient.__requires__,
+    scripts=mclient.__scripts__,
+    version=mclient.__version__,
 )
 
 
-if __name__ == '__main__':
-    import subprocess
-    import argparse
-
-    VALID_PKGS = ['all', 'server', 'client']
-    VALID_TYPES = ['sdist']
-
-    def build(pkg, _type):
-        setup_py = '%s_setup.py' % pkg
-        cmd = 'python %s build %s' % (setup_py, _type)
-        logger.warn(cmd)
-        return subprocess.call(cmd.split(' '))
-
-    def build_all(_type):
-        build_client(_type)
-        build_server(_type)
-
-    def build_server(_type):
-        return build('server', _type)
-
-    def build_client(_type):
-        return build('client', _type)
-
-    cli = argparse.ArgumentParser(description='Metrique setup.py cli')
-    cli.add_argument('--pkg',
-                     choices=VALID_PKGS,
-                     default='all')
-    cli.add_argument('--type',
-                     choices=VALID_TYPES,
-                     default='sdist')
-    cli.add_argument('--upload', action='store_true')
-
-    args = cli.parse_args()
-
-    assert args.pkg in VALID_PKGS
-    assert args.type in VALID_TYPES
-
-    if args.pkg == 'all':
-        build_all(_type=args.type)
-    elif args.pkg == 'client':
-        build_client(_type=args.type)
-    elif args.pkg == 'server':
-        build_server(_type=args.type)
+try:
+    os.remove('setup.py')
+except OSError:
+    pass
+shutil.copyfile('metrique/server/setup.py', 'setup.py')
+setup(**default_setup)
+os.remove('setup.py')
