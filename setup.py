@@ -6,7 +6,7 @@ import logging
 logging.basicConfig()
 logger = logging.getLogger(__name__)
 
-with open('readme.rst') as _file:
+with open('README') as _file:
     readme = _file.read()
 
 github = 'https://github.com/drpoovilleorg/metrique'
