@@ -4,7 +4,7 @@
 
 from psycopg2 import DatabaseError
 from metrique.client.cubes.basesql import BaseSql
-from metrique.tools.sql.teiid import TEIID
+from metrique.client.sql.teiid import TEIID
 
 DEFAULT_CONFIG = {
     "host":         "",

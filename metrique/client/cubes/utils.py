@@ -2,9 +2,10 @@
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 # Author: "Chris Ward" <cward@redhat.com>
 
-import inspect
 import os
 import sys
+
+from metrique.client.config import DEFAULT_SYSTEM_CUBES_PATH
 
 
 def cube_pkg_mod_cls(cube):
@@ -25,15 +26,6 @@ def cube_pkg_mod_cls(cube):
     cls = ''.join([s[0].upper() + s[1:] for s in _cube[1:]])
     return pkg, mod, cls
 
-# MODULE name of where default built-in cubes live
-DEFAULT_MODULE = 'metrique.client.cubes'
-
-# PATH to where default client cubes are expected to live
-ipath = inspect.getfile(inspect.currentframe())
-cwd = os.path.dirname(os.path.abspath(ipath))
-base_path = '/'.join(cwd.split('/')[:-1])
-SYSTEM_CUBES_PATH = '/'.join((base_path, 'client/cubes'))
-
 
 def set_cube_path(path):
     '''
@@ -42,12 +34,13 @@ def set_cube_path(path):
     If no path provided, default to making *metrique.client.cubes*
     get added to the current namespace.
     '''
-    path = os.path.expanduser(path)
-    sys.path.append(path)
+    if path:
+        path = os.path.expanduser(path)
+        sys.path.append(path)
     # also append system cubes path for easy/consistent importing
-    sys.path.append(SYSTEM_CUBES_PATH)
-    sys.path = list(set(sys.path))  # make sure we don't have dups...
-    return path
+    sys.path.append(DEFAULT_SYSTEM_CUBES_PATH)
+    sys.path = sorted(set(sys.path))  # make sure we don't have dups...
+    return sys.path
 
 
 def get_cube(cube, path=None):
@@ -63,7 +56,6 @@ def get_cube(cube, path=None):
 
     '''
     set_cube_path(path)
-
     pkg, mod, cls = cube_pkg_mod_cls(cube)
     _pkg = __import__(pkg, fromlist=[mod])
     _mod = getattr(_pkg, mod)

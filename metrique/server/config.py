@@ -184,8 +184,12 @@ class metrique(JSONConf):
 
 
 class mongodb(JSONConf):
-    def __init__(self, config_file=MONGODB_CONF, config_dir=None,
+    def __init__(self, config_file=None, config_dir=None,
                  force=True, *args, **kwargs):
+        if not config_file:
+            config_file = MONGODB_CONF
+        if not config_dir:
+            config_dir = DEFAULT_CONFIG_DIR
         super(mongodb, self).__init__(config_file, config_dir,
                                       force=force, *args, **kwargs)
 

@@ -11,7 +11,7 @@ import re
 import simplejson as json
 
 from metrique.client.cubes.basejson import BaseJSON
-from metrique.tools import milli2sec, dt2ts
+from metrique.client.utils import milli2sec, dt2ts
 
 DEFAULT_CONFIG = {
     'uri': 'http://builds.apache.org',

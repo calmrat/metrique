@@ -13,6 +13,7 @@ class BaseCube(HTTPClient):
     defaults = {}
     fields = {}
     result = None
+    _result_class = None
 
     def __init__(self, cube=None, **kwargs):
         if cube:

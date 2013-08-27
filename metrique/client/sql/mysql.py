@@ -2,10 +2,9 @@
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 # Author: "Chris Ward <cward@redhat.com>
 
-# FIXME: remove or update!
-# FIXME: add to deps: mysql
+# FIXME: update!
 import MySQLdb
-from metrique.tools.sql.basesql import BaseSql
+from metrique.client.sql.basesql import BaseSql
 
 
 class Mysql(BaseSql):

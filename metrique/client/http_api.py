@@ -67,7 +67,7 @@ class HTTPClient(object):
         if password:
             self.config.api_password = password
 
-    def load_config(self, config_file, config_dir=None, force=False):
+    def load_config(self, config_file, config_dir, force=False):
         if not config_file:
             config_file = DEFAULT_CONFIG_FILE
         if not config_dir:

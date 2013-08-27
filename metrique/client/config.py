@@ -3,15 +3,26 @@
 # Author: "Chris Ward" <cward@redhat.com>
 
 import logging
+import inspect
 import os
 import re
 
 from jsonconf import JSONConf
 
-DEFAULT_CONFIG_DIR = '~/.metrique/'
+DEFAULT_CONFIG_DIR = '~/.metrique'
 DEFAULT_CONFIG_FILE = 'http_api'
 
-CLIENT_CUBES_PATH = os.path.join(DEFAULT_CONFIG_DIR, 'cubes')
+DEFAULT_CUBES_BASE_PATH = 'cubes/'
+DEFAULT_CLIENT_CUBES_PATH = os.path.join(DEFAULT_CONFIG_DIR,
+                                         DEFAULT_CUBES_BASE_PATH)
+
+# PATH to where default client cubes are expected to live
+ipath = inspect.getfile(inspect.currentframe())
+cwd = os.path.dirname(os.path.abspath(ipath))
+base_path = '/'.join(cwd.split('/')[:-1])
+DEFAULT_SYSTEM_CUBES_PATH = os.path.join(base_path,
+                                         'client',
+                                         DEFAULT_CUBES_BASE_PATH)
 
 API_VERSION = 'v1'
 API_REL_PATH = 'api'
@@ -23,17 +34,20 @@ METRIQUE_HTTP_PORT = 8080
 
 class Config(JSONConf):
     ''' Client config (property) class '''
-    def __init__(self, config_dir=None, force=True,
+    def __init__(self, config_file, config_dir, force=True,
                  *args, **kwargs):
+        if not config_file:
+            config_file = DEFAULT_CONFIG_FILE
         if not config_dir:
             config_dir = DEFAULT_CONFIG_DIR
-        super(Config, self).__init__(config_dir, force=force,
-                                      *args, **kwargs)
+        super(Config, self).__init__(config_file=config_file,
+                                     config_dir=config_dir,
+                                     force=force, *args, **kwargs)
 
     @property
     def cubes_path(self):
         ''' Path to client modules '''
-        return self._default('cubes_path', CLIENT_CUBES_PATH)
+        return self._default('cubes_path', DEFAULT_CLIENT_CUBES_PATH)
 
     @property
     def api_ssl(self):
