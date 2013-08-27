@@ -383,7 +383,7 @@ class Result(DataFrame):
         '''
         dt = Timestamp(dt)
         starts = self._start.groupby(self._oid).min()
-        oids = starts[starts > dt].index.tolist()
+        oids = set(starts[starts > dt].index.tolist())
         return self[self._oid.apply(lambda v: v in oids)]
 
     @filtered
