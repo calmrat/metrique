@@ -251,7 +251,7 @@ class BaseSql(BaseCube):
         Accept, but ignore unknown kwargs.
         '''
         if 'debug' in kwargs:
-            self.config.debug = kwargs['debug']
+            self.config.debug = self.logger, kwargs['debug']
 
         if not id_delta:
             id_delta = []

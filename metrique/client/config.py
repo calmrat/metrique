@@ -160,18 +160,30 @@ class Config(JSONConf):
             logger, value = value
             self._set_debug(value, logger)
         else:
-            self._set_debug(value)
+            try:
+                logger = self.logger
+            except AttributeError:
+                self._set_debug(value)
+            else:
+                self._set_debug(value, logger)
         self.config['debug'] = value
 
     def _set_debug(self, level, logger=None):
-        if not logger or level == 2:
+        '''
+        if we get a level of 2, we want to apply the
+        debug level to all loggers
+        '''
+        if not logger:
             logger = logging.getLogger()
+
         if level in [-1, False]:
             logger.setLevel(logging.WARN)
         elif level in [0, None]:
             logger.setLevel(logging.INFO)
         elif level in [True, 1, 2]:
             logger.setLevel(logging.DEBUG)
+            rlogger = logging.getLogger()
+            rlogger.setLevel(logging.DEBUG)
 
     @property
     def sql_delta_batch_size(self):
