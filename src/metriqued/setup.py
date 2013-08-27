@@ -9,20 +9,18 @@ from distutils.core import setup
 
 # FIXME: include metrique/server/static/
 
-__pkg__ = 'metrique-server'
+__pkg__ = 'metriqued'
 __release__ = 27
 __version__ = '0.1.3-alpha%i' % __release__
 __pkgs__ = [
-    'metrique',
-    'metrique.server',
-    'metrique.server.mongodb',
-    'metrique.server.tornado',
+    'mongodb',
+    'tornado',
 ]
 __provides__ = __pkgs__
 __datafiles__ = []
 __desc__ = 'Python/MongoDB Information Platform - Server'
 __scripts__ = [
-    'install/metrique-setup-server',
+    'install/metriqued-setup',
 ]
 __requires__ = [
     'bson (>=0.3.3)',
