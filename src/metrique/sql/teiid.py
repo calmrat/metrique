@@ -4,7 +4,7 @@
 
 import psycopg2
 import re
-from metrique.client.sql.basesql import BaseSql
+from metrique.sql.basesql import BaseSql
 
 
 class TEIID(BaseSql):

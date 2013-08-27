@@ -4,7 +4,7 @@
 
 import simplejson as json
 
-from metrique.client.cubes.basecube import BaseCube
+from metrique.cubes.basecube import BaseCube
 
 
 class BaseJSON(BaseCube):

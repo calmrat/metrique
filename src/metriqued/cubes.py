@@ -5,7 +5,7 @@
 import logging
 logger = logging.getLogger(__name__)
 
-from metrique.server.config import mongodb
+from metriqued.config import mongodb
 
 mongodb_config = mongodb()
 

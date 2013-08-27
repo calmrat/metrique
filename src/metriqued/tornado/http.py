@@ -9,7 +9,7 @@ import os
 import tornado.ioloop
 import tornado.web
 
-from metrique.server.metriqueserver import MetriqueServer
+from metriqued.metriqueserver import MetriqueServer
 
 from handlers import PingHandler
 from handlers import QueryAggregateHandler, QueryFindHandler

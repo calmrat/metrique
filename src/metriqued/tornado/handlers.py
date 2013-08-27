@@ -13,8 +13,8 @@ import simplejson as json
 import tornado
 import traceback
 
-from metrique.server.defaults import VALID_PERMISSIONS as VP
-from metrique.server import query_api, etl_api, users_api
+from metriqued.defaults import VALID_PERMISSIONS as VP
+from metriqued import query_api, etl_api, users_api
 
 __all__ = '__all__'
 

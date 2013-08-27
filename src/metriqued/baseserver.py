@@ -9,9 +9,9 @@ from socket import getfqdn
 
 FQDN = getfqdn()
 
-from metrique.server.config import metrique, mongodb
-from metrique.server.cubes import list_cubes, list_cube_fields
-from metrique.server.defaults import METRIQUE_CONF, MONGODB_CONF
+from metriqued.config import metrique, mongodb
+from metriqued.cubes import list_cubes, list_cube_fields
+from metriqued.defaults import METRIQUE_CONF, MONGODB_CONF
 
 
 class BaseServer(object):

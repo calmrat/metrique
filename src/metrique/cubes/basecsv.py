@@ -8,7 +8,7 @@ import os
 import re
 from urllib2 import urlopen
 
-from metrique.client.cubes.basecube import BaseCube
+from metrique.cubes.basecube import BaseCube
 
 
 class BaseCSV(BaseCube):

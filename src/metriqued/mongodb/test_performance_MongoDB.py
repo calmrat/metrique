@@ -6,7 +6,7 @@ import os
 import time
 from unittest import TestCase, TestLoader, TextTestRunner
 
-from metrique.server.Utils.MongoDB.BaseMongoDB import BaseMongoDB
+from metriqued.Utils.MongoDB.BaseMongoDB import BaseMongoDB
 
 from jsonconf import JSONConf
 

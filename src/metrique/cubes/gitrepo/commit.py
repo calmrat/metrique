@@ -8,8 +8,8 @@ import subprocess
 import sys
 import traceback
 
-from metrique.client.cubes.basegitobject import BaseGitObject
-from metrique.client.utils import new_oid
+from metrique.cubes.basegitobject import BaseGitObject
+from metrique.utils import new_oid
 
 related_re = re.compile('Related: (.+)$', re.I)
 resolves_re = re.compile('Resolves: (.+)$', re.I)
@@ -121,7 +121,7 @@ class Commit(BaseGitObject):
         return self.stats[commit]
 
 if __name__ == '__main__':
-    from metrique.client.argparsers import cube_cli
+    from metrique.argparsers import cube_cli
     a = cube_cli.parse_args()
     kwargs = {}
     kwargs.update(a.cube_init_kwargs_config_file)

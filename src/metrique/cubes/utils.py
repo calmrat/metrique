@@ -5,7 +5,7 @@
 import os
 import sys
 
-from metrique.client.config import DEFAULT_SYSTEM_CUBES_PATH
+from metrique.config import DEFAULT_SYSTEM_CUBES_PATH
 
 
 def cube_pkg_mod_cls(cube):

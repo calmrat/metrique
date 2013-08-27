@@ -4,8 +4,8 @@
 
 from collections import defaultdict
 
-from metrique.client.http_api import HTTPClient
-from metrique.client.decorators import memo
+from metrique.http_api import HTTPClient
+from metrique.decorators import memo
 
 
 class BaseCube(HTTPClient):

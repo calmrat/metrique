@@ -4,7 +4,7 @@
 
 # FIXME: update!
 import MySQLdb
-from metrique.client.sql.basesql import BaseSql
+from metrique.sql.basesql import BaseSql
 
 
 class Mysql(BaseSql):

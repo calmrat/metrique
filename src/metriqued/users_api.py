@@ -5,9 +5,9 @@
 import logging
 logger = logging.getLogger(__name__)
 
-from metrique.server.job import job_save
-from metrique.server.defaults import VALID_PERMISSIONS
-from metrique.server.cubes import get_auth_keys
+from metriqued.job import job_save
+from metriqued.defaults import VALID_PERMISSIONS
+from metriqued.cubes import get_auth_keys
 from passlib.hash import sha256_crypt
 
 

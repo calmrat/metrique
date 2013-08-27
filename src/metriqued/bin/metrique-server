@@ -7,9 +7,9 @@ import time
 import signal
 import sys
 
-from metrique.server.defaults import SERVER_CONFIG_PATH, METRIQUE_CONF
-from metrique.server.config import metrique
-from metrique.server.tornado.http import HTTPServer
+from metriqued.defaults import SERVER_CONFIG_PATH, METRIQUE_CONF
+from metriqued.config import metrique
+from metriqued.tornado.http import HTTPServer
 
 
 def get_pid(pid_file):

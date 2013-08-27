@@ -22,7 +22,7 @@ from defaults import METRIQUE_HTTP_PORT
 
 from jsonconf import JSONConf
 
-from metrique.server.mongodb.basemongodb import BaseMongoDB
+from metriqued.mongodb.basemongodb import BaseMongoDB
 
 
 class metrique(JSONConf):

@@ -3,8 +3,8 @@
 # Author: "Chris Ward <cward@redhat.com>
 
 from psycopg2 import DatabaseError
-from metrique.client.cubes.basesql import BaseSql
-from metrique.client.sql.teiid import TEIID
+from metrique.cubes.basesql import BaseSql
+from metrique.sql.teiid import TEIID
 
 DEFAULT_CONFIG = {
     "host":         "",

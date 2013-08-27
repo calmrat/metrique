@@ -9,10 +9,10 @@ client side configuration and opensource cubes.
 '''
 
 from result import Result
-from metrique.client.cubes import set_cube_path
-from metrique.client.cubes.utils import get_cube
-from metrique.client.config import DEFAULT_CLIENT_CUBES_PATH
-from metrique.client.http_api import HTTPClient as pyclient
+from metrique.cubes import set_cube_path
+from metrique.cubes.utils import get_cube
+from metrique.config import DEFAULT_CLIENT_CUBES_PATH
+from metrique.http_api import HTTPClient as pyclient
 
 # auto_load default cube paths (eg, ~/.metrique/cubes
 # load defaults; can be overridden later

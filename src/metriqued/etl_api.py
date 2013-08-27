@@ -10,12 +10,12 @@ from copy import copy
 from datetime import datetime
 import re
 
-from metrique.server.cubes import get_cube, get_etl_activity
-from metrique.server.job import job_save
-from metrique.server.config import mongodb
+from metriqued.cubes import get_cube, get_etl_activity
+from metriqued.job import job_save
+from metriqued.config import mongodb
 
-from metrique.server.utils import dt2ts
-from metrique.server.utils import new_oid
+from metriqued.utils import dt2ts
+from metriqued.utils import new_oid
 
 # obj props (client mutable) are prefixed w/ 1 underscore
 RE_PROP = re.compile('^_')

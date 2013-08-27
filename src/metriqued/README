@@ -71,7 +71,7 @@ Default: `~/.metrique/cubes`
 
 To quickly make those cubes available in sys.path::
 
-    IN  [] from metrique.client.cubes import set_cube_path
+    IN  [] from metrique.cubes import set_cube_path
     IN  [] set_cube_path()  # defaults to '~/.metrique/cubes'
 
 Then, to load a cube for extraction, query or administration,

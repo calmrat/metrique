@@ -9,23 +9,6 @@ from dateutil.parser import parse as dt_parse
 import pytz
 
 
-def doublequote(item):
-    ''' convert a given obj to string, double-quoted'''
-    return '"%s"' % item
-
-
-def list2csv(_list, quote=False):
-    ''' convert a list of objects into a csv string '''
-    if quote:
-        _list = map(doublequote, _list)
-    return ','.join(map(str, _list))
-
-
-def perc(numerator, denominator):
-    ''' calculate percentage '''
-    return (float(numerator) / denominator) * 100
-
-
 def csv2list(csv, delimiter=','):
     ''' convert a str(csv,csv) into a list of strings '''
     if type(csv) in [list, tuple, set]:

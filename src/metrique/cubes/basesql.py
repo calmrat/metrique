@@ -9,9 +9,9 @@ import re
 import time
 import traceback
 
-from metrique.client.cubes.basecube import BaseCube
+from metrique.cubes.basecube import BaseCube
 
-from metrique.client.utils import batch_gen, ts2dt
+from metrique.utils import batch_gen, ts2dt
 
 DEFAULT_ROW_LIMIT = 100000
 DEFAULT_RETRIES = -1

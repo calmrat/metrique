@@ -4,7 +4,7 @@
 
 import argparse
 
-from metrique.client.config import Config
+from metrique.config import Config
 
 
 class CubeInitConfigAction(argparse.Action):

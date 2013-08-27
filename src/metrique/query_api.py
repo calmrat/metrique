@@ -7,7 +7,7 @@
 import logging
 logger = logging.getLogger(__name__)
 
-from metrique.client.result import Result
+from metrique.result import Result
 
 CMD = 'query'
 

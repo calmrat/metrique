@@ -6,8 +6,8 @@
 
 import os
 
-from metrique.client.cubes.basecsv import BaseCSV
-from metrique.client.utils import new_oid
+from metrique.cubes.basecsv import BaseCSV
+from metrique.utils import new_oid
 
 
 class CSVObject(BaseCSV):

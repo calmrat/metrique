@@ -11,9 +11,9 @@ import simplejson as json
 import sys
 import traceback
 
-from metrique.server.config import mongodb
-from metrique.server.defaults import MONGODB_CONF
-from metrique.server.utils import dt2ts, new_oid
+from metriqued.config import mongodb
+from metriqued.defaults import MONGODB_CONF
+from metriqued.utils import dt2ts, new_oid
 
 
 class Job(object):

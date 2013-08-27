@@ -4,7 +4,7 @@
 import os
 from unittest import TestCase, main
 
-from metrique.server.mongodb.basemongodb import BaseMongoDB
+from metriqued.mongodb.basemongodb import BaseMongoDB
 
 from jsonconf import JSONConf
 

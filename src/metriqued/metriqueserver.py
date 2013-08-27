@@ -9,8 +9,8 @@ logger = logging.getLogger(__name__)
 from concurrent.futures import ThreadPoolExecutor
 import os
 
-from metrique.server.baseserver import BaseServer
-from metrique.server.defaults import BACKUP_COUNT, MAX_BYTES
+from metriqued.baseserver import BaseServer
+from metriqued.defaults import BACKUP_COUNT, MAX_BYTES
 
 
 class MetriqueServer(BaseServer):

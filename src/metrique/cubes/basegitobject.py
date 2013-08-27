@@ -20,8 +20,8 @@ except Exception as e:
 import os
 import subprocess
 
-from metrique.client.cubes.basecube import BaseCube
-from metrique.client.config import DEFAULT_CONFIG_DIR
+from metrique.cubes.basecube import BaseCube
+from metrique.config import DEFAULT_CONFIG_DIR
 
 TMP_DIR = os.path.join(DEFAULT_CONFIG_DIR, 'gitrepos/')
 

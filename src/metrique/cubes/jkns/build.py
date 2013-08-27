@@ -10,8 +10,8 @@ from urllib2 import urlopen, HTTPError
 import re
 import simplejson as json
 
-from metrique.client.cubes.basejson import BaseJSON
-from metrique.client.utils import milli2sec, dt2ts
+from metrique.cubes.basejson import BaseJSON
+from metrique.utils import milli2sec, dt2ts
 
 DEFAULT_CONFIG = {
     'uri': 'http://builds.apache.org',
@@ -182,7 +182,7 @@ class Build(BaseJSON):
 
 
 if __name__ == '__main__':
-    from metrique.client.argparsers import cube_cli
+    from metrique.argparsers import cube_cli
     a = cube_cli.parse_args()
     kwargs = {}
     kwargs.update(a.cube_init_kwargs_config_file)

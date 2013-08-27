@@ -8,7 +8,7 @@ from datetime import datetime
 from time import time
 import pytz
 
-from metrique.client.utils import batch_gen
+from metrique.utils import batch_gen
 
 DEFAULT_BATCH = 100000
 CMD = 'admin/etl'

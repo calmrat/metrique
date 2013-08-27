@@ -8,13 +8,13 @@ import os
 import requests as rq
 import simplejson as json
 
-from metrique.client.config import Config
-from metrique.client.config import DEFAULT_CONFIG_DIR, DEFAULT_CONFIG_FILE
-from metrique.client import query_api, etl_api, users_api
-from metrique.client import etl_activity, get_cube
+from metrique.config import Config
+from metrique.config import DEFAULT_CONFIG_DIR, DEFAULT_CONFIG_FILE
+from metrique import query_api, etl_api, users_api
+from metrique import etl_activity, get_cube
 
-from metrique.client.utils import csv2list
-from metrique.client.json import json_encode
+from metrique.utils import csv2list
+from metrique.json import json_encode
 
 
 class HTTPClient(object):
