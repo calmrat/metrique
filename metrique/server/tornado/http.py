@@ -13,6 +13,7 @@ from metrique.server.metriqueserver import MetriqueServer
 
 from handlers import PingHandler
 from handlers import QueryAggregateHandler, QueryFindHandler
+from handlers import QueryDeptreeHandler
 from handlers import QueryFetchHandler, QueryCountHandler
 from handlers import QueryDistinctHandler
 from handlers import UsersAddHandler
@@ -45,6 +46,7 @@ class HTTPServer(MetriqueServer):
             handlers=[
                 (r"/api/v1/ping/?", PingHandler, init),
                 (r"/api/v1/query/find", QueryFindHandler, init),
+                (r"/api/v1/query/deptree", QueryDeptreeHandler, init),
                 (r"/api/v1/query/count", QueryCountHandler, init),
                 (r"/api/v1/query/aggregate", QueryAggregateHandler, init),
                 (r"/api/v1/query/fetch", QueryFetchHandler, init),

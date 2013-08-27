@@ -25,6 +25,8 @@ class HTTPClient(object):
     name = None
 
     find = query_api.find
+    deptree = query_api.deptree
+    tree = query_api.deptree
     count = query_api.count
     fetch = query_api.fetch
     distinct = query_api.distinct

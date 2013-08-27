@@ -97,6 +97,14 @@ def find(self, query, fields=None, date=None, sort=None, one=False,
         return result
 
 
+def deptree(self, field, oids, date=None, level=None, cube=None):
+    if not cube:
+        cube = self.name
+    result = self._get(CMD, 'deptree', field=field, oids=oids, date=date,
+                       level=level, cube=cube)
+    return result
+
+
 def fetch(self, fields=None, date=None, sort=None, skip=0, limit=0, oids=None,
           raw=False, cube=None, **kwargs):
     '''
