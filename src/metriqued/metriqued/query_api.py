@@ -114,6 +114,27 @@ def _parse_oids(oids, delimeter=','):
     return oids
 
 
+@job_save('query deptree')
+def deptree(cube, field, oids, date, level):
+    oids = _parse_oids(oids)
+    _cube = get_cube(cube)
+    checked = set(oids)
+    fringe = oids
+    loop_k = 0
+
+    while len(fringe) > 0:
+        if level and loop_k == abs(level):
+            break
+        spec = pql.find('_oid in %s and %s != None' % (fringe, field) +
+                        _get_date_pql_string(date))
+        deps = _cube.find(spec, ['_oid', field])
+        fringe = set([oid for doc in deps for oid in doc[field]])
+        fringe = filter(lambda oid: oid not in checked, fringe)
+        checked |= set(fringe)
+        loop_k += 1
+    return sorted(checked)
+
+
 @job_save('query fetch')
 def fetch(cube, fields=None, date=None, sort=None, skip=0, limit=0, oids=None):
     if oids is None:

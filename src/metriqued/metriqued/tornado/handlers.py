@@ -316,6 +316,26 @@ class QueryFindHandler(MetriqueInitialized):
                               explain=explain)
 
 
+class QueryDeptreeHandler(MetriqueInitialized):
+    '''
+        RequestHandler for returning back the list of
+        oids matching the given tree.
+    '''
+    @auth('r')
+    @async
+    def get(self):
+        cube = self.get_argument('cube')
+        field = self.get_argument('field')
+        oids = self.get_argument('oids')
+        date = self.get_argument('date')
+        level = self.get_argument('level')
+        return query_api.deptree(cube=cube,
+                                 field=field,
+                                 oids=oids,
+                                 date=date,
+                                 level=level)
+
+
 class QueryDistinctHandler(MetriqueInitialized):
     '''
         RequestHandler for fetching distinct token values for a
