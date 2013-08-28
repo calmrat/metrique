@@ -1,6 +1,3 @@
-# MANIFEST will be stored in git as MANIFEST-[CLIENT,SERVER]
-MANIFEST
-
 # vim swap files
 *.sw*
 
