@@ -1,0 +1,83 @@
+#!/usr/bin/env python
+# Author: "Chris Ward <cward@redhat.com>
+
+from functools import partial
+from pprint import PrettyPrinter
+from os.path import isfile
+from subprocess import call
+
+pp = PrettyPrinter(indent=2)
+
+from metriqued.tornado.http import HTTPServer
+
+prompter = lambda x: raw_input(x)
+
+s = HTTPServer()
+
+s.metrique_config._autosave = False
+
+print 'Metrique Config: '
+pp.pprint(s.metrique_config.config)
+
+_p = "Metrique Hostname/IP (ie, this server): "
+s.metrique_config.setup_basic('http_host', partial(prompter, _p))
+
+_p = "Enable authentication? "
+auth_enabled = False
+if not s.metrique_config.yes_no_prompt(_p):
+    s.metrique_config.auth = False
+else:
+    s.metrique_config.auth = True
+    auth_enabled = True
+
+    _p = "Metrique admin password: "
+    s.metrique_config.setup_basic('admin_password', partial(prompter, _p))
+
+_p = "Enable SSL? "
+if not (auth_enabled or s.metrique_config.yes_no_prompt(_p)):
+    s.metrique_config.ssl = False
+else:
+    s.metrique_config.ssl = True
+
+    ssl_created = False
+    if not (isfile(s.metrique_config.ssl_certificate) and
+            isfile(s.metrique_config.ssl_certificate_key)):
+        _p = "Create a new default, self-signed SSL Certificate + Key? "
+        _bool = s.metrique_config.yes_no_prompt(_p)
+        if _bool:
+            print "Generating self-signed certificate:"
+            call(['openssl', 'req', '-x509', '-newkey', 'rsa:2048', '-keyout',
+                  s.metrique_config.ssl_certificate_key, '-nodes', '-out',
+                  s.metrique_config.ssl_certificate])
+            ssl_created = True
+
+    if not ssl_created:
+        print 'NOTE: SSL Cert found: %s' % s.metrique_config.ssl_certificate
+        print 'NOTE: SSL Cert Key found: %s' % s.metrique_config.ssl_certificate_key
+        _p = "Path to Metrique SSL Certificate: "
+        s.metrique_config.setup_basic('ssl_certificate', partial(prompter, _p))
+
+        _p = "Path to Metrique SSL Certificate Key: "
+        s.metrique_config.setup_basic('ssl_certificate_key', partial(prompter, _p))
+
+print '\n\nMongoDB Config: '
+_p = "MongoDB Host: "
+s.mongodb_config.setup_basic('host', partial(prompter, _p))
+
+_p = "MongoDB Admin password: "
+s.mongodb_config.setup_basic('admin_password', partial(prompter, _p))
+
+_p = "MongoDB Data password: "
+s.mongodb_config.setup_basic('data_password', partial(prompter, _p))
+
+print '\nConfig state after changes: '
+print 'Metrique:'
+pp.pprint(s.metrique_config.config)
+
+print 'MongoDB:'
+pp.pprint(s.mongodb_config.config)
+
+a = s.metrique_config.yes_no_prompt('Save? ')
+if a:
+    s.metrique_config.save()
+    s.mongodb_config.save()
