@@ -14,7 +14,7 @@ from metrique.cubes.basecube import BaseCube
 from metrique.utils import batch_gen, ts2dt
 
 DEFAULT_ROW_LIMIT = 100000
-DEFAULT_RETRIES = -10
+DEFAULT_RETRIES = 10
 
 
 class BaseSql(BaseCube):
