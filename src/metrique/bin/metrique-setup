@@ -1,0 +1,38 @@
+#!/usr/bin/env python
+# Author: "Chris Ward <cward@redhat.com>
+
+from functools import partial
+from pprint import PrettyPrinter
+import sys
+
+from metrique.http_api import DEFAULT_CONFIG_FILE
+from jsonconf import JSONConf
+
+pp = PrettyPrinter(indent=2)
+prompter = lambda x: raw_input(x)
+
+if len(sys.argv) > 1:
+    config_file = sys.argv[1]
+else:
+    config_file = DEFAULT_CONFIG_FILE
+
+c = JSONConfig(config_file)
+
+c._autosave = False
+
+pp.pprint(c.config)
+
+_p = "Metrique Host: "
+c.setup_basic('api_host', partial(prompter, _p))
+
+_p = "Metrique Username: "
+c.setup_basic('api_username', partial(prompter, _p))
+
+_p = "Metrique Password: "
+c.setup_basic('api_password', partial(prompter, _p))
+
+pp.pprint(c.config)
+
+a = c.yes_no_prompt('Save? ')
+if a:
+    c.save()
