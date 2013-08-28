@@ -8,8 +8,8 @@ logger = logging.getLogger(__name__)
 from distutils.core import setup
 
 __pkg__ = 'metriqued'
-__release__ = 35
-__version__ = '0.1.3-alpha%i' % __release__
+__release__ = 3
+__version__ = '0.1.3-%i' % __release__
 __pkgs__ = ['metriqued', 'metriqued.mongodb', 'metriqued.tornado']
 __provides__ = ['metriqued']
 __datafiles__ = []
@@ -58,8 +58,11 @@ __deplinks__ = [
     '%s/t/tornado/tornado-3.1.tar.gz' % pip_src,
 ]
 
-with open('README.rst') as _file:
-    readme = _file.read()
+try:
+    with open('../../README.rst') as _file:
+        readme = _file.read()
+except IOError:
+    readme = __desc__
 
 github = 'https://github.com/drpoovilleorg/metrique'
 download_url = '%s/archive/master.zip' % github
