@@ -7,26 +7,25 @@ logging.basicConfig()
 logger = logging.getLogger(__name__)
 from distutils.core import setup
 
-# FIXME: include metrique/server/static/
-
 __pkg__ = 'metriqued'
-__release__ = 27
+__release__ = 35
 __version__ = '0.1.3-alpha%i' % __release__
-__pkgs__ = [
-    'mongodb',
-    'tornado',
-]
-__provides__ = __pkgs__
+__pkgs__ = ['metriqued', 'metriqued.mongodb', 'metriqued.tornado']
+__provides__ = ['metriqued']
 __datafiles__ = []
 __desc__ = 'Python/MongoDB Information Platform - Server'
 __scripts__ = [
-    'install/metriqued-setup',
+    'bin/metriqued-setup',
+    'bin/metriqued',
+    'bin/metrique-server',
 ]
 __requires__ = [
     'bson (>=0.3.3)',
     'decorator (>=3.4)',
     'futures (>=2.1)',
     'jsonconf (>=0.1.3)',
+    'kerberos (>=1.1.1)',
+    'passlib (>=1.6.1)',
     'pql (>=0.3.2)',
     'python_dateutil (>=2.1)',
     'pytz',  # (>=2013b)
@@ -38,6 +37,8 @@ __irequires__ = [
     'decorator>=3.4',
     'futures>=2.1',
     'jsonconf>=0.1.3',
+    'kerberos>=1.1.1',
+    'passlib>=1.6.1',
     'pql>=0.3.2',
     'python_dateutil>=2.1',
     'pytz>=2013b',

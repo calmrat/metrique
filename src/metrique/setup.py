@@ -8,18 +8,13 @@ logger = logging.getLogger(__name__)
 from distutils.core import setup
 
 __pkg__ = 'metrique'
-__release__ = 27
+__release__ = 33
 __version__ = '0.1.3-alpha%i' % __release__
-__pkgs__ = [
-    'sql',
-    'cubes',
-    'cubes.gitrepo',
-    'cubes.jkns',
-]
-__provides__ = __pkgs__
+__pkgs__ = ['metrique', 'metrique.cubes', 'metrique.sql']
+__provides__ = ['metrique']
 __desc__ = 'Python/MongoDB Information Platform - Client'
 __scripts__ = [
-    'install/metrique-setup',
+    'bin/metrique-setup',
 ]
 __requires__ = [
     'bson (>=0.3.3)',
