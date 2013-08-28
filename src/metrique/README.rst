@@ -1,4 +1,4 @@
-.. image:: metrique/server/static/img/metrique_logo.png
+.. image:: src/metriqued/metriqued/static/img/metrique_logo.png
 
 Metrique
 ========
