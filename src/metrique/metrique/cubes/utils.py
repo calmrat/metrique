@@ -28,13 +28,15 @@ def cube_pkg_mod_cls(cube):
     return pkg, mod, cls
 
 
-def set_cube_path(path):
+def set_cube_path(path=None):
     '''
     Add a given path to sys.path to enable calls to import.
 
     If no path provided, default to making *metrique.client.cubes*
     get added to the current namespace.
     '''
+    if not path:
+        path = DEFAULT_CLIENT_CUBES_PATH
     if path:
         path = os.path.expanduser(path)
         sys.path.append(path)
