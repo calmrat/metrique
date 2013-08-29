@@ -5,13 +5,13 @@ Metrique
 
 Python/MongoDB Information Platform and Data Warehouse
 
-*Metrique help bring data into an intuitive, indexable 
-data object collection that supports quick snapshotting, 
-advanced ad-hoc querying, including (mongodb) aggregations
-and mapreduce, along with python, ipython, pandas,
-numpy, matplotlib, and so on, is fully integrated 
-with the scientific python computing stack. I hope
-so anyway. :)*
+*Metrique is dataglue. It can help bring data into an 
+intuitive, indexable data object collection that 
+supports transparent historical version snapshotting, 
+advanced ad-hoc server-side querying, including (mongodb) 
+aggregations and (mongodb) mapreduce, along with python, 
+ipython, pandas, numpy, matplotlib, and so on, is well
+integrated with the scientific python computing stack. 
 
 **Author:** "Chris Ward" <cward@redhat.com>
 
@@ -21,46 +21,41 @@ so anyway. :)*
 Installation
 ------------
 
-You must first install MongoDB. Then, to continue, 
-make sure it's started.
+You must first install MongoDB. Then, make sure it's started.
 
 
 **Metrique**
 (suggested) Install virtualenv and create a new virtual 
 environment for metrique. Activate it. 
 
-Install metrique::
+Make sure you have the following *stuff* installed. The 
+examples given below are fedora rpm package names::
 
-    python-pip install metrique -r requirements.txt
+    mongodb-server git python python-setuptools 
+    gcc gcc-c++ python-devel libpng-devel freetype-devel
+    postgresql postgresql-devel kerberos-devel
+    mysql-devel
 
-.. note::
-     Make sure you have gcc and python-devel libraries installed
+Install metrique and metriqued::
 
-.. note::
-     If you see 'Connection reset by peer' error, try option: --use-mirrors
+    pip install metrique metriqued
 
-.. note::
-     If you see any other error, Google.
+If you see any error, Google.
 
-You should now be ready to go. 
+Otherwise, you should now be ready to go. 
 
-Run metrique-server-config.py if you changed any defaults.
+Run metriqued-config if you changed any defaults.
 
 To start metrique, run::
     
-    $[/metrique/server/bin] metrique-server start [2|1|0] [1|0]
+    $> metriqued-server start [2|1|0] [1|0]
 
 Where argv are debug on+/on/off and async on/off respectively.
-
-It's suggested to run :mod:metrique-server-setup after install
-as well, especially if you changed any default values of your
-mongo or metrique servers, they're hosted on a different
-ip than `localhost`. 
 
 
 **Client**
 If the metrique server is running on anything other than 
-`http://127.0.0.1`, run `metrique-client-setup`.
+`http://127.0.0.1`, run `metrique-setup`.
 
 Then,  launch a python shell. We suggest ipython notebook. 
 
@@ -69,16 +64,17 @@ metrique namespace or local to the running user.
 
 Default: `~/.metrique/cubes`
 
-To quickly make those cubes available in sys.path::
+If you have any of your own cubes to install, i suggest
+copying them there now.
 
-    IN  [] from metrique.client.cubes import set_cube_path
-    IN  [] set_cube_path()  # defaults to '~/.metrique/cubes'
+To start using them::
+
+    IN  [] from metrique import pyclient
 
 Then, to load a cube for extraction, query or administration,
 import::
 
-    IN  [] from git_repo.gitrepo import Commit
-    IN  [] g = Commit(config_file=None, uri=None)
+    IN  [] g = pyclient(cube="gitrepo_commit"")
 
 Ping the server to ensure your connected. If all 
 is well, metriqe server should pong your ping!::
@@ -88,10 +84,10 @@ is well, metriqe server should pong your ping!::
 
 Try running an example ::mod:git_commit etl job, for example::
 
-    IN  [4] g.extract("git_commit")
+    IN  [] g.extract(uri='https://github.com/drpoovilleorg/metrique.git')
 
 Then, analyse away::
 
-    IN  [5] q = c.query.fetch('git_commit', 'author, committer_ts') 
-    IN  [6] q.groupby(['author']).size().plot(kind='barh')
-    OUT [6] <matplotlib.axes.AxesSubplot at 0x6f77ad0>
+    IN  [] q = c.query.fetch('git_commit', 'author, committer_ts') 
+    IN  [] q.groupby(['author']).size().plot(kind='barh')
+    OUT [] <matplotlib.axes.AxesSubplot at 0x6f77ad0>
