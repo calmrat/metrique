@@ -45,29 +45,34 @@ class HTTPClient(object):
         Return the specific cube class, if specified
         '''
         if 'cube' in kwargs and kwargs['cube']:
-            _cube = kwargs['cube']
-            kwargs['cube'] = None
-            cube_cls = get_cube(_cube)
-            return object.__new__(cube_cls, *args, **kwargs)
+            try:
+                cube_cls = get_cube(kwargs['cube'])
+            except ImportError:
+                cube_cls = cls
         else:
-            return object.__new__(cls, *args, **kwargs)
+            cube_cls = cls
+        return object.__new__(cube_cls, *args, **kwargs)
 
-    def __init__(self, host=None, username=None, password=None,
-                 async=True, force=False, debug=-1,
-                 config_file=None, config_dir=None,
-                 cube=None, **kwargs):
+    def __init__(self, api_host=None, api_username=None,
+                 api_password=None, async=True,
+                 force=False, debug=-1, config_file=None,
+                 config_dir=None, cube=None,
+                 **kwargs):
         self.load_config(config_file, config_dir, force)
         logging.basicConfig()
         self.logger = logging.getLogger('metrique.%s' % self.__module__)
         self.config.debug = self.logger, debug
         self.config.async = async
 
-        if host:
-            self.config.api_host = host
-        if username:
-            self.config.api_username = username
-        if password:
-            self.config.api_password = password
+        if cube and not self.name and isinstance(cube, basestring):
+            self.name = cube
+
+        if api_host:
+            self.config.api_host = api_host
+        if api_username:
+            self.config.api_username = api_username
+        if api_password:
+            self.config.api_password = api_password
 
     def load_config(self, config_file, config_dir, force=False):
         if not config_file:
