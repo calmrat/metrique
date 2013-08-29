@@ -8,8 +8,8 @@ logger = logging.getLogger(__name__)
 from distutils.core import setup
 
 __pkg__ = 'metrique'
-__release__ = 3
 __version__ = '0.1.3'
+__release__ = 3
 __nvr__ = '%s-%i' % (__version__, __release__)
 __pkgs__ = ['metrique', 'metrique.cubes', 'metrique.sql']
 __provides__ = ['metrique']

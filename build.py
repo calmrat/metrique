@@ -40,6 +40,9 @@ cli.add_argument('-n', '--dry-run',
 cli.add_argument('-b', '--bump',
                  choices=__bumps__,
                  default='release')
+cli.add_argument('-bo', '--bump-only',
+                 action='store_true',
+                 default=False)
 
 # parse argv
 args = cli.parse_args()
@@ -81,7 +84,7 @@ def bump_version(path, line):
     current_parts[-1] += 1
     bumped = '.'.join(map(str, current_parts))
     logger.debug('BUMP (VERSION) - %s->%s' % (current, bumped))
-    return "__version__ = '%s'" % bumped
+    return "__version__ = '%s'\n" % bumped
 
 
 def bump(path, kind='release'):
@@ -103,7 +106,7 @@ def bump(path, kind='release'):
 
 
 def build(path, action='sdist', upload=False, dry_run=False,
-          bump_kind='release'):
+          bump_kind='release', bump_only=False):
     assert action in __actions__
     assert bump_kind in __bumps__
     os.chdir(path)
@@ -115,8 +118,12 @@ def build(path, action='sdist', upload=False, dry_run=False,
     else:
         pass  # ok!
 
+    # bump the version/release
     bump(os.path.join(path, 'setup.py'), bump_kind)
-    raise
+
+    if bump_only:
+        return
+
     cmd = ['python', 'setup.py']
 
     cmd.append('--dry-run') if dry_run else None
@@ -134,7 +141,8 @@ action = args.action
 upload = args.upload
 dry_run = args.dry_run
 bump_kind = args.bump
+bump_only = args.bump_only
 
 [build(path, action,
        upload, dry_run,
-       bump_kind) for path in PKG_PATHS]
+       bump_kind, bump_only) for path in PKG_PATHS]
