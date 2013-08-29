@@ -3,13 +3,28 @@
 # Author: Juraj Niznan <jniznan@redhat.com>
 
 
+'''
+**container**
+
+This module contains a Container class that can be used for holding and
+displaying data.
+'''
 from metrique.plotting import Plotter, DiffPlotter
 
 from matplotlib import pyplot as plt
 
 
 class Container(object):
+    '''
+    A class that can be used to hold and display data.
+    '''
     def __init__(self, data, display='plot'):
+        '''
+        :param dictionary data:
+            Dict containing the data.
+        :param displa plot:
+            The default display method.
+        '''
         self.data = data
         self.method = display
         self.dmap = {'plot': self._disp_plot,
@@ -28,6 +43,16 @@ class Container(object):
             return default
 
     def display(self, method=None, alt='', **kwargs):
+        '''
+        Display the data.
+
+        :param string method:
+            One of None, 'plot', 'stacked', 'diffplot', 'diffplotinv'
+        :param string alt:
+            The prefix that specifies other data source to be displayed.
+        :param int loc:
+            The location of the legend.
+        '''
         method = method if method else self.method
         return self.dmap[method](series=self._get('series', alt),
                                  diffs=self._get('diffs', alt),
