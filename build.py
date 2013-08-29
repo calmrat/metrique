@@ -3,6 +3,7 @@
 # Author: "Chris Ward <cward@redhat.com>
 
 import argparse
+from functools import partial
 import os
 import logging
 import subprocess as sp
@@ -37,7 +38,10 @@ cli.add_argument('-u', '--upload',
 cli.add_argument('-n', '--dry-run',
                  action='store_true',
                  default=False)
-cli.add_argument('-b', '--bump',
+cli.add_argument('-b', '--nobump',
+                 action='store_true',
+                 default=False)
+cli.add_argument('-bk', '--bump-kind',
                  choices=__bumps__,
                  default='release')
 cli.add_argument('-bo', '--bump-only',
@@ -55,10 +59,15 @@ else:
 
 CWD = os.getcwd()
 SRC = os.path.join(CWD, __src__)
-PKG_PATHS = [os.path.join(SRC, pkg) for pkg in __pkgs__]
+if args.target == 'all':
+    pkg_paths = [os.path.join(SRC, pkg) for pkg in __pkgs__]
+else:
+    pkg_paths = [args.target]
+
+setup_paths = ['%s/setup.py' % path for path in pkg_paths]
 
 
-def bump_release(path, line, reset=False):
+def bump_release(line, reset=False):
     m = RE_RELEASE.match(line)
     if not m:
         raise ValueError(
@@ -72,9 +81,8 @@ def bump_release(path, line, reset=False):
     return '__release__ = %s\n' % bumped
 
 
-def bump_version(path, line):
+def bump_version(line, *args, **kwargs):
     # if we're bumping version, reset release to 1
-    bump(path, 'release')
     m = RE_VERSION.match(line)
     if not m:
         raise ValueError(
@@ -87,28 +95,35 @@ def bump_version(path, line):
     return "__version__ = '%s'\n" % bumped
 
 
-def bump(path, kind='release'):
-    # pull current
+def update_line(path, regex, bump_func):
     with open(path) as setup:
         content = setup.readlines()
         for i, line in enumerate(content):
-            if kind == 'version' and RE_VERSION.match(line):
-                content[i] = bump_version(path, line)
-            elif kind == 'release' and RE_RELEASE.match(line):
-                content[i] = bump_release(path, line, reset=True)
+            if regex.match(line):
+                content[i] = bump_func(line)
             else:
                 continue
             break  # stop after the first replace...
-
     # write out the new setup file with bumped
     with open(path, 'w') as setup:
         setup.write(''.join(content))
 
 
-def build(path, action='sdist', upload=False, dry_run=False,
-          bump_kind='release', bump_only=False):
+def bump(path, kind='release', reset=False):
+    assert kind in __bumps__
+    # pull current
+    if kind == 'release':
+        regex = RE_RELEASE
+        bump_func = partial(bump_release, reset=reset)
+    elif kind == 'version':
+        regex = RE_VERSION
+        bump(path, 'release', reset=True)
+        bump_func = partial(bump_version, reset=reset)
+    update_line(path, regex, bump_func)
+
+
+def build(path, action='sdist', upload=False, dry_run=False):
     assert action in __actions__
-    assert bump_kind in __bumps__
     os.chdir(path)
 
     if upload and dry_run:
@@ -125,13 +140,9 @@ def build(path, action='sdist', upload=False, dry_run=False,
         return
 
     cmd = ['python', 'setup.py']
-
     cmd.append('--dry-run') if dry_run else None
-
     cmd.append(action)
-
     cmd.append('upload') if upload else None
-
     cmd_str = ' '.join(cmd)
     logger.info('(%s) %s' % (os.getcwd(), cmd_str))
     sp.call(cmd)
@@ -140,9 +151,13 @@ def build(path, action='sdist', upload=False, dry_run=False,
 action = args.action
 upload = args.upload
 dry_run = args.dry_run
-bump_kind = args.bump
+nobump = args.nobump
+bump_kind = args.bump_kind
 bump_only = args.bump_only
 
-[build(path, action,
-       upload, dry_run,
-       bump_kind, bump_only) for path in PKG_PATHS]
+if not nobump:
+    [bump(path, bump_kind) for path in setup_paths]
+
+# if not bump_only:
+#[build(path, action,
+#       upload, dry_run) for path in pkg_paths]

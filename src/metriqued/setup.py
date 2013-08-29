@@ -8,8 +8,8 @@ logger = logging.getLogger(__name__)
 from distutils.core import setup
 
 __pkg__ = 'metriqued'
-__version__ = '0.1.3'
-__release__ = 3
+__version__ = '0.1.4'
+__release__ = 1
 __nvr__ = '%s-%i' % (__version__, __release__)
 __pkgs__ = ['metriqued', 'metriqued.mongodb', 'metriqued.tornado']
 __provides__ = ['metriqued']
