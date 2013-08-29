@@ -158,6 +158,6 @@ bump_only = args.bump_only
 if not nobump:
     [bump(path, bump_kind) for path in setup_paths]
 
-# if not bump_only:
-#[build(path, action,
-#       upload, dry_run) for path in pkg_paths]
+if not bump_only:
+    [build(
+        path, action, upload, dry_run) for path in pkg_paths]

@@ -9,7 +9,7 @@ from distutils.core import setup
 
 __pkg__ = 'metriqued'
 __version__ = '0.1.4'
-__release__ = 1
+__release__ = 8
 __nvr__ = '%s-%i' % (__version__, __release__)
 __pkgs__ = ['metriqued', 'metriqued.mongodb', 'metriqued.tornado']
 __provides__ = ['metriqued']
@@ -102,7 +102,7 @@ default_setup = dict(
     provides=__provides__,
     requires=__requires__,
     scripts=__scripts__,
-    version=__version__,
+    version=__nvr__,
 )
 
 

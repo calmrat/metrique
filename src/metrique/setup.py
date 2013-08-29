@@ -9,7 +9,7 @@ from distutils.core import setup
 
 __pkg__ = 'metrique'
 __version__ = '0.1.4'
-__release__ = 1
+__release__ = 8
 __nvr__ = '%s-%i' % (__version__, __release__)
 __pkgs__ = ['metrique', 'metrique.cubes', 'metrique.sql']
 __provides__ = ['metrique']
@@ -114,7 +114,7 @@ default_setup = dict(
     provides=__provides__,
     requires=__requires__,
     scripts=__scripts__,
-    version=__version__,
+    version=__nvr__,
 )
 
 setup(**default_setup)
