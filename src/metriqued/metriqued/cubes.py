@@ -68,7 +68,11 @@ def list_cube_fields(cube, exclude_fields=[], _mtime=False):
     cube_fields = get_etl_activity().find_one(spec, _filter)
     if not cube_fields:
         cube_fields = {}
-    if not isinstance(exclude_fields, (list, tuple, set)):
+
+    if exclude_fields is None:
+        exclude_fields = []
+
+    elif not isinstance(exclude_fields, (list, tuple, set)):
         raise ValueError(
             'expected list, got %s' % type(exclude_fields))
     else:

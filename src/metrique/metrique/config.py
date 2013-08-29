@@ -19,9 +19,8 @@ DEFAULT_CLIENT_CUBES_PATH = os.path.join(DEFAULT_CONFIG_DIR,
 # PATH to where default client cubes are expected to live
 ipath = inspect.getfile(inspect.currentframe())
 cwd = os.path.dirname(os.path.abspath(ipath))
-base_path = '/'.join(cwd.split('/')[:-1])
+base_path = '/'.join(cwd.split('/'))
 DEFAULT_SYSTEM_CUBES_PATH = os.path.join(base_path,
-                                         'client',
                                          DEFAULT_CUBES_BASE_PATH)
 
 API_VERSION = 'v1'
