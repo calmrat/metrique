@@ -16,9 +16,8 @@ Source code documentation:
 .. toctree::
    :maxdepth: 1
 
-   source_codes/metrique.client
-   source_codes/metrique.server
-   source_codes/metrique.tools
+   source_codes/metrique/metrique.rst
+   source_codes/metriqued/metriqued.rst
 
 
 
