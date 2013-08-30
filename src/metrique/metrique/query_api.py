@@ -2,7 +2,10 @@
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 # Author: "Chris Ward" <cward@redhat.com>
 
-''' "Metrique Query" related funtions '''
+'''
+This module contains all the query and aggregation
+related api functionality.
+'''
 
 import logging
 logger = logging.getLogger(__name__)
@@ -18,7 +21,7 @@ def aggregate(self, pipeline, cube=None):
     on a given cube
 
     :param list pipeline: The aggregation pipeline. $match, $project, etc.
-    :param string: cube name to use
+    :param string cube: name of cube to work with
     '''
     if not cube and self.name:
         cube = self.name
@@ -34,17 +37,13 @@ def count(self, query, cube=None, date=None):
     Run a `pql` based query on the given cube, but
     only return back the count (Integer)
 
-    :param String query: The query in pql
-
-    #### COMING SOON - 0.1.4 ####
-    :param String date: Date (date range) that should be queried:
-            date -> 'd', '~d', 'd~', 'd~d'
-            d -> '%Y-%m-%d %H:%M:%S,%f', '%Y-%m-%d %H:%M:%S', '%Y-%m-%d'
-    :param Boolean most_recent:
+    :param string query: The query in pql
+    :param string date: Date (date range) that should be queried
+    :param bool most_recent:
         If true and there are multiple historical version of a single
         object matching the query then only the most recent one will
         be returned
-    :param string: cube name to use
+    :param string cube: name of cube to work with
     '''
     if not cube:
         cube = self.name
@@ -54,28 +53,19 @@ def count(self, query, cube=None, date=None):
 def find(self, query, fields=None, date=None, sort=None, one=False,
          raw=False, explain=False, cube=None, **kwargs):
     '''
-    Run a `pql` based query on the given cube.
-    Optionally:
-    * return back accompanying field meta data for
-    * query again arbitrary datetimes in the past, if the
-    * return back only the most recent date objects which
-        match any given query, rather than all.
+    Run a `pql` based query on the given cube. Optionally:
 
-    :param string query:
-        The query in pql
-    :param list/string fields:
-        Fields that should be returned
+    :param string query: The query in pql
+    :param list/string fields: Fields that should be returned
     :type fields: str, or list of str, or str of comma-separated values
-    :param string date:
-        Date (date range) that should be queried:
-            date -> 'd', '~', '~d', 'd~', 'd~d'
-            d -> '%Y-%m-%d %H:%M:%S,%f', '%Y-%m-%d %H:%M:%S', '%Y-%m-%d'
-        If date==None then the most recent versions of the objects will be
-        queried.
-    :param bool explain:
-        If explain is True, the execution plan is returned instead of
-        the results (in raw form)
-    :param string: cube name to use
+    :param string date: Date (date range) that should be queried
+    :param bool explain: return execution plan instead of results
+    :param string cube: name of cube to work with
+
+    .. note::
+        - if date==None then the most recent versions of the objects
+          will be queried.
+
     '''
     if not cube:
         cube = self.name
@@ -98,6 +88,16 @@ def find(self, query, fields=None, date=None, sort=None, one=False,
 
 
 def deptree(self, field, oids, date=None, level=None, cube=None):
+    '''
+    Dependency tree builder recursively fetchs objects that
+    are children of the initial set of objects provided.
+
+    :param string field: Field that contains the 'parent of' data
+    :param list oids: Object oids to build depedency tree for
+    :param string date: Date in time when the deptree should be generated for
+    :param integer level: limit depth of recursion
+    :param string cube: name of cube to work with
+    '''
     if not cube:
         cube = self.name
     result = self._get(CMD, 'deptree', field=field, oids=oids, date=date,
@@ -113,10 +113,7 @@ def fetch(self, fields=None, date=None, sort=None, skip=0, limit=0, oids=None,
 
     :param fields: Fields that should be returned
     :type fields: str, or list of str, or str of comma-separated values
-    :param String date:
-        Date (date range) that should be queried:
-            date -> 'd', '~', '~d', 'd~', 'd~d'
-            d -> '%Y-%m-%d %H:%M:%S,%f', '%Y-%m-%d %H:%M:%S', '%Y-%m-%d'
+    :param string date: Date (date range) that should be queried
     :param tuple sort: pymongo formated sort tuple
     :param Integer skip:
         number of items (sorted ASC) to skip
@@ -125,7 +122,7 @@ def fetch(self, fields=None, date=None, sort=None, skip=0, limit=0, oids=None,
     :param List oids:
         specific list of oids we should fetch
     :param boolean raw: return the documents in their (dict) form
-    :param string: cube name to use
+    :param string cube: name of cube to work with
     '''
     if not cube:
         cube = self.name
@@ -145,9 +142,9 @@ def distinct(self, field, cube=None, sort=True):
     '''
     Return back all distinct token values of a given field
 
-    :param String field:
+    :param string field:
         Field to get distinct token values from
-    :param string: cube name to use
+    :param string cube: name of cube to work with
     '''
     if not cube:
         cube = self.name

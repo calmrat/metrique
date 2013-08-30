@@ -4,6 +4,10 @@
 # Author: "Chris Ward <cward@redhat.com>
 # GIT: http://git.engineering.redhat.com/?p=users/cward/Metrique.git
 
+'''
+Basic CSV based cube for extracting data from CSV
+'''
+
 import os
 
 from metrique.cubes.basecsv import BaseCSV

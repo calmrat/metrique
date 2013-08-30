@@ -3,9 +3,30 @@
 # Author: "Chris Ward" <cward@redhat.com>
 
 '''
-Client package covers client side of metrique,
-including tornado access, work with results,
-client side configuration and opensource cubes.
+metrique dataglue library
+~~~~~~~~~~~~~~~~~~~~~~~~~
+**Python/MongoDB Data Warehouse and Data Glue**
+
+Metrique can be used to bring data into an intuitive,
+indexable data object collection that supports
+transparent historical version snapshotting,
+advanced ad-hoc server-side querying, including (mongodb)
+aggregations and (mongodb) mapreduce, along with python,
+ipython, pandas, numpy, matplotlib, and so on, is well
+integrated with the scientific python computing stack.
+
+    >>> from metrique import pyclient
+    >>> g = pyclient(cube="gitrepo_commit"")
+    >>> g.ping()
+    pong
+    >>> ids = g.extract(uri='https://github.com/drpoovilleorg/metrique.git')
+    >>> q = c.query.fetch('git_commit', 'author, committer_ts')
+    >>> q.groupby(['author']).size().plot(kind='barh')
+    >>> <matplotlib.axes.AxesSubplot at 0x6f77ad0>
+
+:copyright: 2013 "Chris Ward" <cward@redhat.com>
+:license: GPLv3, see LICENSE for more details
+:sources: https://github.com/drpoovilleorg/metrique
 '''
 
 from result import Result

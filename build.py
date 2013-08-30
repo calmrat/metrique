@@ -2,6 +2,18 @@
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 # Author: "Chris Ward <cward@redhat.com>
 
+
+'''
+**build.py**
+
+This module contains a CLI for building metrique
+with setup.py and distributing via pypi pip.
+
+metrique (https://pypi.python.org/pypi/metrique)
+metriqued (https://pypi.python.org/pypi/metriqued)
+'''
+
+
 import argparse
 from functools import partial
 import os
@@ -23,27 +35,36 @@ RE_RELEASE = re.compile(r"__release__ = (\d+)")
 
 # init cli argparser
 cli = argparse.ArgumentParser(description='Metrique Build CLI')
+''' ** Options ** '''
+''' --debug: Enabled/Disable debug output '''
 cli.add_argument('-d', '--debug',
                  action='store_true',
                  default=False)
+''' --target: package to build (%s)''' % __pkgs__
 cli.add_argument('-t', '--target',
                  choices=__pkgs__,
                  default='all')
+''' --action: setup action (%s)''' % __actions__
 cli.add_argument('-a', '--action',
                  choices=__actions__,
                  default='sdist')
+''' --upload: Upload builds to pypi? '''
 cli.add_argument('-u', '--upload',
                  action='store_true',
                  default=False)
+''' --dry-run: flag to not actually do anything'''
 cli.add_argument('-n', '--dry-run',
                  action='store_true',
                  default=False)
+''' --nobump: don't bump default:release count'''
 cli.add_argument('-b', '--nobump',
                  action='store_true',
                  default=False)
+''' --bump-kind: bump release by default; choices: %s''' % __bumps__
 cli.add_argument('-bk', '--bump-kind',
                  choices=__bumps__,
                  default='release')
+''' --bump-only: bump nvr and quit'''
 cli.add_argument('-bo', '--bump-only',
                  action='store_true',
                  default=False)

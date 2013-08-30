@@ -2,13 +2,19 @@
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 # Author: Juraj Niznan <jniznan@redhat.com>
 
+'''
+container.py contains a Container class that can
+be used for holding and displaying data in
+simple dictionary formats.
+
+@jniznan: Add some code examples here...
+
+    >>> data = {...}
+    >>> c = Container(data)
+    >>> ...
 
 '''
-**container**
 
-This module contains a Container class that can be used for holding and
-displaying data.
-'''
 from metrique.plotting import Plotter, DiffPlotter
 
 from matplotlib import pyplot as plt
@@ -20,9 +26,11 @@ class Container(object):
     '''
     def __init__(self, data, display='plot'):
         '''
+        Container class initiatlization.
+
         :param dictionary data:
             Dict containing the data.
-        :param displa plot:
+        :param display plot:
             The default display method.
         '''
         self.data = data

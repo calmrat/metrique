@@ -11,13 +11,12 @@ from metrique.config import DEFAULT_CLIENT_CUBES_PATH
 
 def cube_pkg_mod_cls(cube):
     '''
-    Convert 'pkg_mod' -> pkg, mod, Cls
+    Used to dynamically importing cube classes
+    based on string slug name.
 
-    eg:
-        tw_tweet -> tw, tweet, Tweet
-        tw_tweet_users -> tw, tweet_users, TweetUsers
+    Converts 'pkg_mod' -> pkg, mod, Cls
 
-    Use for dynamically importing cube classes
+    eg: tw_tweet -> tw, tweet, Tweet
 
     Assumes `Metrique Cube Naming Convention` is used
     '''
@@ -50,13 +49,10 @@ def get_cube(cube, path=None):
     '''
     Wraps __import__ to dynamically locate and load a client cube.
 
-    Paremeters
-    ----------
-    module : str
+    :param string module:
         Module name (eg, 'jkns.build')
-    cube : str
+    :param string cube:
         Name of the cube Class to be imported from given module (eg, 'Build')
-
     '''
     if not path:
         path = DEFAULT_CLIENT_CUBES_PATH

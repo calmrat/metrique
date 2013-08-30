@@ -10,19 +10,17 @@ from jsonconf import JSONConf
 
 config_dir = '~/.metrique/'
 config_dir = os.path.expanduser(config_dir)
-config = JSONConfig('mongodb', config_dir)
-
-host = config['host']
-username = config['admin_username']
-password = config['admin_password']
-admin_db = config['admin_db']
-
 
 class Test_MongoDB_Admin(TestCase):
 
     def setUp(self):
         """Sets up admindb connection into test collection."""
         db = 'test'
+        config = JSONConf('mongodb', config_dir)
+        host = config['host']
+        username = config['admin_username']
+        password = config['admin_password']
+        admin_db = config['admin_db']
         self.admindb = BaseMongoDB(host, username, password, db, admin_db)
         self.test = self.admindb[db]
 
@@ -51,7 +49,8 @@ class Test_MongoDB_Admin(TestCase):
         for record in cursor:
             self.test.remove({'_id': record['_id']})
         cursor = self.test.find()
-        self.assertFalse(cursor.count(), "Find has found data in empty database")
+        self.assertFalse(cursor.count(),
+                         "Find has found data in empty database")
 
     def test_update(self):
         """

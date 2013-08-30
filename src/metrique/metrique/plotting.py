@@ -3,6 +3,12 @@
 # Authors: "Jan Grec" <jgrec@redhat.com>
 # Authors: "Juraj Niznan" <jniznan@redhat.com>
 
+'''
+This module contains a plotter wrapper that provides
+defaults and additional helper functionality for
+quickly generating plots with pandas and matplotlib
+'''
+
 import pandas as pd
 import matplotlib.pyplot as plt
 
@@ -25,9 +31,7 @@ CNAMES = {'blue': 0, 'b': 0,
 
 
 class Plotter(object):
-    '''
-    Convenince plotting wrapper.
-    '''
+    ''' Convenince plotting wrapper '''
 
     def __init__(self, figsize=(10, 6), fill=True):
         '''
