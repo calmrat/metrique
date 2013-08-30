@@ -2,6 +2,16 @@
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 # Author: "Chris Ward" <cward@redhat.com>
 
+'''
+
+.. note::
+    example date ranges: 'd', '~d', 'd~', 'd~d'
+
+.. note::
+    valid date format: '%Y-%m-%d %H:%M:%S,%f', '%Y-%m-%d %H:%M:%S', '%Y-%m-%d'
+
+'''
+
 import logging
 logger = logging.getLogger(__name__)
 import os
@@ -13,8 +23,7 @@ from metrique.config import DEFAULT_CONFIG_DIR, DEFAULT_CONFIG_FILE
 from metrique import query_api, etl_api, users_api
 from metrique import etl_activity, get_cube
 
-from metrique.utils import csv2list
-from metrique.json import json_encode
+from metrique.utils import csv2list, json_encode
 
 
 class HTTPClient(object):
@@ -26,7 +35,6 @@ class HTTPClient(object):
 
     find = query_api.find
     deptree = query_api.deptree
-    tree = query_api.deptree
     count = query_api.count
     fetch = query_api.fetch
     distinct = query_api.distinct
@@ -117,8 +125,8 @@ class HTTPClient(object):
 
     def _post(self, *args, **kwargs):
         '''
-            Arguments are expected to be json encoded!
-            verify = False in requests.get() skips SSL CA validation
+        Arguments are expected to be json encoded!
+        verify = False in requests.get() skips SSL CA validation
         '''
         kwargs_json = self._kwargs_json(**kwargs)
         _url = self._args_url(*args)
@@ -163,15 +171,14 @@ class HTTPClient(object):
 
     def list_cube_fields(self, cube=None,
                          exclude_fields=None, _mtime=False):
-        ''' List all valid fields for a given cube
+        '''
+        List all valid fields for a given cube
 
-        Paremeters
-        ----------
-        cube : str
+        :param string cube:
             Name of the cube you want to query
-        exclude_fields : str or list
+        :param list exclude_fields:
             List (or csv) of fields to exclude from the results
-        mtime : bool
+        :param bool mtime:
             Include mtime details
         '''
         if not cube:

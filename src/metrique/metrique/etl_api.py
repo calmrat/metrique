@@ -2,7 +2,11 @@
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 # Author: "Chris Ward" <cward@redhat.com>
 
-''' "Metrique ETL" related funtions '''
+'''
+This module contains all the ETL (data extract, transform, load)
+related api functionality, along with other collection and
+data manipulation calls.
+'''
 
 from datetime import datetime
 from time import time
@@ -18,7 +22,7 @@ def list_index(self, cube=None):
     '''
     List indexes for either timeline or warehouse.
 
-    :param string: cube name to use
+    :param string cube: cube name to use
     '''
     if not cube:
         cube = self.name
@@ -31,7 +35,7 @@ def ensure_index(self, key_or_list, cube=None):
 
     :param string/list key_or_list:
         Either a single key or a list of (key, direction) pairs.
-    :param string: cube name to use
+    :param string cube: cube name to use
     '''
     if not cube:
         cube = self.name
@@ -44,7 +48,7 @@ def drop_index(self, index_or_name, cube=None):
 
     :param string/list index_or_name:
         index (or name of index) to drop
-    :param string: cube name to use
+    :param string cube: cube name to use
     '''
     if not cube:
         cube = self.name
@@ -55,14 +59,14 @@ def save_objects(self, objects, update=False, batch=DEFAULT_BATCH,
                  cube=None):
     '''
     :param list objects: list of dictionary-like objects to be stored
-    :param boolean update: update already stored objects?
-    :param integer batch: maximum slice of objects to post at a time
-    :param string: cube name to use
+    :param bool update: update already stored objects?
+    :param int batch: maximum slice of objects to post at a time
+    :param string cube: cube name to use
     :rtype: list - list of object ids saved
 
     Save a list of objects the given metrique.cube.
 
-    Return back a list of object ids (_id|_oid) saved.
+    Returns back a list of object ids (_id|_oid) saved.
     '''
     if not cube:
         cube = self.name
@@ -96,8 +100,8 @@ def remove_objects(self, ids, backup=False, cube=None):
     Remove objects from cube timeline
 
     :param list ids: list of object ids to remove
-    :param boolean backup: return the documents removed to client?
-    :param string: cube name to use
+    :param bool backup: return the documents removed to client?
+    :param string cube: cube name to use
     '''
     if not cube:
         cube = self.name
@@ -111,7 +115,7 @@ def cube_drop(self, cube=None):
     '''
     Drops current cube from timeline
 
-    :param string: cube name to use
+    :param string cube: cube name to use
     '''
     if not cube:
         cube = self.name

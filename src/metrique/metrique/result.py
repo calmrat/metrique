@@ -2,6 +2,11 @@
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 # Author: "Chris Ward" <cward@redhat.com>
 
+'''
+This module contains a Pandas DataFrame wrapper and
+additional Pandas object helper functions.
+'''
+
 import logging
 logger = logging.getLogger(__name__)
 
@@ -23,16 +28,16 @@ NUMPY_NUMERICAL = [np.float16, np.float32, np.float64, np.float128,
 
 def mask_filter(f):
     '''
-        Generic function for getting back filtered frame
-        data according to True/False mask filter frame matching
+    Generic decorator for getting back filtered frame
+    data according to True/False mask filter frame matching
 
-        :param Pandas.DataFrame mask_frame:
-            DataFrame that maps index:True/False where True means it
-            matches the filter and False means it does not
-        :param Boolean filter_ :
-            True will return back a DataFrame that contains only items
-            which matched the mask_frame filter. False returns back the
-            opposite.
+    :param Pandas.DataFrame mask_frame:
+        DataFrame that maps index:True/False where True means it
+        matches the filter and False means it does not
+    :param bool filter_:
+        True will return back a DataFrame that contains only items
+        which matched the mask_frame filter. False returns back the
+        opposite.
     '''
     return decorator(_mask_filter, f)
 
@@ -47,6 +52,11 @@ def _mask_filter(f, self, *args, **kwargs):
 
 
 def filtered(f):
+    '''
+    Decorator function that wraps functions returning pandas
+    dataframes, such that the dataframe is filtered
+    according to left and right bounds set.
+    '''
     def _filter(f, self, *args, **kwargs):
         frame = f(self, *args, **kwargs)
         ret = type(self)(frame)
@@ -58,6 +68,7 @@ def filtered(f):
 
 
 def to_timestamp(d):
+    ''' Convert a given datetime object to a utc timestamp value'''
     return timegm(d.utctimetuple())
 
 
@@ -82,7 +93,7 @@ class Result(DataFrame):
         '''
         Pass in the date used in the original query.
 
-        :param String date:
+        :param string date:
             Date (date range) that was queried:
                 date -> 'd', '~d', 'd~', 'd~d'
                 d -> '%Y-%m-%d %H:%M:%S,%f', '%Y-%m-%d %H:%M:%S', '%Y-%m-%d'
@@ -111,7 +122,7 @@ class Result(DataFrame):
         Filters out only the rows that match the spectified date.
         Works only on a Result that has _start and _end columns.
 
-        :param String date:
+        :param string date:
             date can be anything Pandas.Timestamp supports parsing
         '''
         if not self.check_in_bounds(date):
@@ -156,18 +167,12 @@ class Result(DataFrame):
         Works only on a Result that has _start and _end columns.
         most_recent=False should be set for this to work
 
-        :param: List dates:
-            List of dates
-        :param Boolean counts:
-            If True counts will be returned
-            If False ids will be returned
+        :param list dates: List of dates
+        :param bool counts: return counts (not ids)
         :param datetime predict_since:
-            If not None, the values on the dates after this will be estimated
-            using linear regression.
-            If not None, the parameter counts must be set to True.
+            estimate the future values using linear regression.
         :param integer lin_reg_days:
-            Specifies how many past days should be used in the linear
-            regression.
+            Set how many past days should we use for prediction calulation
         '''
         if dates is None:
             dates = self.get_dates_range()
@@ -219,17 +224,19 @@ class Result(DataFrame):
         '''
         Returns a list of dates sampled according to the specified parameters.
 
-        :param String scale: {'auto', 'maximum', 'daily', 'weekly', 'monthly',
-                'quarterly', 'yearly'}
+        :param string scale:
+            {'auto', 'maximum', 'daily', 'weekly', 'monthly',
+            'quarterly', 'yearly'}
             Scale specifies the sampling intervals.
             'auto' will heuritically choose such scale that will give you
             fast results.
-        :param String start:
+        :param string start:
             First date that will be included.
-        :param String end:
+        :param string end:
             Last date that will be included
-        :param Boolean include_bounds:
+        :param boolean include_bounds:
             Include start and end in the result if they are not included yet.
+
         '''
         if scale not in ['auto', 'daily', 'weekly', 'monthly', 'quarterly',
                          'yearly']:
@@ -266,8 +273,8 @@ class Result(DataFrame):
 
     def group_size(self, column, to_dict=False):
         '''
-            Simply group items by the given column and return
-            dictionary (or Pandas Series) with each bucket size
+        Simply group items by the given column and return
+        dictionary (or Pandas Series) with each bucket size
         '''
         gby = self.groupby(column).size()
         return gby.to_dict() if to_dict else gby
@@ -297,7 +304,9 @@ class Result(DataFrame):
         Leaves only the latest version for each object.
         Adds a new column which represents age.
         The age is computed by subtracting _start of the oldest version
-        from one of these possibilities:
+        from one of these possibilities::
+
+            # psuedo-code
             if self._rbound is None:
                 if latest_version._end is pd.NaT:
                     current_time is used
@@ -309,10 +318,7 @@ class Result(DataFrame):
                 else:
                     min(self._rbound, latest_version._end) is used
 
-        Parameters
-        ----------
-        col_name: str
-            Name of the new column.
+        :param string index: Name of the new column.
         '''
         def prep(df):
             ends = set(df._end.tolist())
@@ -333,8 +339,9 @@ class Result(DataFrame):
     def last_chain(self):
         '''
         Leaves only the last chain for each object.
-        Chain is a series of consecutive versions
-            (_end of one is _start of another) .
+
+        Chain is a series of consecutive versions where
+        `_end` of one is `_start` of another.
         '''
         def prep(df):
             ends = df._end.tolist()

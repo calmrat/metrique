@@ -10,13 +10,12 @@ from functools import wraps
 import kerberos
 from passlib.hash import sha256_crypt
 import simplejson as json
-import tornado
+from tornado.web import RequestHandler, asynchronous, HTTPError
+from tornado.ioloop import IOLoop
 import traceback
 
 from metriqued.defaults import VALID_PERMISSIONS as VP
 from metriqued import query_api, etl_api, users_api
-
-__all__ = '__all__'
 
 
 def async(f):
@@ -28,7 +27,7 @@ def async(f):
 
     Uses: async.threading
     '''
-    @tornado.web.asynchronous
+    @asynchronous
     @wraps(f)
     def wrapper(self, *args, **kwargs):
         if self.proxy.metrique_config.async:
@@ -41,13 +40,13 @@ def async(f):
                 except Exception:
                     result = traceback.format_exc()
                     logger.error(result)
-                    raise tornado.web.HTTPError(500, result)
+                    raise HTTPError(500, result)
                 finally:
                     self.write(result)
                 self.finish()
 
             future = self.proxy.executor.submit(f, self, *args, **kwargs)
-            tornado.ioloop.IOLoop.instance().add_future(future, future_end)
+            IOLoop.instance().add_future(future, future_end)
         else:
             _result = f(self, *args, **kwargs)
             logger.debug('JSON dump: START... ')
@@ -109,9 +108,9 @@ def _auth_basic(handler, password, user_dict):
 
 def _get_resource_acl(handler, resource, lookup):
     ''' Check if user is listed to access to a given resource '''
-    resource = [resource, __all__]
+    resource = [resource, '__all__']
     _lookup = [{lookup:  {'$exists': True}},
-               {__all__: {'$exists': True}}]
+               {'__all__': {'$exists': True}}]
     spec = {'_id': {'$in': resource},
             '$or': _lookup}
     logger.debug("Cube Check: spec (%s)" % spec)
@@ -203,31 +202,28 @@ def auth(permissions='r'):
             if privleged in [True, 1]:
                 return f(handler, *args, **kwargs)
             else:
-                raise tornado.web.HTTPError(401)
+                raise HTTPError(401)
         return wrapper
     return decorator
 
 
-class MetriqueInitialized(tornado.web.RequestHandler):
+class MetriqueInitialized(RequestHandler):
     '''
-        Template RequestHandler that accepts init parameters
-        and unifies json get_argument handling
+    Template RequestHandler that accepts init parameters
+    and unifies json get_argument handling
     '''
 
     def initialize(self, proxy):
         '''
-        Paremeters
-        ----------
-        proxy : HTTPServer (MetriqueServer) Obj
-            A pointer to the running metrique server namespace
+        :param HTTPServer proxy:
+            A pointer to the running metrique server instance
         '''
         self.proxy = proxy
 
     def get_argument(self, key, default=None):
         '''
-            Assume incoming arguments are json encoded,
-            get_arguments should always deserialize
-            on the way in
+        Assume incoming arguments are json encoded,
+        get_arguments should always deserialize on the way in
         '''
         # arguments are expected to be json encoded!
         _arg = super(MetriqueInitialized, self).get_argument(key, default)
@@ -243,7 +239,7 @@ class MetriqueInitialized(tornado.web.RequestHandler):
 
 
 class PingHandler(MetriqueInitialized):
-    ''' RequestHandler for pings'''
+    ''' RequestHandler for pings '''
     @async
     def get(self):
         return self.proxy.ping()
@@ -251,8 +247,8 @@ class PingHandler(MetriqueInitialized):
 
 class QueryAggregateHandler(MetriqueInitialized):
     '''
-        RequestHandler for running mongodb aggregation
-        framwork pipeines against a given cube
+    RequestHandler for running mongodb aggregation
+    framwork pipeines against a given cube
     '''
     @auth('r')
     @async
@@ -280,8 +276,8 @@ class QueryFetchHandler(MetriqueInitialized):
 
 class QueryCountHandler(MetriqueInitialized):
     '''
-        RequestHandler for returning back simple integer
-        counts of objects matching the given query
+    RequestHandler for returning back simple integer
+    counts of objects matching the given query
     '''
     @auth('r')
     @async
@@ -294,8 +290,8 @@ class QueryCountHandler(MetriqueInitialized):
 
 class QueryFindHandler(MetriqueInitialized):
     '''
-        RequestHandler for returning back object
-        matching the given query
+    RequestHandler for returning back object
+    matching the given query
     '''
     @auth('r')
     @async
@@ -318,8 +314,8 @@ class QueryFindHandler(MetriqueInitialized):
 
 class QueryDeptreeHandler(MetriqueInitialized):
     '''
-        RequestHandler for returning back the list of
-        oids matching the given tree.
+    RequestHandler for returning back the list of
+    oids matching the given tree.
     '''
     @auth('r')
     @async
@@ -338,8 +334,8 @@ class QueryDeptreeHandler(MetriqueInitialized):
 
 class QueryDistinctHandler(MetriqueInitialized):
     '''
-        RequestHandler for fetching distinct token values for a
-        given cube.field
+    RequestHandler for fetching distinct token values for a
+    given cube.field
     '''
     @auth('r')
     @async
@@ -351,8 +347,7 @@ class QueryDistinctHandler(MetriqueInitialized):
 
 class UsersAddHandler(MetriqueInitialized):
     '''
-        RequestHandler for managing user access control
-        lists for a given cube
+    RequestHandler for managing user access control for a given cube
     '''
     @auth('admin')
     @async
@@ -366,8 +361,8 @@ class UsersAddHandler(MetriqueInitialized):
 
 class ETLIndexHandler(MetriqueInitialized):
     '''
-        RequestHandler for ensuring mongodb indexes
-        in timeline collection for a given cube
+    RequestHandler for ensuring mongodb indexes
+    in timeline collection for a given cube
     '''
     @auth('rw')
     @async
@@ -380,10 +375,10 @@ class ETLIndexHandler(MetriqueInitialized):
 
 class ETLActivityImportHandler(MetriqueInitialized):
     '''
-        RequestHandler for building pre-calculated
-        object timelines given a 'activity history'
-        data source that can be used to recreate
-        objects in time
+    RequestHandler for building pre-calculated
+    object timelines given a 'activity history'
+    data source that can be used to recreate
+    objects in time
     '''
     @auth('rw')
     @async
@@ -395,8 +390,7 @@ class ETLActivityImportHandler(MetriqueInitialized):
 
 class ETLSaveObjects(MetriqueInitialized):
     '''
-        RequestHandler for saving a given
-        object to a metrique server cube
+    RequestHandler for saving a given object to a metrique server cube
     '''
     @auth('rw')
     @async
@@ -411,8 +405,7 @@ class ETLSaveObjects(MetriqueInitialized):
 
 class ETLRemoveObjects(MetriqueInitialized):
     '''
-        RequestHandler for saving a given
-        object to a metrique server cube
+    RequestHandler for saving a given object to a metrique server cube
     '''
     @auth('rw')
     @async
@@ -435,8 +428,7 @@ class ETLCubeDrop(MetriqueInitialized):
 
 class CubeHandler(MetriqueInitialized):
     '''
-        RequestHandler for querying about
-        available cubes and cube.fields
+    RequestHandler for querying about available cubes and cube.fields
     '''
     @auth('r')
     @async

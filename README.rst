@@ -3,15 +3,15 @@
 Metrique
 ========
 
-Python/MongoDB Information Platform and Data Warehouse
+Python/MongoDB Data Warehouse and Data Glue
 
-*Metrique is dataglue. It can help bring data into an 
-intuitive, indexable data object collection that 
-supports transparent historical version snapshotting, 
-advanced ad-hoc server-side querying, including (mongodb) 
-aggregations and (mongodb) mapreduce, along with python, 
-ipython, pandas, numpy, matplotlib, and so on, is well
-integrated with the scientific python computing stack. 
+*Metrique can help bring data into an intuitive, indexable 
+data object collection that supports transparent 
+historical version snapshotting, advanced ad-hoc 
+server-side querying, including (mongodb) aggregations 
+and (mongodb) mapreduce, along with python, ipython, 
+pandas, numpy, matplotlib, and so on, is well integrated 
+with the scientific python computing stack. 
 
 **Author:** "Chris Ward" <cward@redhat.com>
 

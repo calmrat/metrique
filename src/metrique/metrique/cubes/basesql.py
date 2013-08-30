@@ -2,6 +2,10 @@
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 # Author: "Chris Ward <cward@redhat.com>
 
+'''
+Base cube for extracting data from SQL databases
+'''
+
 from dateutil.parser import parse as dt_parse
 from functools import partial
 import pytz
