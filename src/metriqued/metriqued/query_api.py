@@ -78,11 +78,13 @@ def _check_sort(sort):
 
 @job_save('query find')
 def find(cube, query, fields=None, date=None, sort=None, one=False,
-         explain=False):
+         explain=False, merge_versions=True):
     logger.debug('Running Find (%s)' % cube)
 
     sort = _check_sort(sort)
     _cube = get_cube(cube)
+    if fields == '__all__' or date is None:
+        merge_versions = False
     fields = get_fields(cube, fields)
 
     query += _get_date_pql_string(date)
@@ -100,11 +102,34 @@ def find(cube, query, fields=None, date=None, sort=None, one=False,
         result = _cube.find(spec, fields, sort=sort).explain()
     elif one:
         result = _cube.find_one(spec, fields, sort=sort)
+    elif merge_versions:
+        # merge_versions ignores sort (for now)
+        result = _merge_versions(_cube, spec, fields)
     else:
         result = _cube.find(spec, fields, sort=sort)
         result.batch_size(BATCH_SIZE)
         result = tuple(result)
     return result
+
+
+def _merge_versions(_cube, spec, fields):
+    '''
+    merge versions with unchanging fields of interest
+    '''
+    docs = _cube.find(spec, fields, sort=[('_oid', 1), ('_start', 1)])
+    ret = [{'_oid': -1}]
+    for doc in docs:
+        last = ret[-1]
+        if doc['_oid'] == last['_oid'] and doc['_start'] == last['_end']:
+            last_items = last.items()
+            if all(item in last_items or item[0] in ['_start', '_end']
+                   for item in doc.iteritems()):
+                last['_end'] = doc['_end']
+            else:
+                ret.append(doc)
+        else:
+            ret.append(doc)
+    return ret[1:]
 
 
 def _parse_oids(oids, delimeter=','):
