@@ -303,13 +303,15 @@ class QueryFindHandler(MetriqueInitialized):
         sort = self.get_argument('sort', None)
         one = self.get_argument('one', False)
         explain = self.get_argument('explain', False)
+        merge_versions = self.get_argument('merge_versions', True)
         return query_api.find(cube=cube,
                               query=query,
                               fields=fields,
                               date=date,
                               sort=sort,
                               one=one,
-                              explain=explain)
+                              explain=explain,
+                              merge_versions=merge_versions)
 
 
 class QueryDeptreeHandler(MetriqueInitialized):

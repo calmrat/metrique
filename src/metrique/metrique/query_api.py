@@ -51,7 +51,7 @@ def count(self, query, cube=None, date=None):
 
 
 def find(self, query, fields=None, date=None, sort=None, one=False,
-         raw=False, explain=False, cube=None, **kwargs):
+         raw=False, explain=False, cube=None, merge_versions=True, **kwargs):
     '''
     Run a `pql` based query on the given cube. Optionally:
 
@@ -61,6 +61,8 @@ def find(self, query, fields=None, date=None, sort=None, one=False,
     :param string date: Date (date range) that should be queried
     :param bool explain: return execution plan instead of results
     :param string cube: name of cube to work with
+    :param boolean merge_versions:
+        merge versions with unchanging fields od interest
 
     .. note::
         - if date==None then the most recent versions of the objects
@@ -71,7 +73,7 @@ def find(self, query, fields=None, date=None, sort=None, one=False,
         cube = self.name
     result = self._get(CMD, 'find', cube=cube, query=query,
                        fields=fields, date=date, sort=sort, one=one,
-                       explain=explain)
+                       explain=explain, merge_versions=merge_versions)
     if raw or explain:
         return result
     else:
