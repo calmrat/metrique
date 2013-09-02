@@ -75,16 +75,7 @@ def find(self, query, fields=None, date=None, sort=None, one=False,
     if raw or explain:
         return result
     else:
-        if hasattr(self, '_result_class') and self._result_class is not None:
-            result = self._result_class(result, **kwargs)
-        else:
-            result = Result(result)
-
-        # this lets the result object know which dates were queried,
-        # so that it can set its bounds.
-        result.set_date_bounds(date)
-
-        return result
+        return _result_convert(self, result, date, **kwargs)
 
 
 def deptree(self, field, oids, date=None, level=None, cube=None):
@@ -132,10 +123,7 @@ def fetch(self, fields=None, date=None, sort=None, skip=0, limit=0, oids=None,
     if raw:
         return result
     else:
-        if hasattr(self, '_result_class') and self._result_class is not None:
-            return self._result_class(result, **kwargs)
-        else:
-            return Result(result)
+        return _result_convert(self, result, date, **kwargs)
 
 
 def distinct(self, field, cube=None, sort=True):
@@ -153,3 +141,40 @@ def distinct(self, field, cube=None, sort=True):
         return sorted(result)
     else:
         return result
+
+
+def sample(self, size, fields=None, date=None, raw=False, cube=None):
+    '''
+    Draws a sample of objects at random.
+
+    :param integer size: Size of the sample.
+    :param fields: Fields that should be returned
+    :param string date: Date (date range) that should be queried
+    :param boolean raw: if True, then return result as a dictionary
+    :param string cube: name of cube to work with
+
+    .. note::
+        - if date==None then the most recent versions of the objects
+          will be queried.
+    '''
+    if not cube:
+        cube = self.name
+    result = self._get(CMD, 'sample', cube=cube, size=size,
+                       fields=fields, date=date)
+    if raw:
+        return result
+    else:
+        return _result_convert(self, result, date)
+
+
+def _result_convert(self, result, date, **kwargs):
+    if hasattr(self, '_result_class') and self._result_class is not None:
+        result = self._result_class(result, **kwargs)
+    else:
+        result = Result(result)
+
+    # this lets the result object know which dates were queried,
+    # so that it can set its bounds.
+    result.set_date_bounds(date)
+
+    return result
