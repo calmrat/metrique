@@ -38,6 +38,7 @@ class HTTPClient(object):
     count = query_api.count
     fetch = query_api.fetch
     distinct = query_api.distinct
+    sample = query_api.sample
     aggregate = query_api.aggregate
     list_index = etl_api.list_index
     ensure_index = etl_api.ensure_index

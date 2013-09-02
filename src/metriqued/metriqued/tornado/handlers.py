@@ -345,6 +345,22 @@ class QueryDistinctHandler(MetriqueInitialized):
         return query_api.distinct(cube=cube, field=field)
 
 
+class QuerySampleHandler(MetriqueInitialized):
+    '''
+    RequestHandler for fetching distinct token values for a
+    given cube.field
+    '''
+    @auth('r')
+    @async
+    def get(self):
+        cube = self.get_argument('cube')
+        size = self.get_argument('size')
+        fields = self.get_argument('fields')
+        date = self.get_argument('date')
+        return query_api.sample(cube=cube, size=size, fields=fields,
+                                date=date)
+
+
 class UsersAddHandler(MetriqueInitialized):
     '''
     RequestHandler for managing user access control for a given cube
