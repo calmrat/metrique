@@ -5,7 +5,7 @@
 from collections import defaultdict
 
 from metrique.http_api import HTTPClient
-from metrique.decorators import memo
+from metrique.utils import memo
 
 
 class BaseCube(HTTPClient):
@@ -49,9 +49,9 @@ class BaseCube(HTTPClient):
         return fieldmap
 
     def setdefault(self, value, default, config_key=None):
-        ''' config helper. Set a cube property value
-            based on config, a given default or the
-            value provided itself.
+        '''
+        config helper. Set a cube property value based on
+        config, a given default or the value provided itself.
         '''
         if value is None:
             try:
@@ -88,7 +88,7 @@ class BaseCube(HTTPClient):
         Generator that yields by ids ascending.
         Each yield has format: (id, [(when, field, removed, added)])
         For fields that are containers, added and removed must be lists
-            (no None allowed)
+        (no None allowed)
         '''
         raise NotImplementedError(
             'The activity_get method is not implemented in this cube.')

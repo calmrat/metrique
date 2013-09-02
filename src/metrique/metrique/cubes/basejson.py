@@ -2,6 +2,10 @@
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 # Author: "Chris Ward <cward@redhat.com>
 
+'''
+Base cube for extracting data from JSON documents
+'''
+
 import simplejson as json
 
 from metrique.cubes.basecube import BaseCube

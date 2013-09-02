@@ -6,6 +6,7 @@ import logging
 logger = logging.getLogger(__name__)
 import pql
 import re
+import random
 
 from metriqued.cubes import get_fields, get_cube
 from metriqued.job import job_save
@@ -163,3 +164,23 @@ def aggregate(cube, pipeline):
     logger.debug('Pipeline (%s): %s' % (type(pipeline), pipeline))
     _cube = get_cube(cube)
     return _cube.aggregate(pipeline)
+
+
+@job_save('query sample')
+def sample(cube, size, fields, date):
+    logger.debug('Running sample (%s):' % size)
+    _cube = get_cube(cube)
+    fields = get_fields(cube, fields)
+    dt_str = _get_date_pql_string(date, '')
+    spec = pql.find(dt_str) if dt_str else {}
+    cursor = _cube.find(spec, fields)
+    n = cursor.count()
+    if n <= size:
+        cursor.batch_size(BATCH_SIZE)
+        ret = tuple(cursor)
+    else:
+        to_sample = set(random.sample(range(n), size))
+        ret = []
+        for i in range(n):
+            ret.append(cursor.next()) if i in to_sample else cursor.next()
+    return ret

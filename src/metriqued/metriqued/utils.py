@@ -4,9 +4,53 @@
 
 from bson.objectid import ObjectId
 from calendar import timegm
-from datetime import datetime
+from datetime import datetime as dt
 from dateutil.parser import parse as dt_parse
+from decorator import decorator
 import pytz
+import simplejson as json
+
+json_encoder = json.JSONEncoder()
+
+
+def _memo(func, *args, **kw):
+    # sort and convert list items to tuple for hashability
+    if type(kw) is list:
+        kw = frozenset(kw)
+    args = list(args)
+    for k, arg in enumerate(args):
+        if type(arg) is list:
+            args[k] = frozenset(arg)
+    # frozenset is used to ensure hashability
+    key = frozenset(args), frozenset(kw.iteritems())
+    cache = func.cache  # attributed added by memoize
+    if key in cache:
+        return cache[key]
+    else:
+        cache[key] = result = func(*args, **kw)
+    return result
+
+
+def memo(f):
+    ''' memoize function output '''
+    f.cache = {}
+    return decorator(_memo, f)
+
+
+def perc(numerator, denominator):
+    return (float(numerator) / denominator) * 100
+
+
+def doublequote(item):
+    ''' convert a given obj to string, double-quoted'''
+    return '"%s"' % item
+
+
+def list2csv(_list, quote=False):
+    ''' convert a list of objects into a csv string '''
+    if quote:
+        _list = map(doublequote, _list)
+    return ','.join(map(str, _list))
 
 
 def csv2list(csv, delimiter=','):
@@ -23,6 +67,10 @@ def csv2list(csv, delimiter=','):
 
 
 def get_timezone_converter(from_timezone):
+    '''
+    return a function that converts a given
+    datetime object from a timezone to utc
+    '''
     utc = pytz.utc
     from_tz = pytz.timezone(from_timezone)
 
@@ -62,7 +110,7 @@ def ts2dt(ts, milli=False, tz_aware=True):
     ''' convert timestamp int's (seconds) to datetime objects '''
     if not ts:
         return ts
-    elif isinstance(ts, datetime):  # its a dt already
+    elif isinstance(ts, dt):  # its a dt already
         return ts
     # ts must be float and in seconds
     elif milli:
@@ -70,9 +118,9 @@ def ts2dt(ts, milli=False, tz_aware=True):
     else:
         ts = float(ts)  # already in seconds
     if tz_aware:
-        return datetime.fromtimestamp(ts, tz=pytz.utc)
+        return dt.fromtimestamp(ts, tz=pytz.utc)
     else:
-        return datetime.utcfromtimestamp(ts)
+        return dt.utcfromtimestamp(ts)
 
 
 def dt2ts(dt):
@@ -91,3 +139,13 @@ def new_oid():
     so it's easily serializable
     '''
     return str(ObjectId())
+
+
+def json_encode(obj):
+    '''
+    Convert datetime.datetime to timestamp
+    '''
+    if isinstance(obj, dt):
+        return dt2ts(obj)
+    else:
+        return json_encoder.default(obj)

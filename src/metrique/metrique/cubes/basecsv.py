@@ -2,6 +2,10 @@
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 # Author: "Chris Ward <cward@redhat.com>
 
+'''
+Base cube for extracting data from CSV files
+'''
+
 import csv
 import cStringIO
 import os

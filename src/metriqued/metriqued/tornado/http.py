@@ -15,7 +15,7 @@ from handlers import PingHandler
 from handlers import QueryAggregateHandler, QueryFindHandler
 from handlers import QueryDeptreeHandler
 from handlers import QueryFetchHandler, QueryCountHandler
-from handlers import QueryDistinctHandler
+from handlers import QueryDistinctHandler, QuerySampleHandler
 from handlers import UsersAddHandler
 from handlers import ETLIndexHandler
 from handlers import ETLActivityImportHandler
@@ -51,6 +51,7 @@ class HTTPServer(MetriqueServer):
                 (r"/api/v1/query/aggregate", QueryAggregateHandler, init),
                 (r"/api/v1/query/fetch", QueryFetchHandler, init),
                 (r"/api/v1/query/distinct", QueryDistinctHandler, init),
+                (r"/api/v1/query/sample", QuerySampleHandler, init),
                 (r"/api/v1/admin/users/add", UsersAddHandler, init),
                 (r"/api/v1/admin/etl/index", ETLIndexHandler, init),
                 (r"/api/v1/admin/etl/activityimport",

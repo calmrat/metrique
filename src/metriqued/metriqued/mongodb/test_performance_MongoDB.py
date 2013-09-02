@@ -6,25 +6,22 @@ import os
 import time
 from unittest import TestCase, TestLoader, TextTestRunner
 
-from metriqued.Utils.MongoDB.BaseMongoDB import BaseMongoDB
+from metriqued.mongodb.basemongodb import BaseMongoDB
 
 from jsonconf import JSONConf
 
 config_dir = '~/.metrique/'
 config_dir = os.path.expanduser(config_dir)
-config = JSONConfig('mongodb', config_dir)
-
-host = config['host']
-username = config['admin_username']
-password = config['admin_password']
-admin_db = config['admin_db']
 tests_db = 'tests'
 junk_c = 'junk'
 results_c = 'results'
 
-TEST_RANGE = 10000   # How many operation iterations will be done during one test
-JUNK_RANGE = TEST_RANGE + 1  # Pre-created junk collection records count
-                             # MUST BE GREATER THAN TEST_RANGE
+# How many operation iterations will be done during one test
+TEST_RANGE = 10000
+# Pre-created junk collection records count
+# MUST BE GREATER THAN TEST_RANGE
+JUNK_RANGE = TEST_RANGE + 1
+
 SAFE = False
 
 # WARNING
@@ -38,6 +35,13 @@ class Test_MongoDB_Performance(TestCase):
 
     def setUp(self):
         """Opens connection and creates 'junk' records."""
+        config = JSONConf('mongodb', config_dir, force=True)
+
+        host = config['host']
+        username = config['admin_username']
+        password = config['admin_password']
+        admin_db = config['admin_db']
+
         self.admindb = BaseMongoDB(host, username, password,
                                    tests_db, admin_db)
         self.junk = self.admindb[junk_c]
@@ -101,7 +105,8 @@ class Test_MongoDB_Performance(TestCase):
         """Update test (multi=True)."""
         record = {'$set': {'value': 'test_junks'}}
         S = time.time()
-        self.junk.update({'_id': {'$lt': TEST_RANGE}}, record, multi=True, safe=SAFE)
+        self.junk.update({'_id': {'$lt': TEST_RANGE}},
+                         record, multi=True, safe=SAFE)
         D = time.time() - S
         self.save_result('update-multi', D)
 
@@ -127,6 +132,12 @@ class Test_MongoDB_Performance(TestCase):
 
 
 def print_results():
+    config = JSONConf('mongodb', config_dir, force=True)
+    host = config['host']
+    username = config['admin_username']
+    password = config['admin_password']
+    admin_db = config['admin_db']
+
     admindb = BaseMongoDB(host, username, password,
                           tests_db, admin_db)
     results = admindb[results_c]
@@ -172,25 +183,26 @@ def print_results():
             worst = 0.0
             worst_average = 0.0
 
-        res_table[case] = {'actual': actual, 'actual_average': actual_average,
-                           'previous': previous, 'previous_average': previous_average,
-                           'best': best, 'best_average': best_average,
-                           'worst': worst, 'worst_average': worst_average}
+        res_table[case] = {
+            'actual': actual, 'actual_average': actual_average,
+            'previous': previous, 'previous_average': previous_average,
+            'best': best, 'best_average': best_average,
+            'worst': worst, 'worst_average': worst_average}
 
     admindb.close()
 
-    print "name" + (14 * ' ') + "actual  act(av)   prev    prev(av)  best    best(av)  worst   worst(av)"
+    print ("name" +
+           (14 * ' ') +
+           "actual  act(av)   prev    "
+           "prev(av)  best    best(av)  worst   worst(av)")
     print (89 * '-')
     for case in cases:
         spaces = 18 - len(str(case))
-        table = "%3.4f  %3.6f  %3.4f  %3.6f  %3.4f  %3.6f  %3.4f  %3.6f" % (res_table[case]['actual'],
-                                                                            res_table[case]['actual_average'],
-                                                                            res_table[case]['previous'],
-                                                                            res_table[case]['previous_average'],
-                                                                            res_table[case]['best'],
-                                                                            res_table[case]['best_average'],
-                                                                            res_table[case]['worst'],
-                                                                            res_table[case]['worst_average'])
+        table = "%3.4f  %3.6f  %3.4f  %3.6f  %3.4f  %3.6f  %3.4f  %3.6f" % (
+            res_table[case]['actual'], res_table[case]['actual_average'],
+            res_table[case]['previous'], res_table[case]['previous_average'],
+            res_table[case]['best'], res_table[case]['best_average'],
+            res_table[case]['worst'], res_table[case]['worst_average'])
         print str(case) + (spaces * ' ') + table
 
 if __name__ == '__main__':

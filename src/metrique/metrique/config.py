@@ -2,6 +2,20 @@
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 # Author: "Chris Ward" <cward@redhat.com>
 
+'''
+config.py contains the main configuration object for
+metrique client applications, which includes built-in
+defaults.
+
+Defaults assume local, insecure 'test', 'development'
+or 'personal' environment.
+
+To customize local client configuration, add/update
+`~/.metrique/http_api.json` (default).
+
+Paths are UNIX compatible only.
+'''
+
 import logging
 import inspect
 import os

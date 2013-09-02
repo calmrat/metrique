@@ -127,16 +127,15 @@ def activity_import(self, ids=None, save_batch_size=1000, chunk_size=1000):
     state object copies into the timeline.
 
     :param object ids:
-        Multiple choices of what ids can be:
-            - None: import for all ids
-            - list of ids: import for ids in the list
-            - csv list of ids:  import for ids in the csv list
-            - 2-tuple of ids: import for the ids in the interval specified by
-            the tuple
-    :param integer save_batch_size:
+        - None: import for all ids
+        - list of ids: import for ids in the list
+        - csv list of ids:  import for ids in the csv list
+        - 2-tuple of ids: import for the ids in the interval
+          specified by the tuple
+    :param int save_batch_size:
         Determines the size of the batch when sending objects to save to the
         Metrique server
-    :param integer chunk_size:
+    :param int chunk_size:
         Size of the chunks into which the ids are split, activity import is
         done and saved separately for each batch
     '''
