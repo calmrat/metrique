@@ -5,11 +5,11 @@
 import logging
 logging.basicConfig()
 logger = logging.getLogger(__name__)
-from distutils.core import setup
+from setuptools import setup
 
 __pkg__ = 'metrique'
 __version__ = '0.1.4'
-__release__ = 8
+__release__ = 16
 __nvr__ = '%s-%i' % (__version__, __release__)
 __pkgs__ = ['metrique', 'metrique.cubes', 'metrique.sql']
 __provides__ = ['metrique']
@@ -60,7 +60,7 @@ __deplinks__ = [
     '%s/d/decorator/decorator-3.4.0.tar.gz' % pip_src,
     '%s/f/futures/futures-2.1.4.tar.gz' % pip_src,
     '%s/g/gittle/gittle-0.2.1.tar.gz' % pip_src,
-    '%s/i/ipython/ipython-1.0.0.tar.gz'% pip_src,
+    '%s/i/ipython/ipython-1.0.0.tar.gz' % pip_src,
     '%s/j/jsonconf/jsonconf-0.1.1.tar.gz' % pip_src,
     '%s/M/MySQL-python/MySQL-python-1.2.4.zip' % pip_src,
     '%s/p/pandas/pandas-0.12.0.tar.gz' % pip_src,

@@ -83,7 +83,7 @@ SRC = os.path.join(CWD, __src__)
 if args.target == 'all':
     pkg_paths = [os.path.join(SRC, pkg) for pkg in __pkgs__]
 else:
-    pkg_paths = [args.target]
+    pkg_paths = [os.path.join(SRC, args.target)]
 
 setup_paths = ['%s/setup.py' % path for path in pkg_paths]
 

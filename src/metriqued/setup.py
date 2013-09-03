@@ -5,11 +5,11 @@
 import logging
 logging.basicConfig()
 logger = logging.getLogger(__name__)
-from distutils.core import setup
+from setuptools import setup
 
 __pkg__ = 'metriqued'
 __version__ = '0.1.4'
-__release__ = 8
+__release__ = 12
 __nvr__ = '%s-%i' % (__version__, __release__)
 __pkgs__ = ['metriqued', 'metriqued.mongodb', 'metriqued.tornado']
 __provides__ = ['metriqued']
