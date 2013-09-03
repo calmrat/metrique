@@ -36,9 +36,14 @@ examples given below are fedora rpm package names::
     postgresql postgresql-devel kerberos-devel
     mysql-devel
 
-Install metrique and metriqued::
+For installation of **both** the server and client
+components of metrique; install metrique and metriqued::
 
-    pip install metrique metriqued
+    pip install metrique  # client
+    pip install metriqued # server, optional
+
+If you're only interested to connect to an **existing** 
+metriqued server, install only `metrique`, not `metriqued`
 
 If you see any error, Google.
 
@@ -48,7 +53,7 @@ Run metriqued-config if you changed any defaults.
 
 To start metrique, run::
     
-    $> metriqued-server start [2|1|0] [1|0]
+    $> metrique-server start [2|1|0] [1|0]
 
 Where argv are debug on+/on/off and async on/off respectively.
 
