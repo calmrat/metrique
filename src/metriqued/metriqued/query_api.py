@@ -208,4 +208,7 @@ def sample(cube, size, fields, date):
         ret = []
         for i in range(n):
             ret.append(cursor.next()) if i in to_sample else cursor.next()
+        # Alternative approach would be to use
+        # ret = [cursor[i] for i in to_sample]
+        # but that would be much slower when size is larger
     return ret
