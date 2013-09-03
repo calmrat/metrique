@@ -21,78 +21,119 @@ with the scientific python computing stack.
 Installation
 ------------
 
-You must first install MongoDB. Then, make sure it's started.
+General
+~~~~~~~
+If you are interested only to connect to an existing 
+metriqued instance, follow the instructions under
+#Client section below.
 
+If you only want to deploy your own `metriqued`
+server, follow the instructions under the #Server
+section too.
 
-**Metrique**
 (suggested) Install virtualenv and create a new virtual 
-environment for metrique. Activate it. 
+environment for metrique; use --no-site-packages option. 
+Call bin/activate, once installed. Then, use `bin/pip`
+for pip installs.
 
-Make sure you have the following *stuff* installed. The 
-examples given below are fedora rpm package names::
+Installing via pypi, downloads, compiles and installs
+**quite** a few dependencies.  Be prepared to wait
+10 minutes for installation to finish.
 
-    mongodb-server git python python-pip python-setuptools 
-    gcc gcc-c++ python-devel libpng-devel freetype-devel
-    postgresql postgresql-devel kerberos-devel
-    mysql-devel
+Make sure you have the following *os stuff* installed
+first, before pip-in'.  The examples given below are 
+fedora rpm package names (eg, `yum install ...`)::
 
-For installation of **both** the server and client
-components of metrique; install metrique and metriqued::
+    git python python-devel python-pip python-setuptools 
+    gcc gcc-c++ libpng-devel freetype-devel kerberos-devel
 
-    pip install metrique  # client
-    pip install metriqued # server, optional
-
-If you're only interested to connect to an **existing** 
-metriqued server, install only `metrique`, not `metriqued`
-
-If you see any error, Google.
-
-Otherwise, you should now be ready to go. 
-
-Run metriqued-config if you changed any defaults.
-
-To start metrique, run::
-    
-    $> metrique-server start [2|1|0] [1|0]
-
-Where argv are debug on+/on/off and async on/off respectively.
+If you see any error, not referenced in-line, google.
 
 
-**Client**
-If the metrique server is running on anything other than 
-`http://127.0.0.1`, run `metrique-setup`.
+Client
+~~~~~~
 
-Then,  launch a python shell. We suggest ipython notebook. 
+In addition to General, make sure you have the following 
+*os stuff* installed.  The examples given below are 
+fedora rpm package names::
 
-As of this time, :mod:cubes can be found in global
-metrique namespace or local to the running user. 
+    postgresql postgresql-devel mysql-devel
 
-Default: `~/.metrique/cubes`
+Install `metrique` via pypi::
+
+    $> pip install metrique # client
+
+
+FYI: Default installed cubes are found 
+at `$PY_SITE_PACKAGES/metrique/cubes/` and 
+`$HOME/.metrique/cubes`.
 
 If you have any of your own cubes to install, i suggest
-copying them there now.
+copying them to your user cubes directory now.
 
-To start using them::
+Then,  launch a python shell, like ipython notebook
+and start metrique'ing::
 
-    IN  [] from metrique import pyclient
+    $> ipython notebook --pylab=inline
 
-Then, to load a cube for extraction, query or administration,
-import::
+To launch a metrique client in ipython::
 
-    IN  [] g = pyclient(cube="gitrepo_commit"")
+    >>> from metrique import pyclient
+
+Then, to load a new pyclient instance::
+
+    >>> m = pyclient(host="$METRIQUE_HOST", port="$METRIQUE_PORT")
 
 Ping the server to ensure your connected. If all 
 is well, metriqe server should pong your ping!::
 
-    IN  [] g.ping()
-    OUT [] pong!
+    >>> m.ping()
+    >>> PONG ($HOSTNAME)
 
-Try running an example ::mod:git_commit etl job, for example::
+Then, assuming there is data in the metriqued host you're
+connected to, try running an example `git_commit` query job,
+like the following::
 
-    IN  [] g.extract(uri='https://github.com/drpoovilleorg/metrique.git')
+    >>> q = m.fetch(cube='git_commit', fields='author, committer_ts') 
+    >>> q.groupby(['author']).size().plot(kind='barh')
+    >>> <matplotlib.axes.AxesSubplot at 0x6f77ad0>
 
-Then, analyse away::
 
-    IN  [] q = c.query.fetch('git_commit', 'author, committer_ts') 
-    IN  [] q.groupby(['author']).size().plot(kind='barh')
-    OUT [] <matplotlib.axes.AxesSubplot at 0x6f77ad0>
+
+
+Server
+~~~~~~
+
+If you are interested to run your own metriqued instance(s),
+the following describes how to install and configure
+a `metriqued` instance.
+
+In addition to General, make sure you have the following 
+*os stuff* installed.  The examples given below are 
+fedora rpm package names::
+
+    mongodb-server 
+
+**mongodb**
+
+You must first install MongoDB. Google for instructions,
+depending on your OS. Then, make sure it's started.
+
+**metriqued**
+
+Install `metriqued` via pypi::
+
+    $> pip install metriqued # server
+
+Run `metriqued-setup` if you changed any defaults.
+
+To start metrique, run::
+    
+    $> metrique-server start
+
+Then, after launching a pyclient instance (see Client above),
+you can try running an example `gitrepo_commit` extract job::
+
+    ...
+    >>> m = pyclient(..., cube='gitrepo_commit')
+    >>> m.extract(uri='https://github.com/drpoovilleorg/metrique.git')

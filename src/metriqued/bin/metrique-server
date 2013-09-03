@@ -2,12 +2,25 @@
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 # Author: "Chris Ward <cward@redhat.com>
 
+'''
+metrique-server.py contains a CLI for metrique server.
+
+    It is possible to start, stop, restart and request
+    current running status for metriqued
+
+    # ... ^^^ cube class definition above ^^^ ...
+    if __name__ == '__main__':
+        from metrique.argparsers import cube_cli
+        obj, args = cube_cli(Bug)
+        obj.extract(force=args.force)
+
+'''
 import os
 import time
 import signal
-import sys
 
 from metriqued.defaults import SERVER_CONFIG_PATH, METRIQUE_CONF
+from metriqued.defaults import METRIQUE_HTTP_HOST, METRIQUE_HTTP_PORT
 from metriqued.config import metrique
 from metriqued.tornado.http import HTTPServer
 
@@ -57,44 +70,79 @@ def status(pid):
 
 
 if __name__ == '__main__':
-    m_conf = metrique(METRIQUE_CONF, SERVER_CONFIG_PATH)
-    host = m_conf.http_host
-    port = m_conf.http_port
+    import argparse
 
-    debug = -1
-    async = True
-    # accepts start, stop, restart, status
-    if len(sys.argv) == 4:
-        async = bool(int(sys.argv.pop(-1)))
+    _args = argparse.ArgumentParser(description='metrique server CLI')
 
-    if len(sys.argv) == 3:
-        debug = int(sys.argv.pop(-1))
+    __cmds__ = ['start', 'stop', 'restart', 'status']
+    _args.add_argument('command', type=str, choices=__cmds__)
 
-    if len(sys.argv) == 2:
-        command = sys.argv.pop(-1)
+    _args.add_argument('-d', '--debug',
+                       type=int, default=True)
+    _args.add_argument('-a', '--async-off',
+                       action='store_true')
 
+    _args.add_argument('-c', '--server-config-file',
+                       type=str, default=METRIQUE_CONF)
+    _args.add_argument('-cd', '--server-config-dir',
+                       type=str, default=SERVER_CONFIG_PATH)
+
+    _args.add_argument('-H', '--host',
+                       type=str, default=METRIQUE_HTTP_HOST)
+    _args.add_argument('-P', '--port',
+                       type=str, default=METRIQUE_HTTP_PORT)
+
+    # FIXME: in the near future, we'll be able to start up
+    # multiple servers in parallel; instance-id would
+    # be a integer representing which instance you'd
+    # like to interact with...
+    #_args.add_argument('-iid', '--instance-id',
+    #                   type=int, default=1)
+
+    # parse sys.argv
+    args = _args.parse_args()
+
+    # shorten varnames
+    cmd = args.command
+    debug = args.debug
+    async_off = args.async_off
+
+    server_config_file = args.server_config_file
+    server_config_dir = args.server_config_dir
+    m_conf = metrique(server_config_file, server_config_dir)
+
+    if not args.host:
+        host = m_conf.http_host
     else:
-        command = 'status'
+        host = args.host
 
-    m_conf.debug = debug
-    m_conf.async = async
-    m_conf.save()
+    if not args.port:
+        port = m_conf.http_port
+    else:
+        port = args.port
 
-    metriqued = HTTPServer(host=host, port=port)
+    async = not async_off  # shawhing!
+
+    metriqued = HTTPServer(host=host, port=port,
+                           debug=debug, async=async)
+
     pid_file = metriqued.metrique_config.pid_file
     pid = get_pid(pid_file)
 
-    if command == 'start':
+    print
+    if cmd == 'start':
         code = start()
-    elif command == 'stop':
+    elif cmd == 'stop':
         code = stop(pid, pid_file)
-    elif command == 'restart':
+    elif cmd == 'restart':
         if status(pid) == 0:
             stop(pid, pid_file)
         time.sleep(1)
         code = start()
-    else:
+    elif cmd == 'status':
         if status(pid) == 0:
             print 'Info: Running'
         else:
             print 'Info: Not Running'
+    else:
+        print 'Not sure what to say, honestly to %s... Try --help ?' % cmd

@@ -16,7 +16,9 @@ from metriqued.defaults import METRIQUE_CONF, MONGODB_CONF
 
 class BaseServer(object):
     def __init__(self, config_dir=None,
-                 metrique_config_file=None, mongodb_config_file=None):
+                 metrique_config_file=None,
+                 mongodb_config_file=None,
+                 async=True, debug=None):
         if not metrique_config_file:
             metrique_config_file = METRIQUE_CONF
         if not mongodb_config_file:
@@ -26,6 +28,12 @@ class BaseServer(object):
 
         self._metrique_config_file = metrique_config_file
         self.metrique_config = metrique(metrique_config_file, config_dir)
+
+        if debug is not None:
+            self.metrique_config.debug = debug
+
+        if debug is not True:
+            self.metrique_config.async = async
 
         self._mongodb_config_file = metrique_config_file
         self.mongodb_config = mongodb(mongodb_config_file, config_dir)
