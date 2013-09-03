@@ -83,9 +83,9 @@ def find(cube, query, fields=None, date=None, sort=None, one=False,
 
     sort = _check_sort(sort)
     _cube = get_cube(cube)
-    if fields == '__all__' or date is None:
-        merge_versions = False
     fields = get_fields(cube, fields)
+    if date is None or ('_id' in fields and fields['_id']):
+        merge_versions = False
 
     query += _get_date_pql_string(date)
 
@@ -116,19 +116,27 @@ def _merge_versions(_cube, spec, fields):
     '''
     merge versions with unchanging fields of interest
     '''
-    docs = _cube.find(spec, fields, sort=[('_oid', 1), ('_start', 1)])
-    ret = [{'_oid': -1}]
-    for doc in docs:
+    logger.debug("Merging docs...")
+    # contains a dummy document to avoid some condition checks in merge_doc
+    ret = [{'_oid': None}]
+    no_check = set(['_start', '_end'])
+
+    def merge_doc(doc):
+        '''
+        merges doc with the last document in ret if possible
+        '''
         last = ret[-1]
+        ret.append(doc)
         if doc['_oid'] == last['_oid'] and doc['_start'] == last['_end']:
-            last_items = last.items()
-            if all(item in last_items or item[0] in ['_start', '_end']
+            last_items = set(last.items())
+            if all(item in last_items or item[0] in no_check
                    for item in doc.iteritems()):
+                # the fields of interest did not change, merge docs:
                 last['_end'] = doc['_end']
-            else:
-                ret.append(doc)
-        else:
-            ret.append(doc)
+                ret.pop()
+
+    docs = _cube.find(spec, fields, sort=[('_oid', 1), ('_start', 1)])
+    [merge_doc(doc) for doc in docs]
     return ret[1:]
 
 
