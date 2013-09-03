@@ -31,7 +31,7 @@ environment for metrique. Activate it.
 Make sure you have the following *stuff* installed. The 
 examples given below are fedora rpm package names::
 
-    mongodb-server git python python-setuptools 
+    mongodb-server git python python-pip python-setuptools 
     gcc gcc-c++ python-devel libpng-devel freetype-devel
     postgresql postgresql-devel kerberos-devel
     mysql-devel
