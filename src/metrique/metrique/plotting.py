@@ -11,6 +11,7 @@ quickly generating plots with pandas and matplotlib
 
 import pandas as pd
 import matplotlib.pyplot as plt
+from datetime import datetime
 
 
 # Some nice colors, stored here for convenience.
@@ -33,16 +34,27 @@ CNAMES = {'blue': 0, 'b': 0,
 class Plotter(object):
     ''' Convenince plotting wrapper '''
 
-    def __init__(self, figsize=(10, 6), fill=True):
+    def __init__(self, figsize=(10, 6), fill=True, stamp=False):
         '''
         :param (int, int) figsize:
             The size of the figure.
         :param boolean fill:
             Indicates whether the area under individual plots should be filled.
+        :param boolean/string stamp:
+            Put a timestamp in the bottom right corner.
+            If True the current time will be stamped.
+            If string then the string concatenated with the current time
+            will be stamped.
         '''
         self.counter = 0
         self.fill = fill
-        plt.figure(figsize=figsize)
+        self.fig = plt.figure(figsize=figsize)
+        if stamp:
+            t = str(datetime.utcnow()).split('.')[0]
+            if isinstance(stamp, basestring):
+                t = '%s %s' % (stamp, t)
+            self.fig.text(0.95, 0.05, t, fontsize=12, color='gray',
+                          ha='right', va='bottom', alpha=0.5)
 
     def get_color(self, color):
         '''
