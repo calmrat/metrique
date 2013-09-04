@@ -7,24 +7,30 @@ Base cube for extracting data from GIT repositories
 '''
 
 try:
-    from gittle.gittle import Gittle
-except Exception as e:
-    # FIXME: TEMP override for fedora 18's (17?)
-    # insecure version of some deps needed by dulwhich
-    # '"Install paramiko to have better SSH support...'
-    import traceback
-    import sys
-    tb = traceback.format_exc(sys.exc_info())
-    print 'SECURITY WARNING (upgrade : %s' % e
-    print tb
-    print 'are you shure you want to continue? Enter or ^C to quit '
-    raw_input()
-    from gittle.gittle import Gittle
+    eval('{x: x for x in range(1)}')
+except SyntaxError:
+    # gittle has tons of dict comprehensions...
+    raise RuntimeError("This cube requires python 2.7+")
+else:
+    try:
+        from gittle.gittle import Gittle
+    except Exception as e:
+        # FIXME: TEMP override for fedora 18's (17?)
+        # insecure version of some deps needed by dulwhich
+        # '"Install paramiko to have better SSH support...'
+        import traceback
+        import sys
+        tb = traceback.format_exc(sys.exc_info())
+        print 'SECURITY WARNING (upgrade : %s' % e
+        print tb
+        print 'are you shure you want to continue? Enter or ^C to quit '
+        raw_input()
+        from gittle.gittle import Gittle
 
 import os
 import subprocess
 
-from metrique.cubes.basecube import BaseCube
+from metriquec.basecube import BaseCube
 from metrique.config import DEFAULT_CONFIG_DIR
 
 TMP_DIR = os.path.join(DEFAULT_CONFIG_DIR, 'gitrepos/')

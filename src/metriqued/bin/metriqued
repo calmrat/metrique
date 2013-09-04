@@ -1,51 +1,99 @@
-#!/bin/sh
-#
-### BEGIN INIT INFO
-# Provides: metriqued
-# Required-Start: $local_fs
-# Required-Stop:
-# Default-Start: 3 4 5
-# Default-Stop: 0 1 2 6
-# Short-Description: startup script for metrique-server (RPC)
-# Description: Manage metrique-server rpc daemon
-### END INIT INFO
+#!/usr/bin/env python
+# vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
+# Author: "Chris Ward <cward@redhat.com>
 
-# Source function library.      
-# This creates the operating environment for the process to be started
-. /etc/rc.d/init.d/functions
+import os
+import time
+import signal
+import sys
 
-source="metrique-server"
-sourcepath="/usr/bin/"
-pid_file="/home/metrique/.metrique/server.pid"
+from metriqued.defaults import SERVER_CONFIG_PATH, METRIQUE_CONF
+from metriqued.config import metrique
+from metriqued.tornado.http import HTTPServer
 
-export PATH="$PATH:$sourcepath"
 
-case "$1" in
-  start)
-        echo -n "Starting Metrique Server: "
-        daemon --user metrique ${sourcepath}${source} start
-        if [ -e $pid_file ]; then
-            success
-        else
-            failure
-        fi
-        echo
-        ;;
-  stop)
-        echo -n "Shutting down Metrique Server! pid: $pid"
-        killproc -p $pid_file ${source}
-        echo
-        ;;
-  status)
-        status -p $pid_file ${source}
-        ;;
-  restart)
-        $0 stop
-        $0 start
-        ;;
-  *)
-        echo "Usage: $0 {start|stop|restart|status}"
-        exit 1
-esac
+def get_pid(pid_file):
+    if os.path.exists(pid_file):
+        pid = int(open(pid_file).readlines()[0])
+    else:
+        pid = 0
+    return pid
 
-exit 0
+
+def stop(pid, pid_file):
+    code = 0
+    if not pid:
+        print "Warning: No pid found (%s)" % pid_file
+    else:
+        try:
+            os.kill(pid, signal.SIGKILL)
+        except OSError as e:
+            print 'Error: %s' % e
+            code = 1
+        finally:
+            try:
+                os.remove(pid_file)
+            except OSError:
+                pass
+    return code
+
+
+def start():
+    code = 0
+    try:
+        metriqued.start()
+    except Exception as e:
+        code = 1
+        print 'Error: %s' % e
+        stop(pid, pid_file)
+    return code
+
+
+def status(pid):
+    if pid:
+        return 0
+    else:
+        return 1
+
+
+if __name__ == '__main__':
+    m_conf = metrique(METRIQUE_CONF, SERVER_CONFIG_PATH)
+    host = m_conf.http_host
+    port = m_conf.http_port
+
+    debug = 1
+    async = True
+    # accepts start, stop, restart, status
+    if len(sys.argv) == 4:
+        async = bool(int(sys.argv.pop(-1)))
+
+    if len(sys.argv) == 3:
+        debug = int(sys.argv.pop(-1))
+
+    if len(sys.argv) == 2:
+        command = sys.argv.pop(-1)
+
+    else:
+        command = 'status'
+
+    m_conf.debug = debug
+    m_conf.async = async
+
+    metriqued = HTTPServer(host=host, port=port)
+    pid_file = metriqued.metrique_config.pid_file
+    pid = get_pid(pid_file)
+
+    if command == 'start':
+        code = start()
+    elif command == 'stop':
+        code = stop(pid, pid_file)
+    elif command == 'restart':
+        if status(pid) == 0:
+            stop(pid, pid_file)
+        time.sleep(1)
+        code = start()
+    else:
+        if status(pid) == 0:
+            print 'Info: Running'
+        else:
+            print 'Info: Not Running'

@@ -3,7 +3,7 @@
 
 from unittest import TestCase, main
 
-from metrique.sql.basesql import BaseSql
+from metriquec.sql.basesql import BaseSql
 
 callable_test = lambda row_limit: BaseSql(row_limit)
 

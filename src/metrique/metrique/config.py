@@ -16,8 +16,8 @@ To customize local client configuration, add/update
 Paths are UNIX compatible only.
 '''
 
+from distutils.sysconfig import get_python_lib
 import logging
-import inspect
 import os
 import re
 
@@ -26,16 +26,14 @@ from jsonconf import JSONConf
 DEFAULT_CONFIG_DIR = '~/.metrique'
 DEFAULT_CONFIG_FILE = 'http_api'
 
-DEFAULT_CUBES_BASE_PATH = 'cubes/'
-DEFAULT_CLIENT_CUBES_PATH = os.path.join(DEFAULT_CONFIG_DIR,
-                                         DEFAULT_CUBES_BASE_PATH)
+DEFAULT_CLIENT_CUBES_BASE_PATH = 'cubes/'
+DEFAULT_CLIENT_CUBES_PATH = os.path.join(
+    DEFAULT_CONFIG_DIR, DEFAULT_CLIENT_CUBES_BASE_PATH)
 
-# PATH to where default client cubes are expected to live
-ipath = inspect.getfile(inspect.currentframe())
-cwd = os.path.dirname(os.path.abspath(ipath))
-base_path = '/'.join(cwd.split('/'))
-DEFAULT_SYSTEM_CUBES_PATH = os.path.join(base_path,
-                                         DEFAULT_CUBES_BASE_PATH)
+
+DEFAULT_SYS_CUBES_BASE_PATH = 'metriquec/'
+DEFAULT_SYSTEM_CUBES_PATH = os.path.join(
+    get_python_lib(), DEFAULT_SYS_CUBES_BASE_PATH)
 
 API_VERSION = 'v1'
 API_REL_PATH = 'api'

@@ -2,9 +2,8 @@
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 # Author: "Chris Ward <cward@redhat.com>
 
-import psycopg2
 import re
-from metrique.sql.basesql import BaseSql
+from metriquec.sql.basesql import BaseSql
 
 
 class TEIID(BaseSql):
@@ -42,6 +41,10 @@ class TEIID(BaseSql):
                 'password=[^ ]+', 'password=*****', self.connect_str))
 
         if not (hasattr(self, '_proxy') and self._proxy.status):
+            try:
+                import psycopg2
+            except ImportError:
+                raise ImportError("pip install psycopg2")
             # FIXME: set a timeout??
             self._proxy = psycopg2.connect(self.connect_str)
             self.logger.debug(' ... Connected (New)')

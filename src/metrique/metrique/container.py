@@ -128,9 +128,15 @@ class Container(object):
             # this excludes the lines that are out of bounds:
             minx = min([s.index.min() for s in series]).replace(tzinfo=None)
             maxx = max([s.index.max() for s in series]).replace(tzinfo=None)
-            lines = {k: v for k, v in lines.items()
-                     if v.replace(tzinfo=None) <= maxx
-                     and v.replace(tzinfo=None) >= minx}
+            # requires 2.7+
+            #lines = {k: v for k, v in lines.items()
+            #         if v.replace(tzinfo=None) <= maxx
+            #         and v.replace(tzinfo=None) >= minx}
+            # compatible with 2.6+
+            lines = dict(
+                [(k, v) for k, v in lines.items() if (
+                    v.replace(tzinfo=None) <= maxx and
+                    v.replace(tzinfo=None) >= minx)])
             p.lines(lines, lines_y)
         if today is not None:
             p.line(today, 'today', today_y, lw=2,  linestyle='--')

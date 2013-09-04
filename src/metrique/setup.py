@@ -8,27 +8,22 @@ logger = logging.getLogger(__name__)
 from setuptools import setup
 
 __pkg__ = 'metrique'
-__version__ = '0.1.4'
-__release__ = 16
-__nvr__ = '%s-%i' % (__version__, __release__)
-__pkgs__ = ['metrique', 'metrique.cubes', 'metrique.sql']
+__version__ = '0.1.5'
+__release__ = 21
+__nvr__ = '%s-%s' % (__version__, __release__)
+__pkgs__ = ['metrique']
 __provides__ = ['metrique']
-__desc__ = 'Python/MongoDB Information Platform - Client'
+__desc__ = 'Metrique - Client Libraries'
 __scripts__ = [
     'bin/metrique-setup',
 ]
 __requires__ = [
     'bson (>=0.3.3)',
-    'celery (>=3.0)',
     'decorator (>=3.4)',
-    'gittle (>=0.2.1)',
     'futures (>=2.1)',
-    'ipython (>=1.0.0)',
-    'jsonconf (>=0.1.3)',
-    'MySQL_python (>=1.2.4)',
+    'jsonconf (>=0.1.4)',
     'pandas (>=0.12)',
     'pql (>=0.3.2)',
-    'psycopg2 (>=2.5)',
     'python_dateutil (>=2.1)',
     'pytz',  # (>=2013b)
     'requests (>=1.2)',
@@ -37,16 +32,11 @@ __requires__ = [
 ]
 __irequires__ = [
     'bson>=0.3.3',
-    'celery>=3.0',
     'decorator>=3.4',
     'futures>=2.1',
-    'gittle>=0.2.1',
-    'ipython>=1.0.0',
-    'jsonconf>=0.1.3',
-    'MySQL_python>=1.2.4',
+    'jsonconf>=0.1.4',
     'pandas>=0.12',
     'pql>=0.3.2',
-    'psycopg2>=2.5',
     'python_dateutil>=2.1',
     'pytz>=2013b',
     'requests>=1.2',
@@ -56,16 +46,11 @@ __irequires__ = [
 pip_src = 'https://pypi.python.org/packages/source'
 __deplinks__ = [
     '%s/b/bson/bson-0.3.3.tar.gz' % pip_src,
-    '%s/c/celery/celery-3.0.22.tar.gz' % pip_src,
     '%s/d/decorator/decorator-3.4.0.tar.gz' % pip_src,
     '%s/f/futures/futures-2.1.4.tar.gz' % pip_src,
-    '%s/g/gittle/gittle-0.2.1.tar.gz' % pip_src,
-    '%s/i/ipython/ipython-1.0.0.tar.gz' % pip_src,
-    '%s/j/jsonconf/jsonconf-0.1.1.tar.gz' % pip_src,
-    '%s/M/MySQL-python/MySQL-python-1.2.4.zip' % pip_src,
+    '%s/j/jsonconf/jsonconf-0.1.4.tar.gz' % pip_src,
     '%s/p/pandas/pandas-0.12.0.tar.gz' % pip_src,
     '%s/p/pql/pql-0.3.2.tar.gz' % pip_src,
-    '%s/p/psycopg2/psycopg2-2.5.1.tar.gz' % pip_src,
     '%s/p/python-dateutil/python-dateutil-2.1.tar.gz' % pip_src,
     '%s/p/pytz/pytz-2013b.tar.gz' % pip_src,
     '%s/r/requests/requests-1.2.3.tar.gz' % pip_src,
@@ -73,12 +58,8 @@ __deplinks__ = [
     '%s/t/tornado/tornado-3.1.tar.gz' % pip_src,
 ]
 
-try:
-    with open('../../README.rst') as _file:
-        readme = _file.read()
-except IOError:
-    readme = __desc__
-
+with open('README.rst') as _file:
+    readme = _file.read()
 
 github = 'https://github.com/drpoovilleorg/metrique'
 download_url = '%s/archive/master.zip' % github

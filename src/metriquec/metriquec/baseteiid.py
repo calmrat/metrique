@@ -6,9 +6,8 @@
 Base cube for extracting data from SQL TEIID interface
 '''
 
-from psycopg2 import DatabaseError
-from metrique.cubes.basesql import BaseSql
-from metrique.sql.teiid import TEIID
+from metriquec.basesql import BaseSql
+from metriquec.sql.teiid import TEIID
 
 DEFAULT_CONFIG = {
     "host":         "",
@@ -33,6 +32,12 @@ class BaseTEIID(BaseSql):
         self.password = self.setdefault(password, DEFAULT_CONFIG['password'])
         super(BaseTEIID, self).__init__(host=self.host, port=self.port,
                                         db=self.db, **kwargs)
+
+        try:
+            from psycopg2 import DatabaseError
+        except ImportError:
+            raise ImportError("pip install psycopg2")
+
         self.retry_on_error = DatabaseError
 
     @property

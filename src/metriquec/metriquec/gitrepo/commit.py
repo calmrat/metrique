@@ -12,7 +12,7 @@ import subprocess
 import sys
 import traceback
 
-from metrique.cubes.basegitobject import BaseGitObject
+from metriquec.basegitobject import BaseGitObject
 from metrique.utils import new_oid
 
 related_re = re.compile('Related: (.+)$', re.I)
