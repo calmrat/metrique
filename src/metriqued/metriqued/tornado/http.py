@@ -62,6 +62,11 @@ class HTTPServer(MetriqueServer):
                 (r"/api/v1/cube", CubeHandler, init),
             ],
         )
+        if debug:
+            # FIXME hack to disable autoreload when debug is True
+            from tornado import autoreload
+            autoreload._reload_attempted = True
+            autoreload._reload = lambda: None
         port = self.metrique_config.http_port
         address = self.metrique_config.http_host
         if self.metrique_config.ssl:
