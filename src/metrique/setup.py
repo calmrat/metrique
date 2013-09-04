@@ -65,7 +65,7 @@ github = 'https://github.com/drpoovilleorg/metrique'
 download_url = '%s/archive/master.zip' % github
 
 default_setup = dict(
-    url='https://github.com/drpoovilleorg/metrique',
+    url=github,
     license='GPLv3',
     author='Chris Ward',
     author_email='cward@redhat.com',

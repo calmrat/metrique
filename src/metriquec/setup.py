@@ -54,7 +54,7 @@ download_url = '%s/archive/master.zip' % github
 
 default_setup = dict(
     url=github,
-    license='Red Hat Confidential',
+    license='GPLv3',
     author='Chris Ward',
     author_email='cward@redhat.com',
     download_url=download_url,
