@@ -50,7 +50,7 @@ class Container(object):
         else:
             return default
 
-    def display(self, method=None, alt='', **kwargs):
+    def display(self, method=None, alt='', merge=None, **kwargs):
         '''
         Display the data.
 
@@ -58,23 +58,55 @@ class Container(object):
             One of None, 'plot', 'stacked', 'diffplot', 'diffplotinv'
         :param string alt:
             The prefix that specifies other data source to be displayed.
+        :param list merge:
+            A list of groups (lists/tuples) of labels to merge together.
         :param int loc:
             The location of the legend.
+        :param boolean/string stamp:
+            Put a timestamp in the bottom right corner.
+            If True the current time will be stamped.
+            If string then the string concatenated with the current time
+            will be stamped.
         '''
         method = method if method else self.method
-        return self.dmap[method](series=self._get('series', alt),
-                                 diffs=self._get('diffs', alt),
-                                 labels=self._get('labels', alt),
+        labels = self._get('labels', alt)
+        series = self._get('series', alt)
+        diffs = self._get('diffs', alt)
+        labels, series, diffs = self._merge(merge, labels, series, diffs)
+
+        return self.dmap[method](series=series,
+                                 diffs=diffs,
+                                 labels=labels,
                                  title=self._get('title', alt, ''),
                                  colors=self._get('colors', alt),
                                  lines=self._get('lines', alt),
                                  today=self._get('today', alt),
                                  **kwargs)
 
+    def _merge(self, merge, labels, series, diffs):
+        '''
+        Merges groups together.
+        :param list merge:
+            A list of groups (lists/tuples) of labels to merge together.
+        '''
+        if merge:
+            lab = set(labels) - set([e for group in merge for e in group])
+            merge += map(lambda x: [x], lab)
+            merge.sort(key=lambda g: labels.index(g[0]))
+            l, s, d = [], [], [] if diffs else None
+            for group in merge:
+                idx = [labels.index(e) for e in group]
+                l.append(' + '.join([labels[i] for i in idx]))
+                s.append(sum([series[i] for i in idx]))
+                if diffs:
+                    d.append(sum([diffs[i] for i in idx]))
+            labels, series, diffs = l, s, d
+        return labels, series, diffs
+
     def _plot(self, series, labels, colors, title, lines=None, today=None,
               stacked=False, loc=0, lines_y='bottom', today_y='bottom',
-              **kwargs):
-        p = Plotter(fill=stacked)
+              stamp=False, **kwargs):
+        p = Plotter(fill=stacked, stamp=stamp)
         p.plots(zip(labels, series), stacked=stacked, colors=colors)
         self._lines(p, series, lines, lines_y, today, today_y)
         plt.legend(loc=loc)
@@ -82,8 +114,8 @@ class Container(object):
 
     def _diffplot(self, series, diffs, labels, colors, title, lines=None,
                   today=None, invert=False, loc=0, lines_y='bottom',
-                  today_y='bottom', **kwargs):
-        p = DiffPlotter(title=title)
+                  today_y='bottom', stamp=False, **kwargs):
+        p = DiffPlotter(title=title, stamp=stamp)
         if invert:
             series, diffs = diffs, series
         for s, d, l in zip(series, diffs, labels):
