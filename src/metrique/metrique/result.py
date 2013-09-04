@@ -18,7 +18,8 @@ import pandas.tseries.offsets as off
 from pandas.tslib import Timestamp
 import pandas as pd
 import numpy as np
-from calendar import timegm
+
+from metrique.utils import dt2ts
 
 from IPython.display import HTML
 
@@ -65,11 +66,6 @@ def filtered(f):
         return ret
 
     return decorator(_filter, f)
-
-
-def to_timestamp(d):
-    ''' Convert a given datetime object to a utc timestamp value'''
-    return timegm(d.utctimetuple())
 
 
 class Result(DataFrame):
@@ -144,8 +140,8 @@ class Result(DataFrame):
 
         This is a helper for plotting
         '''
-        start = min(dts) if start is None else start
-        end = max(dts) if end is None else end
+        start = start or min(dts)
+        end = start or max(dts)
         maximum_count = len(filter(lambda dt: start <= dt and dt <= end, dts))
         daily_count = (end - start).days
         if maximum_count <= ideal:
@@ -174,8 +170,7 @@ class Result(DataFrame):
         :param integer lin_reg_days:
             Set how many past days should we use for prediction calulation
         '''
-        if dates is None:
-            dates = self.get_dates_range()
+        dates = dates or self.get_dates_range()
 
         idx, vals = [], []
         for dt in dates:
@@ -209,13 +204,13 @@ class Result(DataFrame):
         last_days = pd.date_range(end=since, periods=days)
         hist = self.history(last_days)
 
-        xi = np.array([to_timestamp(d) for d in hist.index])
+        xi = np.array(map(dt2ts, hist.index))
         A = np.array([xi, np.ones(len(hist))])
         y = hist.values
         w = np.linalg.lstsq(A.T, y)[0]
 
         for d in series.index[series.index > since]:
-            series[d] = w[0] * to_timestamp(d) + w[1]
+            series[d] = w[0] * dt2ts(d) + w[1]
             series[d] = 0 if series[d] < 0 else series[d]
 
         return series
@@ -331,7 +326,7 @@ class Result(DataFrame):
             last[col_name] = age
             return last
 
-        cut_ts = datetime.utcnow() if self._rbound is None else self._rbound
+        cut_ts = self._rbound or datetime.utcnow()
         res = pd.concat([prep(df) for _, df in self.groupby(self._oid)])
         return res
 
