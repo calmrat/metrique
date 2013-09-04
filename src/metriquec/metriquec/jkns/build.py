@@ -14,7 +14,7 @@ from urllib2 import urlopen, HTTPError
 import re
 import simplejson as json
 
-from metrique.cubes.basejson import BaseJSON
+from metriquec.basejson import BaseJSON
 from metrique.utils import milli2sec, dt2ts
 
 DEFAULT_CONFIG = {

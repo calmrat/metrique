@@ -12,7 +12,7 @@ import os
 import re
 from urllib2 import urlopen
 
-from metrique.cubes.basecube import BaseCube
+from metriquec.basecube import BaseCube
 
 
 class BaseCSV(BaseCube):

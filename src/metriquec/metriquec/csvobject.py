@@ -10,7 +10,7 @@ Basic CSV based cube for extracting data from CSV
 
 import os
 
-from metrique.cubes.basecsv import BaseCSV
+from metriquec.basecsv import BaseCSV
 from metrique.utils import new_oid
 
 

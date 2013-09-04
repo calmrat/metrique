@@ -8,7 +8,7 @@ Base cube for extracting data from JSON documents
 
 import simplejson as json
 
-from metrique.cubes.basecube import BaseCube
+from metriquec.basecube import BaseCube
 
 
 class BaseJSON(BaseCube):

@@ -5,7 +5,6 @@
 from collections import defaultdict
 
 from metrique.http_api import HTTPClient
-from metrique.utils import memo
 
 
 class BaseCube(HTTPClient):
@@ -36,7 +35,6 @@ class BaseCube(HTTPClient):
                 return default
 
     @property
-    @memo
     def fieldmap(self):
         '''
         Dictionary of field_id: field_name

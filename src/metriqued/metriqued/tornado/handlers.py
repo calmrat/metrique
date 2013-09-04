@@ -7,7 +7,12 @@ import base64
 logger = logging.getLogger(__name__)
 
 from functools import wraps
-import kerberos
+
+try:
+    import kerberos
+except ImportError:
+    kerberos = None
+
 from passlib.hash import sha256_crypt
 import simplejson as json
 from tornado.web import RequestHandler, asynchronous, HTTPError
@@ -83,7 +88,9 @@ def _auth_kerb(handler, username, password):
     if not password:
         return -1
     krb_realm = handler.proxy.metrique_config.krb_realm
-    if not krb_realm:
+    if not (kerberos and krb_realm):
+        # if kerberos isn't available or krb_realm
+        # is not set, skip
         return 0
 
     try:

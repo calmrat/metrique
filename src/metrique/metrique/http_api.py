@@ -60,11 +60,11 @@ class HTTPClient(object):
                 cube_cls = cls
         else:
             cube_cls = cls
-        return object.__new__(cube_cls, *args, **kwargs)
+        return object.__new__(cube_cls)
 
     def __init__(self, api_host=None, api_username=None,
                  api_password=None, async=True,
-                 force=False, debug=-1, config_file=None,
+                 force=True, debug=-1, config_file=None,
                  config_dir=None, cube=None,
                  **kwargs):
         self.load_config(config_file, config_dir, force)

@@ -12,4 +12,3 @@ to create specific cubes that extract their data from
 the sources the basecubes are designed to facilitate.
 
 '''
-from metrique.cubes.utils import get_cube, set_cube_path

@@ -13,7 +13,7 @@ import re
 import time
 import traceback
 
-from metrique.cubes.basecube import BaseCube
+from metriquec.basecube import BaseCube
 
 from metrique.utils import batch_gen, ts2dt
 
