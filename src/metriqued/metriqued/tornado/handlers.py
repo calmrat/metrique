@@ -398,21 +398,6 @@ class ETLIndexHandler(MetriqueInitialized):
         return etl_api.index(cube=cube, ensure=ensure, drop=drop)
 
 
-class ETLActivityImportHandler(MetriqueInitialized):
-    '''
-    RequestHandler for building pre-calculated
-    object timelines given a 'activity history'
-    data source that can be used to recreate
-    objects in time
-    '''
-    @auth('rw')
-    @async
-    def get(self):
-        cube = self.get_argument('cube')
-        ids = self.get_argument('ids')
-        return etl_api.activity_import(cube=cube, ids=ids)
-
-
 class ETLSaveObjects(MetriqueInitialized):
     '''
     RequestHandler for saving a given object to a metrique server cube

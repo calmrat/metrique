@@ -54,8 +54,6 @@ class HTTPServer(MetriqueServer):
                 (r"/api/v1/query/sample", QuerySampleHandler, init),
                 (r"/api/v1/admin/users/add", UsersAddHandler, init),
                 (r"/api/v1/admin/etl/index", ETLIndexHandler, init),
-                (r"/api/v1/admin/etl/activityimport",
-                    ETLActivityImportHandler, init),
                 (r"/api/v1/admin/etl/saveobjects", ETLSaveObjects, init),
                 (r"/api/v1/admin/etl/removeobjects", ETLRemoveObjects, init),
                 (r"/api/v1/admin/etl/cube/drop", ETLCubeDrop, init),
