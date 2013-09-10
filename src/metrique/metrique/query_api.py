@@ -9,13 +9,13 @@ related api functionality.
 
 import logging
 logger = logging.getLogger(__name__)
+import os
 
 from metrique.result import Result
+from metrique.utils import set_default
 
-CMD = 'query'
 
-
-def aggregate(self, pipeline, cube=None):
+def aggregate(self, pipeline, owner=None, cube=None):
     '''
     Proxy for pymongodb's .aggregate framework call
     on a given cube
@@ -23,16 +23,17 @@ def aggregate(self, pipeline, cube=None):
     :param list pipeline: The aggregation pipeline. $match, $project, etc.
     :param string cube: name of cube to work with
     '''
-    if not cube and self.name:
-        cube = self.name
-    result = self._get(CMD, 'aggregate', cube=cube, pipeline=pipeline)
+    owner = set_default(owner, self.config.api_username)
+    cube = set_default(cube, self.name, required=True)
+    cmd = os.path.join(owner, cube, 'aggregate')
+    result = self._get(cmd, pipeline=pipeline)
     try:
         return result['result']
     except Exception:
         raise RuntimeError(result)
 
 
-def count(self, query, cube=None, date=None):
+def count(self, query=None, owner=None, cube=None, date=None):
     '''
     Run a `pql` based query on the given cube, but
     only return back the count (Integer)
@@ -45,13 +46,17 @@ def count(self, query, cube=None, date=None):
         be returned
     :param string cube: name of cube to work with
     '''
-    if not cube:
-        cube = self.name
-    return self._get(CMD, 'count', cube=cube, query=query, date=date)
+    if not query:
+        query = '_oid == exists(True)'
+    owner = set_default(owner, self.config.api_username)
+    cube = set_default(cube, self.name, required=True)
+    cmd = os.path.join(owner, cube, 'count')
+    return self._get(cmd, query=query, date=date)
 
 
 def find(self, query, fields=None, date=None, sort=None, one=False,
-         raw=False, explain=False, cube=None, merge_versions=True, **kwargs):
+         raw=False, explain=False, cube=None, merge_versions=True,
+         owner=None, **kwargs):
     '''
     Run a `pql` based query on the given cube. Optionally:
 
@@ -63,24 +68,28 @@ def find(self, query, fields=None, date=None, sort=None, one=False,
     :param string cube: name of cube to work with
     :param boolean merge_versions:
         merge versions with unchanging fields od interest
+    :param string owner: owner of cube
 
     .. note::
         - if date==None then the most recent versions of the objects
           will be queried.
 
     '''
-    if not cube:
-        cube = self.name
-    result = self._get(CMD, 'find', cube=cube, query=query,
-                       fields=fields, date=date, sort=sort, one=one,
-                       explain=explain, merge_versions=merge_versions)
+    owner = set_default(owner, self.config.api_username)
+    cube = set_default(cube, self.name, required=True)
+    cmd = os.path.join(owner, cube, 'find')
+    result = self._get(cmd, query=query, fields=fields,
+                       date=date, sort=sort, one=one,
+                       explain=explain,
+                       merge_versions=merge_versions)
     if raw or explain:
         return result
     else:
         return _result_convert(self, result, date, **kwargs)
 
 
-def deptree(self, field, oids, date=None, level=None, cube=None):
+def deptree(self, field, oids, date=None, level=None,
+            owner=None, cube=None):
     '''
     Dependency tree builder recursively fetchs objects that
     are children of the initial set of objects provided.
@@ -91,15 +100,17 @@ def deptree(self, field, oids, date=None, level=None, cube=None):
     :param integer level: limit depth of recursion
     :param string cube: name of cube to work with
     '''
-    if not cube:
-        cube = self.name
-    result = self._get(CMD, 'deptree', field=field, oids=oids, date=date,
-                       level=level, cube=cube)
+    owner = set_default(owner, self.config.api_username)
+    cube = set_default(cube, self.name, required=True)
+    cmd = os.path.join(owner, cube, 'deptree')
+    result = self._get(cmd, field=field,
+                       oids=oids, date=date,
+                       level=level)
     return result
 
 
-def fetch(self, fields=None, date=None, sort=None, skip=0, limit=0, oids=None,
-          raw=False, cube=None, **kwargs):
+def fetch(self, fields=None, date=None, sort=None, skip=0, limit=0,
+          oids=None, raw=False, owner=None, cube=None, **kwargs):
     '''
     Fetch field values for (potentially) all objects
     of a given, with skip, limit, id "filter" arguments
@@ -117,10 +128,12 @@ def fetch(self, fields=None, date=None, sort=None, skip=0, limit=0, oids=None,
     :param boolean raw: return the documents in their (dict) form
     :param string cube: name of cube to work with
     '''
-    if not cube:
-        cube = self.name
-    result = self._get(CMD, 'fetch', cube=cube, fields=fields,
-                       date=date, sort=sort, skip=skip, limit=limit,
+    owner = set_default(owner, self.config.api_username)
+    cube = set_default(cube, self.name, required=True)
+    cmd = os.path.join(owner, cube, 'fetch')
+    result = self._get(cmd, fields=fields,
+                       date=date, sort=sort,
+                       skip=skip, limit=limit,
                        oids=oids)
     if raw:
         return result
@@ -128,7 +141,7 @@ def fetch(self, fields=None, date=None, sort=None, skip=0, limit=0, oids=None,
         return _result_convert(self, result, date, **kwargs)
 
 
-def distinct(self, field, cube=None, sort=True):
+def distinct(self, field, owner=None, cube=None, sort=True):
     '''
     Return back all distinct token values of a given field
 
@@ -136,16 +149,18 @@ def distinct(self, field, cube=None, sort=True):
         Field to get distinct token values from
     :param string cube: name of cube to work with
     '''
-    if not cube:
-        cube = self.name
-    result = self._get(CMD, 'distinct', cube=cube, field=field)
+    owner = set_default(owner, self.config.api_username)
+    cube = set_default(cube, self.name, required=True)
+    cmd = os.path.join(owner, cube, 'distinct')
+    result = self._get(cmd, field=field)
     if sort:
         return sorted(result)
     else:
         return result
 
 
-def sample(self, size, fields=None, date=None, raw=False, cube=None):
+def sample(self, size, fields=None, date=None, raw=False,
+           owner=None, cube=None):
     '''
     Draws a sample of objects at random.
 
@@ -159,10 +174,10 @@ def sample(self, size, fields=None, date=None, raw=False, cube=None):
         - if date==None then the most recent versions of the objects
           will be queried.
     '''
-    if not cube:
-        cube = self.name
-    result = self._get(CMD, 'sample', cube=cube, size=size,
-                       fields=fields, date=date)
+    owner = set_default(owner, self.config.api_username)
+    cube = set_default(cube, self.name, required=True)
+    cmd = os.path.join(owner, cube, 'sample')
+    result = self._get(cmd, size=size, fields=fields, date=date)
     if raw:
         return result
     else:
@@ -174,9 +189,7 @@ def _result_convert(self, result, date, **kwargs):
         result = self._result_class(result, **kwargs)
     else:
         result = Result(result)
-
     # this lets the result object know which dates were queried,
     # so that it can set its bounds.
     result.set_date_bounds(date)
-
     return result

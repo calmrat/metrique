@@ -22,7 +22,7 @@ from metrique.config import DEFAULT_CONFIG_DIR, DEFAULT_CONFIG_FILE
 from metrique import query_api, etl_api, user_api, cube_api
 from metrique import etl_activity, get_cube
 
-from metrique.utils import csv2list, json_encode
+from metrique.utils import csv2list, json_encode, set_default
 
 
 class HTTPClient(object):
@@ -42,9 +42,9 @@ class HTTPClient(object):
     activity_import = etl_activity.activity_import
     save_objects = etl_api.save_objects
     remove_objects = etl_api.remove_objects
-    list_index = cube_api.list_index
-    ensure_index = cube_api.ensure_index
-    drop_index = cube_api.drop_index
+    index_list = cube_api.list_index
+    index = cube_api.ensure_index
+    index_drop = cube_api.drop_index
     cube_drop = cube_api.drop
     cube_register = cube_api.register
     user_login = user_api.login
@@ -52,6 +52,7 @@ class HTTPClient(object):
     user_add = user_api.add
     user_register = user_api.register
     user_passwd = user_api.passwd
+    user_update = user_api.update
 
     def __new__(cls, *args, **kwargs):
         '''
@@ -92,6 +93,7 @@ class HTTPClient(object):
 
         if api_auto_login:
             self.config.api_auto_login = api_auto_login
+        self._api_auto_login_attempted = False
 
     def load_config(self, config_file, config_dir, force=False):
         if not config_file:
@@ -180,7 +182,11 @@ class HTTPClient(object):
         _response = self._get_response(runner, _url,
                                        api_username, api_password)
 
-        if _response.status_code in [401, 403] and self.config.api_auto_login:
+        _auto = self.config.api_auto_login
+        _attempted = self._api_auto_login_attempted
+
+        if _response.status_code in [401, 403] and _auto and not _attempted:
+            self._api_auto_login_attempted = True
             # try to login and rerun the request
             self.logger.debug('HTTP 401: going to try to auto re-log-in')
             #self._load_session()
@@ -213,11 +219,11 @@ class HTTPClient(object):
     def ping(self):
         return self._get('ping')
 
-    def list_cubes(self):
+    def list_cubes(self, owner=None):
         ''' List all valid cubes for a given metrique instance '''
-        return self._get('cube')
+        return self._get(owner)
 
-    def list_cube_fields(self, cube=None,
+    def list_cube_fields(self, owner, cube,
                          exclude_fields=None, _mtime=False):
         '''
         List all valid fields for a given cube
@@ -229,8 +235,7 @@ class HTTPClient(object):
         :param bool mtime:
             Include mtime details
         '''
-        if not cube:
-            cube = self.name
+        cube = set_default(cube, self.name, required=True)
         return self._get('cube', cube=cube,
                          exclude_fields=exclude_fields,
                          _mtime=_mtime)

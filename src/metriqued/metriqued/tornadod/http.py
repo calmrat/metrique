@@ -20,10 +20,11 @@ from handlers import UsersAddHandler
 from handlers import ETLIndexHandler
 from handlers import ETLActivityImportHandler
 from handlers import ETLSaveObjectsHandler, ETLRemoveObjectsHandler
-from handlers import UserCubeHandler
+from handlers import UserCubeHandler, UserHandler
 from handlers import LoginHandler, LogoutHandler
 from handlers import RegisterHandler, PasswordChangeHandler
 from handlers import CubeRegisterHandler, CubeDropHandler
+from handlers import UserUpdateHandler
 
 # FIXME: add this to config
 # generate a new one with
@@ -55,30 +56,32 @@ def ucv2(value):
 
 base_handlers = [
     (r"/register", RegisterHandler),
-    (r"/passwd", PasswordChangeHandler),
     (r"/login", LoginHandler),
     (r"/logout", LogoutHandler),
 
+    (r"(\w+)/passwd", PasswordChangeHandler),
+    (r"(\w+)/update", UserUpdateHandler),
+
     (api_v2(r"ping"), PingHandler),
 
-    (api_v2(r""), UserCubeHandler),
-    (api_v2(r"(\w+)"), UserCubeHandler),
+    (api_v2(r"(\w+)?"), UserHandler),
     (api_v2(r"(\w+)/(\w+)"), UserCubeHandler),
 ]
 
 user_cube_handlers = [
-    #(r"find", QueryFindHandler),
-    #(r"deptree", QueryDeptreeHandler),
-    #(r"count", QueryCountHandler),
-    #(r"aggregate", QueryAggregateHandler),
-    #(r"fetch", QueryFetchHandler),
-    #(r"distinct", QueryDistinctHandler),
-    #(r"sample", QuerySampleHandler),
-    #(r"adduser", UsersAddHandler),
-    #(r"index", ETLIndexHandler),
-    #(r"activity_import", ETLActivityImportHandler),
+    (ucv2(r"find"), QueryFindHandler),
+    (ucv2(r"deptree"), QueryDeptreeHandler),
+    (ucv2(r"count"), QueryCountHandler),
+    (ucv2(r"aggregate"), QueryAggregateHandler),
+    (ucv2(r"fetch"), QueryFetchHandler),
+    (ucv2(r"distinct"), QueryDistinctHandler),
+    (ucv2(r"sample"), QuerySampleHandler),
+    # FIXME adduser...
+    (ucv2(r"user_add"), UsersAddHandler),
+    (ucv2(r"index"), ETLIndexHandler),
     (ucv2(r"save_objects"), ETLSaveObjectsHandler),
     (ucv2(r"remove_objects"), ETLRemoveObjectsHandler),
+    (ucv2(r"activity_import"), ETLActivityImportHandler),
     (ucv2(r"drop_cube"), CubeDropHandler),
     (ucv2(r"register"), CubeRegisterHandler),
 ]
@@ -108,8 +111,8 @@ class HTTPServer(MetriqueServer):
                     mongodb_config=self.mongodb_config)
         handlers = [(h[0], h[1], init) for h in api_v2_handlers]
 
-        logger.debug('API V2 HANDLERS: %s' % api_v2_handlers)
-        logger.debug('COOKIE SECRET: %s' % __cookie_secret__)
+        #logger.debug('API V2 HANDLERS: %s' % api_v2_handlers)
+        #logger.debug('COOKIE SECRET: %s' % __cookie_secret__)
 
         self._web_app = Application(
             gzip=gzip,

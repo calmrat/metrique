@@ -2,47 +2,44 @@
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 # Author: "Chris Ward <cward@redhat.com>
 
-from datetime import datetime
 import logging
 logger = logging.getLogger(__name__)
 import pql
 import re
 import random
-from socket import getfqdn
+from tornado.web import HTTPError
 
-from metriqued.cubes import get_fields, get_cube
+from metriqued.cubes import get_fields, get_collection
 from metriqued.utils import dt2ts
 
 BATCH_SIZE = 16777216  # hard limit is 16M...
 
-FQDN = getfqdn()
+
+def log_head(owner, cube, cmd, *args):
+    logger.debug('%s (%s.%s): %s' % (cmd, owner, cube, args))
 
 
-def ping(**kwargs):
-    logger.debug('got ping @ %s' % datetime.utcnow())
-    response = {
-        'action': 'ping',
-        'response': 'pong',
-        'from_host': FQDN,
-    }
-    response.update(kwargs)
-    return response
+def aggregate(owner, cube, pipeline):
+    log_head(owner, cube, 'aggregate', pipeline)
+    logger.debug('Pipeline (%s): %s' % (type(pipeline), pipeline))
+    _cube = get_collection(owner, cube)
+    return _cube.aggregate(pipeline)
 
 
-def distinct(cube, field):
-    logger.debug('Running Distinct (%s.%s)' % (cube, field))
-    _cube = get_cube(cube)
+def distinct(owner, cube, field):
+    log_head(owner, cube, 'distinct', field)
+    _cube = get_collection(owner, cube)
     return _cube.distinct(field)
 
 
-def count(cube, query, date=None):
-    logger.debug('Running Count')
+def count(owner, cube, query, date=None):
+    log_head(owner, cube, 'count', query, date)
     try:
         spec = pql.find(query + _get_date_pql_string(date))
     except Exception as e:
-        raise ValueError("Invalid Query (%s)" % str(e))
+        raise HTTPError(400, "Invalid Query (%s)" % str(e))
 
-    _cube = get_cube(cube)
+    _cube = get_collection(owner, cube)
 
     logger.debug('Mongo Query: %s' % spec)
 
@@ -83,17 +80,16 @@ def _check_sort(sort):
     try:
         assert len(sort[0]) == 2
     except (AssertionError, IndexError, TypeError):
-        raise ValueError("Invalid sort value; try [('_id': -1)]")
+        raise HTTPError(400, "Invalid sort value; try [('_id': -1)]")
 
     return sort
 
 
-def find(cube, query, fields=None, date=None, sort=None, one=False,
+def find(owner, cube, query, fields=None, date=None, sort=None, one=False,
          explain=False, merge_versions=True):
-    logger.debug('Running Find (%s)' % cube)
-
+    log_head(owner, cube, 'find', query, date)
     sort = _check_sort(sort)
-    _cube = get_cube(cube)
+
     fields = get_fields(cube, fields)
     if date is None or ('_id' in fields and fields['_id']):
         merge_versions = False
@@ -105,10 +101,10 @@ def find(cube, query, fields=None, date=None, sort=None, one=False,
     try:
         spec = pql_parser.parse(query)
     except Exception as e:
-        raise ValueError("Invalid Query (%s): %s" % (str(e), query))
-
+        raise HTTPError(400, "Invalid Query (%s): %s" % (str(e), query))
     logger.debug('Query: %s' % spec)
 
+    _cube = get_collection(owner, cube, admin=False)
     if explain:
         result = _cube.find(spec, fields, sort=sort).explain()
     elif one:
@@ -155,13 +151,14 @@ def _parse_oids(oids, delimeter=','):
     if isinstance(oids, basestring):
         oids = [s.strip() for s in oids.split(delimeter)]
     if type(oids) is not list:
-        raise TypeError("ids expected to be a list")
+        raise HTTPError(400, "ids expected to be a list")
     return oids
 
 
-def deptree(cube, field, oids, date, level):
+def deptree(owner, cube, field, oids, date, level):
+    log_head(owner, cube, 'deptree', date)
     oids = _parse_oids(oids)
-    _cube = get_cube(cube)
+    _cube = get_collection(owner, cube)
     checked = set(oids)
     fringe = oids
     loop_k = 0
@@ -179,14 +176,13 @@ def deptree(cube, field, oids, date, level):
     return sorted(checked)
 
 
-def fetch(cube, fields=None, date=None, sort=None, skip=0, limit=0, oids=None):
+def fetch(owner, cube, fields=None, date=None,
+          sort=None, skip=0, limit=0, oids=None):
+    log_head(owner, cube, 'fetch', date)
     if oids is None:
         oids = []
-    logger.debug('Running Fetch (skip:%s, limit:%s, oids:%s)' % (
-        skip, limit, len(oids)))
-
     sort = _check_sort(sort)
-    _cube = get_cube(cube)
+    _cube = get_collection(owner, cube)
     fields = get_fields(cube, fields)
 
     spec = {'_oid': {'$in': _parse_oids(oids)}} if oids else {}
@@ -200,16 +196,9 @@ def fetch(cube, fields=None, date=None, sort=None, skip=0, limit=0, oids=None):
     return result
 
 
-def aggregate(cube, pipeline):
-    logger.debug('Running Aggregation')
-    logger.debug('Pipeline (%s): %s' % (type(pipeline), pipeline))
-    _cube = get_cube(cube)
-    return _cube.aggregate(pipeline)
-
-
-def sample(cube, size, fields, date):
-    logger.debug('Running sample (%s):' % size)
-    _cube = get_cube(cube)
+def sample(owner, cube, size, fields, date):
+    log_head(owner, cube, 'sample', date)
+    _cube = get_collection(owner, cube)
     fields = get_fields(cube, fields)
     dt_str = _get_date_pql_string(date, '')
     spec = pql.find(dt_str) if dt_str else {}

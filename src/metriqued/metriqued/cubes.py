@@ -11,10 +11,9 @@ from metriqued.config import mongodb
 mongodb_config = mongodb()
 
 
-def get_collection(user, cube, admin=False, create=False):
+def get_collection(owner, cube, admin=False, create=False):
     ''' return back a mongodb connection to give cube collection '''
-    collection = '%s__%s' % (user, cube)
-    # FIXME: CORRECT HTTP ERROR CODES
+    collection = '%s__%s' % (owner, cube)
     if collection in mongodb_config.db_timeline_data.db.collection_names():
         if create:
             raise HTTPError(
@@ -74,8 +73,9 @@ def get_fields(cube, fields=None, check=False):
     return _fields
 
 
-def list_cube_fields(cube, exclude_fields=[], _mtime=False):
-    spec = {'_id': cube}
+def list_cube_fields(owner, cube, exclude_fields=[], _mtime=False):
+    collection = '%s__%s' % (owner, cube)
+    spec = {'_id': collection}
     _filter = {'_id': 0}
     if not _mtime:
         _filter.update({'_mtime': 0})
@@ -103,12 +103,12 @@ def list_cube_fields(cube, exclude_fields=[], _mtime=False):
     return cube_fields
 
 
-def list_cubes(user=None):
+def list_cubes(owner=None):
     '''
         Get a list of cubes server exports
-        (optionally) filter out cubes user can't 'r' access
     '''
-    if user:
-        raise NotImplemented("Filter for user cubes only")
     names = mongodb_config.db_timeline_data.db.collection_names()
-    return [n for n in names if not n.startswith('system')]
+    if owner:
+        return [n for n in names if n.startswith(owner)]
+    else:
+        return [n for n in names if not n.startswith('system')]

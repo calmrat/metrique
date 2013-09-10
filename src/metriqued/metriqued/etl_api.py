@@ -20,19 +20,20 @@ RE_PROP = re.compile('^_')
 
 mongodb_config = mongodb()
 sha1 = hashlib.sha1
+ETL_ACTIVITY = get_etl_activity()
 
 
-def drop_cube(user, cube):
+def drop_cube(owner, cube):
     '''
     :param str cube: target cube (collection) to save objects to
 
     Wraps pymongo's drop() for the given cube (collection)
     '''
-    get_collection(user, cube, admin=True).drop()
+    get_collection(owner, cube, admin=True).drop()
     return True
 
 
-def index(cube, ensure=None, drop=None):
+def index(owner, cube, ensure=None, drop=None):
     '''
     :param str cube:
         name of cube (collection) to index
@@ -42,21 +43,25 @@ def index(cube, ensure=None, drop=None):
     :param string/list drop:
         index (or name of index) to drop
     '''
-    cube = get_collection(cube, admin=True)
+    _cube = get_collection(owner, cube, admin=True)
 
     if drop is not None:
         # when drop is a list of tuples, the json
         # serialization->deserialization process leaves us with a list of
         # lists, so we need to convert it back to a list of tuples.
         drop = map(tuple, drop) if isinstance(drop, list) else drop
-        cube.drop_index(drop)
+
+        # FIXME: CHECK THAT DROP DOES NOT CONTAIN ANY _id or _oid_...
+        # SYSTEM DEFAULT (IMMUTABLE!) INDEXES!
+
+        _cube.drop_index(drop)
 
     if ensure is not None:
         # same as for drop:
         ensure = map(tuple, ensure) if isinstance(ensure, list) else ensure
-        cube.ensure_index(ensure)
+        _cube.ensure_index(ensure)
 
-    return cube.index_information()
+    return _cube.index_information()
 
 
 def _bulk_insert(_cube, docs, size=1000):
@@ -219,7 +224,7 @@ def _save_no_snapshot(_cube, objects):
         _cube.insert(batch, manipulate=False)
 
 
-def _save_objects(user, cube, objects):
+def _save_objects(owner, cube, objects):
     '''
     Save all the objects (docs) into the given cube (mongodb collection)
     Each object must have '_oid' and '_start' fields.
@@ -234,7 +239,7 @@ def _save_objects(user, cube, objects):
     :param list objects:
         list of dictionary-like objects
     '''
-    _cube = get_collection(user, cube, admin=True)
+    _cube = get_collection(owner, cube, admin=True)
 
     fields = set()
     [fields.add(k) for doc in objects for k in doc.keys()]
@@ -247,9 +252,9 @@ def _save_objects(user, cube, objects):
     return fields
 
 
-def save_objects(user, cube, objects, mtime=None):
+def save_objects(owner, cube, objects, mtime=None):
     '''
-    :param str user: target user's cube
+    :param str owner: target owner's cube
     :param str cube: target cube (collection) to save objects to
     :param list objects: list of dictionary-like objects to be stored
     :param datetime mtime: datetime to apply as mtime for objects
@@ -261,8 +266,8 @@ def save_objects(user, cube, objects, mtime=None):
     Apply the given mtime to all objects or apply utcnow(). _mtime
     is used to support timebased 'delta' updates.
     '''
-    if not (user and cube and objects):
-        raise ValueError('user, cube, objects required')
+    if not (owner and cube and objects):
+        raise ValueError('owner, cube, objects required')
     elif not isinstance(objects, list):
         raise TypeError("Expected list, got %s: %s" %
                         (type(objects), objects))
@@ -273,12 +278,12 @@ def save_objects(user, cube, objects, mtime=None):
 
     objects = [_prep_object(obj, mtime) for obj in objects if obj]
 
-    fields = _save_objects(user, cube, objects)
+    fields = _save_objects(owner, cube, objects)
 
-    logger.debug('[%s.%s] Saved %s objects' % (user, cube, len(objects)))
+    logger.debug('[%s.%s] Saved %s objects' % (owner, cube, len(objects)))
 
     # store info about which cube.fields got updated and when
-    _etl = etl_activity_update(cube, fields, mtime)
+    _etl = etl_activity_update(owner, cube, fields, mtime)
     logger.debug('ETL Activity Update: %s' % _etl)
 
     # return object ids saved
@@ -289,7 +294,9 @@ def save_objects(user, cube, objects, mtime=None):
     return oids
 
 
-def remove_objects(user, cube, ids, backup=False):
+# FIXME: DO NOT PERMIT REMOVING (OR STORING) AND DOCUMENT WITH
+# __meta__ key
+def remove_objects(owner, cube, ids, backup=False):
     '''
     Remove all the objects (docs) from the given cube (mongodb collection)
 
@@ -306,7 +313,7 @@ def remove_objects(user, cube, ids, backup=False):
                         (type(ids), ids))
     else:
         spec = {'_oid': {'$in': ids}}
-        _cube = get_collection(user, cube)
+        _cube = get_collection(owner, cube)
         if backup:
             docs = _cube.find(spec)
             if docs:
@@ -314,14 +321,14 @@ def remove_objects(user, cube, ids, backup=False):
         else:
             docs = []
         try:
-            get_collection(user, cube, admin=True).remove(spec, safe=True)
+            get_collection(owner, cube, admin=True).remove(spec, safe=True)
         except Exception as e:
             raise RuntimeError("Failed to remove docs: %s" % e)
         else:
             return docs
 
 
-def etl_activity_update(cube, fields, mtime):
+def etl_activity_update(owner, cube, fields, mtime):
     '''
     :param str cube: target cube (collection) to save objects to
     :param list fields: list fields updated
@@ -332,8 +339,9 @@ def etl_activity_update(cube, fields, mtime):
     and when.
     '''
     fields = list(set(fields))
-    spec = {'_id': cube}
+    collection = '%s__%s' % (owner, cube)
+    spec = {'_id': collection}
     mtimes = dict([(f, mtime) for f in fields if not RE_PROP.match(f)])
     mtimes.update({'_mtime': mtime})
     update = {'$set': mtimes}
-    return get_etl_activity().update(spec, update, upsert=True, safe=True)
+    return ETL_ACTIVITY.update(spec, update, upsert=True, safe=True)

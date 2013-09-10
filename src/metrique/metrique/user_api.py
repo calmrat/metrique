@@ -7,6 +7,8 @@
 import logging
 logger = logging.getLogger(__name__)
 
+from metrique.utils import set_default
+
 
 def login(self, api_username=None, api_password=None):
     '''
@@ -40,16 +42,14 @@ def register(self, username=None, password=None):
     :param String password:
         Password (plain text), if any of user
     '''
-    if not username:
-        username = self.config.api_username
-    if not password:
-        password = self.config.api_password
+    username = set_default(username, self.config.api_username, required=True)
+    password = set_default(password, self.config.api_password, required=True)
     return self._post('register',
                       username=username, password=password,
-                      api_url=False)
+                      role=None, api_url=False)
 
 
-def passwd(self, old_password, new_password, save=False):
+def passwd(self, old_password, new_password, username=None, save=False):
     '''
     Update existing user profile properties
 
@@ -57,7 +57,9 @@ def passwd(self, old_password, new_password, save=False):
     :param String password:
         Password (plain text), if any of user
     '''
+    username = set_default(username, self.config.api_username, required=True)
     result = self._post('passwd',
+                        username=username,
                         old_password=old_password,
                         new_password=new_password,
                         api_url=False)
@@ -66,6 +68,16 @@ def passwd(self, old_password, new_password, save=False):
         self.config.api_password = new_password
         if save:
             self.config.save()
+    return result
+
+
+def update(self, username=None, backup=False, **kwargs):
+    username = set_default(username, self.config.api_username, required=True)
+    result = self._post('update',
+                        username=username,
+                        backup=backup,
+                        api_url=False,
+                        **kwargs)
     return result
 
 
@@ -87,8 +99,7 @@ def add(self, username, cube=None, role='r'):
         and add 'auth'
     :param string: cube name to use
     '''
-    if not cube:
-        cube = self.name
+    cube = set_default(cube, self.name, required=True)
     return self._get('add',
                      cube=cube, username=username, role=role,
                      api_url=False)

@@ -19,10 +19,10 @@ DEFAULT_BATCH = 100000
 CMD = ''
 
 
-def save_objects(self, objects, batch=DEFAULT_BATCH, user=None, cube=None):
+def save_objects(self, objects, batch=DEFAULT_BATCH, owner=None, cube=None):
     '''
     :param list objects: list of dictionary-like objects to be stored
-    :param string user: owner of cube
+    :param string owner: owner of cube
     :param string cube: cube name to use
     :param int batch: maximum slice of objects to post at a time
     :rtype: list - list of object ids saved
@@ -31,7 +31,7 @@ def save_objects(self, objects, batch=DEFAULT_BATCH, user=None, cube=None):
 
     Returns back a list of object ids (_id|_oid) saved.
     '''
-    user = set_default(user, self.config.api_username)
+    owner = set_default(owner, self.config.api_username)
     cube = set_default(cube, self.name, required=True)
 
     olen = len(objects) if objects else None
@@ -42,7 +42,7 @@ def save_objects(self, objects, batch=DEFAULT_BATCH, user=None, cube=None):
     # get 'now' utc timezone aware datetime object
     now = pytz.UTC.localize(datetime.utcnow())
 
-    cmd = os.path.join(user, cube, 'save_objects')
+    cmd = os.path.join(owner, cube, 'save_objects')
 
     t1 = time()
     if olen <= batch:
@@ -57,7 +57,7 @@ def save_objects(self, objects, batch=DEFAULT_BATCH, user=None, cube=None):
     return sorted(list(set([o['_oid'] for o in objects if o])))
 
 
-def remove_objects(self, ids, backup=False, user=None, cube=None):
+def remove_objects(self, ids, backup=False, owner=None, cube=None):
     '''
     Remove objects from cube timeline
 
@@ -65,9 +65,9 @@ def remove_objects(self, ids, backup=False, user=None, cube=None):
     :param bool backup: return the documents removed to client?
     :param string cube: cube name to use
     '''
-    user = set_default(user, self.config.api_username)
+    owner = set_default(owner, self.config.api_username)
     cube = set_default(cube, self.name, required=True)
-    cmd = os.path.join(user, cube, 'remove_objects')
+    cmd = os.path.join(owner, cube, 'remove_objects')
     if not ids:
         return True
     else:

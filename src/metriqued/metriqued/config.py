@@ -5,8 +5,10 @@
 import logging
 import os
 
+DEFAULT_CUBE_QUOTA = -1
+
 DEFAULT_CONFIG_DIR = '~/.metrique'
-MONGODB_HOST = '127.0.0.1'
+DEFAULT_MONGODB_HOST = '127.0.0.1'
 METRIQUE_HTTP_HOST = '127.0.0.1'
 METRIQUE_HTTP_PORT = 8080
 METRIQUE_LOGIN_URL = '/login'
@@ -226,7 +228,7 @@ class mongodb(JSONConf):
 
     @property
     def host(self):
-        return self._default('host', MONGODB_HOST)
+        return self._default('host', DEFAULT_MONGODB_HOST)
 
     @host.setter
     def host(self, value):
