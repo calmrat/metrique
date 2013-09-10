@@ -20,10 +20,10 @@ import os
 import time
 import signal
 
-from metriqued.defaults import SERVER_CONFIG_PATH, METRIQUE_CONF
-from metriqued.defaults import METRIQUE_HTTP_HOST, METRIQUE_HTTP_PORT
+from metriqued.config import SERVER_CONFIG_PATH, METRIQUE_CONF
+from metriqued.config import METRIQUE_HTTP_HOST, METRIQUE_HTTP_PORT
 from metriqued.config import metrique
-from metriqued.tornado.http import HTTPServer
+from metriqued.tornadod.http import HTTPServer
 
 
 def get_pid(pid_file):

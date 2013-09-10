@@ -35,7 +35,9 @@ DEFAULT_SYS_CUBES_BASE_PATH = 'metriquec/'
 DEFAULT_SYSTEM_CUBES_PATH = os.path.join(
     get_python_lib(), DEFAULT_SYS_CUBES_BASE_PATH)
 
-API_VERSION = 'v1'
+DEFAULT_SESSION_FILE = 'session.requests'
+
+API_VERSION = 'v2'
 API_REL_PATH = 'api'
 API_SSL = False
 
@@ -51,6 +53,7 @@ class Config(JSONConf):
             config_file = DEFAULT_CONFIG_FILE
         if not config_dir:
             config_dir = DEFAULT_CONFIG_DIR
+        config_dir = os.path.expanduser(config_dir)
         super(Config, self).__init__(config_file=config_file,
                                      config_dir=config_dir,
                                      force=force, *args, **kwargs)
@@ -61,12 +64,28 @@ class Config(JSONConf):
         return self._default('cubes_path', DEFAULT_CLIENT_CUBES_PATH)
 
     @property
+    def session_file(self):
+        ''' Set (default) path to save/load request sessions '''
+        return os.path.expanduser(
+            self._default('session_file', DEFAULT_SESSION_FILE))
+
+    @property
     def api_ssl(self):
         ''' Determine if ssl schema used in a given host string'''
         if re.match('https://', self.api_host):
             return True
         else:
             return False
+
+    @property
+    def api_auto_login(self):
+        ''' Current api version in use '''
+        return self._default('api_auto_login', True)
+
+    @api_auto_login.setter
+    def api_auto_login(self, value):
+        ''' Set and save in config a metrique api port to use '''
+        self.config['api_port'] = value
 
     @property
     def api_version(self):
@@ -89,6 +108,16 @@ class Config(JSONConf):
             auth = True, it's highly likely it's ssl = True
             too, so be sure to add https:// to the api_host!
         '''
+        return os.path.join(self.host_port, self.api_rel_path)
+
+    @property
+    def host_port(self):
+        ''' Url and schema - http(s)? needed to call metrique api
+
+            If you're connection to a metrique server with
+            auth = True, it's highly likely it's ssl = True
+            too, so be sure to add https:// to the api_host!
+        '''
         if not re.match('http', self.api_host):
             host = '%s%s' % ('http://', self.api_host)
         else:
@@ -98,8 +127,7 @@ class Config(JSONConf):
             raise ValueError("Invalid schema (%s). "
                              "Expected: %s" % (host, 'http(s)?'))
         host_port = '%s:%s' % (host, self.api_port)
-        api_url = os.path.join(host_port, self.api_rel_path)
-        return api_url
+        return host_port
 
     @property
     def api_port(self):
@@ -133,7 +161,7 @@ class Config(JSONConf):
     @property
     def api_username(self):
         ''' The username to connect to metrique api with (OPTIONAL)'''
-        return self._default('api_username')
+        return self._default('api_username', os.getenv('USER'))
 
     @api_username.setter
     def api_username(self, value):

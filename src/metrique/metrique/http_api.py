@@ -3,24 +3,23 @@
 # Author: "Chris Ward" <cward@redhat.com>
 
 '''
-
 .. note::
     example date ranges: 'd', '~d', 'd~', 'd~d'
-
 .. note::
     valid date format: '%Y-%m-%d %H:%M:%S,%f', '%Y-%m-%d %H:%M:%S', '%Y-%m-%d'
-
 '''
 
 import logging
 logger = logging.getLogger(__name__)
+from functools import partial
 import os
-import requests as rq
+import requests
 import simplejson as json
+import pickle
 
 from metrique.config import Config
 from metrique.config import DEFAULT_CONFIG_DIR, DEFAULT_CONFIG_FILE
-from metrique import query_api, etl_api, users_api
+from metrique import query_api, etl_api, user_api, cube_api
 from metrique import etl_activity, get_cube
 
 from metrique.utils import csv2list, json_encode
@@ -40,14 +39,19 @@ class HTTPClient(object):
     distinct = query_api.distinct
     sample = query_api.sample
     aggregate = query_api.aggregate
-    list_index = etl_api.list_index
-    ensure_index = etl_api.ensure_index
-    drop_index = etl_api.drop_index
     activity_import = etl_activity.activity_import
     save_objects = etl_api.save_objects
     remove_objects = etl_api.remove_objects
-    cube_drop = etl_api.cube_drop
-    user_add = users_api.add
+    list_index = cube_api.list_index
+    ensure_index = cube_api.ensure_index
+    drop_index = cube_api.drop_index
+    cube_drop = cube_api.drop
+    cube_register = cube_api.register
+    user_login = user_api.login
+    user_logout = user_api.logout
+    user_add = user_api.add
+    user_register = user_api.register
+    user_passwd = user_api.passwd
 
     def __new__(cls, *args, **kwargs):
         '''
@@ -66,6 +70,7 @@ class HTTPClient(object):
                  api_password=None, async=True,
                  force=True, debug=-1, config_file=None,
                  config_dir=None, cube=None,
+                 api_auto_login=None,
                  **kwargs):
         self.load_config(config_file, config_dir, force)
         logging.basicConfig()
@@ -83,6 +88,11 @@ class HTTPClient(object):
         if api_password:
             self.config.api_password = api_password
 
+        self._load_session()
+
+        if api_auto_login:
+            self.config.api_auto_login = api_auto_login
+
     def load_config(self, config_file, config_dir, force=False):
         if not config_file:
             config_file = DEFAULT_CONFIG_FILE
@@ -91,6 +101,9 @@ class HTTPClient(object):
         self.config = Config(config_file, config_dir, force)
 
     def _kwargs_json(self, **kwargs):
+        #return json.dumps(kwargs, default=json_encode,
+        #                  ensure_ascii=False,
+        #                  encoding="ISO-8859-1")
         try:
             return dict([(k, json.dumps(v, default=json_encode,
                                         ensure_ascii=False))
@@ -103,65 +116,99 @@ class HTTPClient(object):
                                     encoding="ISO-8859-1"))
                     for k, v in kwargs.items()])
 
-    def _args_url(self, *args):
-        _url = os.path.join(self.config.api_url, *args)
-        self.logger.debug("URL: %s" % _url)
+    #def _save_session(self):
+    #    if not self.session:
+    #        return None
+
+    #    session_path = os.path.join(self.config.config_dir,
+    #                                self.config.session_file)
+
+    #    # FIXME: WARNING THIS WILL OVERWRITE EXISTING FILE!
+    #    with open(session_path, 'w') as f:
+    #        pickle.dump(self.session, f)
+
+    def _load_session(self):
+        # try to load a session from disk
+        session_path = os.path.join(self.config.config_dir,
+                                    self.config.session_file)
+
+        if os.path.exists(session_path):
+            with open(session_path) as f:
+                self.session = pickle.load(f)
+                return
+
+        # finally, fall back to loading a fresh new session
+        self.session = requests.Session()
+
+    def _get_response(self, runner, _url, api_username, api_password):
+        try:
+            return runner(_url,
+                          auth=(api_username, api_password),
+                          cookies=self.session.cookies,
+                          verify=False)
+        except requests.exceptions.ConnectionError:
+            raise requests.exceptions.ConnectionError(
+                'Failed to connect (%s). Try http://? or https://?' % _url)
+
+    def _build_runner(self, kind, kwargs):
+        kwargs_json = self._kwargs_json(**kwargs)
+        if kind == self.session.post:
+            # use data instead of params
+            runner = partial(kind, data=kwargs_json)
+        else:
+            runner = partial(kind, params=kwargs_json)
+        return runner
+
+    def _build_url(self, cmd, api_url):
+        if api_url:
+            _url = os.path.join(self.config.api_url, cmd)
+        else:
+            _url = os.path.join(self.config.host_port, cmd)
         return _url
 
-    def _get(self, *args, **kwargs):
-        kwargs_json = self._kwargs_json(**kwargs)
-        _url = self._args_url(*args)
+    def _run(self, kind, cmd, api_url=True,
+             api_username=None, api_password=None,
+             **kwargs):
+        if not api_username:
+            api_username = self.config.api_username
+        if not api_password:
+            api_password = self.config.api_password
 
-        username = self.config.api_username
-        password = self.config.api_password
+        runner = self._build_runner(kind, kwargs)
+        _url = self._build_url(cmd, api_url)
+
+        _response = self._get_response(runner, _url,
+                                       api_username, api_password)
+
+        if _response.status_code in [401, 403] and self.config.api_auto_login:
+            # try to login and rerun the request
+            self.logger.debug('HTTP 401: going to try to auto re-log-in')
+            #self._load_session()
+            self.user_login(api_username,
+                            api_password)
+            _response = self._get_response(runner, _url,
+                                           api_username, api_password)
+
+        #self._save_session()
 
         try:
-            _response = rq.get(_url, params=kwargs_json,
-                               auth=(username, password), verify=False)
-        except rq.exceptions.ConnectionError:
-            raise rq.exceptions.ConnectionError(
-                'Failed to connect (%s). Try https://?' % _url)
-        _response.raise_for_status()
-        return json.loads(_response.text)
+            _response.raise_for_status()
+        except Exception as e:
+            m = getattr(e, 'message')
+            content = '%s\n%s' % (m, _response.content)
+            logger.error(content)
+            raise
+        else:
+            return json.loads(_response.content)
+
+    def _get(self, *args, **kwargs):
+        return self._run(self.session.get, *args, **kwargs)
 
     def _post(self, *args, **kwargs):
-        '''
-        Arguments are expected to be json encoded!
-        verify = False in requests.get() skips SSL CA validation
-        '''
-        kwargs_json = self._kwargs_json(**kwargs)
-        _url = self._args_url(*args)
-
-        username = self.config.api_username
-        password = self.config.api_password
-
-        try:
-            _response = rq.post(_url, data=kwargs_json,
-                                auth=(username, password), verify=False)
-        except rq.exceptions.ConnectionError:
-            raise rq.exceptions.ConnectionError(
-                'Failed to connect (%s). Try https://?' % _url)
-        _response.raise_for_status()
-        # responses are always expected to be json encoded
-        return json.loads(_response.text)
+        return self._run(self.session.post, *args, **kwargs)
 
     def _delete(self, *args, **kwargs):
-        kwargs_json = self._kwargs_json(**kwargs)
-        _url = self._args_url(*args)
-
-        username = self.config.api_username
-        password = self.config.api_password
-
-        try:
-            _response = rq.delete(_url, params=kwargs_json,
-                                  auth=(username, password),
-                                  verify=False)
-        except rq.exceptions.ConnectionError:
-            raise rq.exceptions.ConnectionError(
-                'Failed to connect (%s). Try https://?' % _url)
-        _response.raise_for_status()
-        # responses are always expected to be json encoded
-        return json.loads(_response.text)
+        return self._run(self.session.delete, *args, **kwargs)
 
     def ping(self):
         return self._get('ping')

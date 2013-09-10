@@ -208,3 +208,13 @@ def get_cube(cube, path=None):
     _mod = getattr(_pkg, mod)
     _cls = getattr(_mod, cls)
     return _cls
+
+
+def set_default(key, default, required=False):
+    if required and not key and not default:
+        raise RuntimeError("Cube required")
+    elif key:
+        pass
+    else:
+        key = default
+    return key

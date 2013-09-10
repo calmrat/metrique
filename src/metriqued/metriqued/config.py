@@ -5,20 +5,47 @@
 import logging
 import os
 
-from defaults import LOGDIR_SAVEAS
-from defaults import ADMIN_DB, METRIQUE_DB
-from defaults import JOB_ACTIVITY_COLLECTION
-from defaults import LOGS_COLLECTION, AUTH_KEYS_COLLECTION
-from defaults import LOG_FORMATTER
-from defaults import ETL_ACTIVITY_COLLECTION, MAX_SIZE, MAX_DOCS
-from defaults import DATA_USER, ADMIN_USER, TIMELINE_DB
-from defaults import PID_FILE
-from defaults import SSL_CERT, SSL_CERT_KEY
-from defaults import MONGODB_CONF
-from defaults import DEFAULT_CONFIG_DIR
-from defaults import MONGODB_HOST
-from defaults import METRIQUE_HTTP_HOST
-from defaults import METRIQUE_HTTP_PORT
+DEFAULT_CONFIG_DIR = '~/.metrique'
+MONGODB_HOST = '127.0.0.1'
+METRIQUE_HTTP_HOST = '127.0.0.1'
+METRIQUE_HTTP_PORT = 8080
+METRIQUE_LOGIN_URL = '/login'
+
+METRIQUE_CONF = 'metrique_config'
+MONGODB_CONF = 'mongodb_config'
+SERVER_CONFIG_PATH = DEFAULT_CONFIG_DIR
+PID_FILE = '%s/server.pid' % DEFAULT_CONFIG_DIR
+SSL_CERT_KEY = '%s/.metrique/pkey.pem' % DEFAULT_CONFIG_DIR
+SSL_CERT = '%s/.metrique/cert.pem' % DEFAULT_CONFIG_DIR
+
+VALID_ROLES = (None, 'r', 'rw', 'admin')
+
+METRIQUE_DB = 'metrique'
+TIMELINE_DB = 'timeline'
+ADMIN_DB = 'admin'
+
+ADMIN_USER = 'admin'
+DATA_USER = 'metrique'
+
+ETL_ACTIVITY_COLLECTION = 'etl_activity'
+JOB_ACTIVITY_COLLECTION = 'job_activity'
+AUTH_KEYS_COLLECTION = 'auth_keys'
+
+CLIENTS_DB = 'clients'
+
+LOGS_DB = 'logs'
+LOGS_COLLECTION = 'logs'
+MAX_SIZE = 1000000000
+MAX_DOCS = 100000
+
+DATE_FORMAT = '%Y%m%dT%H:%M:%S'
+LOG_FORMAT = u'%(processName)s:%(message)s'
+LOG_FORMATTER = logging.Formatter(LOG_FORMAT,
+                                  DATE_FORMAT)
+
+LOGDIR_SAVEAS = '%s/logs/metriqued.log' % DEFAULT_CONFIG_DIR
+BACKUP_COUNT = 5
+MAX_BYTES = 1.049e+7
 
 from jsonconf import JSONConf
 
@@ -121,6 +148,10 @@ class metrique(JSONConf):
     @property
     def krb_realm(self):
         return self._default('krb_realm', '')
+
+    @property
+    def login_url(self):
+        return self._default('login_url', METRIQUE_LOGIN_URL)
 
     @property
     def static_path(self):

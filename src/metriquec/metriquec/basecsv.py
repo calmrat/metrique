@@ -59,7 +59,7 @@ class BaseCSV(BaseCube):
         into a newline separated string to load
         the csv as a string and return it.
         '''
-        return self.loads('\n'.join([s.strip() for s in csv_iter]))
+        return self.loads('\n'.join([s.strip('\n\r') for s in csv_iter]))
 
     # FIXME: REFACTOR to split out header_fields and dialect
     # into two separate methods?
@@ -82,11 +82,11 @@ class BaseCSV(BaseCube):
         '''
         csvfile = cStringIO.StringIO(csv_str)
         sample = csvfile.read(1024)
-        csvfile.seek(0)
         if not csv.Sniffer().has_header(sample):
             raise ValueError("CSV requires header as field map")
         dialect = csv.Sniffer().sniff(sample)
 
+        csvfile.seek(0)
         reader = csv.reader(csvfile, dialect)
         rows = list(reader)
         fields = rows.pop(0)

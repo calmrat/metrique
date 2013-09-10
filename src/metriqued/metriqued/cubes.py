@@ -4,18 +4,32 @@
 
 import logging
 logger = logging.getLogger(__name__)
+from tornado.web import HTTPError
 
 from metriqued.config import mongodb
 
 mongodb_config = mongodb()
 
 
-def get_cube(cube, admin=True, timeline=False):
+def get_collection(user, cube, admin=False, create=False):
     ''' return back a mongodb connection to give cube collection '''
-    if admin:
-        return mongodb_config.db_timeline_admin.db[cube]
+    collection = '%s__%s' % (user, cube)
+    # FIXME: CORRECT HTTP ERROR CODES
+    if collection in mongodb_config.db_timeline_data.db.collection_names():
+        if create:
+            raise HTTPError(
+                409, "collection already exists: %s" % collection)
     else:
-        return mongodb_config.db_timeline_data.db[cube]
+        if not create:
+            raise HTTPError(
+                412, "collection does not exist: %s" % collection)
+    if admin:
+        return mongodb_config.db_timeline_admin.db[collection]
+    else:
+        return mongodb_config.db_timeline_data.db[collection]
+
+# FIXME: remove this when all get_cube calls refactored
+get_cube = get_collection  # backwards compatability
 
 
 def get_auth_keys():
@@ -89,10 +103,12 @@ def list_cube_fields(cube, exclude_fields=[], _mtime=False):
     return cube_fields
 
 
-def list_cubes():
+def list_cubes(user=None):
     '''
         Get a list of cubes server exports
         (optionally) filter out cubes user can't 'r' access
     '''
+    if user:
+        raise NotImplemented("Filter for user cubes only")
     names = mongodb_config.db_timeline_data.db.collection_names()
     return [n for n in names if not n.startswith('system')]

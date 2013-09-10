@@ -2,27 +2,39 @@
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 # Author: "Chris Ward <cward@redhat.com>
 
+from datetime import datetime
 import logging
 logger = logging.getLogger(__name__)
 import pql
 import re
 import random
+from socket import getfqdn
 
 from metriqued.cubes import get_fields, get_cube
-from metriqued.job import job_save
 from metriqued.utils import dt2ts
 
 BATCH_SIZE = 16777216  # hard limit is 16M...
 
+FQDN = getfqdn()
 
-@job_save('query distinct')
+
+def ping(**kwargs):
+    logger.debug('got ping @ %s' % datetime.utcnow())
+    response = {
+        'action': 'ping',
+        'response': 'pong',
+        'from_host': FQDN,
+    }
+    response.update(kwargs)
+    return response
+
+
 def distinct(cube, field):
     logger.debug('Running Distinct (%s.%s)' % (cube, field))
     _cube = get_cube(cube)
     return _cube.distinct(field)
 
 
-@job_save('query count')
 def count(cube, query, date=None):
     logger.debug('Running Count')
     try:
@@ -76,7 +88,6 @@ def _check_sort(sort):
     return sort
 
 
-@job_save('query find')
 def find(cube, query, fields=None, date=None, sort=None, one=False,
          explain=False, merge_versions=True):
     logger.debug('Running Find (%s)' % cube)
@@ -148,7 +159,6 @@ def _parse_oids(oids, delimeter=','):
     return oids
 
 
-@job_save('query deptree')
 def deptree(cube, field, oids, date, level):
     oids = _parse_oids(oids)
     _cube = get_cube(cube)
@@ -169,7 +179,6 @@ def deptree(cube, field, oids, date, level):
     return sorted(checked)
 
 
-@job_save('query fetch')
 def fetch(cube, fields=None, date=None, sort=None, skip=0, limit=0, oids=None):
     if oids is None:
         oids = []
@@ -191,7 +200,6 @@ def fetch(cube, fields=None, date=None, sort=None, skip=0, limit=0, oids=None):
     return result
 
 
-@job_save('query aggregate')
 def aggregate(cube, pipeline):
     logger.debug('Running Aggregation')
     logger.debug('Pipeline (%s): %s' % (type(pipeline), pipeline))
@@ -199,7 +207,6 @@ def aggregate(cube, pipeline):
     return _cube.aggregate(pipeline)
 
 
-@job_save('query sample')
 def sample(cube, size, fields, date):
     logger.debug('Running sample (%s):' % size)
     _cube = get_cube(cube)

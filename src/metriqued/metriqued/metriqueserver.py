@@ -9,13 +9,40 @@ logger = logging.getLogger(__name__)
 from concurrent.futures import ThreadPoolExecutor
 import os
 
-from metriqued.baseserver import BaseServer
-from metriqued.defaults import BACKUP_COUNT, MAX_BYTES
+from metriqued.config import BACKUP_COUNT, MAX_BYTES
+from metriqued.config import metrique, mongodb
+from metriqued.config import METRIQUE_CONF, MONGODB_CONF
 
 
-class MetriqueServer(BaseServer):
-    def __init__(self, **kwargs):
-        super(MetriqueServer, self).__init__(**kwargs)
+class MetriqueServer(object):
+    def __init__(self, config_dir=None,
+                 metrique_config_file=None,
+                 mongodb_config_file=None,
+                 async=True, debug=None,
+                 **kwargs):
+        # FIXME: config's should have a single entry
+        # where the file can include the directory
+        # else it's assumed the config_dir is '/.'
+
+        if not metrique_config_file:
+            metrique_config_file = METRIQUE_CONF
+        if not mongodb_config_file:
+            mongodb_config_file = MONGODB_CONF
+
+        self._config_dir = config_dir
+
+        self._metrique_config_file = metrique_config_file
+        self.metrique_config = metrique(metrique_config_file, config_dir)
+
+        if debug is not None:
+            self.metrique_config.debug = debug
+
+        if debug is not True:
+            self.metrique_config.async = async
+
+        self._mongodb_config_file = metrique_config_file
+        self.mongodb_config = mongodb(mongodb_config_file, config_dir)
+
         logger.debug('Debug: %s' % self.metrique_config.debug)
         logger.debug('Async: %s' % self.metrique_config.async)
         logger.debug(' Auth: %s' % self.metrique_config.auth)
