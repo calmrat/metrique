@@ -8,46 +8,10 @@ Metrique Client
 **Sources:** https://github.com/drpoovilleorg/metrique
 
 
-Installation
-------------
+Install
+~~~~~~~
 
-General
--------
-
-Make sure you have the following *OS stuff* installed 
-before doing anything else. The examples given below 
-are fedora rpm package names::
-
-    yum install git python python-devel python-setuptools gcc gcc-c++ 
-
-Also, make sure python pip, distribute and setuptools 
-are installed up2date:: 
-
-    easy_install -U pip
-    pip install -U distribute
-    pip install -U setuptools
-
-Ipython
--------
-We strongly suggest installing and using IPython 
-notebook instead of standard python shell for 
-interactive data exploration.
-
-To install ipython notebook install the following 
-*OS* packages::
-
-    yum install libpng-devel freetype-devel 
-
-Then install ipython with pip::
-
-    pip install ipython
-
-If you see any error, not otherwise mentioned here, Google.
-
-
-
-Client
-~~~~~~
+**Make sure you have read the `General Install Guide <https://github.com/drpoovilleorg/metrique/tree/master/README.rst>`_.**
 
 Install metrique::
 

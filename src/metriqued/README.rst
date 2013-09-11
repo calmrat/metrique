@@ -8,30 +8,16 @@ Metrique Server
 **Sources:** https://github.com/drpoovilleorg/metrique
 
 
-Installation
-------------
+Install
+~~~~~~~
 
-General
--------
+**Make sure you have read the `General Install Guide <https://github.com/drpoovilleorg/metrique/tree/master/README.rst>`_.**
 
-Make sure you have the following *OS stuff* installed 
-before doing anything else. The examples given below 
-are fedora rpm package names::
+Install the following *OS stuff* installed. The examples given 
+below are fedora rpm package names::
 
-    yum install git python python-devel python-setuptools gcc gcc-c++ krb5-devel
+    yum install krb5-devel
 
-Also, make sure python pip, distribute and setuptools 
-are installed up2date:: 
-
-    easy_install -U pip
-    pip install -U distribute
-    pip install -U setuptools
-
-If you see any error, not otherwise mentioned here, Google.
-
-
-Server
-------
 Make sure you have MongoDB installed. Instructions 
 can be found on the web.  For Fedora, for example, 
 see `10-gen installation instructions <http://bit.ly/1dFqC1y>`_
@@ -77,4 +63,4 @@ Or you can analyse data from apache's jenkins instance (or other)::
 Known Issues
 ------------
 
-None
+None at this time
