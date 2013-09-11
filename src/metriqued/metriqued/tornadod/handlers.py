@@ -10,7 +10,9 @@ import simplejson as json
 from socket import getfqdn
 from tornado.web import RequestHandler, authenticated, HTTPError
 
+# FIXME: RENAME *_api to be sigular
 from metriqued import query_api, etl_api, users_api, cubes_api
+from metriqued.config import role_is_valid
 from metriqued.cubes import list_cubes, list_cube_fields
 from metriqued.cubes import get_auth_keys, get_collection
 from metriqued.tornadod.auth import is_admin, basic
@@ -85,16 +87,14 @@ class MetriqueInitialized(RequestHandler):
             raise HTTPError(code, msg)
 
     def _has_cube_role(self, current_user, owner, cube, role):
-        # FIXME: CHECK THAT IT"S ONE OF THE VALID LEVELS
-        # admin, read, __write__
-        # WARNING: create=True creates a new mongodb, lazilly
-        #_cube = get_collection(owner, cube, create=True)
+        role_is_valid(role)
         try:
             _cube = get_collection(owner, cube)
         except HTTPError:
             return 0
         else:
-            spec = {role: current_user}
+            spec = {'_id': role,
+                    'value': {'$in': [current_user, '__all__']}}
             return _cube.find(spec).count()
 
     def _is_owner(self, current_user, owner, cube):
@@ -104,48 +104,63 @@ class MetriqueInitialized(RequestHandler):
         spec = {'__owner__': current_user}
         return _cube.find(spec).count()
 
-    def _is_user(self, current_user, user):
-        # FIXME: make this work for any user in 'admin' group OR admin
+    def _is_self(self, current_user, user):
         return current_user == user
 
     def _in_group(self, current_user, group):
         spec = {'_id': current_user, 'groups': group}
         return AUTH_KEYS.find(spec).count()
 
-    def _is_admin(self, current_user, owner, cube):
-        _is_admin = self._is_user(current_user, 'admin')
+    def _is_admin(self, current_user, owner, cube=None):
+        _is_admin = self._is_self(current_user, 'admin')
         _is_group_admin = self._in_group(current_user, 'admin')
         _cube_role = self._has_cube_role(current_user, owner,
                                          cube, '__admin__')
         return any((_is_admin, _is_group_admin, _cube_role))
 
-    def _requires_owner_admin(self, owner, cube):
+    def _is_write(self, current_user, owner, cube=None):
+        _is_admin = self._is_admin(current_user, owner, cube)
+        _cube_role = self._has_cube_role(current_user, owner,
+                                         cube, '__write__')
+        return any((_is_admin, _cube_role))
+
+    def _is_read(self, current_user, owner, cube=None):
+        _is_admin = self._is_admin(current_user, owner, cube)
+        _cube_role = self._has_cube_role(current_user, owner,
+                                         cube, '__read__')
+        return any((_is_admin, _cube_role))
+
+    def _requires(self, owner, role_func, cube=None):
+        assert role_func in (self._is_read, self._is_admin)
         current_user = self.get_current_user()
         _exists = self._cube_exists(owner, cube)
-        if _exists:
+        if cube and _exists:
             _is_owner = self._is_owner(current_user, owner, cube)
-            _is_admin = self._is_admin(current_user, owner, cube)
-            ok = any((_is_owner, _is_admin))
+            _is_role = role_func(current_user, owner, cube)
+            ok = any((_is_owner, _is_role))
+        elif not cube:
+            ok = role_func(current_user, owner, cube)
         else:
             # there's no current owner...
             ok = True
         if not ok:
-            self._raise(401, "this requires admin privleges")
+            self._raise(401, "insufficient privleges")
         return ok
 
-    def _requires_owner_read(self, owner, cube):
+    def _requires_self_admin(self, owner):
         current_user = self.get_current_user()
-        _exists = self._cube_exists(owner, cube)
-        if _exists:
-            _is_owner = self._is_owner(current_user, owner, cube)
-            _can_read = self._can_read(current_user, owner, cube)
-            ok = any((_is_owner, _can_read))
-        else:
-            # there's no current owner...
-            ok = True
-        if not ok:
-            self._raise(401, "this requires admin privleges")
-        return ok
+        _is_self = self._is_self(current_user, owner)
+        _is_admin = self._is_admin(current_user, owner)
+        return any((_is_self, _is_admin))
+
+    def _requires_owner_admin(self, owner, cube=None):
+        self._requires(owner=owner, cube=cube, role_func=self._is_admin)
+
+    def _requires_owner_write(self, owner, cube=None):
+        self._requires(owner=owner, cube=cube, role_func=self._is_write)
+
+    def _requires_owner_read(self, owner, cube=None):
+        self._requires(owner=owner, cube=cube, role_func=self._is_read)
 
     def _cube_exists(self, owner, cube):
         try:
@@ -153,7 +168,7 @@ class MetriqueInitialized(RequestHandler):
         except HTTPError:
             return 0
         else:
-            return _cube.find({'$exists': {'__created__': 1}}).count()
+            return _cube.find({'_id': '__created__'}).count()
 
     def _scrape_username_password(self):
         username = ''
@@ -197,10 +212,6 @@ class LoginHandler(MetriqueInitialized):
     RequestHandler for logging a user into metrique
     '''
     def post(self):
-        result = {
-            'action': 'login',
-            'result': False}
-
         # FIXME: IF THE USER IS USING KERB
         # OR WE OTHERWISE ALREADY KNOW WHO
         # THEY ARE, CHECK THAT THEY HAVE
@@ -210,18 +221,14 @@ class LoginHandler(MetriqueInitialized):
         current_user = self.get_current_user()
         if current_user:
             logger.debug('USER SESSION OK: %s' % current_user)
-            result.update({'current_user': current_user})
-            result.update({'result': None})
-            self.write(result)
+            self.write(True)
             # FIXME: update cookie expiration date
             return
 
         ok, username = self._parse_auth_headers()
-        result.update({'username': username})
         logger.debug("AUTH HEADERS ... [%s] %s" % (username, ok))
 
         if ok:
-            result.update({'result': True})
             username_json = json.dumps(username, ensure_ascii=False)
             self.set_secure_cookie("user", username_json)
 
@@ -230,9 +237,7 @@ class LoginHandler(MetriqueInitialized):
                 # go ahead and redirect if we expected to be somewhere else
                 self.redirect(_next)
             else:
-                # write out the result dict
-                result.update({'current_user': self.get_current_user()})
-                self.write(result)
+                self.write(True)
                 # necessary only in cases of running with @async
                 #self.finish()
         else:
@@ -250,11 +255,7 @@ class LogoutHandler(MetriqueInitialized):
     @authenticated
     def post(self):
         self.clear_cookie("user")
-        response = {
-            'action': 'logout',
-            'result': True,
-        }
-        self.write(response)
+        self.write(True)
 
 
 class PingHandler(MetriqueInitialized):
@@ -274,7 +275,6 @@ class RegisterHandler(MetriqueInitialized):
         password = self.get_argument('password')
         if not (username and password):
             raise HTTPError(400, "username and password REQUIRED")
-
         result = users_api.register(username=username,
                                     password=password)
         # FIXME: DO THIS FOR ALL HANDLERS! REST REST REST
@@ -283,23 +283,24 @@ class RegisterHandler(MetriqueInitialized):
         self.write(result)
 
 
-class PasswordChangeHandler(MetriqueInitialized):
+class UserUpdatePasswordHandler(MetriqueInitialized):
     '''
-    RequestHandler for updating existing users profile properties
+    RequestHandler for updating existing users password
     '''
     @authenticated
     def post(self, username):
         old_password = self.get_argument('old_password')
         new_password = self.get_argument('new_password')
+        if not new_password:
+            raise HTTPError(400, "new password REQUIRED")
+
+        self._requires_self_admin(username)
+
+        result = users_api.update_passwd(username=username,
+                                         old_password=old_password,
+                                         new_password=new_password)
+
         current_user = self.get_current_user()
-
-        if current_user not in [username, 'admin']:
-            self._raise(401, "this requires admin privleges")
-
-        result = users_api.passwd(username=username,
-                                  old_password=old_password,
-                                  new_password=new_password)
-
         if current_user == 'admin':
             self.write(result)
 
@@ -311,18 +312,23 @@ class PasswordChangeHandler(MetriqueInitialized):
             self.write(result)
 
 
-class UsersAddHandler(MetriqueInitialized):
+class CubeUpdateRoleHandler(MetriqueInitialized):
     '''
-    RequestHandler for managing user access control for a given cube
+    RequestHandler for managing cube role properties
+
+    action can be push, pop
+    role can be __read__, __write__, __admin__
     '''
     @authenticated
-    def post(self):
+    def post(self, owner, cube):
+        self._requires_owner_admin(owner, cube)
         username = self.get_argument('username')
-        cube = self.get_argument('cube')
-        role = self.get_argument('role', 'r')
-        result = users_api.add(username=username,
-                               cube=cube, role=role)
-        return result
+        action = self.get_argument('action', 'push')
+        role = self.get_argument('role', '__read__')
+        result = cubes_api.update_role(owner=owner, cube=cube,
+                                       username=username,
+                                       action=action, role=role)
+        self.write(result)
 
 
 class CubeRegisterHandler(MetriqueInitialized):
@@ -344,12 +350,16 @@ class CubeDropHandler(MetriqueInitialized):
         self.write(etl_api.drop_cube(owner=owner, cube=cube))
 
 
-class UserCubeHandler(MetriqueInitialized):
+class CubeListHandler(MetriqueInitialized):
     '''
     RequestHandler for querying about available cubes and cube.fields
     '''
     @authenticated
-    def get(self, owner, cube):
+    def get(self, owner=None, cube=None):
+        # FIXME: filter cubes returns (and cubes.fields)
+        # according to whether or not the user has READ
+        # access or not.
+        #current_user = self.get_current_user()
         _mtime = self.get_argument('_mtime')
         exclude_fields = self.get_argument('exclude_fields')
         if not owner:
@@ -365,36 +375,39 @@ class UserCubeHandler(MetriqueInitialized):
         self.write(result)
 
 
-class UserHandler(MetriqueInitialized):
+class UserUpdateProfileHandler(MetriqueInitialized):
     '''
-    RequestHandler for querying about available cubes and cube.fields
-
-    STATE: UNSTABLE
-    '''
-    @authenticated
-    def get(self, owner=None):
-        result = list_cubes(owner=owner)
-        self.write(result)
-
-
-class UserUpdateHandler(MetriqueInitialized):
-    '''
-    RequestHandler for querying about available cubes and cube.fields
-
-    STATE: UNSTABLE
     '''
     @authenticated
     def post(self, username=None):
-        kwargs = self.request.arguments
-        result = users_api.update(username=username, **kwargs)
-        # There is an ObjectId() in result which can cause
-        # json encoding issues... we don't need the result
-        # dict at the moment...
+        self._requires_self_admin(username)
+        backup = self.get_argument('backup')
+        email = self.get_argument('email')
+        result = users_api.update_profile(username=username,
+                                          backup=backup,
+                                          email=email)
         if result:
-            ok = True
+            self.write(True)
         else:
-            ok = False
-        self.write(ok)
+            self.write(False)
+
+
+class UserUpdatePropertiesHandler(MetriqueInitialized):
+    '''
+    '''
+    @authenticated
+    def post(self, username=None):
+        current_user = self.get_current_user()
+        self._is_admin(current_user)
+        backup = self.get_argument('backup')
+        quota = self.get_argument('quota')
+        result = users_api.update_properties(username=username,
+                                             backup=backup,
+                                             quota=quota)
+        if result:
+            self.write(True)
+        else:
+            self.write(False)
 
 
 class ETLSaveObjectsHandler(MetriqueInitialized):
@@ -403,6 +416,7 @@ class ETLSaveObjectsHandler(MetriqueInitialized):
     '''
     @authenticated
     def post(self, owner, cube):
+        self._requires_owner_write(owner, cube)
         objects = self.get_argument('objects')
         mtime = self.get_argument('mtime')
         result = etl_api.save_objects(owner=owner, cube=cube,
@@ -455,7 +469,7 @@ class ETLActivityImportHandler(MetriqueInitialized):
     '''
     @authenticated
     def post(self, owner, cube):
-        self._requires_owner_admin(owner, cube)
+        self._requires_owner_write(owner, cube)
         ids = self.get_argument('ids')
         result = etl_api.activity_import(owner=owner, cube=cube, ids=ids)
         self.write(result)
@@ -530,6 +544,7 @@ class QueryCountHandler(MetriqueInitialized):
     '''
     @authenticated
     def get(self, owner, cube):
+        self._requires_owner_read(owner, cube)
         query = self.get_argument('query')
         date = self.get_argument('date', None)
         result = query_api.count(owner=owner, cube=cube,
@@ -544,6 +559,7 @@ class QueryDeptreeHandler(MetriqueInitialized):
     '''
     @authenticated
     def get(self, owner, cube):
+        self._requires_owner_read(owner, cube)
         field = self.get_argument('field')
         oids = self.get_argument('oids')
         date = self.get_argument('date')
@@ -561,6 +577,7 @@ class QueryDistinctHandler(MetriqueInitialized):
     '''
     @authenticated
     def get(self, owner, cube):
+        self._requires_owner_read(owner, cube)
         field = self.get_argument('field')
         result = query_api.distinct(owner=owner, cube=cube,
                                     field=field)
@@ -574,6 +591,7 @@ class QuerySampleHandler(MetriqueInitialized):
     '''
     @authenticated
     def get(self, owner, cube):
+        self._requires_owner_read(owner, cube)
         size = self.get_argument('size')
         fields = self.get_argument('fields')
         date = self.get_argument('date')

@@ -4,23 +4,28 @@
 
 import logging
 import os
+from jsonconf import JSONConf
+from tornado.web import HTTPError
 
-DEFAULT_CUBE_QUOTA = -1
+from metriqued.mongodb.basemongodb import BaseMongoDB
 
-DEFAULT_CONFIG_DIR = '~/.metrique'
-DEFAULT_MONGODB_HOST = '127.0.0.1'
-METRIQUE_HTTP_HOST = '127.0.0.1'
-METRIQUE_HTTP_PORT = 8080
-METRIQUE_LOGIN_URL = '/login'
+from metriqueu.defaults import DEFAULT_CONFIG_DIR
+from metriqueu.defaults import DEFAULT_METRIQUE_HTTP_HOST
+from metriqueu.defaults import DEFAULT_METRIQUE_HTTP_PORT
+from metriqueu.defaults import DEFAULT_METRIQUE_LOGIN_URL
 
-METRIQUE_CONF = 'metrique_config'
-MONGODB_CONF = 'mongodb_config'
-SERVER_CONFIG_PATH = DEFAULT_CONFIG_DIR
-PID_FILE = '%s/server.pid' % DEFAULT_CONFIG_DIR
-SSL_CERT_KEY = '%s/.metrique/pkey.pem' % DEFAULT_CONFIG_DIR
-SSL_CERT = '%s/.metrique/cert.pem' % DEFAULT_CONFIG_DIR
+DEFAULT_METRIQUE_CONF = os.path.join(DEFAULT_CONFIG_DIR, 'metrique_config')
 
-VALID_ROLES = (None, 'r', 'rw', 'admin')
+DEFAULT_MONGODB_HOST = DEFAULT_METRIQUE_HTTP_HOST
+DEFAULT_MONGODB_CONF = os.path.join(DEFAULT_CONFIG_DIR, 'mongodb_config')
+
+DEFAULT_PID_FILE = '%s/server.pid' % DEFAULT_CONFIG_DIR
+DEFAULT_SSL_CERT_KEY = '%s/pkey.pem' % DEFAULT_CONFIG_DIR
+DEFAULT_SSL_CERT = '%s/cert.pem' % DEFAULT_CONFIG_DIR
+
+VALID_ROLES = set(('__read__', '__write__', '__admin__'))
+VALID_CUBE_ROLE_ACTIONS = set(('pull', 'push'))
+IMMUTABLE_DOC_ID_PREFIX = '__'
 
 METRIQUE_DB = 'metrique'
 TIMELINE_DB = 'timeline'
@@ -33,39 +38,40 @@ ETL_ACTIVITY_COLLECTION = 'etl_activity'
 JOB_ACTIVITY_COLLECTION = 'job_activity'
 AUTH_KEYS_COLLECTION = 'auth_keys'
 
-CLIENTS_DB = 'clients'
-
-LOGS_DB = 'logs'
-LOGS_COLLECTION = 'logs'
-MAX_SIZE = 1000000000
-MAX_DOCS = 100000
-
 DATE_FORMAT = '%Y%m%dT%H:%M:%S'
 LOG_FORMAT = u'%(processName)s:%(message)s'
 LOG_FORMATTER = logging.Formatter(LOG_FORMAT,
                                   DATE_FORMAT)
 
-LOGDIR_SAVEAS = '%s/logs/metriqued.log' % DEFAULT_CONFIG_DIR
-BACKUP_COUNT = 5
-MAX_BYTES = 1.049e+7
+LOGDIR_SAVEAS = '%s/metriqued.log' % DEFAULT_CONFIG_DIR
 
-from jsonconf import JSONConf
+DEFAULT_CUBE_QUOTA = -1
 
-from metriqued.mongodb.basemongodb import BaseMongoDB
+
+def role_is_valid(role):
+    if role not in VALID_ROLES:
+        raise HTTPError(400, "Invalid cube role. "
+                        "Got (%s). Expected: %s" % (role, VALID_ROLES))
+
+
+def action_is_valid(action):
+    if action not in VALID_CUBE_ROLE_ACTIONS:
+        raise HTTPError(400, "Invalid cube role. "
+                        "Got (%s). "
+                        "Expected: %s" % (action, VALID_CUBE_ROLE_ACTIONS))
 
 
 class metrique(JSONConf):
-    def __init__(self, config_file, config_dir=None,
-                 force=True, *args, **kwargs):
-        if not config_dir:
-            config_dir = DEFAULT_CONFIG_DIR
-        super(metrique, self).__init__(config_file, config_dir,
-                                       force=force, *args, **kwargs)
+    def __init__(self, config_file, force=True, *args, **kwargs):
+        if not config_file:
+            config_file = DEFAULT_METRIQUE_CONF
+        super(metrique, self).__init__(config_file, force=force,
+                                       *args, **kwargs)
         self._properties = {}
 
     @property
     def pid_file(self):
-        _pf = os.path.expanduser(PID_FILE)
+        _pf = os.path.expanduser(DEFAULT_PID_FILE)
         return self._default('pid_file', _pf)
 
     @property
@@ -133,7 +139,7 @@ class metrique(JSONConf):
 
     @property
     def http_host(self):
-        return self._default('http_host', METRIQUE_HTTP_HOST)
+        return self._default('http_host', DEFAULT_METRIQUE_HTTP_HOST)
 
     @http_host.setter
     def http_host(self, value):
@@ -141,7 +147,7 @@ class metrique(JSONConf):
 
     @property
     def http_port(self):
-        return self._default('http_port', METRIQUE_HTTP_PORT)
+        return self._default('http_port', DEFAULT_METRIQUE_HTTP_PORT)
 
     @http_port.setter
     def http_port(self, value):
@@ -153,7 +159,7 @@ class metrique(JSONConf):
 
     @property
     def login_url(self):
-        return self._default('login_url', METRIQUE_LOGIN_URL)
+        return self._default('login_url', DEFAULT_METRIQUE_LOGIN_URL)
 
     @property
     def static_path(self):
@@ -172,7 +178,7 @@ class metrique(JSONConf):
     @property
     def ssl_certificate_key(self):
         return self._default(
-            'ssl_certificate_key', os.path.expanduser(SSL_CERT_KEY))
+            'ssl_certificate_key', os.path.expanduser(DEFAULT_SSL_CERT_KEY))
 
     @ssl_certificate_key.setter
     def ssl_certificate_key(self, value):
@@ -180,51 +186,29 @@ class metrique(JSONConf):
 
     @property
     def ssl_certificate(self):
-        return self._default('ssl_certificate', os.path.expanduser(SSL_CERT))
+        return self._default(
+            'ssl_certificate', os.path.expanduser(DEFAULT_SSL_CERT))
 
     @ssl_certificate.setter
     def ssl_certificate(self, value):
         self.config['ssl_certificate'] = value
 
     @property
-    def logs_max_size(self):
-        return self._default('logs_max_size', MAX_SIZE)
-
-    @property
-    def logs_max_docs(self):
-        return self._default('logs_max_docs', MAX_DOCS)
-
-    @property
     def log_formatter(self):
         return self._property_default('log_formatter', LOG_FORMATTER)
-
-    @property
-    def log_to_stdout(self):
-        return self._default('log_to_stdout', 1)
 
     @property
     def log_file_path(self):
         return os.path.expanduser(
             self._default('log_file_path', LOGDIR_SAVEAS))
 
-    @log_file_path.setter
-    def log_file_path(self, value):
-        self.config['log_file_path'] = value
-
-    @property
-    def log_to_file(self):
-        return self._default('log_to_file', 0)
-
 
 class mongodb(JSONConf):
-    def __init__(self, config_file=None, config_dir=None,
-                 force=True, *args, **kwargs):
+    def __init__(self, config_file=None, force=True, *args, **kwargs):
         if not config_file:
-            config_file = MONGODB_CONF
-        if not config_dir:
-            config_dir = DEFAULT_CONFIG_DIR
-        super(mongodb, self).__init__(config_file, config_dir,
-                                      force=force, *args, **kwargs)
+            config_file = DEFAULT_MONGODB_CONF
+        super(mongodb, self).__init__(config_file, force=force,
+                                      *args, **kwargs)
 
     @property
     def host(self):
@@ -308,10 +292,6 @@ class mongodb(JSONConf):
     @property
     def collection_jobs(self):
         return self._default('collection_jobs', JOB_ACTIVITY_COLLECTION)
-
-    @property
-    def collection_logs(self):
-        return self._default('collection_logs', LOGS_COLLECTION)
 
     @property
     def collection_auth_keys(self):

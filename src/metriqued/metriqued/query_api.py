@@ -10,7 +10,7 @@ import random
 from tornado.web import HTTPError
 
 from metriqued.cubes import get_fields, get_collection
-from metriqued.utils import dt2ts
+from metriqueu.utils import dt2ts
 
 BATCH_SIZE = 16777216  # hard limit is 16M...
 

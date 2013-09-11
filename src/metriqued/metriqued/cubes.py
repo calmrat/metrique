@@ -7,7 +7,7 @@ logger = logging.getLogger(__name__)
 from tornado.web import HTTPError
 
 from metriqued.config import mongodb
-from metriqued.utils import set_default
+from metriqueu.utils import set_default
 
 mongodb_config = mongodb()
 
@@ -110,7 +110,8 @@ def list_cubes(owner=None):
         Get a list of cubes server exports
     '''
     names = mongodb_config.db_timeline_data.db.collection_names()
+    names = [n for n in names if not n.startswith('system')]
     if owner:
         return [n for n in names if n.startswith(owner)]
     else:
-        return [n for n in names if not n.startswith('system')]
+        return names

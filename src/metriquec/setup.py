@@ -34,12 +34,7 @@ __irequires__ = [
     'psycopg2>=2.5',
 ]
 pip_src = 'https://pypi.python.org/packages/source'
-__deplinks__ = [
-    '%s/m/metrique/metrique-0.1.5a-1.tar.gz' % pip_src,
-    '%s/c/celery/celery-3.0.22.tar.gz' % pip_src,
-    '%s/g/gittle/gittle-0.2.1.tar.gz' % pip_src,
-    '%s/p/psycopg2/psycopg2-2.5.1.tar.gz' % pip_src,
-]
+__deplinks__ = []
 
 try:
     with open('README.rst') as _file:

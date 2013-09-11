@@ -15,14 +15,13 @@ from functools import partial
 import os
 import requests
 import simplejson as json
-import pickle
 
 from metrique.config import Config
-from metrique.config import DEFAULT_CONFIG_DIR, DEFAULT_CONFIG_FILE
+from metrique.config import DEFAULT_CONFIG_FILE
 from metrique import query_api, etl_api, user_api, cube_api
 from metrique import etl_activity, get_cube
 
-from metrique.utils import csv2list, json_encode, set_default
+from metriqueu.utils import csv2list, json_encode, set_default
 
 
 class HTTPClient(object):
@@ -47,12 +46,13 @@ class HTTPClient(object):
     index_drop = cube_api.drop_index
     cube_drop = cube_api.drop
     cube_register = cube_api.register
+    cube_update_role = cube_api.update_role
     user_login = user_api.login
     user_logout = user_api.logout
-    user_add = user_api.add
     user_register = user_api.register
-    user_passwd = user_api.passwd
-    user_update = user_api.update
+    user_update_passwd = user_api.update_passwd
+    user_update_profile = user_api.update_profile
+    user_update_properties = user_api.update_properties
 
     def __new__(cls, *args, **kwargs):
         '''
@@ -73,14 +73,14 @@ class HTTPClient(object):
                  config_dir=None, cube=None,
                  api_auto_login=None,
                  **kwargs):
-        self.load_config(config_file, config_dir, force)
+        self.load_config(config_file, force)
         logging.basicConfig()
         self.logger = logging.getLogger('metrique.%s' % self.__module__)
         self.config.debug = self.logger, debug
         self.config.async = async
 
-        if cube and not self.name and isinstance(cube, basestring):
-            self.name = cube
+        if cube and isinstance(cube, basestring):
+            self._set_cube(cube)
 
         if api_host:
             self.config.api_host = api_host
@@ -95,12 +95,16 @@ class HTTPClient(object):
             self.config.api_auto_login = api_auto_login
         self._api_auto_login_attempted = False
 
-    def load_config(self, config_file, config_dir, force=False):
+    def load_config(self, config_file, force=False):
         if not config_file:
             config_file = DEFAULT_CONFIG_FILE
-        if not config_dir:
-            config_dir = DEFAULT_CONFIG_DIR
-        self.config = Config(config_file, config_dir, force)
+        self.config = Config(config_file=config_file, force=force)
+
+    def set_cube(self, cube):
+        # FIXME: what about if we want to load an
+        # existing cube module like csvobject?
+        # so we have access to .extract() methods, etc
+        self.name = cube
 
     def _kwargs_json(self, **kwargs):
         #return json.dumps(kwargs, default=json_encode,
@@ -118,36 +122,18 @@ class HTTPClient(object):
                                     encoding="ISO-8859-1"))
                     for k, v in kwargs.items()])
 
-    #def _save_session(self):
-    #    if not self.session:
-    #        return None
-
-    #    session_path = os.path.join(self.config.config_dir,
-    #                                self.config.session_file)
-
-    #    # FIXME: WARNING THIS WILL OVERWRITE EXISTING FILE!
-    #    with open(session_path, 'w') as f:
-    #        pickle.dump(self.session, f)
-
     def _load_session(self):
-        # try to load a session from disk
-        session_path = os.path.join(self.config.config_dir,
-                                    self.config.session_file)
-
-        if os.path.exists(session_path):
-            with open(session_path) as f:
-                self.session = pickle.load(f)
-                return
-
-        # finally, fall back to loading a fresh new session
+        # load a fresh new session
         self.session = requests.Session()
 
-    def _get_response(self, runner, _url, api_username, api_password):
+    def _get_response(self, runner, _url, api_username, api_password,
+                      allow_redirects=True):
         try:
             return runner(_url,
                           auth=(api_username, api_password),
                           cookies=self.session.cookies,
-                          verify=False)
+                          verify=False,
+                          allow_redirects=allow_redirects)
         except requests.exceptions.ConnectionError:
             raise requests.exceptions.ConnectionError(
                 'Failed to connect (%s). Try http://? or https://?' % _url)
@@ -171,18 +157,26 @@ class HTTPClient(object):
         return _url
 
     def _run(self, kind, cmd, api_url=True,
+             allow_redirects=True, full_response=False,
              api_username=None, api_password=None,
              **kwargs):
         if not api_username:
             api_username = self.config.api_username
+        else:
+            # we actually want to pass this to the server
+            kwargs['api_username'] = api_username
+
         if not api_password:
             api_password = self.config.api_password
+        else:
+            kwargs['api_password'] = api_password
 
         runner = self._build_runner(kind, kwargs)
         _url = self._build_url(cmd, api_url)
 
         _response = self._get_response(runner, _url,
-                                       api_username, api_password)
+                                       api_username, api_password,
+                                       allow_redirects)
 
         _auto = self.config.api_auto_login
         _attempted = self._api_auto_login_attempted
@@ -190,14 +184,12 @@ class HTTPClient(object):
         if _response.status_code in [401, 403] and _auto and not _attempted:
             self._api_auto_login_attempted = True
             # try to login and rerun the request
-            self.logger.debug('HTTP 401: going to try to auto re-log-in')
-            #self._load_session()
+            self.logger.debug('HTTP 40*: going to try to auto re-log-in')
             self.user_login(api_username,
                             api_password)
             _response = self._get_response(runner, _url,
-                                           api_username, api_password)
-
-        #self._save_session()
+                                           api_username, api_password,
+                                           allow_redirects)
 
         try:
             _response.raise_for_status()
@@ -207,7 +199,10 @@ class HTTPClient(object):
             logger.error(content)
             raise
         else:
-            return json.loads(_response.content)
+            if full_response:
+                return _response
+            else:
+                return json.loads(_response.content)
 
     def _get(self, *args, **kwargs):
         return self._run(self.session.get, *args, **kwargs)
@@ -225,7 +220,7 @@ class HTTPClient(object):
         ''' List all valid cubes for a given metrique instance '''
         return self._get(owner)
 
-    def list_cube_fields(self, owner, cube,
+    def list_cube_fields(self, cube=None, owner=None,
                          exclude_fields=None, _mtime=False):
         '''
         List all valid fields for a given cube

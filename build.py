@@ -26,7 +26,7 @@ logging.basicConfig(format='')
 logger = logging.getLogger(__name__)
 
 # header definitions
-__pkgs__ = ['metrique', 'metriqued', 'metriquec']
+__pkgs__ = ['metrique', 'metriqued', 'metriquec', 'metriqueu']
 __src__ = 'src/'
 __actions__ = ['build', 'sdist', 'install']
 __bumps__ = ['release', 'version']

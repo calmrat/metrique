@@ -10,10 +10,9 @@ import hashlib
 import re
 
 from metriqued.cubes import get_collection, get_etl_activity
-from metriqued.config import mongodb
+from metriqued.config import mongodb, IMMUTABLE_DOC_ID_PREFIX
 
-from metriqued.utils import dt2ts
-from metriqued.utils import new_oid
+from metriqueu.utils import dt2ts, new_oid
 
 # obj props (client mutable) are prefixed w/ 1 underscore
 RE_PROP = re.compile('^_')
@@ -294,8 +293,10 @@ def save_objects(owner, cube, objects, mtime=None):
     return oids
 
 
-# FIXME: DO NOT PERMIT REMOVING (OR STORING) AND DOCUMENT WITH
-# __meta__ key
+def _contains_immutable_doc_id(ids):
+    return any([True for x in ids if x.startswith(IMMUTABLE_DOC_ID_PREFIX)])
+
+
 def remove_objects(owner, cube, ids, backup=False):
     '''
     Remove all the objects (docs) from the given cube (mongodb collection)
@@ -311,6 +312,9 @@ def remove_objects(owner, cube, ids, backup=False):
     elif not isinstance(ids, list):
         raise TypeError("Expected list, got %s: %s" %
                         (type(ids), ids))
+    elif _contains_immutable_doc_id(ids):
+        raise ValueError("Object ids with '%s' prefix "
+                         "are immutable" % IMMUTABLE_DOC_ID_PREFIX)
     else:
         spec = {'_oid': {'$in': ids}}
         _cube = get_collection(owner, cube)

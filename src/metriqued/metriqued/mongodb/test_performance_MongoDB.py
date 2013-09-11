@@ -2,16 +2,13 @@
 # Author:  Jan Grec <jgrec@redhat.com>
 
 from datetime import datetime
-import os
+from jsonconf import JSONConf
 import time
 from unittest import TestCase, TestLoader, TextTestRunner
 
 from metriqued.mongodb.basemongodb import BaseMongoDB
+from metrique.config import DEFAULT_MONGODB_CONF
 
-from jsonconf import JSONConf
-
-config_dir = '~/.metrique/'
-config_dir = os.path.expanduser(config_dir)
 tests_db = 'tests'
 junk_c = 'junk'
 results_c = 'results'
@@ -35,8 +32,7 @@ class Test_MongoDB_Performance(TestCase):
 
     def setUp(self):
         """Opens connection and creates 'junk' records."""
-        config = JSONConf('mongodb', config_dir, force=True)
-
+        config = JSONConf(DEFAULT_MONGODB_CONF, force=True)
         host = config['host']
         username = config['admin_username']
         password = config['admin_password']
@@ -132,7 +128,7 @@ class Test_MongoDB_Performance(TestCase):
 
 
 def print_results():
-    config = JSONConf('mongodb', config_dir, force=True)
+    config = JSONConf(DEFAULT_MONGODB_CONF, force=True)
     host = config['host']
     username = config['admin_username']
     password = config['admin_password']

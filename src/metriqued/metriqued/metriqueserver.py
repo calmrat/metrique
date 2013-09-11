@@ -9,9 +9,9 @@ logger = logging.getLogger(__name__)
 from concurrent.futures import ThreadPoolExecutor
 import os
 
-from metriqued.config import BACKUP_COUNT, MAX_BYTES
 from metriqued.config import metrique, mongodb
-from metriqued.config import METRIQUE_CONF, MONGODB_CONF
+from metriqued.config import DEFAULT_METRIQUE_CONF
+from metriqued.config import DEFAULT_MONGODB_CONF
 
 
 class MetriqueServer(object):
@@ -25,9 +25,9 @@ class MetriqueServer(object):
         # else it's assumed the config_dir is '/.'
 
         if not metrique_config_file:
-            metrique_config_file = METRIQUE_CONF
+            metrique_config_file = DEFAULT_METRIQUE_CONF
         if not mongodb_config_file:
-            mongodb_config_file = MONGODB_CONF
+            mongodb_config_file = DEFAULT_MONGODB_CONF
 
         self._config_dir = config_dir
 
@@ -77,12 +77,6 @@ class MetriqueServer(object):
             pass
 
     def start(self):
-        if self.metrique_config.log_to_file:
-            hdlr = logging.handlers.RotatingFileHandler(
-                self.log_file_path, maxBytes=MAX_BYTES,
-                backupCount=BACKUP_COUNT)
-            hdlr.setFormatter(self.metrique_config.log_formatter)
-            logger.addHandler(hdlr)
         self._set_pid()
         k = self.metrique_config.server_thread_count
         self.executor = ThreadPoolExecutor(k)

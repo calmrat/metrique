@@ -16,35 +16,36 @@ from handlers import QueryAggregateHandler, QueryFindHandler
 from handlers import QueryDeptreeHandler
 from handlers import QueryFetchHandler, QueryCountHandler
 from handlers import QueryDistinctHandler, QuerySampleHandler
-from handlers import UsersAddHandler
 from handlers import ETLIndexHandler
 from handlers import ETLActivityImportHandler
 from handlers import ETLSaveObjectsHandler, ETLRemoveObjectsHandler
-from handlers import UserCubeHandler, UserHandler
+from handlers import CubeListHandler
+from handlers import UserUpdateProfileHandler, UserUpdatePropertiesHandler
 from handlers import LoginHandler, LogoutHandler
-from handlers import RegisterHandler, PasswordChangeHandler
+from handlers import RegisterHandler, UserUpdatePasswordHandler
 from handlers import CubeRegisterHandler, CubeDropHandler
-from handlers import UserUpdateHandler
+from handlers import CubeUpdateRoleHandler
 
-# FIXME: add this to config
+# FIXME: add this to config and generate with metriqued-setup
+# DEFAULT should be just a bunch of 0000000's
 # generate a new one with
 # import base64
 # import uuid
 # base64.b64encode(uuid.uuid4().bytes + uuid.uuid4().bytes)
-__cookie_secret__ = 'kmBe2OApQW+d4hjsUPjWcY5cYQyBh0CLnBo9KyikyRI='
-__api_version__ = r'/api/v2'
-__user_cube__ = r'(\w+)/(\w+)'
+COOKIE_SECRET = 'kmBe2OApQW+d4hjsUPjWcY5cYQyBh0CLnBo9KyikyRI='
+API_VERSION = r'/api/v2'
+USER_CUBE = r'(\w+)/(\w+)'
 
 
 def user_cube(value):
     value = str(value)
-    path = os.path.join(__user_cube__, value)
+    path = os.path.join(USER_CUBE, value)
     return path
 
 
 def api_v2(value):
     value = str(value)
-    path = os.path.join(__api_version__, value)
+    path = os.path.join(API_VERSION, value)
     return path
 
 
@@ -59,13 +60,13 @@ base_handlers = [
     (r"/login", LoginHandler),
     (r"/logout", LogoutHandler),
 
-    (r"/(\w+)/passwd", PasswordChangeHandler),
-    (r"/(\w+)/update", UserUpdateHandler),
+    (r"/(\w+)/passwd", UserUpdatePasswordHandler),
+    (r"/(\w+)/update_profile", UserUpdateProfileHandler),
+    (r"/(\w+)/update_properties", UserUpdatePropertiesHandler),
 
     (api_v2(r"ping"), PingHandler),
 
-    (api_v2(r"(\w+)?"), UserHandler),
-    (api_v2(r"(\w+)/(\w+)"), UserCubeHandler),
+    (api_v2(r"(\w+)?/?(\w+)?"), CubeListHandler),
 ]
 
 user_cube_handlers = [
@@ -76,12 +77,11 @@ user_cube_handlers = [
     (ucv2(r"fetch"), QueryFetchHandler),
     (ucv2(r"distinct"), QueryDistinctHandler),
     (ucv2(r"sample"), QuerySampleHandler),
-    # FIXME adduser...
-    (ucv2(r"user_add"), UsersAddHandler),
     (ucv2(r"index"), ETLIndexHandler),
     (ucv2(r"save_objects"), ETLSaveObjectsHandler),
     (ucv2(r"remove_objects"), ETLRemoveObjectsHandler),
     (ucv2(r"activity_import"), ETLActivityImportHandler),
+    (ucv2(r"update_cube_role"), CubeUpdateRoleHandler),
     (ucv2(r"drop_cube"), CubeDropHandler),
     (ucv2(r"register"), CubeRegisterHandler),
 ]
@@ -111,15 +111,12 @@ class HTTPServer(MetriqueServer):
                     mongodb_config=self.mongodb_config)
         handlers = [(h[0], h[1], init) for h in api_v2_handlers]
 
-        #logger.debug('API V2 HANDLERS: %s' % api_v2_handlers)
-        #logger.debug('COOKIE SECRET: %s' % __cookie_secret__)
-
         self._web_app = Application(
             gzip=gzip,
             debug=debug,
             static_path=static_path,
             handlers=handlers,
-            cookie_secret=__cookie_secret__,
+            cookie_secret=COOKIE_SECRET,
             login_url=login_url,
             #xsrf_cookies=True,
         )

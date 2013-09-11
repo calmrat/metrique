@@ -1,22 +1,19 @@
 #!/usr/bin/env python
 # Author:  Jan Grec <jgrec@redhat.com>
 
-import os
+from jsonconf import JSONConf
 from unittest import TestCase, main
 
 from metriqued.mongodb.basemongodb import BaseMongoDB
+from metrique.config import DEFAULT_MONGODB_CONF
 
-from jsonconf import JSONConf
-
-config_dir = '~/.metrique/'
-config_dir = os.path.expanduser(config_dir)
 
 class Test_MongoDB_Admin(TestCase):
 
     def setUp(self):
         """Sets up admindb connection into test collection."""
         db = 'test'
-        config = JSONConf('mongodb', config_dir)
+        config = JSONConf(DEFAULT_MONGODB_CONF)
         host = config['host']
         username = config['admin_username']
         password = config['admin_password']

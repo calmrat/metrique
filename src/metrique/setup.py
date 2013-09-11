@@ -18,45 +18,20 @@ __scripts__ = [
     'bin/metrique-setup',
 ]
 __requires__ = [
-    'bson (>=0.3.3)',
-    'decorator (>=3.4)',
-    'futures (>=2.1)',
-    'jsonconf (>=0.1.4)',
+    'metriqueu (>=%s)' % __version__,
     'pandas (>=0.12)',
-    'pql (>=0.3.2)',
-    'python_dateutil (>=2.1)',
-    'pytz',  # (>=2013b)
     'requests (>=1.2)',
-    'simplejson (>=3.3)',
     'tornado (>=3.0)',
 ]
 __irequires__ = [
-    'bson>=0.3.3',
-    'decorator>=3.4',
-    'futures>=2.1',
-    'jsonconf>=0.1.4',
+    'metriqueu>=%s' % __version__,
     'pandas>=0.12',
     'pql>=0.3.2',
-    'python_dateutil>=2.1',
-    'pytz>=2013b',
     'requests>=1.2',
-    'simplejson>=3.3',
     'tornado>=3.0',
 ]
 pip_src = 'https://pypi.python.org/packages/source'
-__deplinks__ = [
-    '%s/b/bson/bson-0.3.3.tar.gz' % pip_src,
-    '%s/d/decorator/decorator-3.4.0.tar.gz' % pip_src,
-    '%s/f/futures/futures-2.1.4.tar.gz' % pip_src,
-    '%s/j/jsonconf/jsonconf-0.1.4.tar.gz' % pip_src,
-    '%s/p/pandas/pandas-0.12.0.tar.gz' % pip_src,
-    '%s/p/pql/pql-0.3.2.tar.gz' % pip_src,
-    '%s/p/python-dateutil/python-dateutil-2.1.tar.gz' % pip_src,
-    '%s/p/pytz/pytz-2013b.tar.gz' % pip_src,
-    '%s/r/requests/requests-1.2.3.tar.gz' % pip_src,
-    '%s/s/simplejson/simplejson-3.3.0.tar.gz' % pip_src,
-    '%s/t/tornado/tornado-3.1.tar.gz' % pip_src,
-]
+__deplinks__ = []
 
 with open('README.rst') as _file:
     readme = _file.read()
@@ -89,7 +64,6 @@ default_setup = dict(
     ],
     keywords=['data', 'mining', 'information', 'mongo',
               'etl', 'analysis', 'search', 'query'],
-
     dependency_links=__deplinks__,
     description=__desc__,
     install_requires=__irequires__,

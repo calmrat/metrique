@@ -30,7 +30,7 @@ integrated with the scientific python computing stack.
 '''
 
 from result import Result
-from metrique.utils import set_cube_path, get_cube
+from metriqueu.utils import set_cube_path, get_cube
 from metrique.config import DEFAULT_CLIENT_CUBES_PATH
 from metrique.http_api import HTTPClient as pyclient
 

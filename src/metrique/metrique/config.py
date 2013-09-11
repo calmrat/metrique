@@ -16,47 +16,31 @@ To customize local client configuration, add/update
 Paths are UNIX compatible only.
 '''
 
-from distutils.sysconfig import get_python_lib
 import logging
 import os
 import re
 
 from jsonconf import JSONConf
 
-DEFAULT_CONFIG_DIR = '~/.metrique'
-DEFAULT_CONFIG_FILE = 'http_api'
+from metriqueu.defaults import DEFAULT_CONFIG_DIR
+from metriqueu.defaults import DEFAULT_METRIQUE_HTTP_HOST
+from metriqueu.defaults import DEFAULT_METRIQUE_HTTP_PORT
+from metriqueu.defaults import DEFAULT_CLIENT_CUBES_PATH
+from metriqueu.defaults import DEFAULT_API_REL_PATH
 
-DEFAULT_CLIENT_CUBES_BASE_PATH = 'cubes/'
-DEFAULT_CLIENT_CUBES_PATH = os.path.join(
-    DEFAULT_CONFIG_DIR, DEFAULT_CLIENT_CUBES_BASE_PATH)
-
-
-DEFAULT_SYS_CUBES_BASE_PATH = 'metriquec/'
-DEFAULT_SYSTEM_CUBES_PATH = os.path.join(
-    get_python_lib(), DEFAULT_SYS_CUBES_BASE_PATH)
-
+DEFAULT_CONFIG_FILE = os.path.join(DEFAULT_CONFIG_DIR, 'http_api')
 DEFAULT_SESSION_FILE = 'session.requests'
 
 API_VERSION = 'v2'
-API_REL_PATH = 'api'
-API_SSL = False
-
-METRIQUE_HTTP_HOST = '127.0.0.1'
-METRIQUE_HTTP_PORT = 8080
 
 
 class Config(JSONConf):
     ''' Client config (property) class '''
-    def __init__(self, config_file, config_dir, force=True,
-                 *args, **kwargs):
+    def __init__(self, config_file, force=True, *args, **kwargs):
         if not config_file:
             config_file = DEFAULT_CONFIG_FILE
-        if not config_dir:
-            config_dir = DEFAULT_CONFIG_DIR
-        config_dir = os.path.expanduser(config_dir)
-        super(Config, self).__init__(config_file=config_file,
-                                     config_dir=config_dir,
-                                     force=force, *args, **kwargs)
+        super(Config, self).__init__(config_file=config_file, force=force,
+                                     *args, **kwargs)
 
     @property
     def cubes_path(self):
@@ -97,7 +81,7 @@ class Config(JSONConf):
         ''' Reletive paths from url.root needed
             to trigger/access the metrique http api
         '''
-        def_rel_path = os.path.join(API_REL_PATH, self.api_version)
+        def_rel_path = os.path.join(DEFAULT_API_REL_PATH, self.api_version)
         return self._default('api_rel_path', def_rel_path)
 
     @property
@@ -132,7 +116,7 @@ class Config(JSONConf):
     @property
     def api_port(self):
         ''' Port need to connect to metrique api '''
-        return self._default('api_port', METRIQUE_HTTP_PORT)
+        return self._default('api_port', DEFAULT_METRIQUE_HTTP_PORT)
 
     @api_port.setter
     def api_port(self, value):
@@ -144,7 +128,7 @@ class Config(JSONConf):
     @property
     def api_host(self):
         ''' The hostname/url/ip to connect to metrique api '''
-        return self._default('api_host', METRIQUE_HTTP_HOST)
+        return self._default('api_host', DEFAULT_METRIQUE_HTTP_HOST)
 
     @api_host.setter
     def api_host(self, value):

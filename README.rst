@@ -32,9 +32,10 @@ General
 
 Make sure you have the following *OS stuff* installed 
 before doing anything else. The examples given below 
-are fedora rpm package names::
+use yum and assume fedora rpm package names::
 
-    yum install git python python-devel python-setuptools gcc gcc-c++ 
+    yum install python python-devel python-setuptools
+    yum install git gcc gcc-c++ gcc-gfortran
 
 Also, make sure python pip, distribute and setuptools 
 are installed up2date:: 

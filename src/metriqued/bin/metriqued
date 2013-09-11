@@ -20,10 +20,13 @@ import os
 import time
 import signal
 
-from metriqued.config import SERVER_CONFIG_PATH, METRIQUE_CONF
-from metriqued.config import METRIQUE_HTTP_HOST, METRIQUE_HTTP_PORT
+from metriqued.config import DEFAULT_METRIQUE_CONF
 from metriqued.config import metrique
 from metriqued.tornadod.http import HTTPServer
+
+from metriqueu.defaults import DEFAULT_CONFIG_DIR
+from metriqueu.defaults import DEFAULT_METRIQUE_HTTP_HOST
+from metriqueu.defaults import DEFAULT_METRIQUE_HTTP_PORT
 
 
 def get_pid(pid_file):
@@ -84,14 +87,14 @@ if __name__ == '__main__':
                        action='store_true')
 
     _args.add_argument('-c', '--server-config-file',
-                       type=str, default=METRIQUE_CONF)
+                       type=str, default=DEFAULT_METRIQUE_CONF)
     _args.add_argument('-cd', '--server-config-dir',
-                       type=str, default=SERVER_CONFIG_PATH)
+                       type=str, default=DEFAULT_CONFIG_DIR)
 
     _args.add_argument('-H', '--host',
-                       type=str, default=METRIQUE_HTTP_HOST)
+                       type=str, default=DEFAULT_METRIQUE_HTTP_HOST)
     _args.add_argument('-P', '--port',
-                       type=str, default=METRIQUE_HTTP_PORT)
+                       type=str, default=DEFAULT_METRIQUE_HTTP_PORT)
 
     # FIXME: in the near future, we'll be able to start up
     # multiple servers in parallel; instance-id would

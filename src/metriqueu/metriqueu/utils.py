@@ -13,8 +13,8 @@ import os
 import simplejson as json
 import sys
 
-from metrique.config import DEFAULT_SYSTEM_CUBES_PATH
-from metrique.config import DEFAULT_CLIENT_CUBES_PATH
+from metriqueu.defaults import DEFAULT_SYSTEM_CUBES_PATH
+from metriqueu.defaults import DEFAULT_CLIENT_CUBES_PATH
 
 json_encoder = json.JSONEncoder()
 
@@ -197,10 +197,10 @@ def get_cube(cube, path=None):
     '''
     Wraps __import__ to dynamically locate and load a client cube.
 
-    :param string module:
-        Module name (eg, 'jkns.build')
     :param string cube:
         Name of the cube Class to be imported from given module (eg, 'Build')
+    :param string path:
+        path to look for cubes (eg '~/.metrique/cubes/')
     '''
     if not path:
         path = DEFAULT_CLIENT_CUBES_PATH

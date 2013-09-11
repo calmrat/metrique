@@ -12,10 +12,10 @@ logger = logging.getLogger(__name__)
 import os
 
 from metrique.result import Result
-from metrique.utils import set_default
+from metriqueu.utils import set_default
 
 
-def aggregate(self, pipeline, owner=None, cube=None):
+def aggregate(self, pipeline, cube=None, owner=None):
     '''
     Proxy for pymongodb's .aggregate framework call
     on a given cube
@@ -33,7 +33,7 @@ def aggregate(self, pipeline, owner=None, cube=None):
         raise RuntimeError(result)
 
 
-def count(self, query=None, owner=None, cube=None, date=None):
+def count(self, query=None, cube=None, date=None, owner=None):
     '''
     Run a `pql` based query on the given cube, but
     only return back the count (Integer)
@@ -48,7 +48,7 @@ def count(self, query=None, owner=None, cube=None, date=None):
     '''
     if not query:
         query = '_oid == exists(True)'
-    owner = set_default(owner, self.config.api_username)
+    owner = set_default(owner, self.config.api_username, required=True)
     cube = set_default(cube, self.name, required=True)
     cmd = os.path.join(owner, cube, 'count')
     return self._get(cmd, query=query, date=date)
@@ -75,7 +75,7 @@ def find(self, query, fields=None, date=None, sort=None, one=False,
           will be queried.
 
     '''
-    owner = set_default(owner, self.config.api_username)
+    owner = set_default(owner, self.config.api_username, required=True)
     cube = set_default(cube, self.name, required=True)
     cmd = os.path.join(owner, cube, 'find')
     result = self._get(cmd, query=query, fields=fields,
@@ -100,7 +100,7 @@ def deptree(self, field, oids, date=None, level=None,
     :param integer level: limit depth of recursion
     :param string cube: name of cube to work with
     '''
-    owner = set_default(owner, self.config.api_username)
+    owner = set_default(owner, self.config.api_username, required=True)
     cube = set_default(cube, self.name, required=True)
     cmd = os.path.join(owner, cube, 'deptree')
     result = self._get(cmd, field=field,
@@ -110,7 +110,7 @@ def deptree(self, field, oids, date=None, level=None,
 
 
 def fetch(self, fields=None, date=None, sort=None, skip=0, limit=0,
-          oids=None, raw=False, owner=None, cube=None, **kwargs):
+          oids=None, raw=False, cube=None, owner=None, **kwargs):
     '''
     Fetch field values for (potentially) all objects
     of a given, with skip, limit, id "filter" arguments
@@ -141,7 +141,7 @@ def fetch(self, fields=None, date=None, sort=None, skip=0, limit=0,
         return _result_convert(self, result, date, **kwargs)
 
 
-def distinct(self, field, owner=None, cube=None, sort=True):
+def distinct(self, field, cube=None, sort=True, owner=None):
     '''
     Return back all distinct token values of a given field
 
@@ -160,7 +160,7 @@ def distinct(self, field, owner=None, cube=None, sort=True):
 
 
 def sample(self, size, fields=None, date=None, raw=False,
-           owner=None, cube=None):
+           cube=None, owner=None):
     '''
     Draws a sample of objects at random.
 

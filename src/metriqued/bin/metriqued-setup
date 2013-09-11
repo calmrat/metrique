@@ -8,7 +8,7 @@ from subprocess import call
 
 pp = PrettyPrinter(indent=2)
 
-from metriqued.tornado.http import HTTPServer
+from metriqued.tornadod.http import HTTPServer
 
 prompter = lambda x: raw_input(x)
 

@@ -7,31 +7,33 @@ logging.basicConfig()
 logger = logging.getLogger(__name__)
 from setuptools import setup
 
-__pkg__ = 'metriqued'
+__pkg__ = 'metriqueu'
 __version__ = '0.1.5'
-__release__ = 15
+__release__ = 5
 __nvr__ = '%s-%s' % (__version__, __release__)
-__pkgs__ = ['metriqued', 'metriqued.mongodb', 'metriqued.tornadod']
-__provides__ = ['metriqued']
-__datafiles__ = []
-__desc__ = 'Python/MongoDB Information Platform - Server'
-__scripts__ = [
-    'bin/metriqued-setup',
-    'bin/metriqued'
-]
+__pkgs__ = ['metriqueu']
+__provides__ = ['metriqueu']
+__desc__ = 'Metrique - Shared Utility Libraries'
+__scripts__ = []
 __requires__ = [
-    'kerberos (>=1.1.1)',
-    'metriqueu (>=%s)' % __version__,
-    'passlib (>=1.6.1)',
-    'pymongo (>=2.6.1)',
-    'tornado (>=3.0)',
+    'bson (>=0.3.3)',
+    'decorator (>=3.4)',
+    'futures (>=2.1)',
+    'jsonconf (>=0.1.4)',
+    'pql (>=0.3.2)',
+    'python_dateutil (>=2.1)',
+    'pytz',  # (>=2013b)
+    'simplejson (>=3.3)',
 ]
 __irequires__ = [
-    'kerberos>=1.1.1',
-    'metriqueu>=%s' % __version__,
-    'passlib>=1.6.1',
-    'pymongo>=2.6.1',
-    'tornado>=3.0',
+    'bson>=0.3.3',
+    'decorator>=3.4',
+    'futures>=2.1',
+    'jsonconf>=0.1.4',
+    'pql>=0.3.2',
+    'python_dateutil>=2.1',
+    'pytz>=2013b',
+    'simplejson>=3.3',
 ]
 pip_src = 'https://pypi.python.org/packages/source'
 __deplinks__ = []
@@ -43,13 +45,13 @@ github = 'https://github.com/drpoovilleorg/metrique'
 download_url = '%s/archive/master.zip' % github
 
 default_setup = dict(
-    url='https://github.com/drpoovilleorg/metrique',
+    url=github,
     license='GPLv3',
     author='Chris Ward',
     author_email='cward@redhat.com',
     download_url=download_url,
     long_description=readme,
-    data_files=__datafiles__,
+    data_files=[],
     dependency_links=__deplinks__,
     description=__desc__,
     install_requires=__irequires__,
@@ -60,6 +62,5 @@ default_setup = dict(
     scripts=__scripts__,
     version=__nvr__,
 )
-
 
 setup(**default_setup)

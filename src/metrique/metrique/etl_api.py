@@ -13,13 +13,13 @@ from time import time
 import os
 import pytz
 
-from metrique.utils import batch_gen, set_default
+from metriqueu.utils import batch_gen, set_default
 
 DEFAULT_BATCH = 100000
 CMD = ''
 
 
-def save_objects(self, objects, batch=DEFAULT_BATCH, owner=None, cube=None):
+def save_objects(self, objects, batch=DEFAULT_BATCH, cube=None, owner=None):
     '''
     :param list objects: list of dictionary-like objects to be stored
     :param string owner: owner of cube
@@ -31,7 +31,7 @@ def save_objects(self, objects, batch=DEFAULT_BATCH, owner=None, cube=None):
 
     Returns back a list of object ids (_id|_oid) saved.
     '''
-    owner = set_default(owner, self.config.api_username)
+    owner = set_default(owner, self.config.api_username, required=True)
     cube = set_default(cube, self.name, required=True)
 
     olen = len(objects) if objects else None
@@ -57,7 +57,7 @@ def save_objects(self, objects, batch=DEFAULT_BATCH, owner=None, cube=None):
     return sorted(list(set([o['_oid'] for o in objects if o])))
 
 
-def remove_objects(self, ids, backup=False, owner=None, cube=None):
+def remove_objects(self, ids, backup=False, cube=None, owner=None):
     '''
     Remove objects from cube timeline
 
@@ -65,7 +65,7 @@ def remove_objects(self, ids, backup=False, owner=None, cube=None):
     :param bool backup: return the documents removed to client?
     :param string cube: cube name to use
     '''
-    owner = set_default(owner, self.config.api_username)
+    owner = set_default(owner, self.config.api_username, required=True)
     cube = set_default(cube, self.name, required=True)
     cmd = os.path.join(owner, cube, 'remove_objects')
     if not ids:
