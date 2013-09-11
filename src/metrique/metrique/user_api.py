@@ -6,6 +6,7 @@
 
 import logging
 logger = logging.getLogger(__name__)
+import os
 
 from metrique.utils import set_default
 
@@ -49,7 +50,7 @@ def register(self, username=None, password=None):
                       role=None, api_url=False)
 
 
-def passwd(self, old_password, new_password, username=None, save=False):
+def passwd(self, new_password, old_password=None, username=None, save=False):
     '''
     Update existing user profile properties
 
@@ -58,12 +59,13 @@ def passwd(self, old_password, new_password, username=None, save=False):
         Password (plain text), if any of user
     '''
     username = set_default(username, self.config.api_username, required=True)
-    result = self._post('passwd',
+    cmd = os.path.join(username, 'passwd')
+    result = self._post(cmd,
                         username=username,
                         old_password=old_password,
                         new_password=new_password,
                         api_url=False)
-    if result:
+    if result and username == self.config.api_username:
         self._load_session()
         self.config.api_password = new_password
         if save:
@@ -72,9 +74,12 @@ def passwd(self, old_password, new_password, username=None, save=False):
 
 
 def update(self, username=None, backup=False, **kwargs):
+    if not kwargs:
+        self.logger.debug("kwargs is empty... not updating")
+        return False
     username = set_default(username, self.config.api_username, required=True)
-    result = self._post('update',
-                        username=username,
+    cmd = os.path.join(username, 'update')
+    result = self._post(cmd,
                         backup=backup,
                         api_url=False,
                         **kwargs)

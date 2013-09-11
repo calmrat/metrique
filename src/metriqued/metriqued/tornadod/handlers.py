@@ -25,14 +25,14 @@ class MetriqueInitialized(RequestHandler):
     and unifies json get_argument handling
     '''
 
-    def ping(self, **kwargs):
+    def ping(self):
         logger.debug('got ping @ %s' % datetime.utcnow())
         response = {
             'action': 'ping',
             'response': 'pong',
             'from_host': FQDN,
+            'current_user': self.get_current_user(),
         }
-        response.update(kwargs)
         return response
 
     def initialize(self, metrique_config, mongodb_config):
@@ -69,12 +69,15 @@ class MetriqueInitialized(RequestHandler):
 
     def get_current_user(self):
         user_json = self.get_secure_cookie("user")
-        if user_json:
-            user = json.loads(user_json)
-            logger.debug('CURRENT USER: %s' % user)
-            return user
+        ok, username = self._parse_auth_headers()
+        if ok:
+            current_user = username
+        elif user_json:
+            current_user = json.loads(user_json)
         else:
-            return None
+            current_user = None
+        logger.debug('CURRENT USER: %s' % current_user)
+        return current_user
 
     def _raise(self, code, msg):
             if code == 401:
@@ -144,13 +147,6 @@ class MetriqueInitialized(RequestHandler):
             self._raise(401, "this requires admin privleges")
         return ok
 
-    def _is_owner_or_write(self, username=None, owner=None, cube=None):
-        current_user = self.get_current_user()
-        role = '__write__'
-        _is_owner = self._is_owner(current_user, owner, cube)
-        _can_do = self._has_cube_role(current_user, owner, cube, role)
-        return any((_is_owner, _can_do))
-
     def _cube_exists(self, owner, cube):
         try:
             _cube = get_collection(owner, cube)
@@ -159,11 +155,6 @@ class MetriqueInitialized(RequestHandler):
         else:
             return _cube.find({'$exists': {'__created__': 1}}).count()
 
-
-class LoginHandler(MetriqueInitialized):
-    '''
-    RequestHandler for logging a user into metrique
-    '''
     def _scrape_username_password(self):
         username = ''
         password = ''
@@ -189,7 +180,7 @@ class LoginHandler(MetriqueInitialized):
         else:
             return False, username
 
-    def parse_auth_headers(self):
+    def _parse_auth_headers(self):
         admin, username = self._parse_admin_auth()
         basic, username = self._parse_basic_auth()
 
@@ -200,11 +191,15 @@ class LoginHandler(MetriqueInitialized):
         else:
             return False, username
 
+
+class LoginHandler(MetriqueInitialized):
+    '''
+    RequestHandler for logging a user into metrique
+    '''
     def post(self):
         result = {
             'action': 'login',
-            'result': False,
-        }
+            'result': False}
 
         # FIXME: IF THE USER IS USING KERB
         # OR WE OTHERWISE ALREADY KNOW WHO
@@ -215,13 +210,13 @@ class LoginHandler(MetriqueInitialized):
         current_user = self.get_current_user()
         if current_user:
             logger.debug('USER SESSION OK: %s' % current_user)
+            result.update({'current_user': current_user})
             result.update({'result': None})
-            result.update({'username': current_user})
             self.write(result)
             # FIXME: update cookie expiration date
             return
 
-        ok, username = self.parse_auth_headers()
+        ok, username = self._parse_auth_headers()
         result.update({'username': username})
         logger.debug("AUTH HEADERS ... [%s] %s" % (username, ok))
 
@@ -236,11 +231,12 @@ class LoginHandler(MetriqueInitialized):
                 self.redirect(_next)
             else:
                 # write out the result dict
+                result.update({'current_user': self.get_current_user()})
                 self.write(result)
                 # necessary only in cases of running with @async
                 #self.finish()
         else:
-            self._raise(401, "This requires admin privleges")
+            self._raise(401, "this requires admin privleges")
 
     def get(self):
         ''' alias get/post for login '''
@@ -264,8 +260,7 @@ class LogoutHandler(MetriqueInitialized):
 class PingHandler(MetriqueInitialized):
     ''' RequestHandler for pings '''
     def get(self):
-        c_user = self.get_current_user()
-        pong = self.ping(username=c_user)
+        pong = self.ping()
         self.write(pong)
 
 
@@ -298,20 +293,22 @@ class PasswordChangeHandler(MetriqueInitialized):
         new_password = self.get_argument('new_password')
         current_user = self.get_current_user()
 
-        if not (username and old_password) or current_user != username:
-            # if this user is logged in... let them change
-            # the password without specifying the existing one
-            self._raise(401, "This requires admin privleges")
+        if current_user not in [username, 'admin']:
+            self._raise(401, "this requires admin privleges")
 
         result = users_api.passwd(username=username,
                                   old_password=old_password,
                                   new_password=new_password)
+
+        if current_user == 'admin':
+            self.write(result)
+
         if result:
             self.clear_cookie("user")
         if self.metrique_config.login_url:
             self.redirect(self.metrique_config.login_url)
         else:
-            return result
+            self.write(result)
 
 
 class UsersAddHandler(MetriqueInitialized):
@@ -323,8 +320,9 @@ class UsersAddHandler(MetriqueInitialized):
         username = self.get_argument('username')
         cube = self.get_argument('cube')
         role = self.get_argument('role', 'r')
-        return users_api.add(username=username,
-                             cube=cube, role=role)
+        result = users_api.add(username=username,
+                               cube=cube, role=role)
+        return result
 
 
 class CubeRegisterHandler(MetriqueInitialized):
@@ -342,6 +340,7 @@ class CubeDropHandler(MetriqueInitialized):
     ''' RequestsHandler for droping given cube from timeline '''
     @authenticated
     def delete(self, owner, cube):
+        self._requires_owner_admin(owner, cube)
         self.write(etl_api.drop_cube(owner=owner, cube=cube))
 
 
@@ -385,12 +384,17 @@ class UserUpdateHandler(MetriqueInitialized):
     STATE: UNSTABLE
     '''
     @authenticated
-    def get(self, username=None):
-        backup = self.get_argument('backup')
+    def post(self, username=None):
         kwargs = self.request.arguments
-        result = users_api.update(username=username, backup=backup,
-                                  **kwargs)
-        self.write(result)
+        result = users_api.update(username=username, **kwargs)
+        # There is an ObjectId() in result which can cause
+        # json encoding issues... we don't need the result
+        # dict at the moment...
+        if result:
+            ok = True
+        else:
+            ok = False
+        self.write(ok)
 
 
 class ETLSaveObjectsHandler(MetriqueInitialized):

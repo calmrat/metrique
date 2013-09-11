@@ -64,21 +64,29 @@ def passwd(username, new_password, old_password=None):
     ''' Change a logged in user's password '''
     if not new_password:
         raise HTTPError(400, 'new password can not be null')
+    if not old_password:
+        old_password = ''
 
     spec = {'_oid': username}
 
     doc = auth_keys.find_one(spec)
-    old_passhash = doc['passhash']
-    if old_passhash and sha256_crypt.verify(old_password,
-                                            old_passhash):
+    old_passhash = None
+    if doc:
+        old_passhash = doc['passhash']
+    else:
+        raise HTTPError(400, "user doesn't exist")
+
+    if old_passhash and sha256_crypt.verify(old_password, old_passhash):
+        new_passhash = sha256_crypt.encrypt(new_password)
+    elif not old_password:
         new_passhash = sha256_crypt.encrypt(new_password)
     else:
-        raise RuntimeError("old password does not match")
+        raise HTTPError(400, "old password does not match")
 
-    update = {'passhash': new_passhash}
+    update = {'$set': {'passhash': new_passhash}}
     result = auth_keys.update(spec, update, upsert=True, safe=True)
     logger.debug("passwd updated (%s): %s" % (username, result))
-    return result
+    return True if result else False
 
 
 def update(username, backup=False, **kwargs):

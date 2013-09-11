@@ -7,6 +7,7 @@ logger = logging.getLogger(__name__)
 from tornado.web import HTTPError
 
 from metriqued.config import mongodb
+from metriqued.utils import set_default
 
 mongodb_config = mongodb()
 
@@ -37,6 +38,7 @@ def get_auth_keys():
 
 def get_etl_activity():
     return mongodb_config.c_etl_activity
+ETL_ACTIVITY = get_etl_activity()
 
 
 def strip_split(item):
@@ -46,6 +48,7 @@ def strip_split(item):
         return item
 
 
+# FIXME BREAK THIS UP
 def get_fields(cube, fields=None, check=False):
     ''' return back a list of known fields in documents of a given cube '''
     logger.debug('... fields: %s' % fields)
@@ -73,24 +76,22 @@ def get_fields(cube, fields=None, check=False):
     return _fields
 
 
+# FIXME: this will need to become more like field_struct
+# since we expect nested docs
 def list_cube_fields(owner, cube, exclude_fields=[], _mtime=False):
     collection = '%s__%s' % (owner, cube)
     spec = {'_id': collection}
     _filter = {'_id': 0}
     if not _mtime:
         _filter.update({'_mtime': 0})
-    cube_fields = get_etl_activity().find_one(spec, _filter)
-    if not cube_fields:
-        cube_fields = {}
 
-    if exclude_fields is None:
-        exclude_fields = []
+    cube_fields = set_default(
+        ETL_ACTIVITY.find_one(spec, _filter), {})
 
-    elif not isinstance(exclude_fields, (list, tuple, set)):
+    exclude_fields = list(set_default(exclude_fields, []))
+    if not isinstance(exclude_fields, (list, tuple, set)):
         raise ValueError(
             'expected list, got %s' % type(exclude_fields))
-    else:
-        exclude_fields = list(exclude_fields)
 
     for f in exclude_fields:
         try:
@@ -99,6 +100,7 @@ def list_cube_fields(owner, cube, exclude_fields=[], _mtime=False):
             # just ignore any invalid fields
             pass
 
+    # these are included, constantly
     cube_fields.update({'_id': 1, '_oid': 1, '_start': 1, '_end': 1})
     return cube_fields
 

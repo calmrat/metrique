@@ -59,8 +59,8 @@ base_handlers = [
     (r"/login", LoginHandler),
     (r"/logout", LogoutHandler),
 
-    (r"(\w+)/passwd", PasswordChangeHandler),
-    (r"(\w+)/update", UserUpdateHandler),
+    (r"/(\w+)/passwd", PasswordChangeHandler),
+    (r"/(\w+)/update", UserUpdateHandler),
 
     (api_v2(r"ping"), PingHandler),
 

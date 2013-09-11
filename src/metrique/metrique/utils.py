@@ -202,6 +202,8 @@ def get_cube(cube, path=None):
     :param string path:
         path to look for cubes (eg '~/.metrique/cubes/')
     '''
+    if not path:
+        path = DEFAULT_CLIENT_CUBES_PATH
     set_cube_path(path)
     pkg, mod, cls = cube_pkg_mod_cls(cube)
     _pkg = __import__(pkg, fromlist=[mod])

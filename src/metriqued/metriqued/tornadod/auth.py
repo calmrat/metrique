@@ -19,7 +19,7 @@ auth_keys = get_auth_keys()
 
 
 def find_user_passhash(username):
-    spec = {'_id': username}
+    spec = {'_oid': username}
     docs = auth_keys.find_one(spec, {'passhash': 1})
     if docs:
         return docs.get('passhash')
@@ -77,7 +77,7 @@ def basic(username, password):
 #    resource = [resource, '__all__']
 #    _lookup = [{lookup:  {'$exists': True}},
 #               {'__all__': {'$exists': True}}]
-#    spec = {'_id': {'$in': resource},
+#    spec = {'_oid': {'$in': resource},
 #            '$or': _lookup}
 #    logger.debug("Cube Check: spec (%s)" % spec)
 #    return handler.mongodb_config.c_auth_keys.find_one(spec)

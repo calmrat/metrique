@@ -162,6 +162,8 @@ class HTTPClient(object):
         return runner
 
     def _build_url(self, cmd, api_url):
+        if not cmd:
+            cmd = ''
         if api_url:
             _url = os.path.join(self.config.api_url, cmd)
         else:
@@ -235,9 +237,10 @@ class HTTPClient(object):
         :param bool mtime:
             Include mtime details
         '''
+        owner = set_default(owner, self.config.api_username, required=True)
         cube = set_default(cube, self.name, required=True)
-        return self._get('cube', cube=cube,
-                         exclude_fields=exclude_fields,
+        cmd = os.path.join(owner, cube)
+        return self._get(cmd, exclude_fields=exclude_fields,
                          _mtime=_mtime)
 
     def parse_fields(self, fields):
