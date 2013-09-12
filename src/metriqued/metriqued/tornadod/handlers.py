@@ -11,8 +11,8 @@ from socket import getfqdn
 from tornado.web import RequestHandler, authenticated, HTTPError
 
 # FIXME: RENAME *_api to be sigular
-from metriqued import query_api, etl_api, users_api, cubes_api
-from metriqued.config import role_is_valid, group_is_valid
+from metriqued import query_api, users_api, cubes_api
+from metriqued.config import role_is_valid
 from metriqued.cubes import list_cubes, list_cube_fields
 from metriqued.cubes import get_auth_keys, get_collection
 from metriqued.tornadod.auth import is_admin, basic
@@ -132,7 +132,7 @@ class MetriqueInitialized(RequestHandler):
         return any((_is_admin, _cube_role))
 
     def _requires(self, owner, role_func, cube=None):
-        assert role_func in (self._is_read, self._is_admin)
+        assert role_func in (self._is_read, self._is_write, self._is_admin)
         current_user = self.get_current_user()
         _exists = self._cube_exists(owner, cube)
         if cube and _exists:
@@ -325,7 +325,7 @@ class CubeDropHandler(MetriqueInitialized):
     @authenticated
     def delete(self, owner, cube):
         self._requires_owner_admin(owner, cube)
-        self.write(etl_api.drop_cube(owner=owner, cube=cube))
+        self.write(cubes_api.drop_cube(owner=owner, cube=cube))
 
 
 class CubeListHandler(MetriqueInitialized):
@@ -395,7 +395,7 @@ class UserUpdateGroupHandler(MetriqueInitialized):
         action = self.get_argument('action', 'push')
         group = self.get_argument('group')
         result = users_api.update_passwd(username=username,
-                                       group=group, action=action)
+                                         group=group, action=action)
         self.write(result)
 
 
@@ -443,8 +443,8 @@ class ETLSaveObjectsHandler(MetriqueInitialized):
         self._requires_owner_write(owner, cube)
         objects = self.get_argument('objects')
         mtime = self.get_argument('mtime')
-        result = etl_api.save_objects(owner=owner, cube=cube,
-                                      objects=objects, mtime=mtime)
+        result = cubes_api.save_objects(owner=owner, cube=cube,
+                                        objects=objects, mtime=mtime)
         self.write(result)
 
 
@@ -457,8 +457,8 @@ class ETLRemoveObjectsHandler(MetriqueInitialized):
         self._requires_owner_admin(owner, cube)
         ids = self.get_argument('ids')
         backup = self.get_argument('backup')
-        result = etl_api.remove_objects(owner=owner, cube=cube,
-                                        ids=ids, backup=backup)
+        result = cubes_api.remove_objects(owner=owner, cube=cube,
+                                          ids=ids, backup=backup)
         self.write(result)
 
 
@@ -469,19 +469,19 @@ class ETLIndexHandler(MetriqueInitialized):
     '''
     @authenticated
     def get(self, owner, cube):
-        self.write(etl_api.index(owner=owner, cube=cube))
+        self.write(cubes_api.index(owner=owner, cube=cube))
 
     @authenticated
     def post(self, owner, cube):
         self._requires_owner_admin(owner, cube)
         ensure = self.get_argument('ensure')
-        self.write(etl_api.index(owner=owner, cube=cube, ensure=ensure))
+        self.write(cubes_api.index(owner=owner, cube=cube, ensure=ensure))
 
     @authenticated
     def delete(self, owner, cube):
         self._requires_owner_admin(owner, cube)
         drop = self.get_argument('drop')
-        self.write(etl_api.index(owner=owner, cube=cube, drop=drop))
+        self.write(cubes_api.index(owner=owner, cube=cube, drop=drop))
 
 
 class ETLActivityImportHandler(MetriqueInitialized):
@@ -495,7 +495,7 @@ class ETLActivityImportHandler(MetriqueInitialized):
     def post(self, owner, cube):
         self._requires_owner_write(owner, cube)
         ids = self.get_argument('ids')
-        result = etl_api.activity_import(owner=owner, cube=cube, ids=ids)
+        result = cubes_api.activity_import(owner=owner, cube=cube, ids=ids)
         self.write(result)
 
 

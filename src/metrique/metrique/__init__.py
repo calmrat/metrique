@@ -30,9 +30,13 @@ integrated with the scientific python computing stack.
 '''
 
 from result import Result
-from metriqueu.utils import set_cube_path, get_cube
 from metrique.config import DEFAULT_CLIENT_CUBES_PATH
+from metrique.utils import set_cube_path
+
+#####
+# this interface clients should use!
 from metrique.http_api import HTTPClient as pyclient
+#####
 
 # auto_load default cube paths (eg, ~/.metrique/cubes
 # load defaults; can be overridden later

@@ -18,36 +18,64 @@ all available arguments will be returned, as such::
 
 '''
 
-
 import argparse
+import simplejson as json
 
-from metrique.config import Config
+from metrique.utils import get_cube
 
 
-class _CubeInitConfigAction(argparse.Action):
+class _ArgParser(argparse.Action):
     '''
-    Initialize an empty dictionary for config if
-    no config file can be loaded
+    json.loads args value strings
     '''
     def __call__(self, parser, namespace, values, option_string=None):
-        c = Config(values).config
-        if not c:
-            c = {}
-        setattr(namespace, 'cube_init_kwargs_config_file', c)
+        # decode json...
+        args = [json.loads(a) for a in values]
+        setattr(namespace, 'extract_args', args)
 
 
-_cube_args = argparse.ArgumentParser(description='Cube CLI')
+class _KwargParser(argparse.Action):
+    '''
+    split kwargs key:value strings into a dict
+    '''
+    def __call__(self, parser, namespace, values, option_string=None):
+        # decode json...
+        kwargs = {}
+        for e in values:
+            k, s, v = e.partition(':')
+            if not v:
+                raise SystemExit(
+                    "kwargs should be separated with ':' (eg, key:value)")
+            # key remains a string; json convert v
+            try:
+                kwargs[k] = json.loads(v)
+            except Exception:
+                # assume we're working with a string...
+                # this is akward, since we're expecting
+                # objects in json form; but it'd be annoying
+                # to quote every actual string...
+                kwargs[k] = v
+        setattr(namespace, 'extract_kwargs', kwargs)
+
+
+_cube_args = argparse.ArgumentParser(prog='Cube CLI')
 _cube_args.add_argument('-d', '--debug', type=int, default=2)
 _cube_args.add_argument('-a', '--async', action='store_true')
-_cube_args.add_argument('-f', '--force', action='store_true')
+_cube_args.add_argument('-H', '--api-host', action='store_true')
+_cube_args.add_argument('-P', '--api-port', action='store_true')
+_cube_args.add_argument('-u', '--api-username', action='store_true')
+_cube_args.add_argument('-p', '--api-password', action='store_true')
 _cube_args.add_argument('-c', '--cube-config-file', type=str)
-_cube_args.add_argument('-cd', '--cube-config-dir', type=str)
-_cube_args.add_argument(
-    '-x', '--cube-init-kwargs-config-file', action=_CubeInitConfigAction,
-    default={})
+
+_sub_args = _cube_args.add_subparsers(description='Cube Extract CLI')
+_extr_args = _sub_args.add_parser('extract', help='Extract help')
+_extr_args.add_argument('-g', '--extract_args', type=str,
+                        action=_ArgParser, nargs='+', default=[])
+_extr_args.add_argument('-k', '--extract_kwargs', type=str,
+                        action=_KwargParser, nargs='+', default={})
 
 
-def cube_cli(cube_cls):
+def cube_cli(cube_cls=None):
     '''
     :param class cube_cls:
         The cube class to initiatlize
@@ -61,11 +89,22 @@ def cube_cli(cube_cls):
         --cube-config-dir: config dir path
         --cube-init-kwargs-config-file: load additional __init__ kwargs
     '''
-
+    if not cube_cls:
+        cube_cls = get_cube(cube_cls)
     args = _cube_args.parse_args()
     kwargs = {}
-    kwargs.update(args.cube_init_kwargs_config_file)
-    if args.debug:
-        kwargs.update({'debug': args.debug})
-    obj = cube_cls(config_file=args.cube_config_file, **kwargs)
+    kwargs['debug'] = args.debug
+    kwargs['async'] = args.async
+    kwargs['config_file'] = args.cube_config_file
+    kwargs['api_host'] = args.api_host
+    kwargs['api_port'] = args.api_port
+    kwargs['api_username'] = args.api_username
+    kwargs['api_password'] = args.api_password
+
+    obj = cube_cls(**kwargs)
+
+    ext_args = args.extract_args
+    ext_kwargs = args.extract_kwargs
+    if ext_kwargs:
+        obj.extract(*ext_args, **ext_kwargs)
     return obj, args

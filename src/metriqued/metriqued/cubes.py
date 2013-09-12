@@ -49,12 +49,12 @@ def strip_split(item):
 
 
 # FIXME BREAK THIS UP
-def get_fields(cube, fields=None, check=False):
+def get_fields(owner, cube, fields=None, check=False):
     ''' return back a list of known fields in documents of a given cube '''
     logger.debug('... fields: %s' % fields)
     _fields = []
     if fields:
-        cube_fields = list_cube_fields(cube)
+        cube_fields = list_cube_fields(owner, cube)
         if fields == '__all__':
             _fields = cube_fields.keys()
         else:

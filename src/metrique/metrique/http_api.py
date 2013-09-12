@@ -18,10 +18,10 @@ import simplejson as json
 
 from metrique.config import Config
 from metrique.config import DEFAULT_CONFIG_FILE
-from metrique import query_api, etl_api, user_api, cube_api
-from metrique import etl_activity, get_cube
-
-from metriqueu.utils import csv2list, json_encode, set_default
+from metrique import query_api, user_api, cube_api
+from metrique import etl_activity
+from metrique.utils import csv2list, json_encode, get_cube
+from metriqueu.utils import set_default
 
 
 class HTTPClient(object):
@@ -39,8 +39,8 @@ class HTTPClient(object):
     sample = query_api.sample
     aggregate = query_api.aggregate
     activity_import = etl_activity.activity_import
-    save_objects = etl_api.save_objects
-    remove_objects = etl_api.remove_objects
+    save_objects = cube_api.save_objects
+    remove_objects = cube_api.remove_objects
     index_list = cube_api.list_index
     index = cube_api.ensure_index
     index_drop = cube_api.drop_index
@@ -105,6 +105,9 @@ class HTTPClient(object):
         # existing cube module like csvobject?
         # so we have access to .extract() methods, etc
         self.name = cube
+
+    def get_cube(self, cube):
+        return get_cube(cube)
 
     def _kwargs_json(self, **kwargs):
         #return json.dumps(kwargs, default=json_encode,

@@ -10,20 +10,27 @@ from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from dateutil.parser import parse as dt_parse
-from urllib2 import urlopen, HTTPError
+from functools import partial
+import requests
 import re
 import simplejson as json
 
 from metriquec.basejson import BaseJSON
-from metrique.utils import milli2sec, dt2ts
+from metriqueu.utils import milli2sec, dt2ts
 
 DEFAULT_CONFIG = {
-    'uri': 'http://builds.apache.org',
+    'uri': ['http://builds.apache.org'],
     'port': '80',
     'api_path': 'api/json',
 }
 
 MAX_WORKERS = 25
+
+SSL_VERIFY = True
+
+rget = partial(requests.get, verify=SSL_VERIFY)
+
+# FIXME: add a version check; this supports jkns 1.529; but doesn't 1.480
 
 
 def obj_hook(dct):
@@ -67,7 +74,8 @@ class Build(BaseJSON):
 
         if not uri:
             uri = DEFAULT_CONFIG['uri']
-        self.uri = uri
+        if not isinstance(uri, list):
+            uri = [uri]
 
         if not port:
             port = DEFAULT_CONFIG['port']
@@ -77,22 +85,24 @@ class Build(BaseJSON):
             api_path = DEFAULT_CONFIG['api_path']
         self.api_path = api_path
 
-        args = 'tree=jobs[name,builds[number]]'
-        uri = '%s:%s/%s?%s' % (self.uri, self.port, self.api_path, args)
-        self.logger.info("Getting Jenkins Job details (%s)" % uri)
-        # get all known jobs
-        content = json.loads(urlopen(uri).readlines()[0],
-                             strict=False)
-        jobs = content['jobs']
-        self.logger.info("... %i jobs found." % len(jobs))
+        results = {}
+        for _uri in uri:
+            args = 'tree=jobs[name,builds[number]]'
+            _uri_jobs = '%s:%s/%s?%s' % (_uri, self.port, self.api_path, args)
+            self.logger.info("Getting Jenkins Job details (%s)" % _uri_jobs)
+            # get all known jobs
+            content = rget(_uri_jobs).content
+            content = json.loads(content, strict=False)
+            jobs = content['jobs']
+            self.logger.info("... %i jobs found." % len(jobs))
 
-        if async:
-            results = self._extract_async(jobs, force, workers)
-        else:
-            results = self._extract(jobs, force)
+            if async:
+                results[_uri] = self._extract_async(_uri, jobs, force, workers)
+            else:
+                results[_uri] = self._extract(_uri, jobs, force)
         return results
 
-    def _extract(self, jobs, force):
+    def _extract(self, uri, jobs, force):
         results = defaultdict(list)
         for k, job in enumerate(jobs, 1):
             job_name = job['name']
@@ -101,7 +111,7 @@ class Build(BaseJSON):
                                                  len(jobs),
                                                  len(job['builds'])))
             nums = [b['number'] for b in job['builds']]
-            builds = [self.get_build(job_name, n, force) for n in nums]
+            builds = [self.get_build(uri, job_name, n, force) for n in nums]
             try:
                 results[job_name] += self.save_objects(builds)
             except Exception as e:
@@ -109,7 +119,7 @@ class Build(BaseJSON):
                     '(%s) Failed to save: %s:%s' % (e, job_name, builds))
         return results
 
-    def _extract_async(self, jobs, force, workers):
+    def _extract_async(self, uri, jobs, force, workers):
         with ThreadPoolExecutor(workers) as executor:
             results = defaultdict(list)
             for k, job in enumerate(jobs, 1):
@@ -122,7 +132,8 @@ class Build(BaseJSON):
                 nums = [b['number'] for b in job['builds']]
                 for n in nums:
                     future_builds.append(
-                        executor.submit(self.get_build, job_name, n, force))
+                        executor.submit(self.get_build, uri, job_name,
+                                        n, force))
 
                 for future in as_completed(future_builds):
                     try:
@@ -134,7 +145,7 @@ class Build(BaseJSON):
                             '(%s) Failed to save: %s' % (e, job_name))
         return results
 
-    def get_build(self, job_name, build_number, force=False):
+    def get_build(self, uri, job_name, build_number, force=False):
         _oid = '%s #%s' % (job_name, build_number)
 
         ## Check if we the job_build was already done building
@@ -149,15 +160,15 @@ class Build(BaseJSON):
         _args = 'depth=1'
         _job_path = '/job/%s/%s' % (job_name, build_number)
 
-        job_uri = '%s:%s%s/%s?%s' % (self.uri, self.port, _job_path,
+        job_uri = '%s:%s%s/%s?%s' % (uri, self.port, _job_path,
                                      self.api_path, _args)
         self.logger.debug('Loading (%s)' % job_uri)
         try:
-            _page = list(urlopen(job_uri))
-            build_content = json.loads(_page[0],
+            _page = rget(job_uri).content
+            build_content = json.loads(_page,
                                        strict=False,
                                        object_hook=obj_hook)
-        except HTTPError as e:
+        except Exception as e:
             self.logger.error('OOPS! (%s) %s' % (job_uri, e))
             build_content = {'load_error': e}
 
@@ -167,15 +178,16 @@ class Build(BaseJSON):
         _build['number'] = build_number
         _build.update(build_content)
 
-        report_uri = '%s:%s%s/testReport/%s?%s' % (self.uri, self.port,
+        report_uri = '%s:%s%s/testReport/%s?%s' % (uri, self.port,
                                                    _job_path, self.api_path,
                                                    _args)
         self.logger.debug('Loading (%s)' % report_uri)
         try:
-            report_content = json.loads(urlopen(report_uri).readlines()[0],
+            _page = rget(report_uri).content
+            report_content = json.loads(_page,
                                         strict=False,
                                         object_hook=obj_hook)
-        except HTTPError as e:
+        except Exception as e:
             self.logger.error('OOPS! (%s) %s' % (report_uri, e))
             report_content = {'load_error': e}
 
@@ -187,10 +199,4 @@ class Build(BaseJSON):
 
 if __name__ == '__main__':
     from metrique.argparsers import cube_cli
-    a = cube_cli.parse_args()
-    kwargs = {}
-    kwargs.update(a.cube_init_kwargs_config_file)
-    if a.debug:
-        kwargs.update({'debug': a.debug})
-    obj = Build(config_file=a.cube_config_file, **kwargs)
-    obj.extract(force=a.force)
+    cube_cli(Build)

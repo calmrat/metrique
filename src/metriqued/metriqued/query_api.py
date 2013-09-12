@@ -2,6 +2,7 @@
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 # Author: "Chris Ward <cward@redhat.com>
 
+from bson.son import SON
 import logging
 logger = logging.getLogger(__name__)
 import pql
@@ -73,7 +74,10 @@ def _get_date_pql_string(date, prefix=' and '):
     return prefix + ret
 
 
-def _check_sort(sort):
+def _check_sort(sort, son=False):
+    '''
+    son True is required for pymongo's aggregation $sort operator
+    '''
     if not sort:
         sort = [('_oid', 1)]
 
@@ -81,8 +85,10 @@ def _check_sort(sort):
         assert len(sort[0]) == 2
     except (AssertionError, IndexError, TypeError):
         raise HTTPError(400, "Invalid sort value; try [('_id': -1)]")
-
-    return sort
+    if son:
+        return SON(sort)
+    else:
+        return sort
 
 
 def find(owner, cube, query, fields=None, date=None, sort=None, one=False,
@@ -90,7 +96,7 @@ def find(owner, cube, query, fields=None, date=None, sort=None, one=False,
     log_head(owner, cube, 'find', query, date)
     sort = _check_sort(sort)
 
-    fields = get_fields(cube, fields)
+    fields = get_fields(owner, cube, fields)
     if date is None or ('_id' in fields and fields['_id']):
         merge_versions = False
 
@@ -181,25 +187,37 @@ def fetch(owner, cube, fields=None, date=None,
     log_head(owner, cube, 'fetch', date)
     if oids is None:
         oids = []
-    sort = _check_sort(sort)
+    sort = _check_sort(sort, son=True)
     _cube = get_collection(owner, cube)
-    fields = get_fields(cube, fields)
+    fields = get_fields(owner, cube, fields)
+
+    # b/c there are __special_property__ objects
+    # in every collection, we must filter them out
+    # checking for _oid should suffice
+    base_spec = {'_oid': {'$exists': 1}}
 
     spec = {'_oid': {'$in': _parse_oids(oids)}} if oids else {}
     dt_str = _get_date_pql_string(date, '')
     if dt_str:
         spec.update(pql.find(dt_str))
 
-    result = _cube.find(spec, fields, sort=sort, skip=skip, limit=limit)
-    result.batch_size(BATCH_SIZE)
-    result = tuple(result)
+    pipeline = [
+        {'$match': base_spec},
+        {'$match': spec},
+        {'$skip': skip},
+        {'$project': fields},
+        {'$limit': limit},
+        {'$sort': sort},
+    ]
+
+    result = _cube.aggregate(pipeline)
     return result
 
 
 def sample(owner, cube, size, fields, date):
     log_head(owner, cube, 'sample', date)
     _cube = get_collection(owner, cube)
-    fields = get_fields(cube, fields)
+    fields = get_fields(owner, cube, fields)
     dt_str = _get_date_pql_string(date, '')
     spec = pql.find(dt_str) if dt_str else {}
     cursor = _cube.find(spec, fields)
