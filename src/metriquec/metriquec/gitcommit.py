@@ -30,10 +30,12 @@ class Commit(BaseGitRepo):
     name = 'git_commit'
 
     def _build_commits(self, delta_shas, uri):
-        cmd = 'git --no-pager log --format=sha:%H --numstat'
+        cmd = 'git --no-pager log --all --format=sha:%H --numstat'
         p = subprocess.Popen(cmd.split(), stdout=subprocess.PIPE)
         all_logs = p.communicate()[0]
         all_logs = re.sub('\n+', '\n', all_logs)
+        with open('/tmp/f', 'w') as f:
+            f.write(all_logs)
         c_logs = [x for x in [s.strip() for s in all_logs.split('sha:')] if x]
 
         commits = []
@@ -87,7 +89,12 @@ class Commit(BaseGitRepo):
                                    fields='sha', raw=True)
             known_shas = set([e['sha'] for e in known_shas])
             self.logger.debug("Known Commits: %s" % len(known_shas))
-        repo_shas = set(self.repo.commits())
+        #repo_shas = set(self.repo.commits())
+        cmd = 'git rev-list --all'
+        p = subprocess.Popen(cmd.split(), stdout=subprocess.PIPE)
+        p = p.communicate()[0]
+        repo_shas = set(x for x in p.split('\n') if x)
+        self.logger.debug("Total Commits: %s" % len(repo_shas))
         delta_shas = repo_shas - known_shas
         commits = self._build_commits(delta_shas, uri)
         return self.save_objects(commits)
