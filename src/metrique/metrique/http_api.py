@@ -216,8 +216,8 @@ class HTTPClient(object):
     def _delete(self, *args, **kwargs):
         return self._run(self.session.delete, *args, **kwargs)
 
-    def ping(self):
-        return self._get('ping')
+    def ping(self, auth=False):
+        return self._get('ping', auth=auth)
 
     def list_cubes(self, owner=None):
         ''' List all valid cubes for a given metrique instance '''

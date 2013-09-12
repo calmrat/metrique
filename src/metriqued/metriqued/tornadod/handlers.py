@@ -15,7 +15,7 @@ from metriqued import query_api, users_api, cubes_api
 from metriqued.config import role_is_valid
 from metriqued.cubes import list_cubes, list_cube_fields
 from metriqued.cubes import get_auth_keys, get_collection
-from metriqued.tornadod.auth import is_admin, basic
+from metriqued.tornadod.auth import is_admin, basic, krb_basic
 
 FQDN = getfqdn()
 AUTH_KEYS = get_auth_keys()
@@ -196,13 +196,22 @@ class MetriqueInitialized(RequestHandler):
         else:
             return False, username
 
-    def _parse_auth_headers(self):
-        admin, username = self._parse_admin_auth()
-        basic, username = self._parse_basic_auth()
-
-        if admin:
+    def _parse_krb_basic_auth(self):
+        if not (self.metrique_config.krb_auth and
+                self.metrique_config.krb_realm):
+            return False
+        username, password = self._scrape_username_password()
+        if krb_basic(username, password, self.metrique_config.krb_realm):
             return True, username
-        elif basic:
+        else:
+            return False, username
+
+    def _parse_auth_headers(self):
+        _admin, username = self._parse_admin_auth()
+        _basic, username = self._parse_basic_auth()
+        _krb_basic, username = self._parse_krb_basic_auth()
+
+        if any((_admin, _basic, _krb_basic)):
             return True, username
         else:
             return False, username
@@ -262,7 +271,13 @@ class LogoutHandler(MetriqueInitialized):
 class PingHandler(MetriqueInitialized):
     ''' RequestHandler for pings '''
     def get(self):
-        pong = self.ping()
+        auth = self.get_argument('auth')
+        if auth and not self.get_current_user():
+            self._raise(403, "authentication failed")
+        elif auth:
+            pong = authenticated(self.ping())
+        else:
+            pong = self.ping()
         self.write(pong)
 
 

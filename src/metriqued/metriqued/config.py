@@ -161,6 +161,14 @@ class metrique(JSONConf):
         self.config['http_port'] = value
 
     @property
+    def krb_auth(self):
+        return self._default('krb_auth', False)
+
+    @krb_auth.setter
+    def krb_auth(self, value):
+        self.config['krb_auth'] = value
+
+    @property
     def krb_realm(self):
         return self._default('krb_realm', '')
 
