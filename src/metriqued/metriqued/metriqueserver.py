@@ -6,7 +6,6 @@ import logging
 logging.basicConfig()
 logger = logging.getLogger(__name__)
 
-from concurrent.futures import ThreadPoolExecutor
 import os
 
 from metriqued.config import metrique, mongodb
@@ -78,10 +77,7 @@ class MetriqueServer(object):
 
     def start(self):
         self._set_pid()
-        k = self.metrique_config.server_thread_count
-        self.executor = ThreadPoolExecutor(k)
         logger.debug("Metrique Server - Started")
-
         # Fail to start if we can't communicate with mongo
         try:
             assert self.mongodb_config.db_metrique_admin.db
@@ -92,5 +88,4 @@ class MetriqueServer(object):
 
     def stop(self):
         self._remove_pid()
-        self.executor.shutdown()
         logger.debug("Metrique Server - Stopped")

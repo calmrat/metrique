@@ -80,7 +80,7 @@ class HTTPClient(object):
         self.config.async = async
 
         if cube and isinstance(cube, basestring):
-            self._set_cube(cube)
+            self.set_cube(cube)
 
         if api_host:
             self.config.api_host = api_host

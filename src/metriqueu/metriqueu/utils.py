@@ -215,8 +215,4 @@ def get_cube(cube, path=None):
 def set_default(key, default, required=False):
     if required and not key and not default:
         raise RuntimeError("Cube required")
-    elif key:
-        pass
-    else:
-        key = default
-    return key
+    return key or default
