@@ -24,6 +24,7 @@ DEFAULT_SSL_CERT_KEY = '%s/pkey.pem' % DEFAULT_CONFIG_DIR
 DEFAULT_SSL_CERT = '%s/cert.pem' % DEFAULT_CONFIG_DIR
 
 VALID_ROLES = set(('__read__', '__write__', '__admin__'))
+VALID_GROUPS = set(('admin', ))
 VALID_CUBE_ROLE_ACTIONS = set(('pull', 'push'))
 IMMUTABLE_DOC_ID_PREFIX = '__'
 
@@ -46,6 +47,12 @@ LOG_FORMATTER = logging.Formatter(LOG_FORMAT,
 LOGDIR_SAVEAS = '%s/metriqued.log' % DEFAULT_CONFIG_DIR
 
 DEFAULT_CUBE_QUOTA = -1
+
+
+def group_is_valid(role):
+    if role not in VALID_GROUPS:
+        raise HTTPError(400, "Invalid user group. "
+                        "Got (%s). Expected: %s" % (role, VALID_GROUPS))
 
 
 def role_is_valid(role):

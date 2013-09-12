@@ -9,6 +9,7 @@ from tornado.web import HTTPError
 
 from metriqued.cubes import get_collection, get_auth_keys
 from metriqued.config import role_is_valid, action_is_valid
+from metriqued.users_api import user_is_valid
 
 from metriqueu.utils import dt2ts
 
@@ -85,14 +86,6 @@ def _update_role(_cube, username, role, action):
     update = {'$%s' % action: {'value': username}}
     _cube.update(spec, update, safe=True)
     return True
-
-
-def user_is_valid(username):
-    spec = {'_oid': username}
-    result = AUTH_KEYS.find(spec).count()
-    user_all = username == '__all__'
-    if not any((result, user_all)):
-        raise HTTPError(400, "Invalid user: %s" % username)
 
 
 def update_role(owner, cube, username, action, role):

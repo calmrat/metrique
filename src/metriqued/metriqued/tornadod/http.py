@@ -11,7 +11,7 @@ from tornado.web import Application
 
 from metriqued.metriqueserver import MetriqueServer
 
-from handlers import PingHandler
+from handlers import PingHandler, ObsoleteAPIHandler
 from handlers import QueryAggregateHandler, QueryFindHandler
 from handlers import QueryDeptreeHandler
 from handlers import QueryFetchHandler, QueryCountHandler
@@ -33,7 +33,6 @@ from handlers import CubeUpdateRoleHandler
 # import uuid
 # base64.b64encode(uuid.uuid4().bytes + uuid.uuid4().bytes)
 COOKIE_SECRET = 'kmBe2OApQW+d4hjsUPjWcY5cYQyBh0CLnBo9KyikyRI='
-API_VERSION = r'/api/v2'
 USER_CUBE = r'(\w+)/(\w+)'
 
 
@@ -44,9 +43,11 @@ def user_cube(value):
 
 
 def api_v2(value):
-    value = str(value)
-    path = os.path.join(API_VERSION, value)
-    return path
+    return os.path.join(r'/api/v2', value)
+
+
+def api_v1(value):
+    return os.path.join(r'/api/v1', value)
 
 
 def ucv2(value):
@@ -63,6 +64,8 @@ base_handlers = [
     (r"/(\w+)/passwd", UserUpdatePasswordHandler),
     (r"/(\w+)/update_profile", UserUpdateProfileHandler),
     (r"/(\w+)/update_properties", UserUpdatePropertiesHandler),
+
+    (api_v1(r""), ObsoleteAPIHandler),
 
     (api_v2(r"ping"), PingHandler),
 

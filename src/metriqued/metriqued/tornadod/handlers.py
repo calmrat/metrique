@@ -12,7 +12,7 @@ from tornado.web import RequestHandler, authenticated, HTTPError
 
 # FIXME: RENAME *_api to be sigular
 from metriqued import query_api, etl_api, users_api, cubes_api
-from metriqued.config import role_is_valid
+from metriqued.config import role_is_valid, group_is_valid
 from metriqued.cubes import list_cubes, list_cube_fields
 from metriqued.cubes import get_auth_keys, get_collection
 from metriqued.tornadod.auth import is_admin, basic
@@ -57,9 +57,10 @@ class MetriqueInitialized(RequestHandler):
             try:
                 arg = json.loads(_arg)
             except Exception as e:
-                raise ValueError(
-                    "Invalid JSON content (%s): %s\n%s" % (
-                        type(_arg), e, _arg))
+                a_type = type(_arg)
+                self._raise(400,
+                            "Invalid JSON content (%s): %s\n%s" % (a_type,
+                                                                   e, _arg))
         else:
             arg = _arg
 
@@ -265,6 +266,12 @@ class PingHandler(MetriqueInitialized):
         self.write(pong)
 
 
+class ObsoleteAPIHandler(MetriqueInitialized):
+    ''' RequestHandler for handling obsolete API calls '''
+    def get(self):
+        self._raise(410, "This API version is no long supported")
+
+
 class RegisterHandler(MetriqueInitialized):
     '''
     RequestHandler for registering new users to metrique
@@ -274,42 +281,13 @@ class RegisterHandler(MetriqueInitialized):
         username = self.get_argument('username')
         password = self.get_argument('password')
         if not (username and password):
-            raise HTTPError(400, "username and password REQUIRED")
+            self._raise(400, "username and password REQUIRED")
         result = users_api.register(username=username,
                                     password=password)
         # FIXME: DO THIS FOR ALL HANDLERS! REST REST REST
         # http://www.w3.org/Protocols/rfc2616/rfc2616-sec10.html
         self.set_status(201, 'Registration successful: %s' % username)
         self.write(result)
-
-
-class UserUpdatePasswordHandler(MetriqueInitialized):
-    '''
-    RequestHandler for updating existing users password
-    '''
-    @authenticated
-    def post(self, username):
-        old_password = self.get_argument('old_password')
-        new_password = self.get_argument('new_password')
-        if not new_password:
-            raise HTTPError(400, "new password REQUIRED")
-
-        self._requires_self_admin(username)
-
-        result = users_api.update_passwd(username=username,
-                                         old_password=old_password,
-                                         new_password=new_password)
-
-        current_user = self.get_current_user()
-        if current_user == 'admin':
-            self.write(result)
-
-        if result:
-            self.clear_cookie("user")
-        if self.metrique_config.login_url:
-            self.redirect(self.metrique_config.login_url)
-        else:
-            self.write(result)
 
 
 class CubeUpdateRoleHandler(MetriqueInitialized):
@@ -372,6 +350,52 @@ class CubeListHandler(MetriqueInitialized):
             # arg = username... return only cubes with 'r' access
             result = list_cube_fields(owner, cube,
                                       exclude_fields, _mtime=_mtime)
+        self.write(result)
+
+
+class UserUpdatePasswordHandler(MetriqueInitialized):
+    '''
+    RequestHandler for updating existing users password
+    '''
+    @authenticated
+    def post(self, username):
+        old_password = self.get_argument('old_password')
+        new_password = self.get_argument('new_password')
+        if not new_password:
+            self._raise(400, "new password REQUIRED")
+
+        self._requires_self_admin(username)
+
+        result = users_api.update_passwd(username=username,
+                                         old_password=old_password,
+                                         new_password=new_password)
+
+        current_user = self.get_current_user()
+        if current_user == 'admin':
+            self.write(result)
+
+        if result:
+            self.clear_cookie("user")
+        if self.metrique_config.login_url:
+            self.redirect(self.metrique_config.login_url)
+        else:
+            self.write(result)
+
+
+class UserUpdateGroupHandler(MetriqueInitialized):
+    '''
+    RequestHandler for managing user group properties
+
+    action can be push, pop
+    role can be admin
+    '''
+    @authenticated
+    def post(self, username):
+        self._requires_self_admin(username)
+        action = self.get_argument('action', 'push')
+        group = self.get_argument('group')
+        result = users_api.update_passwd(username=username,
+                                       group=group, action=action)
         self.write(result)
 
 
