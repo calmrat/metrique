@@ -77,7 +77,7 @@ class MetriqueServer(object):
 
     def start(self):
         self._set_pid()
-        logger.debug("Metrique Server - Started")
+        logger.debug("Metrique Server: Pid stored")
         # Fail to start if we can't communicate with mongo
         try:
             assert self.mongodb_config.db_metrique_admin.db
@@ -88,4 +88,4 @@ class MetriqueServer(object):
 
     def stop(self):
         self._remove_pid()
-        logger.debug("Metrique Server - Stopped")
+        logger.debug("Metrique Server: Removed PID file")
