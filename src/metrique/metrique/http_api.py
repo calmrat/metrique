@@ -19,7 +19,6 @@ import simplejson as json
 from metrique.config import Config
 from metrique.config import DEFAULT_CONFIG_FILE
 from metrique import query_api, user_api, cube_api
-from metrique import etl_activity
 from metrique.utils import csv2list, json_encode, get_cube
 
 
@@ -39,25 +38,25 @@ class HTTPClient(object):
 
     cube_list_all = cube_api.list_all
     cube_stats = cube_api.stats
-    cube_list_fields = cube_api.list_cube_fields
+    cube_sample_fields = cube_api.sample_fields
     cube_drop = cube_api.drop
     cube_register = cube_api.register
     cube_update_role = cube_api.update_role
 
-    find = query_api.find
-    deptree = query_api.deptree
-    count = query_api.count
-    fetch = query_api.fetch
-    distinct = query_api.distinct
-    sample = query_api.sample
-    aggregate = query_api.aggregate
+    cube_activity_import = cube_api.activity_import
+    cube_save_objects = cube_api.save_objects
+    cube_remove_objects = cube_api.remove_objects
+    cube_index_list = cube_api.list_index
+    cube_index = cube_api.ensure_index
+    cube_index_drop = cube_api.drop_index
 
-    activity_import = etl_activity.activity_import
-    save_objects = cube_api.save_objects
-    remove_objects = cube_api.remove_objects
-    index_list = cube_api.list_index
-    index = cube_api.ensure_index
-    index_drop = cube_api.drop_index
+    query_find = query_api.find
+    query_deptree = query_api.deptree
+    query_count = query_api.count
+    query_fetch = query_api.fetch
+    query_distinct = query_api.distinct
+    query_sample = query_api.sample
+    query_aggregate = query_api.aggregate
 
     def __new__(cls, *args, **kwargs):
         '''

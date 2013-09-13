@@ -45,12 +45,6 @@ def new_oid():
     return str(ObjectId())
 
 
-def set_default(key, default, null_ok=False):
-    if not (null_ok or key or default):
-        raise RuntimeError("non-null value required for %s" % key)
-    return key or default
-
-
 def batch_gen(data, batch_size):
     '''
     Usage::
@@ -128,3 +122,9 @@ def jsonhash(obj):
 
 def utcnow():
     return dt2ts(dt.utcnow())
+
+
+def set_default(key, default, null_ok=False):
+    if not (null_ok or key or default):
+        raise RuntimeError("non-null value required for %s" % key)
+    return key or default

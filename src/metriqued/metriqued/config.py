@@ -35,8 +35,6 @@ ADMIN_DB = 'admin'
 ADMIN_USER = 'admin'
 DATA_USER = 'metrique'
 
-ETL_ACTIVITY_COLLECTION = 'etl_activity'
-JOB_ACTIVITY_COLLECTION = 'job_activity'
 AUTH_KEYS_COLLECTION = 'auth_keys'
 
 DATE_FORMAT = '%Y%m%dT%H:%M:%S'
@@ -301,28 +299,8 @@ class mongodb(JSONConf):
                            ssl=self.ssl)
 
     @property
-    def collection_etl(self):
-        return self._default('collection_etl', ETL_ACTIVITY_COLLECTION)
-
-    @property
-    def collection_jobs(self):
-        return self._default('collection_jobs', JOB_ACTIVITY_COLLECTION)
-
-    @property
     def collection_auth_keys(self):
         return self._default('collection_auth_keys', AUTH_KEYS_COLLECTION)
-
-    @property
-    def c_job_activity(self):
-        return self.db_metrique_admin[self.collection_jobs]
-
-    @property
-    def c_logs(self):
-        return self.db_metrique_admin[self.collection_logs]
-
-    @property
-    def c_etl_activity(self):
-        return self.db_metrique_admin[self.collection_etl]
 
     @property
     def c_auth_keys(self):

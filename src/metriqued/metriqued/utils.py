@@ -5,11 +5,14 @@
 from bson import SON
 import logging
 logger = logging.getLogger(__name__)
+import pickle
+import pql
 from tornado.web import HTTPError
 
 from metriqued.config import mongodb
-from metriqueu.utils import utcnow, jsonhash
+from metriqueu.utils import utcnow, jsonhash, batch_gen
 
+OBJECTS_MAX_BYTES = 16777216
 EXISTS_SPEC = {'$exists': 1}
 MTIME_SPEC = {'_id': '__mtime__'}
 MTIME_FIELDS = {'value': 1, '_id': -1}
@@ -17,28 +20,7 @@ BASE_INDEX = [('_start', -1), ('_end', -1), ('_oid', -1), ('_hash', 1)]
 
 mongodb_config = mongodb()
 
-ETL_ACTIVITY = mongodb_config.c_etl_activity
 AUTH_KEYS = mongodb_config.c_auth_keys
-
-
-def cfind(_cube, _start=None, _end=None, _oid=None, _hash=None,
-          fields=None, one=False, sort=None, limit=None, **kwargs):
-    index_spec = make_index_spec(_start, _end, _oid, _hash)
-    index_spec.update(kwargs)
-    if one:
-        _find = _cube.find
-    else:
-        _find = _cube.find_one
-    result = _find(index_spec, fields,
-                   sort=sort, limit=limit).hint(BASE_INDEX)
-    return result
-
-
-def strip_split(item):
-    if isinstance(item, basestring):
-        return [s.strip() for s in item.split(',')]
-    else:
-        return item
 
 
 def get_collection(owner, cube, admin=False, create=False):
@@ -62,33 +44,6 @@ def get_auth_keys():
     return AUTH_KEYS
 
 
-def get_etl_activity():
-    return ETL_ACTIVITY
-
-
-def get_fields(owner, cube, fields=None):
-    '''
-    Return back a dict of (field, 0/1) pairs, where the matching fields have 1.
-    '''
-    logger.debug('... fields: %s' % fields)
-    _fields = []
-    if fields:
-        cube_fields = list_cube_fields(owner, cube)
-        if fields == '__all__':
-            _fields = cube_fields.keys()
-        else:
-            _fields = [f for f in strip_split(fields) if f in cube_fields]
-    _fields += ['_oid', '_start', '_end']
-    _fields = dict([(f, 1) for f in set(_fields)])
-
-    # If `_id` should not be in returned it must have 0 otherwise mongo will
-    # return it.
-    if '_id' not in _fields:
-        _fields['_id'] = 0
-    logger.debug('... matched fields (%s)' % _fields)
-    return _fields
-
-
 def get_cube_quota_count(doc):
     if doc:
         cube_quota = doc.get('cube_quota', None)
@@ -109,36 +64,37 @@ def get_mtime(_cube):
     return _cube.find_one(MTIME_SPEC, MTIME_FIELDS)['value']
 
 
-# FIXME: this will need to become more like field_struct
-# since we expect nested docs
-def list_cube_fields(owner, cube, exclude_fields=None, _mtime=False):
-    collection = '%s__%s' % (owner, cube)
-    spec = {'_id': collection}
-    _filter = {'_id': 0}
-    if not _mtime:
-        _filter.update({'_mtime': 0})
-
-    cube_fields = ETL_ACTIVITY.find_one(spec, _filter) or {}
-
-    # exclude fields from `cube_fields` that are in `exclude_fields`
-    for f in set(strip_split(exclude_fields) or []) & set(cube_fields):
-        del cube_fields[f]
-
-    # these are included, constantly
-    cube_fields.update({'_id': 1, '_oid': 1, '_start': 1, '_end': 1})
-    return cube_fields
+def ensure_index_base(owner, cube):
+    _cube = get_collection(owner, cube)
+    _cube.ensure_index(BASE_INDEX)
 
 
-def list_cubes(owner=None):
-    '''
-        Get a list of cubes server exports
-    '''
-    names = mongodb_config.db_timeline_data.db.collection_names()
-    names = [n for n in names if not n.startswith('system')]
-    if owner:
-        return [n for n in names if n.startswith(owner)]
+def cfind(_cube, _start=None, _end=None, _oid=None, _hash=None,
+          fields=None, spec=None, sort=None, **kwargs):
+    # note, to force limit; use __getitem__ like...
+    # docs_limited_50 = cfind(...)[50]
+    # SEE:
+    # http://api.mongodb.org/python/current/api/pymongo/cursor.html
+    # section #pymongo.cursor.Cursor.__getitem__
+    # trying to use limit=... fails to work given our index
+    index_spec = make_index_spec(_start, _end, _oid, _hash)
+    if spec:
+        index_spec.update(spec)
+    result = _cube.find(index_spec, fields,
+                        sort=sort, **kwargs).hint(BASE_INDEX)
+    return result
+
+
+def strip_split(item):
+    if isinstance(item, basestring):
+        return [s.strip() for s in item.split(',')]
+    elif item is None:
+        return []
+    elif not isinstance(item, (list, tuple)):
+        raise ValueError('Expected a list/tuple')
     else:
-        return names
+        # nothing to do here...
+        return item
 
 
 def make_update_spec(_start):
@@ -164,9 +120,20 @@ def exec_update_role(_cube, username, role, action):
     return True
 
 
-def insert_bulk(_cube, docs, size=1000):
-    for i in range(0, len(docs), size):
-        _cube.insert(docs[i:i + size], manipulate=False)
+def estimate_obj_size(obj):
+    return len(pickle.dumps(obj))
+
+
+def insert_bulk(_cube, docs, size=-1):
+    # little reason to batch insert...
+    # http://stackoverflow.com/questions/16753366
+    # and after testing, it seems splitting things
+    # up more slows things down.
+    if size <= 0:
+        _cube.insert(docs, manipulate=False)
+    else:
+        for batch in batch_gen(docs, size):
+            _cube.insert(batch, manipulate=False)
 
 
 def insert_meta_docs(_cube, owner):
@@ -224,7 +191,7 @@ def prepare_objects(_cube, objects, mtime):
             del obj['_start']
             _with_start = False
         else:
-            # add the time when the obj version was captured
+            # use the time when the obj version was captured as "creation date"
             _start = mtime
             _with_start = True
 
@@ -253,17 +220,19 @@ def prepare_objects(_cube, objects, mtime):
             obj['_oid'] = _hash
         _oids.add(obj['_oid'])
 
-    # Get dup hashes and filter objects to include only
-    # non dup hashes
+    # FIXME: refactor this so we split the _hashes
+    # mongodb lookups iterate across 16M max
+    # spec docs...
+    # get the estimate size, as follows
+    #est_size_hashes = estimate_obj_size(_hashes)
+
+    # Get dup hashes and filter objects to include only non dup hashes
     _hash_spec = {'$in': list(_hashes)}
+
     index_spec = make_index_spec(_hash=_hash_spec)
     docs = _cube.find(index_spec, {'_hash': 1, '_id': -1}).hint(BASE_INDEX)
     _dup_hashes = set([doc['_hash'] for doc in docs])
     objects = [obj for obj in objects if obj['_hash'] not in _dup_hashes]
-
-    # get unique fields affected (used to track known doc fields per cube)
-    fields = sorted(
-        set([k for doc in objects for k in doc.keys() if k[0] != '_']))
 
     olen_n = len(objects)
     olen_diff = olen_r - olen_n
@@ -278,4 +247,19 @@ def prepare_objects(_cube, objects, mtime):
 
     no_snap = [obj for obj in objects if not obj.get('_oid') in _known_oids]
     to_snap = [obj for obj in objects if obj.get('_oid') in _known_oids]
-    return no_snap, to_snap, fields, _oids
+    return no_snap, to_snap, _oids
+
+
+def parse_pql_query(query):
+    if not query:
+        return {}
+    if not isinstance(query, basestring):
+        raise TypeError("query expected as a string")
+    pql_parser = pql.SchemaFreeParser()
+    try:
+        spec = pql_parser.parse(query)
+    except Exception as e:
+        raise ValueError("Invalid Query (%s):\n%s" % (query, str(e)))
+    logger.debug("PQL Query: %s" % query)
+    logger.debug('Query: %s' % spec)
+    return spec

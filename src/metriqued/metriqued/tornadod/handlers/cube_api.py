@@ -8,7 +8,6 @@ from tornado.web import authenticated
 
 from metriqued.tornadod.handlers.core_api import MetriqueHdlr
 from metriqued import cube_api
-from metriqued.utils import list_cubes, list_cube_fields
 
 
 class SaveObjectsHdlr(MetriqueHdlr):
@@ -135,17 +134,20 @@ class ListHdlr(MetriqueHdlr):
     @authenticated
     def get(self, owner=None, cube=None):
         self._requires_owner_read(owner, cube)
-        _mtime = self.get_argument('_mtime')
-        exclude_fields = self.get_argument('exclude_fields')
+        sample_size = self.get_argument('sample_size')
+        query = self.get_argument('query')
         if not owner:
-            result = list_cubes()
+            result = cube_api.list_cubes()
         elif cube is None:
             # return a list of cubes
-            result = list_cubes(owner=owner)
+            result = cube_api.list_cubes(owner=owner)
         else:
-            # return a list of fields in a cube
-            # arg = username... return only cubes with 'r' access
-            result = list_cube_fields(owner, cube,
-                                      # SAMPLE_SIZE
-                                      exclude_fields, _mtime=_mtime)
+            # return a 'best effort' of fields
+            # in the case that there are homogenous docs,
+            # 1 doc is enough; but if you have a high
+            # variety of doc fields... the sample
+            # size needs to be high (maxed out?)
+            # to ensure accuracy
+            result = cube_api.sample_fields(owner, cube, sample_size,
+                                            query=query)
         self.write(result)

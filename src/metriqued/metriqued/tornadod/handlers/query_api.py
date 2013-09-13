@@ -125,10 +125,12 @@ class SampleHdlr(MetriqueHdlr):
     @authenticated
     def get(self, owner, cube):
         self._requires_owner_read(owner, cube)
-        size = self.get_argument('size')
+        sample_size = self.get_argument('sample_size')
         fields = self.get_argument('fields')
         date = self.get_argument('date')
+        query = self.get_argument('date')
         result = query_api.sample(owner=owner, cube=cube,
-                                  size=size, fields=fields,
-                                  date=date)
+                                  sample_size=sample_size,
+                                  fields=fields, date=date,
+                                  query=query)
         self.write(result)

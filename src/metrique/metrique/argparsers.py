@@ -67,7 +67,8 @@ _cube_args.add_argument('-u', '--api-username', action='store_true')
 _cube_args.add_argument('-p', '--api-password', action='store_true')
 _cube_args.add_argument('-c', '--cube-config-file', type=str)
 
-_sub_args = _cube_args.add_subparsers(description='Cube Extract CLI')
+_sub_args = _cube_args.add_subparsers(description='Cube Extract CLI',
+                                      dest='extract')
 _extr_args = _sub_args.add_parser('extract', help='Extract help')
 _extr_args.add_argument('-g', '--extract_args', type=str,
                         action=_ArgParser, nargs='+', default=[])
@@ -101,10 +102,15 @@ def cube_cli(cube_cls=None):
     kwargs['api_username'] = args.api_username
     kwargs['api_password'] = args.api_password
 
-    obj = cube_cls(**kwargs)
+    cube = cube_cls(**kwargs)
 
     ext_args = args.extract_args
     ext_kwargs = args.extract_kwargs
-    if ext_kwargs:
-        obj.extract(*ext_args, **ext_kwargs)
-    return obj, args
+    result = None
+    if args.extract:
+        result = cube.extract(*ext_args, **ext_kwargs)
+
+    dct = {'cube': cube,
+           'args': args,
+           'result': result}
+    return dct

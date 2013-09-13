@@ -30,7 +30,7 @@ from metriqueu.defaults import DEFAULT_API_REL_PATH
 
 DEFAULT_CONFIG_FILE = os.path.join(DEFAULT_CONFIG_DIR, 'http_api')
 DEFAULT_SESSION_FILE = 'session.requests'
-DEFAULT_BATCH_SIZE = 50000
+DEFAULT_BATCH_SIZE = -1
 
 API_VERSION = 'v2'
 

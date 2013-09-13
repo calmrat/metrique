@@ -9,10 +9,10 @@ import pql
 import re
 import random
 
-from metriqued.utils import get_fields, get_collection
-from metriqueu.utils import dt2ts
+from metriqued.cube_api import get_fields, get_collection
+from metriqued.utils import cfind, parse_pql_query
 
-BATCH_SIZE = 16777216  # hard limit is 16M...
+from metriqueu.utils import dt2ts, set_default
 
 
 def log_head(owner, cube, cmd, *args):
@@ -101,13 +101,7 @@ def find(owner, cube, query, fields=None, date=None, sort=None, one=False,
 
     query += _get_date_pql_string(date)
 
-    logger.debug("PQL Query: %s" % query)
-    pql_parser = pql.SchemaFreeParser()
-    try:
-        spec = pql_parser.parse(query)
-    except Exception as e:
-        raise ValueError("Invalid Query (%s): %s" % (str(e), query))
-    logger.debug('Query: %s' % spec)
+    spec = parse_pql_query(query)
 
     _cube = get_collection(owner, cube, admin=False)
     if explain:
@@ -119,7 +113,6 @@ def find(owner, cube, query, fields=None, date=None, sort=None, one=False,
         result = _merge_versions(_cube, spec, fields)
     else:
         result = _cube.find(spec, fields, sort=sort)
-        result.batch_size(BATCH_SIZE)
         result = tuple(result)
     return result
 
@@ -214,23 +207,48 @@ def fetch(owner, cube, fields=None, date=None,
     return result
 
 
-def sample(owner, cube, size, fields, date):
-    log_head(owner, cube, 'sample', date)
+def sample(owner, cube, sample_size=None, fields=None,
+           date=None, query=None):
+    # FIXME: OT: at some point in the future...
+    # make 'sample' arg, the first arg
+    # log_head(owner, cube, 'sample', date)
+    # is more obvious to read like it's output format... like
+    # log_head('sample', owner, cube, date)
     _cube = get_collection(owner, cube)
     fields = get_fields(owner, cube, fields)
     dt_str = _get_date_pql_string(date, '')
-    spec = pql.find(dt_str) if dt_str else {}
-    cursor = _cube.find(spec, fields)
-    n = cursor.count()
-    if n <= size:
-        cursor.batch_size(BATCH_SIZE)
-        ret = tuple(cursor)
+    # for example, 'doc_version == 1.0'
+    query = set_default(query, '', null_ok=True)
+    if query:
+        query = ' and '.join((dt_str, query))
+    spec = parse_pql_query(query)
+    _docs = cfind(_cube=_cube, spec=spec, fields=fields)
+    n = _docs.count()
+    if n <= sample_size:
+        docs = tuple(_docs)
     else:
-        to_sample = set(random.sample(range(n), size))
-        ret = []
-        for i in range(n):
-            ret.append(cursor.next()) if i in to_sample else cursor.next()
-        # Alternative approach would be to use
-        # ret = [cursor[i] for i in to_sample]
-        # but that would be much slower when size is larger
-    return ret
+        # testing multiple approaches, on a collection with 1100001 objs
+        # In [27]: c.cube_stats(cube='test')
+        # {'cube': 'test', 'mtime': 1379078573, 'size': 1100001}
+
+        # this approach has results like these:
+        # >>>  %time c.query_sample(cube='test')
+        # CPU times: user 7 ms, sys: 0 ns, total: 7 ms
+        # Wall time: 7.7 s
+        #to_sample = set(random.sample(xrange(n), sample_size))
+        #docs = []
+        #for i in xrange(n):
+        #    docs.append(_docs.next()) if i in to_sample else _docs.next()
+
+        # this approach has results like these:
+        # >>>  %time c.query_sample(cube='test')
+        # CPU times: user 7 ms, sys: 0 ns, total: 7 ms
+        # Wall time: 1.35 s
+        # Out[20]:
+        #   _end    _oid              _start
+        # 0  NaT  916132 2013-09-13 13:22:53
+        # note: i saw it go up as high as 3.5 seconds
+        # but small sample of tests ;)
+        to_sample = sorted(set(random.sample(xrange(n), sample_size)))
+        docs = [_docs[i] for i in to_sample]
+    return docs

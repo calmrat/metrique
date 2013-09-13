@@ -5,6 +5,7 @@
 from itertools import chain
 import logging
 logger = logging.getLogger(__name__)
+import random
 
 from metriqued.utils import get_collection, get_auth_keys
 from metriqued.utils import get_mtime, get_cube_quota_count
@@ -12,14 +13,17 @@ from metriqued.utils import make_update_spec
 from metriqued.utils import insert_bulk, insert_meta_docs
 from metriqued.utils import exec_update_role, prepare_objects
 from metriqued.utils import validate_owner_cube_objects
-from metriqued.utils import cfind
+from metriqued.utils import cfind, strip_split
+from metriqued.utils import ensure_index_base, BASE_INDEX
+from metriqued.utils import parse_pql_query
 from metriqued.config import role_is_valid, action_is_valid
 from metriqued.config import mongodb, IMMUTABLE_DOC_ID_PREFIX
-from metriqued.user_api import user_is_valid
+from metriqued import user_api
 
-from metriqueu.utils import dt2ts, utcnow
+from metriqueu.utils import dt2ts, utcnow, set_default
 
 mongodb_config = mongodb()
+DEFAULT_SAMPLE_SIZE = 1
 
 
 def register(owner, cube):
@@ -42,12 +46,14 @@ def register(owner, cube):
     _cube = get_collection(owner, cube, admin=True, create=True)
     insert_meta_docs(_cube, owner)
 
+    # run core index
+    ensure_index_base(owner, cube)
+    _cube.ensure_index(BASE_INDEX)
+
     _cc = _cube.database.collection_names()
     real_cc = sum([1 for c in _cc if c.startswith(owner)])
     update = {'$set': {'cube_count': real_cc}}
     get_auth_keys().update(auth_keys_spec, update, safe=True)
-    # do something with the fact that we know if it was
-    # successful or not?
     return True
 
 
@@ -59,7 +65,7 @@ def update_role(owner, cube, username, action, role):
         raise RuntimeError("cannot modify cube.owner's role")
     role_is_valid(role)
     action_is_valid(action)
-    user_is_valid(username)
+    user_api.user_is_valid(username)
     _cube = get_collection(owner, cube)
     result = exec_update_role(_cube, username, role, action)
     if result:
@@ -96,8 +102,8 @@ def index(owner, cube, ensure=None, drop=None):
         # lists, so we need to convert it back to a list of tuples.
         drop = map(tuple, drop) if isinstance(drop, list) else drop
 
-        # FIXME: CHECK THAT DROP DOES NOT CONTAIN ANY _id or _oid_...
-        # SYSTEM DEFAULT (IMMUTABLE!) INDEXES!
+        if drop in [BASE_INDEX]:
+            raise ValueError("can't drop system indexes")
 
         _cube.drop_index(drop)
 
@@ -137,7 +143,8 @@ def _save_and_snapshot(_cube, objects):
     _oid_spec = {'$in': _oids}
     _end_spec = None
     fields = {'_id': 1, '_oid': 1}
-    current_docs = cfind(_cube, _oid=_oid_spec, _end=_end_spec, fields=fields)
+    current_docs = cfind(_cube=_cube, _oid=_oid_spec,
+                         _end=_end_spec, fields=fields)
     current_ids = dict([(doc['_id'], doc['_oid']) for doc in current_docs])
 
     for _id, _oid in current_ids.items():
@@ -167,7 +174,7 @@ def _save_no_snapshot(_cube, objects):
     insert_bulk(_cube, objects)
 
 
-def _save_objects(_cube, fields, no_snap, to_snap, mtime):
+def _save_objects(_cube, no_snap, to_snap, mtime):
     '''
     Save all the objects (docs) into the given cube (mongodb collection)
     Each object must have '_oid' and '_start' fields.
@@ -217,17 +224,17 @@ def save_objects(owner, cube, objects, mtime=None):
             "invalid mtime (%s); "
             "must be > current mtime (%s)" % (mtime, current_mtime))
 
-    no_snap, to_snap, fields, _oids = prepare_objects(_cube, objects, mtime)
+    no_snap, to_snap, _oids = prepare_objects(_cube, objects, mtime)
 
-    objects = no_snap + to_snap
-    olen = len(objects)
+    objects = chain(no_snap, to_snap)
+    olen = len(tuple(objects))
 
     if not olen:
         logger.debug('[%s.%s] No NEW objects to save' % (owner, cube))
         return []
     else:
         logger.debug('[%s.%s] Saved %s objects' % (owner, cube, olen))
-        result = _save_objects(_cube, fields, no_snap, to_snap, mtime)
+        result = _save_objects(_cube, no_snap, to_snap, mtime)
         return result
 
 
@@ -275,5 +282,64 @@ def remove_objects(owner, cube, ids, backup=False):
 def stats(owner, cube):
     _cube = get_collection(owner, cube)
     mtime = get_mtime(_cube)
-    stats = dict(cube=cube, mtime=mtime)
+    size = _cube.count()
+    stats = dict(cube=cube, mtime=mtime, size=size)
     return stats
+
+
+def get_fields(owner, cube, fields=None):
+    '''
+    Return back a dict of (field, 0/1) pairs, where the matching fields have 1.
+    '''
+    logger.debug('... fields: %s' % fields)
+    _fields = []
+    if fields:
+        cube_fields = sample_fields(owner, cube)
+        if fields == '__all__':
+            _fields = cube_fields.keys()
+        else:
+            _fields = [f for f in strip_split(fields) if f in cube_fields]
+    _fields += ['_oid', '_start', '_end']
+    _fields = dict([(f, 1) for f in set(_fields)])
+
+    # If `_id` should not be in returned it must have 0 otherwise mongo will
+    # return it.
+    if '_id' not in _fields:
+        _fields['_id'] = 0
+    logger.debug('... matched fields (%s)' % _fields)
+    return _fields
+
+
+def sample_fields(owner, cube, sample_size=None, query=None):
+    if sample_size is None:
+        sample_size = DEFAULT_SAMPLE_SIZE
+    query = set_default(query, '', null_ok=True)
+    spec = parse_pql_query(query)
+    _cube = get_collection(owner, cube)
+    docs = cfind(_cube=_cube, **spec)
+    # .count does strange things; seems when we use hints
+    # (hit the index), even if we use a query, the resulting
+    # cursore is an iterator over ALL docs in the collection
+    n = docs.count()
+    if n <= sample_size:
+        docs = tuple(docs)
+    else:
+        to_sample = sorted(set(random.sample(xrange(n), sample_size)))
+        docs = [docs[i] for i in to_sample]
+    cube_fields = list(set([k for d in docs for k in d.keys()]))
+    return cube_fields
+
+
+def list_cubes(startswith=None):
+    '''
+        Get a list of cubes server exports
+    '''
+    if not isinstance(startswith, basestring):
+        raise TypeError("startswith must be a string")
+    if not startswith:
+        startswith = ''
+    names = mongodb_config.db_timeline_data.db.collection_names()
+    # filter out system db's...
+    names = [n for n in names if not n.startswith('system')]
+    # filter out by startswith prefix string
+    return [n for n in names if n.startswith(startswith)]

@@ -14,6 +14,8 @@ import os
 from metrique.result import Result
 from metriqueu.utils import set_default
 
+DEFAULT_SAMPLE_SIZE = 1
+
 
 def aggregate(self, pipeline, cube=None, owner=None):
     '''
@@ -24,7 +26,7 @@ def aggregate(self, pipeline, cube=None, owner=None):
     :param string cube: name of cube to work with
     '''
     owner = set_default(owner, self.config.api_username)
-    cube = set_default(cube, self.name, required=True)
+    cube = set_default(cube, self.name)
     cmd = os.path.join(owner, cube, 'aggregate')
     result = self._get(cmd, pipeline=pipeline)
     try:
@@ -48,8 +50,8 @@ def count(self, query=None, cube=None, date=None, owner=None):
     '''
     if not query:
         query = '_oid == exists(True)'
-    owner = set_default(owner, self.config.api_username, required=True)
-    cube = set_default(cube, self.name, required=True)
+    owner = set_default(owner, self.config.api_username)
+    cube = set_default(cube, self.name)
     cmd = os.path.join(owner, cube, 'count')
     return self._get(cmd, query=query, date=date)
 
@@ -75,8 +77,8 @@ def find(self, query, fields=None, date=None, sort=None, one=False,
           will be queried.
 
     '''
-    owner = set_default(owner, self.config.api_username, required=True)
-    cube = set_default(cube, self.name, required=True)
+    owner = set_default(owner, self.config.api_username)
+    cube = set_default(cube, self.name)
     cmd = os.path.join(owner, cube, 'find')
     result = self._get(cmd, query=query, fields=fields,
                        date=date, sort=sort, one=one,
@@ -100,13 +102,13 @@ def deptree(self, field, oids, date=None, level=None,
     :param integer level: limit depth of recursion
     :param string cube: name of cube to work with
     '''
-    owner = set_default(owner, self.config.api_username, required=True)
-    cube = set_default(cube, self.name, required=True)
+    owner = set_default(owner, self.config.api_username)
+    cube = set_default(cube, self.name)
     cmd = os.path.join(owner, cube, 'deptree')
     result = self._get(cmd, field=field,
                        oids=oids, date=date,
                        level=level)
-    return result
+    return sorted(result)
 
 
 def fetch(self, fields=None, date=None, sort=None, skip=0, limit=0,
@@ -129,7 +131,7 @@ def fetch(self, fields=None, date=None, sort=None, skip=0, limit=0,
     :param string cube: name of cube to work with
     '''
     owner = set_default(owner, self.config.api_username)
-    cube = set_default(cube, self.name, required=True)
+    cube = set_default(cube, self.name)
     cmd = os.path.join(owner, cube, 'fetch')
     result = self._get(cmd, fields=fields,
                        date=date, sort=sort,
@@ -141,7 +143,7 @@ def fetch(self, fields=None, date=None, sort=None, skip=0, limit=0,
         return _result_convert(self, result, date, **kwargs)
 
 
-def distinct(self, field, cube=None, sort=True, owner=None):
+def distinct(self, field, cube=None, owner=None):
     '''
     Return back all distinct token values of a given field
 
@@ -153,18 +155,15 @@ def distinct(self, field, cube=None, sort=True, owner=None):
     cube = set_default(cube, self.name)
     cmd = os.path.join(owner, cube, 'distinct')
     result = self._get(cmd, field=field)
-    if sort:
-        return sorted(result)
-    else:
-        return result
+    return sorted(result)
 
 
-def sample(self, size, fields=None, date=None, raw=False,
-           cube=None, owner=None):
+def sample(self, sample_size=DEFAULT_SAMPLE_SIZE, fields=None,
+           date=None, raw=False, query=None, cube=None, owner=None):
     '''
     Draws a sample of objects at random.
 
-    :param integer size: Size of the sample.
+    :param integer sample_size: Size of the sample.
     :param fields: Fields that should be returned
     :param string date: Date (date range) that should be queried
     :param boolean raw: if True, then return result as a dictionary
@@ -177,7 +176,8 @@ def sample(self, size, fields=None, date=None, raw=False,
     owner = set_default(owner, self.config.api_username)
     cube = set_default(cube, self.name)
     cmd = os.path.join(owner, cube, 'sample')
-    result = self._get(cmd, size=size, fields=fields, date=date)
+    result = self._get(cmd, sample_size=sample_size, fields=fields,
+                       query=query, date=date)
     if raw:
         return result
     else:
