@@ -4,27 +4,12 @@
 
 import logging
 logger = logging.getLogger(__name__)
-
 import os
 from tornado.ioloop import IOLoop
 from tornado.web import Application
 
 from metriqued.metriqueserver import MetriqueServer
-
-from handlers import PingHandler, ObsoleteAPIHandler
-from handlers import QueryAggregateHandler, QueryFindHandler
-from handlers import QueryDeptreeHandler
-from handlers import QueryFetchHandler, QueryCountHandler
-from handlers import QueryDistinctHandler, QuerySampleHandler
-from handlers import ETLIndexHandler
-from handlers import ETLActivityImportHandler
-from handlers import ETLSaveObjectsHandler, ETLRemoveObjectsHandler
-from handlers import CubeListHandler
-from handlers import UserUpdateProfileHandler, UserUpdatePropertiesHandler
-from handlers import LoginHandler, LogoutHandler
-from handlers import RegisterHandler, UserUpdatePasswordHandler
-from handlers import CubeRegisterHandler, CubeDropHandler
-from handlers import CubeUpdateRoleHandler
+from metriqued.tornadod.handlers import core_api, query_api, user_api, cube_api
 
 # FIXME: add this to config and generate with metriqued-setup
 # DEFAULT should be just a bunch of 0000000's
@@ -57,36 +42,37 @@ def ucv2(value):
 
 
 base_handlers = [
-    (r"/register", RegisterHandler),
-    (r"/login", LoginHandler),
-    (r"/logout", LogoutHandler),
+    (r"/register", user_api.RegisterHdlr),
+    (r"/login", user_api.LoginHdlr),
+    (r"/logout", user_api.LogoutHdlr),
 
-    (r"/(\w+)/passwd", UserUpdatePasswordHandler),
-    (r"/(\w+)/update_profile", UserUpdateProfileHandler),
-    (r"/(\w+)/update_properties", UserUpdatePropertiesHandler),
+    (r"/(\w+)/passwd", user_api.UpdatePasswordHdlr),
+    (r"/(\w+)/update_profile", user_api.UpdateProfileHdlr),
+    (r"/(\w+)/update_properties", user_api.UpdatePropertiesHdlr),
 
-    (api_v1(r""), ObsoleteAPIHandler),
+    (api_v1(r""), core_api.ObsoleteAPIHdlr),
+    (api_v2(r"ping"), core_api.PingHdlr),
 
-    (api_v2(r"ping"), PingHandler),
-
-    (api_v2(r"(\w+)?/?(\w+)?"), CubeListHandler),
+    (api_v2(r"(\w+)?/?(\w+)?"), cube_api.ListHdlr),
 ]
 
 user_cube_handlers = [
-    (ucv2(r"find"), QueryFindHandler),
-    (ucv2(r"deptree"), QueryDeptreeHandler),
-    (ucv2(r"count"), QueryCountHandler),
-    (ucv2(r"aggregate"), QueryAggregateHandler),
-    (ucv2(r"fetch"), QueryFetchHandler),
-    (ucv2(r"distinct"), QueryDistinctHandler),
-    (ucv2(r"sample"), QuerySampleHandler),
-    (ucv2(r"index"), ETLIndexHandler),
-    (ucv2(r"save_objects"), ETLSaveObjectsHandler),
-    (ucv2(r"remove_objects"), ETLRemoveObjectsHandler),
-    (ucv2(r"activity_import"), ETLActivityImportHandler),
-    (ucv2(r"update_cube_role"), CubeUpdateRoleHandler),
-    (ucv2(r"drop_cube"), CubeDropHandler),
-    (ucv2(r"register"), CubeRegisterHandler),
+    (ucv2(r"find"), query_api.FindHdlr),
+    (ucv2(r"deptree"), query_api.DeptreeHdlr),
+    (ucv2(r"count"), query_api.CountHdlr),
+    (ucv2(r"aggregate"), query_api.AggregateHdlr),
+    (ucv2(r"fetch"), query_api.FetchHdlr),
+    (ucv2(r"distinct"), query_api.DistinctHdlr),
+    (ucv2(r"sample"), query_api.SampleHdlr),
+
+    (ucv2(r"index"), cube_api.IndexHdlr),
+    (ucv2(r"save_objects"), cube_api.SaveObjectsHdlr),
+    (ucv2(r"remove_objects"), cube_api.RemoveObjectsHdlr),
+    (ucv2(r"activity_import"), cube_api.ActivityImportHdlr),
+    (ucv2(r"update_role"), cube_api.UpdateRoleHdlr),
+    (ucv2(r"drop"), cube_api.DropHdlr),
+    (ucv2(r"stats"), cube_api.StatsHdlr),
+    (ucv2(r"register"), cube_api.RegisterHdlr),
 ]
 
 api_v2_handlers = base_handlers + user_cube_handlers

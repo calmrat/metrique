@@ -5,11 +5,10 @@
 import logging
 logger = logging.getLogger(__name__)
 from passlib.hash import sha256_crypt
-from tornado.web import HTTPError
 
 from metriqued.config import DEFAULT_CUBE_QUOTA
 from metriqued.config import group_is_valid, action_is_valid
-from metriqued.cubes import get_auth_keys
+from metriqued.utils import get_auth_keys
 
 # FIXME: rather than dumping this meta data into auth_keys...
 # drop it into a _metrique_cube using the api() calls
@@ -25,7 +24,7 @@ def user_is_valid(username):   # , all_ok=True):
     #    user_all = username == '__all__'
     #    ok = any((ok, user_all))
     if not ok:
-        raise HTTPError(400, "Invalid user: %s" % username)
+        raise ValueError("invalid user: %s" % username)
 
 
 def _set_property(dct, key, value, _types):
@@ -33,7 +32,7 @@ def _set_property(dct, key, value, _types):
     if value is None:
         return dct
     elif not isinstance(value, _types):
-        raise ValueError(
+        raise TypeError(
             "Invalid type for %s; "
             "got (%s), expected %s" % (key, type(value), _types))
     else:
@@ -47,7 +46,7 @@ def register(username, password=None, quota=None):
     spec = {'_oid': username}
     # FIXME: make 'user_exists function'
     if AUTH_KEYS.find(spec).count():
-        raise HTTPError(409, "[%s] user exists" % username)
+        raise RuntimeError("user exists: %s" % username)
     if quota is None:
         quota = DEFAULT_CUBE_QUOTA
     passhash = sha256_crypt.encrypt(password) if password else None
@@ -66,7 +65,7 @@ def register(username, password=None, quota=None):
 def update_passwd(username, new_password, old_password=None):
     ''' Change a logged in user's password '''
     if not new_password:
-        raise HTTPError(400, 'new password can not be null')
+        raise ValueError('new password can not be null')
     if not old_password:
         old_password = ''
 
@@ -77,14 +76,14 @@ def update_passwd(username, new_password, old_password=None):
     if doc:
         old_passhash = doc['passhash']
     else:
-        raise HTTPError(400, "user doesn't exist")
+        raise ValueError("user doesn't exist")
 
     if old_passhash and sha256_crypt.verify(old_password, old_passhash):
         new_passhash = sha256_crypt.encrypt(new_password)
     elif not old_password:
         new_passhash = sha256_crypt.encrypt(new_password)
     else:
-        raise HTTPError(400, "old password does not match")
+        raise ValueError("old password does not match")
 
     update = {'$set': {'passhash': new_passhash}}
     AUTH_KEYS.update(spec, update, upsert=True, safe=True)

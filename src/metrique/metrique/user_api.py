@@ -45,9 +45,9 @@ def register(self, username=None, password=None):
         Password (plain text), if any of user
     '''
     username = set_default(username,
-                           self.config.api_username, required=True)
+                           self.config.api_username)
     password = set_default(password,
-                           self.config.api_password, required=True)
+                           self.config.api_password)
     return self._post('register',
                       username=username, password=password,
                       role=None, api_url=False)
@@ -62,8 +62,7 @@ def update_passwd(self, new_password, old_password=None,
     :param String password:
         Password (plain text), if any of user
     '''
-    username = set_default(username,
-                           self.config.api_username, required=True)
+    username = set_default(username, self.config.api_username)
     cmd = os.path.join(username, 'passwd')
     response = self._post(cmd,
                           username=username,
@@ -87,8 +86,7 @@ def update_passwd(self, new_password, old_password=None,
 
 # FIXME: prefix api_url with _ to indicate it's a special kwarg
 def update_profile(self, username=None, backup=False, email=None):
-    username = set_default(username,
-                           self.config.api_username, required=True)
+    username = set_default(username, self.config.api_username)
     cmd = os.path.join(username, 'update_profile')
     result = self._post(cmd,
                         backup=backup,
@@ -98,8 +96,7 @@ def update_profile(self, username=None, backup=False, email=None):
 
 
 def update_properties(self, username=None, backup=False, quota=None):
-    username = set_default(username,
-                           self.config.api_username, required=True)
+    username = set_default(username, self.config.api_username)
     cmd = os.path.join(username, 'update')
     result = self._post(cmd,
                         backup=backup,

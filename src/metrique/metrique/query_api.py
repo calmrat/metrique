@@ -150,7 +150,7 @@ def distinct(self, field, cube=None, sort=True, owner=None):
     :param string cube: name of cube to work with
     '''
     owner = set_default(owner, self.config.api_username)
-    cube = set_default(cube, self.name, required=True)
+    cube = set_default(cube, self.name)
     cmd = os.path.join(owner, cube, 'distinct')
     result = self._get(cmd, field=field)
     if sort:
@@ -175,7 +175,7 @@ def sample(self, size, fields=None, date=None, raw=False,
           will be queried.
     '''
     owner = set_default(owner, self.config.api_username)
-    cube = set_default(cube, self.name, required=True)
+    cube = set_default(cube, self.name)
     cmd = os.path.join(owner, cube, 'sample')
     result = self._get(cmd, size=size, fields=fields, date=date)
     if raw:

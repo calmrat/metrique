@@ -13,7 +13,7 @@ except ImportError:
 from passlib.hash import sha256_crypt
 
 #from metriqued.defaults import VALID_ROLES as VR
-from metriqued.cubes import get_auth_keys
+from metriqued.utils import get_auth_keys
 
 auth_keys = get_auth_keys()
 
@@ -27,8 +27,7 @@ def find_user_passhash(username):
         return None
 
 
-def is_admin(admin_user, admin_password,
-             username, password):
+def is_admin(admin_user, admin_password, username, password):
     '''
     admin pass is stored in metrique server config
     admin user gets 'rw' to all cubes
@@ -36,11 +35,11 @@ def is_admin(admin_user, admin_password,
     if username == admin_user:
         if password == admin_password:
             logger.debug('AUTH ADMIN: True')
-            return True
+            return True, username
         else:
-            return False
+            return False, username
     else:
-        return None
+        return False, username
 
 
 def basic(username, password):
@@ -48,22 +47,23 @@ def basic(username, password):
     if passhash:
         if sha256_crypt.verify(password, passhash):
             logger.debug('AUTH BASIC: True')
-            return True
+            return True, username
     else:
-        return False
+        return False, username
 
 
 def krb_basic(username, password, krb_realm):
     if not password:
-        return False
+        return False, username
     elif not kerberos:
         logger.error('IMPORT ERROR: kerberos module DOES NOT EXIST!')
         # if kerberos isn't available, no go
-        return False
+        return False, username
     else:
         try:
-            return kerberos.checkPassword(username, password,
-                                          '', krb_realm)
+            authed = kerberos.checkPassword(username, password,
+                                            '', krb_realm)
+            return authed, username
         except kerberos.BasicAuthError as e:
             logger.error('KRB ERROR: %s' % e)
-            return False
+            return False, username

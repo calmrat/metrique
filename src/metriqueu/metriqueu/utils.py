@@ -45,9 +45,9 @@ def new_oid():
     return str(ObjectId())
 
 
-def set_default(key, default, required=False):
-    if required and not key and not default:
-        raise RuntimeError("Cube required")
+def set_default(key, default, null_ok=False):
+    if not (null_ok or key or default):
+        raise RuntimeError("non-null value required for %s" % key)
     return key or default
 
 
@@ -124,3 +124,7 @@ def jsonhash(obj):
         ).hexdigest()
     else:
         return repr(obj)
+
+
+def utcnow():
+    return dt2ts(dt.utcnow())

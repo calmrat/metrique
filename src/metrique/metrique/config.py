@@ -30,6 +30,7 @@ from metriqueu.defaults import DEFAULT_API_REL_PATH
 
 DEFAULT_CONFIG_FILE = os.path.join(DEFAULT_CONFIG_DIR, 'http_api')
 DEFAULT_SESSION_FILE = 'session.requests'
+DEFAULT_BATCH_SIZE = 50000
 
 API_VERSION = 'v2'
 
@@ -215,5 +216,13 @@ class Config(JSONConf):
 
     @property
     def sql_delta_batch_retries(self):
-        ''' The number of tries to make when running a query when it fails '''
         return self._default('sql_delta_batch_retries', 3)
+
+    @property
+    def batch_size(self):
+        ''' The number of objs to push save_objects at a time'''
+        return self._default('batch_size', DEFAULT_BATCH_SIZE)
+
+    @batch_size.setter
+    def batch_size(self, value):
+        self.config['batch_size'] = value

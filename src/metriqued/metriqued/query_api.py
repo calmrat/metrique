@@ -8,9 +8,8 @@ logger = logging.getLogger(__name__)
 import pql
 import re
 import random
-from tornado.web import HTTPError
 
-from metriqued.cubes import get_fields, get_collection
+from metriqued.utils import get_fields, get_collection
 from metriqueu.utils import dt2ts
 
 BATCH_SIZE = 16777216  # hard limit is 16M...
@@ -38,7 +37,7 @@ def count(owner, cube, query, date=None):
     try:
         spec = pql.find(query + _get_date_pql_string(date))
     except Exception as e:
-        raise HTTPError(400, "Invalid Query (%s)" % str(e))
+        raise ValueError("Invalid Query (%s)" % str(e))
 
     _cube = get_collection(owner, cube)
 
@@ -84,7 +83,7 @@ def _check_sort(sort, son=False):
     try:
         assert len(sort[0]) == 2
     except (AssertionError, IndexError, TypeError):
-        raise HTTPError(400, "Invalid sort value; try [('_id': -1)]")
+        raise ValueError("Invalid sort value; try [('_id': -1)]")
     if son:
         return SON(sort)
     else:
@@ -107,7 +106,7 @@ def find(owner, cube, query, fields=None, date=None, sort=None, one=False,
     try:
         spec = pql_parser.parse(query)
     except Exception as e:
-        raise HTTPError(400, "Invalid Query (%s): %s" % (str(e), query))
+        raise ValueError("Invalid Query (%s): %s" % (str(e), query))
     logger.debug('Query: %s' % spec)
 
     _cube = get_collection(owner, cube, admin=False)
@@ -157,7 +156,7 @@ def _parse_oids(oids, delimeter=','):
     if isinstance(oids, basestring):
         oids = [s.strip() for s in oids.split(delimeter)]
     if type(oids) is not list:
-        raise HTTPError(400, "ids expected to be a list")
+        raise TypeError("ids expected to be a list")
     return oids
 
 

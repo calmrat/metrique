@@ -156,7 +156,7 @@ class BaseSql(BaseCube):
             delta_batch_size = self.config.sql_delta_batch_size
         return id_delta, delta_batch_size
 
-    def _fetch_mtime(self, last_update, exclude_fields):
+    def _fetch_mtime(self, last_update):
         mtime = None
         if last_update:
             if isinstance(last_update, basestring):
@@ -167,13 +167,9 @@ class BaseSql(BaseCube):
             # list_cube_fields returns back a dict from the server that
             # contains a global _mtime that represents the last time
             # any field was updated.
-            c_fields = self.list_cube_fields(exclude_fields=exclude_fields,
-                                             _mtime=True)
-            mtime = c_fields.get('_mtime')
-
+            mtime = self.cube_stats().get('mtime')
         # convert timestamp to datetime object
         mtime = ts2dt(mtime)
-
         self.logger.info("Last update mtime: %s" % mtime)
         return mtime
 

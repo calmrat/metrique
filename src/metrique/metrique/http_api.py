@@ -21,7 +21,6 @@ from metrique.config import DEFAULT_CONFIG_FILE
 from metrique import query_api, user_api, cube_api
 from metrique import etl_activity
 from metrique.utils import csv2list, json_encode, get_cube
-from metriqueu.utils import set_default
 
 
 class HTTPClient(object):
@@ -31,6 +30,20 @@ class HTTPClient(object):
     '''
     name = None
 
+    user_login = user_api.login
+    user_logout = user_api.logout
+    user_register = user_api.register
+    user_update_passwd = user_api.update_passwd
+    user_update_profile = user_api.update_profile
+    user_update_properties = user_api.update_properties
+
+    cube_list_all = cube_api.list_all
+    cube_stats = cube_api.stats
+    cube_list_fields = cube_api.list_cube_fields
+    cube_drop = cube_api.drop
+    cube_register = cube_api.register
+    cube_update_role = cube_api.update_role
+
     find = query_api.find
     deptree = query_api.deptree
     count = query_api.count
@@ -38,21 +51,13 @@ class HTTPClient(object):
     distinct = query_api.distinct
     sample = query_api.sample
     aggregate = query_api.aggregate
+
     activity_import = etl_activity.activity_import
     save_objects = cube_api.save_objects
     remove_objects = cube_api.remove_objects
     index_list = cube_api.list_index
     index = cube_api.ensure_index
     index_drop = cube_api.drop_index
-    cube_drop = cube_api.drop
-    cube_register = cube_api.register
-    cube_update_role = cube_api.update_role
-    user_login = user_api.login
-    user_logout = user_api.logout
-    user_register = user_api.register
-    user_update_passwd = user_api.update_passwd
-    user_update_profile = user_api.update_profile
-    user_update_properties = user_api.update_properties
 
     def __new__(cls, *args, **kwargs):
         '''
@@ -218,28 +223,6 @@ class HTTPClient(object):
 
     def ping(self, auth=False):
         return self._get('ping', auth=auth)
-
-    def list_cubes(self, owner=None):
-        ''' List all valid cubes for a given metrique instance '''
-        return self._get(owner)
-
-    def list_cube_fields(self, cube=None, owner=None,
-                         exclude_fields=None, _mtime=False):
-        '''
-        List all valid fields for a given cube
-
-        :param string cube:
-            Name of the cube you want to query
-        :param list exclude_fields:
-            List (or csv) of fields to exclude from the results
-        :param bool mtime:
-            Include mtime details
-        '''
-        owner = set_default(owner, self.config.api_username, required=True)
-        cube = set_default(cube, self.name, required=True)
-        cmd = os.path.join(owner, cube)
-        return self._get(cmd, exclude_fields=exclude_fields,
-                         _mtime=_mtime)
 
     def parse_fields(self, fields):
         if not fields:
