@@ -7,7 +7,6 @@ logger = logging.getLogger(__name__)
 from tornado.web import HTTPError
 
 from metriqued.config import mongodb
-from metriqueu.utils import set_default
 
 mongodb_config = mongodb()
 
@@ -48,9 +47,10 @@ def strip_split(item):
         return item
 
 
-# FIXME BREAK THIS UP
-def get_fields(owner, cube, fields=None, check=False):
-    ''' return back a list of known fields in documents of a given cube '''
+def get_fields(owner, cube, fields=None):
+    '''
+    Return back a dict of (field, 0/1) pairs, where the matching fields have 1.
+    '''
     logger.debug('... fields: %s' % fields)
     _fields = []
     if fields:
@@ -58,18 +58,12 @@ def get_fields(owner, cube, fields=None, check=False):
         if fields == '__all__':
             _fields = cube_fields.keys()
         else:
-            fields = strip_split(fields)
-            if not check:
-                _fields = fields
-            else:
-                _fields = []
-                for field in fields:
-                    if field not in cube_fields:
-                        raise ValueError('Invalid field: %s' % field)
-                    else:
-                        _fields.append(field)
+            _fields = [f for f in strip_split(fields) if f in cube_fields]
     _fields += ['_oid', '_start', '_end']
     _fields = dict([(f, 1) for f in set(_fields)])
+
+    # If `_id` should not be in returned it must have 0 otherwise mongo will
+    # return it.
     if '_id' not in _fields:
         _fields['_id'] = 0
     logger.debug('... matched fields (%s)' % _fields)
@@ -78,27 +72,18 @@ def get_fields(owner, cube, fields=None, check=False):
 
 # FIXME: this will need to become more like field_struct
 # since we expect nested docs
-def list_cube_fields(owner, cube, exclude_fields=[], _mtime=False):
+def list_cube_fields(owner, cube, exclude_fields=None, _mtime=False):
     collection = '%s__%s' % (owner, cube)
     spec = {'_id': collection}
     _filter = {'_id': 0}
     if not _mtime:
         _filter.update({'_mtime': 0})
 
-    cube_fields = set_default(
-        ETL_ACTIVITY.find_one(spec, _filter), {})
+    cube_fields = ETL_ACTIVITY.find_one(spec, _filter) or {}
 
-    exclude_fields = list(set_default(exclude_fields, []))
-    if not isinstance(exclude_fields, (list, tuple, set)):
-        raise ValueError(
-            'expected list, got %s' % type(exclude_fields))
-
-    for f in exclude_fields:
-        try:
-            del cube_fields[f]
-        except KeyError:
-            # just ignore any invalid fields
-            pass
+    # exclude fields from `cube_fields` that are in `exclude_fields`
+    for f in set(strip_split(exclude_fields) or []) & set(cube_fields):
+        del cube_fields[f]
 
     # these are included, constantly
     cube_fields.update({'_id': 1, '_oid': 1, '_start': 1, '_end': 1})
