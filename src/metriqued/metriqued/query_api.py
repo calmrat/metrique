@@ -206,11 +206,12 @@ def fetch(owner, cube, fields=None, date=None,
         {'$match': spec},
         {'$skip': skip},
         {'$project': fields},
-        {'$limit': limit},
         {'$sort': sort},
     ]
+    if limit:
+        pipeline.append({'$limit': limit})
 
-    result = _cube.aggregate(pipeline)
+    result = _cube.aggregate(pipeline)['result']
     return result
 
 
