@@ -19,6 +19,8 @@ from metrique.plotting import Plotter, DiffPlotter
 
 from matplotlib import pyplot as plt
 
+from os.path import expanduser
+
 
 class Container(object):
     '''
@@ -50,7 +52,8 @@ class Container(object):
         else:
             return default
 
-    def display(self, method=None, alt='', merge=None, **kwargs):
+    def display(self, method=None, alt='', filename=None,
+                merge=None, **kwargs):
         '''
         Display the data.
 
@@ -81,6 +84,7 @@ class Container(object):
                                  colors=self._get('colors', alt),
                                  lines=self._get('lines', alt),
                                  today=self._get('today', alt),
+                                 filename=filename,
                                  **kwargs)
 
     def _merge(self, merge, labels, series, diffs):
@@ -103,14 +107,16 @@ class Container(object):
             labels, series, diffs = l, s, d
         return labels, series, diffs
 
-    def _plot(self, series, labels, colors, title, lines=None, today=None,
-              stacked=False, loc=0, lines_y='bottom', today_y='bottom',
-              stamp=False, **kwargs):
+    def _plot(self, series, labels, colors, title, filename=None, lines=None,
+              today=None, stacked=False, loc=0, lines_y='bottom',
+              today_y='bottom', stamp=False, **kwargs):
         p = Plotter(fill=stacked, stamp=stamp)
         p.plots(zip(labels, series), stacked=stacked, colors=colors)
         self._lines(p, series, lines, lines_y, today, today_y)
         plt.legend(loc=loc)
         plt.title('%s, stacked' % title if stacked else title)
+        if filename is not None:
+            plt.savefig(expanduser(filename))
 
     def _diffplot(self, series, diffs, labels, colors, title, lines=None,
                   today=None, invert=False, loc=0, lines_y='bottom',
