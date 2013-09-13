@@ -180,41 +180,27 @@ class MetriqueInitialized(RequestHandler):
             username, password = auth.split(':', 2)
         return username, password
 
-    def _parse_admin_auth(self):
-        username, password = self._scrape_username_password()
+    def _parse_admin_auth(self, username, password):
         admin_user = self.metrique_config.admin_user
         admin_password = self.metrique_config.admin_password
-        if is_admin(admin_user, admin_password, username, password):
-            return True, username
-        else:
-            return False, username
+        return is_admin(admin_user, admin_password, username, password)
 
-    def _parse_basic_auth(self):
-        username, password = self._scrape_username_password()
-        if basic(username, password):
-            return True, username
-        else:
-            return False, username
+    def _parse_basic_auth(self, username, password):
+        return basic(username, password)
 
-    def _parse_krb_basic_auth(self):
+    def _parse_krb_basic_auth(self, username, password):
         if not (self.metrique_config.krb_auth and
                 self.metrique_config.krb_realm):
             return False
-        username, password = self._scrape_username_password()
-        if krb_basic(username, password, self.metrique_config.krb_realm):
-            return True, username
-        else:
-            return False, username
+        return krb_basic(username, password, self.metrique_config.krb_realm)
 
     def _parse_auth_headers(self):
-        _admin, username = self._parse_admin_auth()
-        _basic, username = self._parse_basic_auth()
-        _krb_basic, username = self._parse_krb_basic_auth()
+        username, password = self._scrape_username_password()
+        _admin = self._parse_admin_auth(username, password)
+        _basic = self._parse_basic_auth(username, password)
+        _krb_basic = self._parse_krb_basic_auth(username, password)
 
-        if any((_admin, _basic, _krb_basic)):
-            return True, username
-        else:
-            return False, username
+        return any((_admin, _basic, _krb_basic)), username
 
 
 class LoginHandler(MetriqueInitialized):
