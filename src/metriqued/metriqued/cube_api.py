@@ -17,12 +17,11 @@ from metriqued.utils import cfind, strip_split
 from metriqued.utils import ensure_index_base, BASE_INDEX
 from metriqued.utils import parse_pql_query
 from metriqued.config import role_is_valid, action_is_valid
-from metriqued.config import mongodb, IMMUTABLE_DOC_ID_PREFIX
+from metriqued.config import IMMUTABLE_DOC_ID_PREFIX
 from metriqued import user_api
 
 from metriqueu.utils import dt2ts, utcnow, set_default
 
-mongodb_config = mongodb()
 DEFAULT_SAMPLE_SIZE = 1
 
 
@@ -330,7 +329,7 @@ def sample_fields(owner, cube, sample_size=None, query=None):
     return cube_fields
 
 
-def list_cubes(startswith=None):
+def list_cubes(collections, startswith=None):
     '''
         Get a list of cubes server exports
     '''
@@ -338,8 +337,7 @@ def list_cubes(startswith=None):
         raise TypeError("startswith must be a string")
     if not startswith:
         startswith = ''
-    names = mongodb_config.db_timeline_data.db.collection_names()
     # filter out system db's...
-    names = [n for n in names if not n.startswith('system')]
+    names = [n for n in collections if not n.startswith('system')]
     # filter out by startswith prefix string
     return [n for n in names if n.startswith(startswith)]

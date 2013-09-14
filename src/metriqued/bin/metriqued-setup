@@ -8,11 +8,11 @@ from subprocess import call
 
 pp = PrettyPrinter(indent=2)
 
-from metriqued.tornadod.http import HTTPServer
+from metriqued.tornadohttp import TornadoHTTPServer
 
 prompter = lambda x: raw_input(x)
 
-s = HTTPServer()
+s = TornadoHTTPServer()
 
 s.metrique_config._autosave = False
 
@@ -52,13 +52,14 @@ else:
             ssl_created = True
 
     if not ssl_created:
-        print 'NOTE: SSL Cert found: %s' % s.metrique_config.ssl_certificate
-        print 'NOTE: SSL Cert Key found: %s' % s.metrique_config.ssl_certificate_key
+        print 'SSL Cert found: %s' % s.metrique_config.ssl_certificate
+        print 'SSL Cert Key found: %s' % s.metrique_config.ssl_certificate_key
         _p = "Path to Metrique SSL Certificate: "
         s.metrique_config.setup_basic('ssl_certificate', partial(prompter, _p))
 
         _p = "Path to Metrique SSL Certificate Key: "
-        s.metrique_config.setup_basic('ssl_certificate_key', partial(prompter, _p))
+        s.metrique_config.setup_basic('ssl_certificate_key',
+                                      partial(prompter, _p))
 
 print '\n\nMongoDB Config: '
 _p = "MongoDB Host: "

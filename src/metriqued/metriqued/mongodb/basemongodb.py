@@ -5,45 +5,71 @@
 import logging
 logger = logging.getLogger(__name__)
 
-from pymongo import Connection, errors
-
-DEFAULT_HOST = '127.0.0.1'
-DEFAULT_PORT = 27017
-DEFAULT_SSL = False
-DEFAULT_TIMEOUT = None
-DEFAULT_WRITE_CONCERN = 1
+try:
+    from pymongo import MongoClient
+    mongo_client_support = True
+except ImportError:
+    from pymongo import Connection
+    mongo_client_support = False
+from pymongo.errors import ConnectionFailure
 
 
 class BaseMongoDB(object):
-    def __init__(self, db, host=DEFAULT_HOST, user=None, password=None,
-                 admin_db=None, ssl=DEFAULT_SSL, port=DEFAULT_PORT,
-                 timeout=DEFAULT_TIMEOUT,
-                 write_concern=DEFAULT_WRITE_CONCERN):
-        self._host = host
-        self._password = password
-        self._user = user
-        self._db = db
-        self._admin_db = admin_db
+    def __init__(self, db, host, user, password, admin=False, port=None,
+                 ssl=None, ssl_keyfile=None, ssl_certfile=None,
+                 write_concern=0):
 
-        self._ssl = ssl
-        self._port = port
-        self._timeout = timeout
-        self._write_concern = write_concern
+        self.host = host
+        self.user = user
+        self.password = password
+        self._db = db
+        self.admin = admin
+
+        self.ssl = ssl
+        self.ssl_keyfile = ssl_keyfile
+        self.ssl_certfile = ssl_certfile
+        self.port = port
+        self.write_concern = write_concern
+
+    def _load_mongo_client(self, **kwargs):
+        self._proxy = MongoClient(self.host, self.port,
+                                  tz_aware=True,
+                                  w=self.write_concern,
+                                  **kwargs)
+
+    def _load_mongo_connection(self, **kwargs):
+            self._proxy = Connection(self.host, self.port,
+                                     ssl=self.ssl,
+                                     ssl_keyfile=self.ssl_keyfile,
+                                     ssl_certfile=self.ssl_certfile,
+                                     tz_aware=True,
+                                     w=self.write_concern,
+                                     **kwargs)
+
+    def _load_db_proxy(self):
+        if not hasattr(self, '_db_proxy'):
+            kwargs = {}
+            if self.ssl:
+                # include ssl options only if it's enabled
+                kwargs.update(dict(ssl=self.ssl,
+                                   ssl_keyfile=self.ssl_keyfile,
+                                   ssl_certfile=self.ssl_certfile))
+            try:
+                if mongo_client_support:
+                    self._load_mongo_client(**kwargs)
+                else:
+                    self._load_mongo_connection(**kwargs)
+            except ConnectionFailure as e:
+                raise ConnectionFailure(
+                    "MongoDB Failed to connect (%s): %s" % (self.host, e))
+            else:
+                self._db_proxy = self._auth_db()
+        return self._db_proxy
 
     @property
     def db(self):
-        if not hasattr(self, '_db_proxy'):
-            try:
-                self._proxy = Connection(self._host, self._port,
-                                         ssl=self._ssl,
-                                         tz_aware=True,
-                                         network_timeout=self._timeout)
-            except errors.ConnectionFailure as e:
-                raise errors.ConnectionFailure(
-                    "MongoDB Failed to connect (%s): %s" % (self._host, e))
-            self._db_proxy = self._auth_db()
         # return the connected, authenticated database object
-        return self._db_proxy
+        return self._load_db_proxy()
 
     def close(self):
         if hasattr(self, '_proxy'):
@@ -53,18 +79,18 @@ class BaseMongoDB(object):
         '''
         by default the default user only has read-only access to db
         '''
-        if not self._password:
+        if not self.password:
             pass
-        elif self._admin_db:
-            admin_db = self._proxy[self._admin_db]
-            if not admin_db.authenticate(self._user, self._password):
+        elif self.admin:
+            admin_db = self._proxy['admin']
+            if not admin_db.authenticate(self.user, self.password):
                 raise RuntimeError(
-                    "MongoDB failed to authenticate user (%s)" % self._user)
+                    "MongoDB failed to authenticate user (%s)" % self.user)
         else:
-            if not self._proxy[self._db].authenticate(self._user,
-                                                      self._password):
+            if not self._proxy[self._db].authenticate(self.user,
+                                                      self.password):
                 raise RuntimeError(
-                    "MongoDB failed to authenticate user (%s)" % self._user)
+                    "MongoDB failed to authenticate user (%s)" % self.user)
         return self._proxy[self._db]
 
     def set_collection(self, collection):

@@ -15,14 +15,19 @@ from metriqueu.defaults import DEFAULT_METRIQUE_HTTP_HOST
 from metriqueu.defaults import DEFAULT_METRIQUE_HTTP_PORT
 from metriqueu.defaults import DEFAULT_METRIQUE_LOGIN_URL
 
-DEFAULT_METRIQUE_CONF = os.path.join(DEFAULT_CONFIG_DIR, 'metrique_config')
+pjoin = os.path.join
+
+DEFAULT_METRIQUE_CONF = pjoin(DEFAULT_CONFIG_DIR, 'metrique_config')
 
 DEFAULT_MONGODB_HOST = DEFAULT_METRIQUE_HTTP_HOST
-DEFAULT_MONGODB_CONF = os.path.join(DEFAULT_CONFIG_DIR, 'mongodb_config')
+DEFAULT_MONGODB_PORT = 27017
+DEFAULT_MONGODB_CONF = pjoin(DEFAULT_CONFIG_DIR, 'mongodb_config')
 
-DEFAULT_PID_FILE = '%s/server.pid' % DEFAULT_CONFIG_DIR
-DEFAULT_SSL_CERT_KEY = '%s/pkey.pem' % DEFAULT_CONFIG_DIR
-DEFAULT_SSL_CERT = '%s/cert.pem' % DEFAULT_CONFIG_DIR
+DEFAULT_PID_FILE = pjoin(DEFAULT_CONFIG_DIR, 'server.pid')
+DEFAULT_SSL = False
+DEFAULT_SSL_CERT_FILE = pjoin(DEFAULT_CONFIG_DIR, 'cert.pem')
+DEFAULT_SSL_KEY_FILE = pjoin(DEFAULT_CONFIG_DIR, 'pkey.pem')
+DEFAULT_WRITE_CONCERN = 1
 
 VALID_ROLES = set(('__read__', '__write__', '__admin__'))
 VALID_GROUPS = set(('admin', ))
@@ -31,7 +36,6 @@ IMMUTABLE_DOC_ID_PREFIX = '__'
 
 METRIQUE_DB = 'metrique'
 TIMELINE_DB = 'timeline'
-ADMIN_DB = 'admin'
 
 ADMIN_USER = 'admin'
 DATA_USER = 'metrique'
@@ -188,13 +192,15 @@ class metrique(JSONConf):
 
     @property
     def pid_file(self):
-        _pf = os.path.expanduser(DEFAULT_PID_FILE)
-        return self._default('pid_file', _pf)
+        pid_file = os.path.expanduser(
+            self._default('pid_file', DEFAULT_PID_FILE))
+        if not pid_file.endswith(".pid"):
+            raise ValueError('pid file must end with .pid')
+        return pid_file
 
     @property
-    def server_thread_count(self):
-        from multiprocessing import cpu_count
-        return self._default('server_thread_count', cpu_count() * 10)
+    def max_processes(self):
+        return self._default('server_thread_count', 0)
 
     @property
     def static_path(self):
@@ -211,22 +217,22 @@ class metrique(JSONConf):
         self.config['ssl'] = value
 
     @property
-    def ssl_certificate_key(self):
-        return self._default(
-            'ssl_certificate_key', os.path.expanduser(DEFAULT_SSL_CERT_KEY))
-
-    @ssl_certificate_key.setter
-    def ssl_certificate_key(self, value):
-        self.config['ssl_certificate_key'] = value
-
-    @property
     def ssl_certificate(self):
-        return self._default(
-            'ssl_certificate', os.path.expanduser(DEFAULT_SSL_CERT))
+        return os.path.expanduser(
+            self._default('ssl_certificate', DEFAULT_SSL_CERT_FILE))
 
     @ssl_certificate.setter
     def ssl_certificate(self, value):
         self.config['ssl_certificate'] = value
+
+    @property
+    def ssl_certificate_key(self):
+        return os.path.expanduser(
+            self._default('ssl_certificate_key', DEFAULT_SSL_KEY_FILE))
+
+    @ssl_certificate_key.setter
+    def ssl_certificate_key(self, value):
+        self.config['ssl_certificate_key'] = value
 
     @property
     def xsrf_cookies(self):
@@ -245,28 +251,16 @@ class mongodb(JSONConf):
                                       *args, **kwargs)
 
     @property
-    def host(self):
-        return self._default('host', DEFAULT_MONGODB_HOST)
-
-    @host.setter
-    def host(self, value):
-        self.config['host'] = value
-
-    @property
-    def ssl(self):
-        return self._default('ssl', False)
-
-    @host.setter
-    def host(self, value):
-        self.config['host'] = value
-
-    @property
     def admin_password(self):
         return self._default('admin_password', None)
 
     @admin_password.setter
     def admin_password(self, value):
         self.config['admin_password'] = value
+
+    @property
+    def admin_user(self):
+        return self._default('admin_user', ADMIN_USER)
 
     @property
     def data_password(self):
@@ -281,36 +275,34 @@ class mongodb(JSONConf):
         return self._default('data_user', DATA_USER)
 
     @property
-    def admin_user(self):
-        return self._default('admin_user', ADMIN_USER)
-
-    @property
-    def db_admin(self):
-        return self._default('db_admin', ADMIN_DB)
-
-    @property
     def db_metrique(self):
         return self._default('db_metrique', METRIQUE_DB)
-
-    @property
-    def db_timeline(self):
-        return self._default('db_timeline', TIMELINE_DB)
 
     @property
     def db_metrique_admin(self):
         return BaseMongoDB(host=self.host, db=self.db_metrique,
                            user=self.admin_user,
                            password=self.admin_password,
-                           admin_db=self.db_admin,
-                           ssl=self.ssl)
+                           admin=True,
+                           ssl=self.ssl,
+                           ssl_certfile=self.ssl_certificate,
+                           ssl_keyfile=self.ssl_certificate_key,
+                           write_concern=self.write_concern)
+
+    @property
+    def db_timeline(self):
+        return self._default('db_timeline', TIMELINE_DB)
 
     @property
     def db_timeline_admin(self):
         return BaseMongoDB(host=self.host, db=self.db_timeline,
                            user=self.admin_user,
                            password=self.admin_password,
-                           admin_db=self.db_admin,
-                           ssl=self.ssl)
+                           admin=True,
+                           ssl=self.ssl,
+                           ssl_certfile=self.ssl_certificate,
+                           ssl_keyfile=self.ssl_certificate_key,
+                           write_concern=self.write_concern)
 
     @property
     def db_timeline_data(self):
@@ -320,9 +312,59 @@ class mongodb(JSONConf):
                            ssl=self.ssl)
 
     @property
+    def c_auth_keys(self):
+        return self.db_metrique_admin[self.collection_auth_keys]
+
+    @property
     def collection_auth_keys(self):
         return self._default('collection_auth_keys', AUTH_KEYS_COLLECTION)
 
     @property
-    def c_auth_keys(self):
-        return self.db_metrique_admin[self.collection_auth_keys]
+    def host(self):
+        return self._default('host', DEFAULT_MONGODB_HOST)
+
+    @host.setter
+    def host(self, value):
+        self.config['host'] = value
+
+    @property
+    def port(self):
+        return self._default('port', DEFAULT_MONGODB_PORT)
+
+    @port.setter
+    def port(self, value):
+        self.config['port'] = value
+
+    @property
+    def ssl(self):
+        return self._default('ssl', DEFAULT_SSL)
+
+    @ssl.setter
+    def ssl(self, value):
+        self.config['ssl'] = value
+
+    @property
+    def ssl_certificate(self):
+        return os.path.expanduser(
+            self._default('ssl_certificate', DEFAULT_SSL_CERT_FILE))
+
+    @ssl_certificate.setter
+    def ssl_certificate(self, value):
+        self.config['ssl_certificate'] = value
+
+    @property
+    def ssl_certificate_key(self):
+        return os.path.expanduser(
+            self._default('ssl_certificate_key', DEFAULT_SSL_KEY_FILE))
+
+    @ssl_certificate_key.setter
+    def ssl_certificate_key(self, value):
+        self.config['ssl_certificate_key'] = value
+
+    @property
+    def write_concern(self):
+        return self._default('write_concern', DEFAULT_WRITE_CONCERN)
+
+    @write_concern.setter
+    def write_concern(self, value):
+        self.config['write_concern'] = value

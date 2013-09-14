@@ -5,6 +5,7 @@
 from bson import SON
 import logging
 logger = logging.getLogger(__name__)
+import os
 import pickle
 import pql
 from tornado.web import HTTPError
@@ -263,3 +264,22 @@ def parse_pql_query(query):
     logger.debug("PQL Query: %s" % query)
     logger.debug('Query: %s' % spec)
     return spec
+
+
+def get_pid_from_file(pid_file):
+    pid_file = os.path.expanduser(pid_file)
+    if os.path.exists(pid_file):
+        pid = int(open(pid_file).readlines()[0])
+    else:
+        pid = 0
+    return pid
+
+
+def remove_pid_file(pid_file, quiet=True):
+    try:
+        os.remove(pid_file)
+    except OSError:
+        if quiet:
+            pass
+        else:
+            raise

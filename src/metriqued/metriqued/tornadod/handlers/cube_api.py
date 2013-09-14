@@ -136,11 +136,12 @@ class ListHdlr(MetriqueHdlr):
         self._requires_owner_read(owner, cube)
         sample_size = self.get_argument('sample_size')
         query = self.get_argument('query')
+        collections = self.mongodb_config.timeline_data.collection_names()
         if not owner:
-            result = cube_api.list_cubes()
+            result = cube_api.list_cubes(collections=collections)
         elif cube is None:
             # return a list of cubes
-            result = cube_api.list_cubes(owner=owner)
+            result = cube_api.list_cubes(collections=collections, owner=owner)
         else:
             # return a 'best effort' of fields
             # in the case that there are homogenous docs,

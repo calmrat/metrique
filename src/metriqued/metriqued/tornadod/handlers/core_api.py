@@ -70,14 +70,15 @@ class MetriqueHdlr(RequestHandler):
     def get_current_user(self):
         current_user = self.get_secure_cookie("user")
         if current_user:
-            logger.debug('CURRENT USER: %s' % current_user)
             return current_user
         else:
             ok, current_user = self._parse_auth_headers()
             if ok:
                 self.set_secure_cookie("user", current_user)
-            logger.debug('CURRENT USER: %s' % current_user)
-            return current_user
+                logger.debug('NEW AUTH OK: %s' % current_user)
+                return current_user
+            else:
+                return ok
 
     @gen.coroutine
     def _prepare_async(self):
@@ -142,6 +143,7 @@ class MetriqueHdlr(RequestHandler):
         assert role_func in (self._is_read, self._is_write, self._is_admin)
         current_user = self.get_current_user()
         _exists = self._cube_exists(owner, cube)
+        print current_user, _exists, "8"*100
         if cube and _exists:
             _is_owner = self._is_owner(current_user, owner, cube)
             _is_role = role_func(current_user, owner, cube)
