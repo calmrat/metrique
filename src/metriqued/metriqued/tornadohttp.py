@@ -254,7 +254,7 @@ class TornadoHTTPServer(object):
 
     def _inst_delayed_stop(self, delay=None):
         if delay is None:
-            if self.debug:
+            if self.metrique_config.debug:
                 delay = 0
             else:
                 delay = 5
