@@ -8,8 +8,8 @@ logger = logging.getLogger(__name__)
 from setuptools import setup
 
 __pkg__ = 'metriqued'
-__version__ = '0.1.5'
-__release__ = 15
+__version__ = '0.2.0'
+__release__ = "1a"
 __nvr__ = '%s-%s' % (__version__, __release__)
 __pkgs__ = ['metriqued', 'metriqued.mongodb', 'metriqued.tornadod']
 __provides__ = ['metriqued']

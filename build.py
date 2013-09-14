@@ -29,8 +29,11 @@ logger = logging.getLogger(__name__)
 __pkgs__ = ['metrique', 'metriqued', 'metriquec', 'metriqueu']
 __src__ = 'src/'
 __actions__ = ['build', 'sdist', 'install']
-__bumps__ = ['release', 'version']
-RE_VERSION = re.compile(r"__version__\s+=\s+'(\d+.\d+(.\d+)?)'")
+__bumps__ = ['x', 'y', 'z', 'r']
+#RE_RELEASE = re.compile(r"__release__ = [\"']?((\d+)a?)[\"']?")
+RE_VERSION_X = re.compile(r"__version__\s+=\s+[\"']((\d+).\d+.\d+)[\"']")
+RE_VERSION_Y = re.compile(r"__version__\s+=\s+[\"'](\d+.(\d+).\d+)[\"']")
+RE_VERSION_Z = re.compile(r"__version__\s+=\s+[\"'](\d+.\d+.(\d+))[\"']")
 RE_RELEASE = re.compile(r"__release__ = [\"']?((\d+)a?)[\"']?")
 
 '''
@@ -69,7 +72,7 @@ cli.add_argument('-b', '--nobump',
                  default=False)
 cli.add_argument('-bk', '--bump-kind',
                  choices=__bumps__,
-                 default='release')
+                 default='z')
 cli.add_argument('-bo', '--bump-only',
                  action='store_true',
                  default=False)
@@ -96,6 +99,35 @@ else:
 setup_paths = ['%s/setup.py' % path for path in pkg_paths]
 
 
+def bump_version(regex, line, i, reset, **kwargs):
+    # if we're bumping version, reset release to 1
+    m = regex.match(line)
+    if not m:
+        raise ValueError(
+            'Expected line matching __version__, got: %s' % line)
+    current = m.groups()[0]
+    current_parts = map(int, current.split('.'))
+    if reset:
+        current_parts[i] = 0
+    else:
+        current_parts[i] += 1
+    bumped = '.'.join(map(str, current_parts))
+    logger.debug('BUMP (VERSION) - %s->%s' % (current, bumped))
+    return "__version__ = '%s'\n" % bumped
+
+
+def bump_version_x(line, reset=False, **kwargs):
+    return bump_version(RE_VERSION_X, line, 0, reset, **kwargs)
+
+
+def bump_version_y(line, reset=False, **kwargs):
+    return bump_version(RE_VERSION_Y, line, 1, reset, **kwargs)
+
+
+def bump_version_z(line, reset=False, **kwargs):
+    return bump_version(RE_VERSION_Z, line, 2, reset, **kwargs)
+
+
 def bump_release(line, reset=False, ga=False):
     m = RE_RELEASE.match(line)
     if not m:
@@ -114,20 +146,6 @@ def bump_release(line, reset=False, ga=False):
     return '__release__ = %s\n' % bumped
 
 
-def bump_version(line, *args, **kwargs):
-    # if we're bumping version, reset release to 1
-    m = RE_VERSION.match(line)
-    if not m:
-        raise ValueError(
-            'Expected line matching __version__, got: %s' % line)
-    current = m.groups()[0]
-    current_parts = map(int, current.split('.'))
-    current_parts[-1] += 1
-    bumped = '.'.join(map(str, current_parts))
-    logger.debug('BUMP (VERSION) - %s->%s' % (current, bumped))
-    return "__version__ = '%s'\n" % bumped
-
-
 def update_line(path, regex, bump_func):
     with open(path) as setup:
         content = setup.readlines()
@@ -137,22 +155,39 @@ def update_line(path, regex, bump_func):
             else:
                 continue
             break  # stop after the first replace...
+    if not content:
+        raise ValueError("content was empty; didn't want to overwrite...")
+    elif None in content:
+        raise RuntimeError(
+            "check your nrv strings; "
+            " they're missing our regex: \n%s" % regex.pattern)
+    content_str = ''.join(content)
     # write out the new setup file with bumped
     with open(path, 'w') as setup:
-        setup.write(''.join(content))
+        setup.write(content_str)
 
 
-def bump(path, kind='release', reset=False, ga=False):
+def bump(path, kind='r', reset=False, ga=False):
     assert kind in __bumps__
     # pull current
-    if kind == 'release':
+    if kind == 'x':
+        regex = RE_VERSION_X
+        bump(path=path, kind='y', reset=True, ga=ga)
+        bump_func = partial(bump_version_x, reset=reset,
+                            ga=ga)
+    elif kind == 'y':
+        regex = RE_VERSION_Y
+        bump(path=path, kind='z', reset=True, ga=ga)
+        bump_func = partial(bump_version_y, reset=reset,
+                            ga=ga)
+    elif kind == 'z':
+        regex = RE_VERSION_Z
+        bump(path=path, kind='r', reset=True, ga=ga)
+        bump_func = partial(bump_version_z, reset=reset,
+                            ga=ga)
+    elif kind == 'r':
         regex = RE_RELEASE
         bump_func = partial(bump_release, reset=reset,
-                            ga=ga)
-    elif kind == 'version':
-        regex = RE_VERSION
-        bump(path=path, kind='release', reset=True, ga=ga)
-        bump_func = partial(bump_version, reset=reset,
                             ga=ga)
     update_line(path, regex, bump_func)
 
