@@ -3,6 +3,7 @@
 # Author: "Chris Ward <cward@redhat.com>
 
 import logging
+logger = logging.getLogger(__name__)
 import os
 from jsonconf import JSONConf
 from tornado.web import HTTPError
@@ -66,6 +67,14 @@ def action_is_valid(action):
                         "Expected: %s" % (action, VALID_CUBE_ROLE_ACTIONS))
 
 
+def new_cookie_secret():
+    import base64
+    import uuid
+    cs = base64.b64encode(uuid.uuid4().bytes + uuid.uuid4().bytes)
+    logger.warn('new cookie secret: %s' % cs)
+    return cs
+
+
 class metrique(JSONConf):
     def __init__(self, config_file, force=True, *args, **kwargs):
         if not config_file:
@@ -75,14 +84,16 @@ class metrique(JSONConf):
         self._properties = {}
 
     @property
-    def pid_file(self):
-        _pf = os.path.expanduser(DEFAULT_PID_FILE)
-        return self._default('pid_file', _pf)
+    def admin_user(self):
+        return self._default('admin_user', ADMIN_USER)
 
     @property
-    def server_thread_count(self):
-        from multiprocessing import cpu_count
-        return self._default('server_thread_count', cpu_count() * 10)
+    def admin_password(self):
+        return self._default('admin_password', None)
+
+    @admin_password.setter
+    def admin_password(self, value):
+        self.config['admin_password'] = value
 
     @property
     def async(self):
@@ -91,6 +102,18 @@ class metrique(JSONConf):
     @async.setter
     def async(self, bool_):
         self.config['async'] = bool_
+
+    @property
+    def auth(self):
+        return self._default('auth', False)
+
+    @auth.setter
+    def auth(self, value):
+        self.config['auth'] = value
+
+    @property
+    def cookie_secret(self):
+        return self._default('cookie_secret', new_cookie_secret())
 
     @property
     def debug(self):
@@ -113,26 +136,6 @@ class metrique(JSONConf):
             logger.debug("Debug: metrique, tornado")
         logger.setLevel(level)
         self.config['debug'] = n
-
-    @property
-    def admin_user(self):
-        return self._default('admin_user', ADMIN_USER)
-
-    @property
-    def admin_password(self):
-        return self._default('admin_password', None)
-
-    @admin_password.setter
-    def admin_password(self, value):
-        self.config['admin_password'] = value
-
-    @property
-    def auth(self):
-        return self._default('auth', False)
-
-    @auth.setter
-    def auth(self, value):
-        self.config['auth'] = value
 
     @property
     def gzip(self):
@@ -171,8 +174,27 @@ class metrique(JSONConf):
         return self._default('krb_realm', '')
 
     @property
+    def log_formatter(self):
+        return self._property_default('log_formatter', LOG_FORMATTER)
+
+    @property
+    def log_file_path(self):
+        return os.path.expanduser(
+            self._default('log_file_path', LOGDIR_SAVEAS))
+
+    @property
     def login_url(self):
         return self._default('login_url', DEFAULT_METRIQUE_LOGIN_URL)
+
+    @property
+    def pid_file(self):
+        _pf = os.path.expanduser(DEFAULT_PID_FILE)
+        return self._default('pid_file', _pf)
+
+    @property
+    def server_thread_count(self):
+        from multiprocessing import cpu_count
+        return self._default('server_thread_count', cpu_count() * 10)
 
     @property
     def static_path(self):
@@ -207,13 +229,12 @@ class metrique(JSONConf):
         self.config['ssl_certificate'] = value
 
     @property
-    def log_formatter(self):
-        return self._property_default('log_formatter', LOG_FORMATTER)
+    def xsrf_cookies(self):
+        return self._default('xsrf_cookies', False)
 
-    @property
-    def log_file_path(self):
-        return os.path.expanduser(
-            self._default('log_file_path', LOGDIR_SAVEAS))
+    @xsrf_cookies.setter
+    def xsrf_cookies(self, value):
+        self.config['xsrf_cookies'] = value
 
 
 class mongodb(JSONConf):

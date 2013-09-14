@@ -14,13 +14,6 @@ from tornado.web import Application
 from metriqued.metriqueserver import MetriqueServer
 from metriqued.tornadod.handlers import core_api, query_api, user_api, cube_api
 
-# FIXME: add this to config and generate with metriqued-setup
-# DEFAULT should be just a bunch of 0000000's
-# generate a new one with
-# import base64
-# import uuid
-# base64.b64encode(uuid.uuid4().bytes + uuid.uuid4().bytes)
-COOKIE_SECRET = 'kmBe2OApQW+d4hjsUPjWcY5cYQyBh0CLnBo9KyikyRI='
 USER_CUBE = r'(\w+)/(\w+)'
 
 
@@ -108,9 +101,9 @@ class HTTPServer(MetriqueServer):
             debug=debug,
             static_path=static_path,
             handlers=handlers,
-            cookie_secret=COOKIE_SECRET,
+            cookie_secret=self.metrique_config.cookie_secret,
             login_url=login_url,
-            #xsrf_cookies=True,
+            xsrf_cookies=self.metrique_config.xsrf_cookies,
         )
 
         if debug:
