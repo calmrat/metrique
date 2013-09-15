@@ -40,7 +40,7 @@ def sample_fields(self, cube=None, owner=None,
         Include mtime details
     '''
     owner = set_default(owner, self.config.api_username)
-    cube = set_default(cube, self.name)
+    cube = set_default(cube, self.name, err_msg="cube required")
     cmd = os.path.join(owner, cube)
     result = self._get(cmd, sample_size=sample_size,
                        query=query)
@@ -49,7 +49,7 @@ def sample_fields(self, cube=None, owner=None,
 
 def stats(self, cube=None, owner=None):
     owner = set_default(owner, self.config.api_username)
-    cube = set_default(cube, self.name)
+    cube = set_default(cube, self.name, err_msg="cube required")
     cmd = os.path.join(owner, cube, 'stats')
     result = self._get(cmd)
     return result
@@ -57,7 +57,7 @@ def stats(self, cube=None, owner=None):
 
 ### ADMIN ####
 
-def drop(self, cube=None, owner=None, force=False):
+def drop(self, cube=None, owner=None, f=0, force=False):
     '''
     Drops current cube from timeline
 
@@ -65,11 +65,11 @@ def drop(self, cube=None, owner=None, force=False):
     :param string owner: owner of cube
     :param bool force: really, do it!
     '''
-    if not force:
+    if not (force or f):
         raise ValueError(
-            "DANGEROUS: set force=True to drop %s.%s" % (owner, cube))
+            "DANGEROUS: set f=1 (false=True) to drop %s.%s" % (owner, cube))
     owner = set_default(owner, self.config.api_username)
-    cube = set_default(cube, self.name)
+    cube = set_default(cube, self.name, err_msg="cube required")
     cmd = os.path.join(owner, cube, 'drop')
     return self._delete(cmd)
 
@@ -82,13 +82,13 @@ def register(self, cube=None, owner=None):
     :param string cube: cube name to use
     '''
     owner = set_default(owner, self.config.api_username)
-    cube = set_default(cube, self.name)
+    cube = set_default(cube, self.name, err_msg="cube required")
     cmd = os.path.join(owner, cube, 'register')
     return self._post(cmd)
 
 
 def update_role(self, username, cube=None, action='push',
-                role='__read__', owner=None):
+                role='read', owner=None):
     '''
     Add/Remove cube ACLs
 
@@ -96,10 +96,10 @@ def update_role(self, username, cube=None, action='push',
     :param string owner: owner of cube
     :param string action: action to take (push, pull)
     :param string role:
-        Permission: __read__, __write__, __admin__)
+        Permission: read, write, admin)
     '''
     owner = set_default(owner, self.config.api_username)
-    cube = set_default(cube, self.name)
+    cube = set_default(cube, self.name, err_msg="cube required")
     cmd = os.path.join(owner, cube, 'update_role')
     return self._post(cmd,
                       cube=cube, owner=owner,
@@ -117,7 +117,7 @@ def list_index(self, cube=None, owner=None):
     :param string owner: owner of cube
     '''
     owner = set_default(owner, self.config.api_username)
-    cube = set_default(cube, self.name)
+    cube = set_default(cube, self.name, err_msg="cube required")
     cmd = os.path.join(owner, cube, 'index')
     result = self._get(cmd)
     return sorted(result)
@@ -133,7 +133,7 @@ def ensure_index(self, key_or_list, cube=None, owner=None):
     :param string owner: owner of cube
     '''
     owner = set_default(owner, self.config.api_username)
-    cube = set_default(cube, self.name)
+    cube = set_default(cube, self.name, err_msg="cube required")
     cmd = os.path.join(owner, cube, 'index')
     return self._post(cmd, ensure=key_or_list)
 
@@ -148,7 +148,7 @@ def drop_index(self, index_or_name, cube=None, owner=None):
     :param string owner: owner of cube
     '''
     owner = set_default(owner, self.config.api_username)
-    cube = set_default(cube, self.name)
+    cube = set_default(cube, self.name, err_msg="cube required")
     cmd = os.path.join(owner, cube, 'index')
     return self._delete(cmd, drop=index_or_name)
 
@@ -170,7 +170,7 @@ def save_objects(self, objects, batch_size=None, cube=None, owner=None):
     t1 = time()
     batch_size = set_default(batch_size, self.config.batch_size)
     owner = set_default(owner, self.config.api_username)
-    cube = set_default(cube, self.name)
+    cube = set_default(cube, self.name, err_msg="cube required")
 
     olen = len(objects) if objects else None
     if not olen:
@@ -206,10 +206,10 @@ def remove_objects(self, ids, backup=False, cube=None, owner=None):
     :param string cube: cube name to use
     '''
     owner = set_default(owner, self.config.api_username)
-    cube = set_default(cube, self.name)
+    cube = set_default(cube, self.name, err_msg="cube required")
     cmd = os.path.join(owner, cube, 'remove_objects')
     if not ids:
-        result = []
+        raise RuntimeError("empty id list")
     else:
         result = self._delete(cmd, ids=ids, backup=backup)
     return sorted(result)

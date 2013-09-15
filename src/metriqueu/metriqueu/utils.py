@@ -124,7 +124,12 @@ def utcnow():
     return dt2ts(dt.utcnow())
 
 
-def set_default(key, default, null_ok=False):
+def set_default(key, default, null_ok=False, err_msg=None):
+    if not err_msg:
+        err_msg = "non-null value required for %s" % key
     if not (null_ok or key or default):
-        raise RuntimeError("non-null value required for %s" % key)
-    return key or default
+        raise RuntimeError(err_msg)
+    try:
+        return key or default()  # if we get 'type' obj, eg `list`
+    except (TypeError, AttributeError):
+        return key or default

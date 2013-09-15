@@ -17,7 +17,7 @@ from tornado.web import Application
 from metriqued.config import metrique, mongodb
 from metriqued.config import DEFAULT_METRIQUE_CONF
 from metriqued.config import DEFAULT_MONGODB_CONF
-from metriqued.tornadod.handlers import core_api, query_api, user_api, cube_api
+from metriqued import core_api, cube_api, query_api, user_api
 
 from metriqueu.utils import set_default
 
@@ -118,6 +118,7 @@ class TornadoHTTPServer(object):
             (r"/login", user_api.LoginHdlr),
             (r"/logout", user_api.LogoutHdlr),
 
+            (r"/(\w+)/aboutme", user_api.AboutMeHdlr),
             (r"/(\w+)/passwd", user_api.UpdatePasswordHdlr),
             (r"/(\w+)/update_profile", user_api.UpdateProfileHdlr),
             (r"/(\w+)/update_properties", user_api.UpdatePropertiesHdlr),
@@ -140,7 +141,6 @@ class TornadoHTTPServer(object):
             (ucv2(r"index"), cube_api.IndexHdlr),
             (ucv2(r"save_objects"), cube_api.SaveObjectsHdlr),
             (ucv2(r"remove_objects"), cube_api.RemoveObjectsHdlr),
-            (ucv2(r"activity_import"), cube_api.ActivityImportHdlr),
             (ucv2(r"update_role"), cube_api.UpdateRoleHdlr),
             (ucv2(r"drop"), cube_api.DropHdlr),
             (ucv2(r"stats"), cube_api.StatsHdlr),
@@ -270,9 +270,10 @@ class TornadoHTTPServer(object):
 
     def _mongodb_check(self):
         # Fail to start if we can't communicate with mongo
+        logger.warn('testing mongodb connection status...')
         try:
             assert self.mongodb_config.db_metrique_admin.db
         except Exception as e:
             host = self.mongodb_config.host
-            raise SystemExit(
+            raise RuntimeError(
                 '%s\nFailed to communicate with MongoDB (%s)' % (e, host))

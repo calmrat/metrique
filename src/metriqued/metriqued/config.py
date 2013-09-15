@@ -6,7 +6,6 @@ import logging
 logger = logging.getLogger(__name__)
 import os
 from jsonconf import JSONConf
-from tornado.web import HTTPError
 
 from metriqued.mongodb.basemongodb import BaseMongoDB
 
@@ -29,18 +28,14 @@ DEFAULT_SSL_CERT_FILE = pjoin(DEFAULT_CONFIG_DIR, 'cert.pem')
 DEFAULT_SSL_KEY_FILE = pjoin(DEFAULT_CONFIG_DIR, 'pkey.pem')
 DEFAULT_WRITE_CONCERN = 1
 
-VALID_ROLES = set(('__read__', '__write__', '__admin__'))
-VALID_GROUPS = set(('admin', ))
-VALID_CUBE_ROLE_ACTIONS = set(('pull', 'push'))
-IMMUTABLE_DOC_ID_PREFIX = '__'
+ADMIN_USER = 'admin'
+DATA_USER = 'metrique'
 
 METRIQUE_DB = 'metrique'
 TIMELINE_DB = 'timeline'
 
-ADMIN_USER = 'admin'
-DATA_USER = 'metrique'
-
-AUTH_KEYS_COLLECTION = 'auth_keys'
+USER_PROFILE_COLLECTION = 'user_profile'
+CUBE_PROFILE_COLLECTION = 'cube_profile'
 
 DATE_FORMAT = '%Y%m%dT%H:%M:%S'
 LOG_FORMAT = u'%(processName)s:%(message)s'
@@ -49,26 +44,7 @@ LOG_FORMATTER = logging.Formatter(LOG_FORMAT,
 
 LOGDIR_SAVEAS = '%s/metriqued.log' % DEFAULT_CONFIG_DIR
 
-DEFAULT_CUBE_QUOTA = -1
-
-
-def group_is_valid(role):
-    if role not in VALID_GROUPS:
-        raise HTTPError(400, "Invalid user group. "
-                        "Got (%s). Expected: %s" % (role, VALID_GROUPS))
-
-
-def role_is_valid(role):
-    if role not in VALID_ROLES:
-        raise HTTPError(400, "Invalid cube role. "
-                        "Got (%s). Expected: %s" % (role, VALID_ROLES))
-
-
-def action_is_valid(action):
-    if action not in VALID_CUBE_ROLE_ACTIONS:
-        raise HTTPError(400, "Invalid cube role. "
-                        "Got (%s). "
-                        "Expected: %s" % (action, VALID_CUBE_ROLE_ACTIONS))
+DEFAULT_CUBE_QUOTA = 10
 
 
 def new_cookie_secret():
@@ -279,6 +255,17 @@ class mongodb(JSONConf):
         return self._default('db_metrique', METRIQUE_DB)
 
     @property
+    def db_metrique_data(self):
+        return BaseMongoDB(host=self.host, db=self.db_metrique,
+                           user=self.admin_user,
+                           password=self.admin_password,
+                           admin=False,
+                           ssl=self.ssl,
+                           ssl_certfile=self.ssl_certificate,
+                           ssl_keyfile=self.ssl_certificate_key,
+                           write_concern=self.write_concern)
+
+    @property
     def db_metrique_admin(self):
         return BaseMongoDB(host=self.host, db=self.db_metrique,
                            user=self.admin_user,
@@ -312,12 +299,30 @@ class mongodb(JSONConf):
                            ssl=self.ssl)
 
     @property
-    def c_auth_keys(self):
-        return self.db_metrique_admin[self.collection_auth_keys]
+    def c_user_profile_data(self):
+        return self.db_metrique_data[self.collection_user_profile]
 
     @property
-    def collection_auth_keys(self):
-        return self._default('collection_auth_keys', AUTH_KEYS_COLLECTION)
+    def c_user_profile_admin(self):
+        return self.db_metrique_admin[self.collection_user_profile]
+
+    @property
+    def c_cube_profile_data(self):
+        return self.db_metrique_data[self.collection_cube_profile]
+
+    @property
+    def c_cube_profile_admin(self):
+        return self.db_metrique_admin[self.collection_cube_profile]
+
+    @property
+    def collection_cube_profile(self):
+        return self._default('collection_cube_profile',
+                             CUBE_PROFILE_COLLECTION)
+
+    @property
+    def collection_user_profile(self):
+        return self._default('collection_user_profile',
+                             USER_PROFILE_COLLECTION)
 
     @property
     def host(self):

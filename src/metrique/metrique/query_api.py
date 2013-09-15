@@ -26,7 +26,7 @@ def aggregate(self, pipeline, cube=None, owner=None):
     :param string cube: name of cube to work with
     '''
     owner = set_default(owner, self.config.api_username)
-    cube = set_default(cube, self.name)
+    cube = set_default(cube, self.name, err_msg="cube required")
     cmd = os.path.join(owner, cube, 'aggregate')
     result = self._get(cmd, pipeline=pipeline)
     try:
@@ -131,7 +131,7 @@ def fetch(self, fields=None, date=None, sort=None, skip=0, limit=0,
     :param string cube: name of cube to work with
     '''
     owner = set_default(owner, self.config.api_username)
-    cube = set_default(cube, self.name)
+    cube = set_default(cube, self.name, err_msg="cube required")
     cmd = os.path.join(owner, cube, 'fetch')
     result = self._get(cmd, fields=fields,
                        date=date, sort=sort,
@@ -152,7 +152,7 @@ def distinct(self, field, cube=None, owner=None):
     :param string cube: name of cube to work with
     '''
     owner = set_default(owner, self.config.api_username)
-    cube = set_default(cube, self.name)
+    cube = set_default(cube, self.name, err_msg="cube required")
     cmd = os.path.join(owner, cube, 'distinct')
     result = self._get(cmd, field=field)
     return sorted(result)
@@ -174,7 +174,7 @@ def sample(self, sample_size=DEFAULT_SAMPLE_SIZE, fields=None,
           will be queried.
     '''
     owner = set_default(owner, self.config.api_username)
-    cube = set_default(cube, self.name)
+    cube = set_default(cube, self.name, err_msg="cube required")
     cmd = os.path.join(owner, cube, 'sample')
     result = self._get(cmd, sample_size=sample_size, fields=fields,
                        query=query, date=date)

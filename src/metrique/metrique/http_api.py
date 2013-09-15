@@ -29,6 +29,7 @@ class HTTPClient(object):
     '''
     name = None
 
+    user_aboutme = user_api.aboutme
     user_login = user_api.login
     user_logout = user_api.logout
     user_register = user_api.register
@@ -222,6 +223,14 @@ class HTTPClient(object):
 
     def ping(self, auth=False):
         return self._get('ping', auth=auth)
+
+    @property
+    def current_user(self):
+        # alias for whoami(); returns back username in config.api_username
+        return self.whoami()
+
+    def whoami(self):
+        return self.config['api_username']
 
     def parse_fields(self, fields):
         if not fields:

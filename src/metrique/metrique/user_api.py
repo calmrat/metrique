@@ -12,6 +12,42 @@ from metriqueu.utils import set_default
 from metriqueu.defaults import DEFAULT_METRIQUE_LOGIN_URL
 
 
+def aboutme(self, username=None):
+    '''
+    '''
+    username = set_default(username,
+                           self.config.api_username)
+
+    cmd = os.path.join(username, 'aboutme')
+    result = self._get(cmd, api_url=False)
+    return result
+
+
+def register(self, username=None, password=None, logon_as=False):
+    '''
+    Register new user
+
+    :param String user: Name of the user you're managing
+    :param String password:
+        Password (plain text), if any of user
+    '''
+    username = set_default(username,
+                           self.config.api_username)
+    password = set_default(password,
+                           self.config.api_password)
+    result = self._post('register',
+                        username=username, password=password,
+                        api_url=False)
+    if result and logon_as:
+        # start a fresh session (empty cookiesjar), with the
+        # new registered users
+        self.config['api_username'] = username
+        self.config['api_password'] = password
+        return login(self, username, password)
+    else:
+        return result
+
+
 def login(self, username=None, password=None):
     '''
     Login a user
@@ -24,6 +60,9 @@ def login(self, username=None, password=None):
         username = self.config.api_username
     if not password:
         password = self.config.api_password
+    self.config['api_username'] = username
+    self.config['api_password'] = password
+    self._load_session()  # new session
     return self._post('login', username=username,
                       password=password, api_url=False)
 
@@ -34,23 +73,6 @@ def logout(self):
     '''
     self._load_session()  # new session
     return self._post('logout', api_url=False)
-
-
-def register(self, username=None, password=None):
-    '''
-    Register new user
-
-    :param String user: Name of the user you're managing
-    :param String password:
-        Password (plain text), if any of user
-    '''
-    username = set_default(username,
-                           self.config.api_username)
-    password = set_default(password,
-                           self.config.api_password)
-    return self._post('register',
-                      username=username, password=password,
-                      role=None, api_url=False)
 
 
 def update_passwd(self, new_password, old_password=None,
@@ -95,11 +117,11 @@ def update_profile(self, username=None, backup=False, email=None):
     return result
 
 
-def update_properties(self, username=None, backup=False, quota=None):
+def update_properties(self, username=None, backup=True, cube_quota=None):
     username = set_default(username, self.config.api_username)
-    cmd = os.path.join(username, 'update')
+    cmd = os.path.join(username, 'update_properties')
     result = self._post(cmd,
                         backup=backup,
-                        quota=quota,
+                        cube_quota=cube_quota,
                         api_url=False)
     return result

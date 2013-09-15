@@ -299,7 +299,7 @@ class BaseSql(BaseCube):
         if dry_run:
             return objects
         else:
-            return self.save_objects(objects, update=update)
+            return self.cube_save_objects(objects, update=update)
 
     def _build_rows(self, rows):
         _rows = {}

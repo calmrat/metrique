@@ -2,253 +2,307 @@
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 # Author: "Chris Ward <cward@redhat.com>
 
-from bson.son import SON
 import logging
 logger = logging.getLogger(__name__)
 import pql
-import re
 import random
+from tornado.web import authenticated
 
-from metriqued.cube_api import get_fields, get_collection
-from metriqued.utils import cfind, parse_pql_query
+from metriqued.utils import ifind, parse_pql_query, log_head
+from metriqued.core_api import MetriqueHdlr
 
-from metriqueu.utils import dt2ts, set_default
-
-
-def log_head(owner, cube, cmd, *args):
-    logger.debug('%s (%s.%s): %s' % (cmd, owner, cube, args))
+from metriqueu.utils import set_default
 
 
-def aggregate(owner, cube, pipeline):
-    log_head(owner, cube, 'aggregate', pipeline)
-    logger.debug('Pipeline (%s): %s' % (type(pipeline), pipeline))
-    _cube = get_collection(owner, cube)
-    return _cube.aggregate(pipeline)
-
-
-def distinct(owner, cube, field):
-    log_head(owner, cube, 'distinct', field)
-    _cube = get_collection(owner, cube)
-    return _cube.distinct(field)
-
-
-def count(owner, cube, query, date=None):
-    log_head(owner, cube, 'count', query, date)
-    try:
-        spec = pql.find(query + _get_date_pql_string(date))
-    except Exception as e:
-        raise ValueError("Invalid Query (%s)" % str(e))
-
-    _cube = get_collection(owner, cube)
-
-    logger.debug('Mongo Query: %s' % spec)
-
-    docs = _cube.find(spec)
-    result = docs.count() if docs else 0
-    docs.close()
-    return result
-
-
-def _get_date_pql_string(date, prefix=' and '):
-    if date is None:
-        return prefix + '_end == None'
-    if date == '~':
-        return ''
-
-    dt_str = date.replace('T', ' ')
-    dt_str = re.sub('(\+\d\d:\d\d)?$', '', dt_str)
-
-    before = lambda d: '_start <= %f' % dt2ts(d)
-    after = lambda d: '(_end >= %f or _end == None)' % dt2ts(d)
-    split = date.split('~')
-    logger.warn(split)
-    if len(split) == 1:
-        ret = '%s and %s' % (before(dt_str), after(dt_str))
-    elif split[0] == '':
-        ret = '%s' % before(split[1])
-    elif split[1] == '':
-        ret = '%s' % after(split[0])
-    else:
-        ret = '%s and %s' % (before(split[1]), after(split[0]))
-    return prefix + ret
-
-
-def _check_sort(sort, son=False):
+class AggregateHdlr(MetriqueHdlr):
     '''
-    son True is required for pymongo's aggregation $sort operator
+    RequestHandler for running mongodb aggregation
+    framwork pipeines against a given cube
     '''
-    if not sort:
-        sort = [('_oid', 1)]
+    @authenticated
+    def get(self, owner, cube):
+        self._requires_owner_read(owner, cube)
+        pipeline = self.get_argument('pipeline')
+        if not pipeline:
+            # alias for pipeline
+            pipeline = self.get_argument('query', '[]')
+        result = self.aggregate(owner=owner, cube=cube,
+                                pipeline=pipeline)
+        self.write(result)
 
-    try:
-        assert len(sort[0]) == 2
-    except (AssertionError, IndexError, TypeError):
-        raise ValueError("Invalid sort value; try [('_id': -1)]")
-    if son:
-        return SON(sort)
-    else:
-        return sort
-
-
-def find(owner, cube, query, fields=None, date=None, sort=None, one=False,
-         explain=False, merge_versions=True):
-    log_head(owner, cube, 'find', query, date)
-    sort = _check_sort(sort)
-
-    fields = get_fields(owner, cube, fields)
-    if date is None or ('_id' in fields and fields['_id']):
-        merge_versions = False
-
-    query += _get_date_pql_string(date)
-
-    spec = parse_pql_query(query)
-
-    _cube = get_collection(owner, cube, admin=False)
-    if explain:
-        result = _cube.find(spec, fields, sort=sort).explain()
-    elif one:
-        result = _cube.find_one(spec, fields, sort=sort)
-    elif merge_versions:
-        # merge_versions ignores sort (for now)
-        result = _merge_versions(_cube, spec, fields)
-    else:
-        result = _cube.find(spec, fields, sort=sort)
-        result = tuple(result)
-    return result
+    def aggregate(self, owner, cube, pipeline):
+        log_head(owner, cube, 'aggregate', pipeline)
+        return self.timeline(owner, cube).aggregate(pipeline)
 
 
-def _merge_versions(_cube, spec, fields):
+class CountHdlr(MetriqueHdlr):
     '''
-    merge versions with unchanging fields of interest
+    RequestHandler for returning back simple integer
+    counts of objects matching the given query
     '''
-    logger.debug("Merging docs...")
-    # contains a dummy document to avoid some condition checks in merge_doc
-    ret = [{'_oid': None}]
-    no_check = set(['_start', '_end'])
+    @authenticated
+    def get(self, owner, cube):
+        self._requires_owner_read(owner, cube)
+        query = self.get_argument('query')
+        date = self.get_argument('date', None)
+        result = self.count(owner=owner, cube=cube,
+                            query=query, date=date)
+        self.write(result)
 
-    def merge_doc(doc):
+    def count(self, owner, cube, query, date=None):
+        log_head(owner, cube, 'count', query, date)
+        try:
+            spec = pql.find(query + self.get_date_pql_string(date))
+        except Exception as e:
+            raise ValueError("Invalid Query (%s)" % str(e))
+
+        logger.debug('Mongo Query: %s' % spec)
+
+        docs = self.timeline(owner, cube).find(spec)
+        result = docs.count() if docs else 0
+        docs.close()
+        return result
+
+
+class DeptreeHdlr(MetriqueHdlr):
+    '''
+    RequestHandler for returning back the list of
+    oids matching the given tree.
+    '''
+    @authenticated
+    def get(self, owner, cube):
+        self._requires_owner_read(owner, cube)
+        field = self.get_argument('field')
+        oids = self.get_argument('oids')
+        date = self.get_argument('date')
+        level = self.get_argument('level')
+        result = self.deptree(owner=owner, cube=cube,
+                              field=field, oids=oids,
+                              date=date, level=level)
+        self.write(result)
+
+    def deptree(self, owner, cube, field, oids, date, level):
+        log_head(owner, cube, 'deptree', date)
+        oids = self.parse_oids(oids)
+        checked = set(oids)
+        fringe = oids
+        loop_k = 0
+        pql_date = self.get_date_pql_string(date)
+        while len(fringe) > 0:
+            if level and loop_k == abs(level):
+                break
+            spec = pql.find(
+                '_oid in %s and %s != None' % (fringe, field) + pql_date)
+            deps = self.timeline(owner, cube).find(spec, ['_oid', field])
+            fringe = set([oid for doc in deps for oid in doc[field]])
+            fringe = filter(lambda oid: oid not in checked, fringe)
+            checked |= set(fringe)
+            loop_k += 1
+        return sorted(checked)
+
+
+class DistinctHdlr(MetriqueHdlr):
+    '''
+    RequestHandler for fetching distinct token values for a
+    given cube.field
+    '''
+    @authenticated
+    def get(self, owner, cube):
+        self._requires_owner_read(owner, cube)
+        field = self.get_argument('field')
+        result = self.distinct(owner=owner, cube=cube,
+                               field=field)
+        self.write(result)
+
+    def distinct(self, owner, cube, field):
+        log_head(owner, cube, 'distinct', field)
+        return self.timeline(owner, cube).distinct(field)
+
+
+class FetchHdlr(MetriqueHdlr):
+    ''' RequestHandler for fetching lumps of cube data '''
+    @authenticated
+    def get(self, owner, cube):
+        self._requires_owner_read(owner, cube)
+        fields = self.get_argument('fields')
+        date = self.get_argument('date')
+        sort = self.get_argument('sort', None)
+        skip = self.get_argument('skip', 0)
+        limit = self.get_argument('limit', 0)
+        oids = self.get_argument('oids', [])
+        result = self.fetch(owner=owner, cube=cube,
+                            fields=fields, date=date,
+                            sort=sort, skip=skip,
+                            limit=limit, oids=oids)
+        self.write(result)
+
+    def fetch(self, owner, cube, fields=None, date=None,
+              sort=None, skip=0, limit=0, oids=None):
+        log_head(owner, cube, 'fetch', date)
+        if oids is None:
+            oids = []
+        sort = self.check_sort(sort, son=True)
+
+        fields = self.get_fields(owner, cube, fields)
+
+        # b/c there are __special_property__ objects
+        # in every collection, we must filter them out
+        # checking for _oid should suffice
+        base_spec = {'_oid': {'$exists': 1}}
+
+        spec = {'_oid': {'$in': self.parse_oids(oids)}} if oids else {}
+        dt_str = self.get_date_pql_string(date, '')
+        if dt_str:
+            spec.update(pql.find(dt_str))
+
+        pipeline = [
+            {'$match': base_spec},
+            {'$match': spec},
+            {'$skip': skip},
+            {'$project': fields},
+            {'$sort': sort},
+        ]
+        if limit:
+            pipeline.append({'$limit': limit})
+
+        result = self.timeline(owner, cube).aggregate(pipeline)['result']
+        return result
+
+
+class FindHdlr(MetriqueHdlr):
+    '''
+    RequestHandler for returning back object
+    matching the given query
+    '''
+    @authenticated
+    def get(self, owner, cube):
+        self._requires_owner_read(owner, cube)
+        query = self.get_argument('query')
+        fields = self.get_argument('fields', '')
+        date = self.get_argument('date')
+        sort = self.get_argument('sort', None)
+        one = self.get_argument('one', False)
+        explain = self.get_argument('explain', False)
+        merge_versions = self.get_argument('merge_versions', True)
+        result = self.find(owner=owner, cube=cube,
+                           query=query, fields=fields,
+                           date=date, sort=sort,
+                           one=one, explain=explain,
+                           merge_versions=merge_versions)
+        self.write(result)
+
+    def find(self, owner, cube, query, fields=None, date=None,
+             sort=None, one=False, explain=False, merge_versions=True):
+        log_head(owner, cube, 'find', query, date)
+        sort = self.check_sort(sort)
+
+        fields = self.get_fields(owner, cube, fields)
+        if date is None or ('_id' in fields and fields['_id']):
+            merge_versions = False
+
+        query += self.get_date_pql_string(date)
+
+        spec = parse_pql_query(query)
+
+        _cube = self.timeline(owner, cube)
+        if explain:
+            result = _cube.find(spec, fields, sort=sort).explain()
+        elif one:
+            result = _cube.find_one(spec, fields, sort=sort)
+        elif merge_versions:
+            # merge_versions ignores sort (for now)
+            result = self._merge_versions(_cube, spec, fields)
+        else:
+            result = _cube.find(spec, fields, sort=sort)
+            result = tuple(result)
+        return result
+
+    @staticmethod
+    def _merge_versions(self, _cube, spec, fields):
         '''
-        merges doc with the last document in ret if possible
+        merge versions with unchanging fields of interest
         '''
-        last = ret[-1]
-        ret.append(doc)
-        if doc['_oid'] == last['_oid'] and doc['_start'] == last['_end']:
-            last_items = set(last.items())
-            if all(item in last_items or item[0] in no_check
-                   for item in doc.iteritems()):
-                # the fields of interest did not change, merge docs:
-                last['_end'] = doc['_end']
-                ret.pop()
+        logger.debug("Merging docs...")
+        # contains a dummy document to avoid some condition
+        # checks in merge_doc
+        ret = [{'_oid': None}]
+        no_check = set(['_start', '_end'])
 
-    docs = _cube.find(spec, fields, sort=[('_oid', 1), ('_start', 1)])
-    [merge_doc(doc) for doc in docs]
-    return ret[1:]
+        def merge_doc(doc):
+            '''
+            merges doc with the last document in ret if possible
+            '''
+            last = ret[-1]
+            ret.append(doc)
+            if doc['_oid'] == last['_oid'] and doc['_start'] == last['_end']:
+                last_items = set(last.items())
+                if all(item in last_items or item[0] in no_check
+                       for item in doc.iteritems()):
+                        # the fields of interest did not change, merge docs:
+                        last['_end'] = doc['_end']
+                        ret.pop()
 
-
-def _parse_oids(oids, delimeter=','):
-    if isinstance(oids, basestring):
-        oids = [s.strip() for s in oids.split(delimeter)]
-    if type(oids) is not list:
-        raise TypeError("ids expected to be a list")
-    return oids
-
-
-def deptree(owner, cube, field, oids, date, level):
-    log_head(owner, cube, 'deptree', date)
-    oids = _parse_oids(oids)
-    _cube = get_collection(owner, cube)
-    checked = set(oids)
-    fringe = oids
-    loop_k = 0
-
-    while len(fringe) > 0:
-        if level and loop_k == abs(level):
-            break
-        spec = pql.find('_oid in %s and %s != None' % (fringe, field) +
-                        _get_date_pql_string(date))
-        deps = _cube.find(spec, ['_oid', field])
-        fringe = set([oid for doc in deps for oid in doc[field]])
-        fringe = filter(lambda oid: oid not in checked, fringe)
-        checked |= set(fringe)
-        loop_k += 1
-    return sorted(checked)
+        docs = _cube.find(spec, fields, sort=[('_oid', 1), ('_start', 1)])
+        [merge_doc(doc) for doc in docs]
+        return ret[1:]
 
 
-def fetch(owner, cube, fields=None, date=None,
-          sort=None, skip=0, limit=0, oids=None):
-    log_head(owner, cube, 'fetch', date)
-    if oids is None:
-        oids = []
-    sort = _check_sort(sort, son=True)
-    _cube = get_collection(owner, cube)
-    fields = get_fields(owner, cube, fields)
+class SampleHdlr(MetriqueHdlr):
+    '''
+    RequestHandler for fetching distinct token values for a
+    given cube.field
+    '''
+    @authenticated
+    def get(self, owner, cube):
+        self._requires_owner_read(owner, cube)
+        sample_size = self.get_argument('sample_size')
+        fields = self.get_argument('fields')
+        date = self.get_argument('date')
+        query = self.get_argument('date')
+        result = self.sample(owner=owner, cube=cube,
+                             sample_size=sample_size,
+                             fields=fields, date=date,
+                             query=query)
+        self.write(result)
 
-    # b/c there are __special_property__ objects
-    # in every collection, we must filter them out
-    # checking for _oid should suffice
-    base_spec = {'_oid': {'$exists': 1}}
+    def sample(self, owner, cube, sample_size=None, fields=None,
+               date=None, query=None):
+        fields = self.get_fields(owner, cube, fields)
+        dt_str = self.get_date_pql_string(date, '')
+        # for example, 'doc_version == 1.0'
+        query = set_default(query, '', null_ok=True)
+        if query:
+            query = ' and '.join((dt_str, query))
+        spec = parse_pql_query(query)
+        _cube = self.timeline(owner, cube)
+        _docs = ifind(_cube=_cube, spec=spec, fields=fields)
+        n = _docs.count()
+        if n <= sample_size:
+            docs = tuple(_docs)
+        else:
+            # testing multiple approaches, on a collection with 1100001 objs
+            # In [27]: c.cube_stats(cube='test')
+            # {'cube': 'test', 'mtime': 1379078573, 'size': 1100001}
 
-    spec = {'_oid': {'$in': _parse_oids(oids)}} if oids else {}
-    dt_str = _get_date_pql_string(date, '')
-    if dt_str:
-        spec.update(pql.find(dt_str))
+            # this approach has results like these:
+            # >>>  %time c.query_sample(cube='test')
+            # CPU times: user 7 ms, sys: 0 ns, total: 7 ms
+            # Wall time: 7.7 s
+            #to_sample = set(random.sample(xrange(n), sample_size))
+            #docs = []
+            #for i in xrange(n):
+            #    docs.append(_docs.next()) if i in to_sample else _docs.next()
 
-    pipeline = [
-        {'$match': base_spec},
-        {'$match': spec},
-        {'$skip': skip},
-        {'$project': fields},
-        {'$sort': sort},
-    ]
-    if limit:
-        pipeline.append({'$limit': limit})
-
-    result = _cube.aggregate(pipeline)['result']
-    return result
-
-
-def sample(owner, cube, sample_size=None, fields=None,
-           date=None, query=None):
-    # FIXME: OT: at some point in the future...
-    # make 'sample' arg, the first arg
-    # log_head(owner, cube, 'sample', date)
-    # is more obvious to read like it's output format... like
-    # log_head('sample', owner, cube, date)
-    _cube = get_collection(owner, cube)
-    fields = get_fields(owner, cube, fields)
-    dt_str = _get_date_pql_string(date, '')
-    # for example, 'doc_version == 1.0'
-    query = set_default(query, '', null_ok=True)
-    if query:
-        query = ' and '.join((dt_str, query))
-    spec = parse_pql_query(query)
-    _docs = cfind(_cube=_cube, spec=spec, fields=fields)
-    n = _docs.count()
-    if n <= sample_size:
-        docs = tuple(_docs)
-    else:
-        # testing multiple approaches, on a collection with 1100001 objs
-        # In [27]: c.cube_stats(cube='test')
-        # {'cube': 'test', 'mtime': 1379078573, 'size': 1100001}
-
-        # this approach has results like these:
-        # >>>  %time c.query_sample(cube='test')
-        # CPU times: user 7 ms, sys: 0 ns, total: 7 ms
-        # Wall time: 7.7 s
-        #to_sample = set(random.sample(xrange(n), sample_size))
-        #docs = []
-        #for i in xrange(n):
-        #    docs.append(_docs.next()) if i in to_sample else _docs.next()
-
-        # this approach has results like these:
-        # >>>  %time c.query_sample(cube='test')
-        # CPU times: user 7 ms, sys: 0 ns, total: 7 ms
-        # Wall time: 1.35 s
-        # Out[20]:
-        #   _end    _oid              _start
-        # 0  NaT  916132 2013-09-13 13:22:53
-        # note: i saw it go up as high as 3.5 seconds
-        # but small sample of tests ;)
-        to_sample = sorted(set(random.sample(xrange(n), sample_size)))
-        docs = [_docs[i] for i in to_sample]
-    return docs
+            # this approach has results like these:
+            # >>>  %time c.query_sample(cube='test')
+            # CPU times: user 7 ms, sys: 0 ns, total: 7 ms
+            # Wall time: 1.35 s
+            # Out[20]:
+            #   _end    _oid              _start
+            # 0  NaT  916132 2013-09-13 13:22:53
+            # note: i saw it go up as high as 3.5 seconds
+            # but ran only a small sample of tests ... ;)
+            # key, perhaps, is that it's sorted
+            to_sample = sorted(set(random.sample(xrange(n), sample_size)))
+            docs = [_docs[i] for i in to_sample]
+        return docs
