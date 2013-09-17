@@ -43,11 +43,12 @@ def set_cube_path(path=None):
     '''
     path = path or DEFAULT_CLIENT_CUBES_PATH
     path = os.path.expanduser(path)
-    sys.path.append(path)
-    # also append system cubes path for easy/consistent importing
-    sys.path.append(DEFAULT_SYSTEM_CUBES_PATH)
-    sys.path = sorted(set(sys.path))  # make sure we don't have dups...
-    return sys.path
+    if path not in sys.path:
+        sys.path.append(path)
+    if DEFAULT_SYSTEM_CUBES_PATH not in sys.path:
+        # also append system cubes path for easy/consistent importing
+        sys.path.append(DEFAULT_SYSTEM_CUBES_PATH)
+    return sorted(sys.path)
 
 
 def get_cube(cube, path=None):

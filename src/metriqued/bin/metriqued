@@ -25,7 +25,6 @@ from metriqued.config import metrique
 from metriqued.tornadohttp import TornadoHTTPServer
 from metriqued.utils import get_pid_from_file, remove_pid_file
 
-from metriqueu.defaults import DEFAULT_CONFIG_DIR
 from metriqueu.defaults import DEFAULT_METRIQUE_HTTP_HOST
 from metriqueu.defaults import DEFAULT_METRIQUE_HTTP_PORT
 
@@ -123,8 +122,6 @@ if __name__ == '__main__':
 
     _args.add_argument('-c', '--server-config-file',
                        type=str, default=DEFAULT_METRIQUE_CONF)
-    _args.add_argument('-cd', '--server-config-dir',
-                       type=str, default=DEFAULT_CONFIG_DIR)
 
     _args.add_argument('-H', '--host',
                        type=str, default=DEFAULT_METRIQUE_HTTP_HOST)
@@ -151,8 +148,7 @@ if __name__ == '__main__':
     pid_file = os.path.expanduser(args.pid_file)
 
     server_config_file = args.server_config_file
-    server_config_dir = args.server_config_dir
-    m_conf = metrique(server_config_file, server_config_dir)
+    m_conf = metrique(config_file=server_config_file)
 
     if not args.host:
         host = m_conf.http_host

@@ -13,8 +13,6 @@ __release__ = "1a"
 __nvr__ = '%s-%s' % (__version__, __release__)
 __pkgs__ = [
     'metriquec',
-    'metriquec.gitrepo',
-    'metriquec.jkns',
     'metriquec.sql',
 ]
 __provides__ = ['metriquec']

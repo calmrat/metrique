@@ -47,7 +47,7 @@ class TornadoHTTPServer(object):
     ''' HTTP (Tornado >=3.0) implemntation of MetriqueServer '''
     def __init__(self, metrique_config_file=None,
                  mongodb_config_file=None, host=None, port=None,
-                 ssl=None, auth=False, async=True, debug=None,
+                 ssl=None, async=True, debug=None,
                  pid_file=None, **kwargs):
         if not metrique_config_file:
             metrique_config_file = DEFAULT_METRIQUE_CONF
@@ -64,8 +64,7 @@ class TornadoHTTPServer(object):
         mconf.async = async = set_default(async, mconf.async)
         mconf.host = host = set_default(host, mconf.http_host)
         mconf.port = port = set_default(port, mconf.http_port)
-        mconf.ssl = ssl = set_default(ssl, mconf.ssl, True)
-        mconf.auth = auth = set_default(auth, mconf.auth, True)
+        mconf.ssl = ssl = set_default(ssl, mconf.ssl)
 
         self._pid_file = pid_file = set_default(pid_file, mconf.pid_file)
 
@@ -80,7 +79,6 @@ class TornadoHTTPServer(object):
         logger.debug('  SSL: %s' % ssl)
         logger.debug(' Port: %s' % port)
         logger.debug('Async: %s' % async)
-        logger.debug(' Auth: %s' % auth)
         logger.debug('======= mongodb ========')
         logger.debug(' Host: %s' % mbconf.host)
         logger.debug(' Port: %s' % mbconf.port)

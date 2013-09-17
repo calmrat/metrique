@@ -56,11 +56,11 @@ def new_cookie_secret():
 
 
 class metrique(JSONConf):
-    def __init__(self, config_file, force=True, *args, **kwargs):
+    def __init__(self, config_file, force=True):
         if not config_file:
             config_file = DEFAULT_METRIQUE_CONF
-        super(metrique, self).__init__(config_file, force=force,
-                                       *args, **kwargs)
+        super(metrique, self).__init__(config_file=config_file,
+                                       force=force)
         self._properties = {}
 
     @property
@@ -82,14 +82,6 @@ class metrique(JSONConf):
     @async.setter
     def async(self, bool_):
         self.config['async'] = bool_
-
-    @property
-    def auth(self):
-        return self._default('auth', False)
-
-    @auth.setter
-    def auth(self, value):
-        self.config['auth'] = value
 
     @property
     def cookie_secret(self):
