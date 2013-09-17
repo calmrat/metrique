@@ -51,13 +51,13 @@ class HTTPClient(object):
     cube_index = cube_api.ensure_index
     cube_index_drop = cube_api.drop_index
 
-    query_find = query_api.find
-    query_deptree = query_api.deptree
-    query_count = query_api.count
-    query_fetch = query_api.fetch
-    query_distinct = query_api.distinct
-    query_sample = query_api.sample
-    query_aggregate = query_api.aggregate
+    query_find = find = query_api.find
+    query_deptree = deptree = query_api.deptree
+    query_count = count = query_api.count
+    query_fetch = fetch = query_api.fetch
+    query_distinct = distinct = query_api.distinct
+    query_sample = sample = query_api.sample
+    query_aggregate = aggregate = query_api.aggregate
 
     def __new__(cls, *args, **kwargs):
         '''
@@ -101,8 +101,7 @@ class HTTPClient(object):
         self._api_auto_login_attempted = False
 
     def load_config(self, config_file, force=False):
-        if not config_file:
-            config_file = DEFAULT_CONFIG_FILE
+        config_file = config_file or DEFAULT_CONFIG_FILE
         self.config = Config(config_file=config_file, force=force)
 
     def set_cube(self, cube):
@@ -156,8 +155,7 @@ class HTTPClient(object):
         return runner
 
     def _build_url(self, cmd, api_url):
-        if not cmd:
-            cmd = ''
+        cmd = cmd or ''
         if api_url:
             _url = os.path.join(self.config.api_url, cmd)
         else:

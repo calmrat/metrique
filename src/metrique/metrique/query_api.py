@@ -84,10 +84,7 @@ def find(self, query, fields=None, date=None, sort=None, one=False,
                        date=date, sort=sort, one=one,
                        explain=explain,
                        merge_versions=merge_versions)
-    if raw or explain:
-        return result
-    else:
-        return _result_convert(self, result, date, **kwargs)
+    return result if raw or explain else Result(result, date)
 
 
 def deptree(self, field, oids, date=None, level=None,
@@ -112,7 +109,7 @@ def deptree(self, field, oids, date=None, level=None,
 
 
 def fetch(self, fields=None, date=None, sort=None, skip=0, limit=0,
-          oids=None, raw=False, cube=None, owner=None, **kwargs):
+          oids=None, raw=False, cube=None, owner=None):
     '''
     Fetch field values for (potentially) all objects
     of a given, with skip, limit, id "filter" arguments
@@ -137,10 +134,7 @@ def fetch(self, fields=None, date=None, sort=None, skip=0, limit=0,
                        date=date, sort=sort,
                        skip=skip, limit=limit,
                        oids=oids)
-    if raw:
-        return result
-    else:
-        return _result_convert(self, result, date, **kwargs)
+    return result if raw else Result(result, date)
 
 
 def distinct(self, field, cube=None, owner=None):
@@ -178,18 +172,4 @@ def sample(self, sample_size=DEFAULT_SAMPLE_SIZE, fields=None,
     cmd = os.path.join(owner, cube, 'sample')
     result = self._get(cmd, sample_size=sample_size, fields=fields,
                        query=query, date=date)
-    if raw:
-        return result
-    else:
-        return _result_convert(self, result, date)
-
-
-def _result_convert(self, result, date, **kwargs):
-    if hasattr(self, '_result_class') and self._result_class is not None:
-        result = self._result_class(result, **kwargs)
-    else:
-        result = Result(result)
-    # this lets the result object know which dates were queried,
-    # so that it can set its bounds.
-    result.set_date_bounds(date)
-    return result
+    return result if raw else Result(result, date)

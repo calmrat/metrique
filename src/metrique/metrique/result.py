@@ -21,8 +21,6 @@ import numpy as np
 
 from metrique.utils import dt2ts
 
-from IPython.display import HTML
-
 NUMPY_NUMERICAL = [np.float16, np.float32, np.float64, np.float128,
                    np.int8, np.int16, np.int32, np.int64]
 
@@ -70,13 +68,14 @@ def filtered(f):
 
 class Result(DataFrame):
     ''' Custom DataFrame implementation for Metrique '''
-    def __init__(self, data=None):
+    def __init__(self, data=None, date=None):
         super(Result, self).__init__(data)
         self._result_data = data
         # The converts are here so that None is converted to NaT
         self.to_datetime('_start')
         self.to_datetime('_end')
         self._lbound = self._rbound = None
+        self.set_date_bounds(date)
 
     def to_datetime(self, column):
         if column in self:
@@ -157,37 +156,24 @@ class Result(DataFrame):
         else:
             return 'yearly'
 
-    def history(self, dates=None, counts=True,
-                predict_since=None, lin_reg_days=20):
+    def history(self, dates=None, linreg_since=None, lin_reg_days=20):
         '''
         Works only on a Result that has _start and _end columns.
-        most_recent=False should be set for this to work
 
         :param list dates: List of dates
-        :param bool counts: return counts (not ids)
-        :param datetime predict_since:
+        :param datetime linreg_since:
             estimate the future values using linear regression.
         :param integer lin_reg_days:
             Set how many past days should we use for prediction calulation
         '''
         dates = dates or self.get_dates_range()
-
-        idx, vals = [], []
-        for dt in dates:
-            idx.append(dt)
-            if counts:
-                vals.append(self.on_date(dt, only_count=True))
-            else:
-                vals.append(list(self.on_date(dt)._oid))
-        ret = Series(vals, index=idx)
-        if predict_since is not None:
-            if not counts:
-                raise ValueError('counts must be True if predict_future_since'
-                                 'is not None.')
-            ret = self.predict_future(ret, predict_since, lin_reg_days)
+        vals = [self.on_date(dt, only_count=True) for dt in dates]
+        ret = Series(vals, index=dates)
+        if linreg_since is not None:
+            ret = self._linreg_future(ret, linreg_since, lin_reg_days)
         return ret.sort_index()
 
-    def predict_future(self, series, since, days=20):
+    def _linreg_future(self, series, since, days=20):
         '''
         Predicts future using linear regression.
 
@@ -236,9 +222,9 @@ class Result(DataFrame):
         if scale not in ['auto', 'daily', 'weekly', 'monthly', 'quarterly',
                          'yearly']:
             raise ValueError('Incorrect scale: %s' % scale)
-        start = self._start.min() if start is None else Timestamp(start)
-        end = max(self._end.dropna().max(),
-                  self._start.max()) if end is None else Timestamp(end)
+        start = Timestamp(start or self._start.min())
+        end = Timestamp(end or max(self._end.dropna().max(),
+                                   self._start.max()))
         start = start if self.check_in_bounds(start) else self._lbound
         end = end if self.check_in_bounds(end) else self._rbound
 
@@ -266,26 +252,19 @@ class Result(DataFrame):
 
     ######################## FILTERS ##########################
 
-    def group_size(self, column, to_dict=False):
+    @filtered
+    def filter_oids(self, oids):
         '''
-        Simply group items by the given column and return
-        dictionary (or Pandas Series) with each bucket size
+        Leaves only objects with specified oids.
         '''
-        gby = self.groupby(column).size()
-        return gby.to_dict() if to_dict else gby
-
-    @mask_filter
-    def oids(self, oids, _filter=True):
-        ''' filter for only objects with matching object oids '''
-        # there *should* be an easier way to do this, without lambda...
-        # .. you could do oids.__contains__
-        return self['_oid'].map(lambda x: x in oids)
+        oids = set(oids)
+        return self[self['_oid'].map(lambda x: x in oids)]
 
     @filtered
-    def unfinished(self):
+    def unfinished_objects(self):
         '''
-        Leaves only those entities that has some version with _end equal None
-        or with _end larger than the right cutoff.
+        Leaves only versions of those objects that has some version with
+        `_end == None` or with `_end > right cutoff`.
         '''
         mask = self._end.isnull()
         if self._rbound is not None:
@@ -380,7 +359,7 @@ class Result(DataFrame):
     @filtered
     def started_after(self, dt):
         '''
-        Leaves only those entities whose first version started after the
+        Leaves only those objects whose first version started after the
         specified date.
         '''
         dt = Timestamp(dt)
@@ -402,12 +381,3 @@ class Result(DataFrame):
             function that takes a DataFrame and returns a DataFrame
         '''
         return pd.concat([function(df) for _, df in self.groupby(self._oid)])
-
-    ######################## Plotting #####################
-
-    def plot_column(self, column, **kwargs):
-        x = self.group_size(column)
-        return x.plot(**kwargs)
-
-    def as_html(self):
-        return HTML(self.to_html())

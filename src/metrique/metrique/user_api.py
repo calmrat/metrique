@@ -56,10 +56,8 @@ def login(self, username=None, password=None):
     :param String password:
         Password (plain text), if any of user
     '''
-    if not username:
-        username = self.config.api_username
-    if not password:
-        password = self.config.api_password
+    username = username or self.config.api_username
+    password = password or self.config.api_password
     self.config['api_username'] = username
     self.config['api_password'] = password
     self._load_session()  # new session

@@ -38,8 +38,7 @@ API_VERSION = 'v2'
 class Config(JSONConf):
     ''' Client config (property) class '''
     def __init__(self, config_file, force=True, *args, **kwargs):
-        if not config_file:
-            config_file = DEFAULT_CONFIG_FILE
+        config_file = config_file or DEFAULT_CONFIG_FILE
         super(Config, self).__init__(config_file=config_file, force=force,
                                      *args, **kwargs)
 
@@ -57,10 +56,7 @@ class Config(JSONConf):
     @property
     def api_ssl(self):
         ''' Determine if ssl schema used in a given host string'''
-        if re.match('https://', self.api_host):
-            return True
-        else:
-            return False
+        return bool(re.match('https://', self.api_host))
 
     @property
     def api_auto_login(self):
@@ -197,8 +193,7 @@ class Config(JSONConf):
         if we get a level of 2, we want to apply the
         debug level to all loggers
         '''
-        if not logger:
-            logger = logging.getLogger()
+        logger = logger or logging.getLogger()
 
         if level in [-1, False]:
             logger.setLevel(logging.WARN)

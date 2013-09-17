@@ -40,11 +40,9 @@ def set_cube_path(path=None):
     If no path provided, default to making *metrique.client.cubes*
     get added to the current namespace.
     '''
-    if not path:
-        path = DEFAULT_CLIENT_CUBES_PATH
-    if path:
-        path = os.path.expanduser(path)
-        sys.path.append(path)
+    path = path or DEFAULT_CLIENT_CUBES_PATH
+    path = os.path.expanduser(path)
+    sys.path.append(path)
     # also append system cubes path for easy/consistent importing
     sys.path.append(DEFAULT_SYSTEM_CUBES_PATH)
     sys.path = sorted(set(sys.path))  # make sure we don't have dups...
@@ -60,8 +58,7 @@ def get_cube(cube, path=None):
     :param string path:
         path to look for cubes (eg '~/.metrique/cubes/')
     '''
-    if not path:
-        path = DEFAULT_CLIENT_CUBES_PATH
+    path = path or DEFAULT_CLIENT_CUBES_PATH
     set_cube_path(path)
     pkg, mod, cls = cube_pkg_mod_cls(cube)
     _pkg = __import__(pkg, fromlist=[mod])
