@@ -403,7 +403,7 @@ class MetriqueHdlr(RequestHandler):
             _exists = self.cube_exists(owner, cube)
 
         if cube and _exists:
-            _is_self = self._is_self(owner, cube)
+            _is_self = self._is_self(owner)
             _is_role = role_func(owner, cube)
             ok = any((_is_self, _is_role))
         elif not cube:

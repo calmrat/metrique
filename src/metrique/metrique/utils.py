@@ -3,6 +3,7 @@
 # Author: "Chris Ward" <cward@redhat.com>
 
 from datetime import datetime as dt
+from decorator import decorator
 import os
 import pytz
 import simplejson as json
@@ -120,3 +121,31 @@ def json_encode(obj):
         return dt2ts(obj)
     else:
         return json_encoder.default(obj)
+
+
+def api_owner_cube(func_or_name):
+    def wrapper(func):
+        docs = [':param string cube: name of cube to work with',
+                '    :param string owner: owner of cube']
+        func.__doc__ = (func.__doc__ or '') + '\n'.join(docs)
+
+        def _api(func, self, *args, **kwargs):
+            owner = kwargs.get('owner') or self.config.api_username
+            if not owner:
+                raise ValueError('owner required!')
+            cube = kwargs.get('cube') or self.name
+            if not cube:
+                raise ValueError('cube required!')
+            if callable(func_or_name):
+                api_name = func.__name__
+            else:
+                api_name = func_or_name
+            if api_name:
+                kwargs['cmd'] = os.path.join(owner, cube, api_name)
+            else:
+                kwargs['cmd'] = os.path.join(owner, cube)
+            return func(self, *args, **kwargs)
+        return decorator(_api, func)
+    if callable(func_or_name):
+        return wrapper(func_or_name)
+    return wrapper
