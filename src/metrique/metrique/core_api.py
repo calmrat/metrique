@@ -3,11 +3,38 @@
 # Author: "Chris Ward" <cward@redhat.com>
 
 '''
+metrique
+~~~~~~~~
+**Python/MongoDB Data Warehouse and Information Platform**
+
+Metrique can be used to bring data into an intuitive,
+indexable data object collection that supports
+transparent historical version snapshotting,
+advanced ad-hoc server-side querying, including (mongodb)
+aggregations and (mongodb) mapreduce, along with python,
+ipython, pandas, numpy, matplotlib, and so on, is well
+integrated with the scientific python computing stack.
+
+    >>> from metrique import pyclient
+    >>> g = pyclient(cube="gitrepo_commit"")
+    >>> g.ping()
+    pong
+    >>> ids = g.extract(uri='https://github.com/drpoovilleorg/metrique.git')
+    >>> q = c.query.fetch('git_commit', 'author, committer_ts')
+    >>> q.groupby(['author']).size().plot(kind='barh')
+    >>> <matplotlib.axes.AxesSubplot at 0x6f77ad0>
+
+:copyright: 2013 "Chris Ward" <cward@redhat.com>
+:license: GPLv3, see LICENSE for more details
+:sources: https://github.com/drpoovilleorg/metrique
+
 .. note::
     example date ranges: 'd', '~d', 'd~', 'd~d'
 .. note::
     valid date format: '%Y-%m-%d %H:%M:%S,%f', '%Y-%m-%d %H:%M:%S', '%Y-%m-%d'
+
 '''
+
 
 import logging
 logger = logging.getLogger(__name__)
@@ -19,7 +46,7 @@ import simplejson as json
 from metrique.config import Config
 from metrique.config import DEFAULT_CONFIG_FILE
 from metrique import query_api, user_api, cube_api
-from metrique.utils import csv2list, json_encode, get_cube
+from metrique.utils import json_encode, get_cube
 
 
 class HTTPClient(object):
@@ -45,12 +72,14 @@ class HTTPClient(object):
     cube_update_role = cube_api.update_role
 
     cube_activity_import = cube_api.activity_import
-    cube_save_objects = cube_api.save_objects
-    cube_remove_objects = cube_api.remove_objects
+    cube_save = cube_api.save
+    cube_remove = cube_api.remove
     cube_index_list = cube_api.list_index
     cube_index = cube_api.ensure_index
     cube_index_drop = cube_api.drop_index
 
+    # these are the most frequently 'typed' commands
+    # so we'll provide shorter aliases too
     query_find = find = query_api.find
     query_deptree = deptree = query_api.deptree
     query_count = count = query_api.count
@@ -74,11 +103,11 @@ class HTTPClient(object):
 
     def __init__(self, api_host=None, api_username=None,
                  api_password=None, async=True,
-                 force=True, debug=-1, config_file=None,
-                 config_dir=None, cube=None,
-                 api_auto_login=None,
+                 force=True, debug=0, config_file=None,
+                 cube=None, api_auto_login=None,
                  **kwargs):
-        self.load_config(config_file, force)
+        self._config_file = config_file or DEFAULT_CONFIG_FILE
+        self.load_config(force=force)
         logging.basicConfig()
         self.logger = logging.getLogger('metrique.%s' % self.__module__)
         self.config.debug = self.logger, debug
@@ -86,6 +115,9 @@ class HTTPClient(object):
 
         if cube and isinstance(cube, basestring):
             self.set_cube(cube)
+        else:
+            raise TypeError(
+                "expected cube as a string, got %s" % type(cube))
 
         if api_host:
             self.config.api_host = api_host
@@ -100,30 +132,23 @@ class HTTPClient(object):
             self.config.api_auto_login = api_auto_login
         self._api_auto_login_attempted = False
 
-    def load_config(self, config_file, force=False):
-        config_file = config_file or DEFAULT_CONFIG_FILE
-        self.config = Config(config_file=config_file, force=force)
+    def load_config(self, config_file=None, force=False):
+        config_file = config_file or self._config_file
+        try:
+            self.config = Config(config_file=config_file, force=force)
+        except Exception:
+            logger.error("failed to load config: %s" % config_file)
+            raise
+        else:
+            self._config_file = config_file
 
     def set_cube(self, cube):
-        # FIXME: what about if we want to load an
-        # existing cube module like csvobject?
-        # so we have access to .extract() methods, etc
         self.name = cube
 
     def get_cube(self, cube):
         return get_cube(cube)
 
     def _kwargs_json(self, **kwargs):
-        #return json.dumps(kwargs, default=json_encode,
-        #                  ensure_ascii=False,
-        #                  encoding="ISO-8859-1")
-        try:
-            return dict([(k, json.dumps(v, default=json_encode,
-                                        ensure_ascii=False))
-                        for k, v in kwargs.items()])
-        except UnicodeDecodeError:
-            pass
-
         return dict([(k, json.dumps(v, default=json_encode,
                                     ensure_ascii=False,
                                     encoding="ISO-8859-1"))
@@ -139,7 +164,7 @@ class HTTPClient(object):
             return runner(_url,
                           auth=(api_username, api_password),
                           cookies=self.session.cookies,
-                          verify=False,
+                          verify=self.config.ssl_verify,
                           allow_redirects=allow_redirects)
         except requests.exceptions.ConnectionError:
             raise requests.exceptions.ConnectionError(
@@ -191,8 +216,7 @@ class HTTPClient(object):
             self._api_auto_login_attempted = True
             # try to login and rerun the request
             self.logger.debug('HTTP 40*: going to try to auto re-log-in')
-            self.user_login(api_username,
-                            api_password)
+            self.user_login(api_username, api_password)
             _response = self._get_response(runner, _url,
                                            api_username, api_password,
                                            allow_redirects)
@@ -205,6 +229,8 @@ class HTTPClient(object):
             logger.error(content)
             raise
         else:
+            # reset autologin flag since we've logged in successfully
+            self._api_auto_login_attempted = False
             if full_response:
                 return _response
             else:
@@ -227,21 +253,8 @@ class HTTPClient(object):
         # alias for whoami(); returns back username in config.api_username
         return self.whoami()
 
-    def whoami(self):
-        return self.config['api_username']
-
-    def parse_fields(self, fields):
-        if not fields:
-            return []
-        elif fields == '__all__':
-            return self.fields
+    def whoami(self, auth=False):
+        if auth:
+            self.user_login()
         else:
-            fields = set(csv2list(fields))
-            cube_fields = set(self.fields.keys())
-            err_fields = [f for f in fields if f not in cube_fields]
-            if err_fields:
-                self.logger.warn(
-                    "Skipping invalid fields in set: %s" % (
-                        err_fields))
-                self.logger.warn('%s\n%s' % (cube_fields, fields))
-            return sorted(fields)
+            return self.config['api_username']

@@ -15,12 +15,9 @@ from copy import deepcopy
 from datetime import datetime
 import logging
 logger = logging.getLogger(__name__)
-import os
-import pytz
-from time import time
 
 from metrique.utils import api_owner_cube
-from metriqueu.utils import batch_gen, set_default, ts2dt, dt2ts
+from metriqueu.utils import batch_gen, set_default, ts2dt, dt2ts, utcnow
 
 
 def list_all(self, startswith=None):
@@ -51,15 +48,15 @@ def stats(self, **kwargs):
 ### ADMIN ####
 
 @api_owner_cube
-def drop(self, f=0, force=False, **kwargs):
+def drop(self, force=False, **kwargs):
     '''
     Drops current cube from timeline
 
     :param bool force: really, do it!
     '''
-    if not (force or f):
+    if not force:
         raise ValueError(
-            "DANGEROUS: set f=1 (false=True) to drop %s.%s" % (
+            "DANGEROUS: set false=True to drop %s.%s" % (
                 kwargs.get('owner'), kwargs.get('cube')))
     return self._delete(kwargs.get('cmd'))
 
@@ -83,7 +80,6 @@ def update_role(self, username, action='push', role='read', **kwargs):
         Permission: read, write, admin)
     '''
     return self._post(kwargs.get('cmd'),
-                      cube=kwargs.get('cube'), owner=kwargs.get('owner'),
                       username=username, action=action, role=role)
 
 
@@ -133,7 +129,6 @@ def save_objects(self, objects, batch_size=None, **kwargs):
     :param int batch_size: maximum slice of objects to post at a time
     :rtype: list - list of object ids saved
     '''
-    t1 = time()
     batch_size = set_default(batch_size, self.config.batch_size)
 
     olen = len(objects) if objects else None
@@ -142,7 +137,7 @@ def save_objects(self, objects, batch_size=None, **kwargs):
         return []
 
     # get 'now' utc timezone aware datetime object
-    now = pytz.UTC.localize(datetime.utcnow())
+    now = utcnow(tz_aware=True)
 
     if (batch_size <= 0) or (olen <= batch_size):
         saved = self._post(kwargs.get('cmd'), objects=objects, mtime=now)
@@ -154,8 +149,7 @@ def save_objects(self, objects, batch_size=None, **kwargs):
             saved.extend(_saved)
             k += batch_size
             self.logger.info("... %i of %i" % (k, olen))
-    slen = len(saved)
-    self.logger.info("... Saved %s NEW docs in ~%is" % (slen, time() - t1))
+    self.logger.info("... Saved %s NEW docs" % len(saved))
     return sorted(saved)
 
 
@@ -243,6 +237,7 @@ def _activity_import_doc(cube, time_doc, activities):
     return batch_updates
 
 
+# FIXME: make sure the query being sent (in all cases...) hits BASE_INDEX
 def _get_time_docs_cursor(cube, ids):
     if isinstance(ids, list):
         q = '_oid in %s' % ids

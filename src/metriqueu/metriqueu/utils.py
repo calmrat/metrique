@@ -120,8 +120,14 @@ def jsonhash(obj):
         return repr(obj)
 
 
-def utcnow():
-    return dt2ts(dt.utcnow())
+def utcnow(dt=False, tz_aware=False):
+    now = dt.utcnow()
+    if tz_aware:
+        return pytz.UTC.localize(now)
+    elif dt:
+        return now
+    else:
+        return dt2ts(now)
 
 
 def set_default(key, default, null_ok=False, err_msg=None):

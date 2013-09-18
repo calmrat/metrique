@@ -44,12 +44,14 @@ class CountHdlr(MetriqueHdlr):
     def get(self, owner, cube):
         self._requires_owner_read(owner, cube)
         query = self.get_argument('query')
-        date = self.get_argument('date', None)
+        date = self.get_argument('date')
         result = self.count(owner=owner, cube=cube,
                             query=query, date=date)
         self.write(result)
 
     def count(self, owner, cube, query, date=None):
+        if not query:
+            query = '_oid == exists(True)'
         log_head(owner, cube, 'count', query, date)
         try:
             spec = pql.find(query + self.get_date_pql_string(date))
@@ -193,6 +195,8 @@ class FindHdlr(MetriqueHdlr):
 
     def find(self, owner, cube, query, fields=None, date=None,
              sort=None, one=False, explain=False, merge_versions=True):
+        if not query:
+            query = '_oid == exists(True)'
         log_head(owner, cube, 'find', query, date)
         sort = self.check_sort(sort)
 

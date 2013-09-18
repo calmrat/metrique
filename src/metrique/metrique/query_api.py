@@ -25,10 +25,7 @@ def aggregate(self, pipeline, **kwargs):
     :param list pipeline: The aggregation pipeline. $match, $project, etc.
     '''
     result = self._get(kwargs.get('cmd'), pipeline=pipeline)
-    try:
-        return result['result']
-    except Exception:
-        raise RuntimeError(result)
+    return result['result']
 
 
 @api_owner_cube
@@ -40,8 +37,6 @@ def count(self, query=None, date=None, **kwargs):
     :param string query: The query in pql
     :param string date: Date (date range) that should be queried
     '''
-    if not query:
-        query = '_oid == exists(True)'
     return self._get(kwargs.get('cmd'), query=query, date=date)
 
 
@@ -63,8 +58,7 @@ def find(self, query, fields=None, date=None, sort=None, one=False,
         merge versions with unchanging fields od interest
     '''
     result = self._get(kwargs.get('cmd'), query=query, fields=fields,
-                       date=date, sort=sort, one=one,
-                       explain=explain,
+                       date=date, sort=sort, one=one, explain=explain,
                        merge_versions=merge_versions)
     return result if raw or explain else Result(result, date)
 

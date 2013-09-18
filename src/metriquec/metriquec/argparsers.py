@@ -6,15 +6,12 @@
 argparsers.py contains a CLI for metrique client cubes.
 
 To use the cli, cubes must import the cube_cli function
-and initiatlize it with the cube class. The initiated cube
-(using args parsed) plus argparser Namespace object with
-all available arguments will be returned, as such::
+    and initiatlize it with the cube class::
 
     # ... ^^^ cube class definition above ^^^ ...
     if __name__ == '__main__':
-        from metrique.argparsers import cube_cli
-        obj, args = cube_cli(Bug)
-        obj.extract(force=args.force)
+        from metriquec.argparsers import cube_cli
+        cube_cli(Bug)
 
 '''
 
@@ -60,7 +57,7 @@ class _KwargParser(argparse.Action):
 
 _cube_args = argparse.ArgumentParser(prog='Cube CLI')
 _cube_args.add_argument('-d', '--debug', type=int, default=2)
-_cube_args.add_argument('-a', '--async', action='store_true')
+_cube_args.add_argument('-a', '--no-async', action='store_true')
 _cube_args.add_argument('-H', '--api-host', action='store_true')
 _cube_args.add_argument('-P', '--api-port', action='store_true')
 _cube_args.add_argument('-u', '--api-username', action='store_true')
@@ -84,7 +81,7 @@ def cube_cli(cube_cls=None):
     Available options::
 
         --debug: 0/False (OFF), 1/True (INFO), 2 (DEBUG)
-        --async: Turn on/off async/parallel/threaded processing
+        --no-async: Turn on async/threaded processing
         --force: set to pass this option to extract()
         --cube-config-file: api config file name
         --cube-config-dir: config dir path
@@ -95,7 +92,7 @@ def cube_cli(cube_cls=None):
     args = _cube_args.parse_args()
     kwargs = {}
     kwargs['debug'] = args.debug
-    kwargs['async'] = args.async
+    kwargs['async'] = not args.no_async
     kwargs['config_file'] = args.cube_config_file
     kwargs['api_host'] = args.api_host
     kwargs['api_port'] = args.api_port

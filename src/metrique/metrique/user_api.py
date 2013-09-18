@@ -15,15 +15,14 @@ from metriqueu.defaults import DEFAULT_METRIQUE_LOGIN_URL
 def aboutme(self, username=None):
     '''
     '''
-    username = set_default(username,
-                           self.config.api_username)
+    username = set_default(username, self.config.api_username)
 
     cmd = os.path.join(username, 'aboutme')
     result = self._get(cmd, api_url=False)
     return result
 
 
-def register(self, username=None, password=None, logon_as=False):
+def register(self, username=None, password=None, logon_as=True):
     '''
     Register new user
 
@@ -31,10 +30,8 @@ def register(self, username=None, password=None, logon_as=False):
     :param String password:
         Password (plain text), if any of user
     '''
-    username = set_default(username,
-                           self.config.api_username)
-    password = set_default(password,
-                           self.config.api_password)
+    username = set_default(username, self.config.api_username)
+    password = set_default(password, self.config.api_password)
     result = self._post('register',
                         username=username, password=password,
                         api_url=False)
@@ -56,21 +53,24 @@ def login(self, username=None, password=None):
     :param String password:
         Password (plain text), if any of user
     '''
-    username = username or self.config.api_username
-    password = password or self.config.api_password
-    self.config['api_username'] = username
-    self.config['api_password'] = password
+    username = set_default(username, self.config.api_username)
+    username = set_default(password, self.config.api_password)
     self._load_session()  # new session
-    return self._post('login', username=username,
-                      password=password, api_url=False)
+    result = self._post('login', username=username,
+                        password=password, api_url=False)
+    if result:
+        self.config['api_username'] = username
+        self.config['api_password'] = password
+    return result
 
 
 def logout(self):
     '''
     Log a user out by nulling their secrete cookie key
     '''
+    result = self._post('logout', api_url=False)
     self._load_session()  # new session
-    return self._post('logout', api_url=False)
+    return result
 
 
 def update_passwd(self, new_password, old_password=None,
@@ -83,6 +83,8 @@ def update_passwd(self, new_password, old_password=None,
         Password (plain text), if any of user
     '''
     username = set_default(username, self.config.api_username)
+    if not new_password:
+        raise ValueError("new password required")
     cmd = os.path.join(username, 'passwd')
     response = self._post(cmd,
                           username=username,
@@ -118,8 +120,6 @@ def update_profile(self, username=None, backup=False, email=None):
 def update_properties(self, username=None, backup=True, cube_quota=None):
     username = set_default(username, self.config.api_username)
     cmd = os.path.join(username, 'update_properties')
-    result = self._post(cmd,
-                        backup=backup,
-                        cube_quota=cube_quota,
+    result = self._post(cmd, backup=backup, cube_quota=cube_quota,
                         api_url=False)
     return result
