@@ -2,8 +2,15 @@
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 # Author: "Chris Ward <cward@redhat.com>
 
+'''
+Server package covers server side of metrique,
+including http api (via tornado) server side
+configuration, ETL, warehouse, query,
+usermanagement, logging, etc.
+'''
+
 import base64
-from bson import SON
+from collections import OrderedDict
 from datetime import datetime
 import logging
 logger = logging.getLogger(__name__)
@@ -12,7 +19,7 @@ try:
 except ImportError:
     kerberos = None
 from passlib.hash import sha256_crypt
-import pickle
+import cPickle
 import random
 import re
 import simplejson as json
@@ -23,12 +30,10 @@ from metriqued.utils import parse_pql_query, ifind, strip_split
 
 from metriqueu.utils import set_default, dt2ts
 
-DEFAULT_SAMPLE_SIZE = 1
-VALID_ROLES = set(('admin', 'own', 'read', 'write'))
+SAMPLE_SIZE = 1
+VALID_CUBE_ROLES = set(('admin', 'own', 'read', 'write'))
 VALID_GROUPS = set(('admin', ))
-VALID_CUBE_ROLE_ACTIONS = set(('pull', 'push'))
-
-# FIXME: all 'raise' should raise an HTTPError
+VALID_ACTIONS = set(('pull', 'addToSet', 'set'))
 
 
 class MetriqueHdlr(RequestHandler):
@@ -38,131 +43,34 @@ class MetriqueHdlr(RequestHandler):
     '''
 ##################### mongo db #################################
     @staticmethod
-    def check_sort(sort, son=False):
+    def check_sort(sort):
         '''
-        son True is required for pymongo's aggregation $sort operator
+        ordered dict (or son) is required for pymongo's $sort operators
         '''
         if not sort:
-            sort = [('_oid', 1)]
+            sort = [('_oid', -1)]
         try:
             assert len(sort[0]) == 2
         except (AssertionError, IndexError, TypeError):
-            raise ValueError("Invalid sort value; try [('_id': -1)]")
-        if son:
-            return SON(sort)
-        else:
-            return sort
+            raise ValueError("Invalid sort value; try [('_oid': -1)]")
+        return OrderedDict(sort)
 
     @staticmethod
     def cjoin(owner, cube):
+        ''' shorthand for joining owner and cube together with dunder'''
         return '__'.join((owner, cube))
 
-    def user_exists(self, username, check_only=False):
-        if not username:
-            if check_only:
-                return None
-            else:
-                raise ValueError("username required")
-        spec = {'_id': username}
-        return self.user_profile().find(spec).count()
+    def user_exists(self, username, raise_if_not=False):
+        ''' user exists if there is a valid user profile '''
+        return self.get_user_profile(username=username,
+                                     raise_if_not=raise_if_not,
+                                     exists_only=True)
 
-    def cube_exists(self, owner, cube, raise_on_null=False):
-        if not (owner and cube):
-            raise ValueError("owner and cube required")
-        _cube = self.timeline(owner, cube)
-        _has_docs = _cube.count()  # exists if count >= 1
-        spec = {'_id': self.cjoin(owner, cube)}
-        _meta_ok = self.cube_profile(admin=False).find(spec).count()
-        ok = any((_has_docs, _meta_ok))
-        if not ok and raise_on_null:
-            raise ValueError("%s.%s does not exist" % (owner, cube))
-        else:
-            return ok
-
-    @staticmethod
-    def estimate_obj_size(obj):
-        return len(pickle.dumps(obj))
-
-    def get_fields(self, owner, cube, fields=None):
-        '''
-        Return back a dict of (field, 0/1) pairs, where
-        the matching fields have 1.
-        '''
-        logger.debug('... fields: %s' % fields)
-        _fields = []
-        if fields:
-            cube_fields = self.sample_fields(owner, cube)
-            if fields == '__all__':
-                _fields = cube_fields.keys()
-            else:
-                _fields = [f for f in strip_split(fields) if f in cube_fields]
-        _fields += ['_id', '_start', '_end']
-        _fields = dict([(f, 1) for f in set(_fields)])
-
-        # If `_id` should not be in returned it must have
-        # 0 otherwise mongo will return it.
-        if '_id' not in _fields:
-            _fields['_id'] = 0
-        logger.debug('... matched fields (%s)' % _fields)
-        return _fields
-
-    def get_mtime(self, owner, cube):
-        collection = self.cjoin(owner, cube)
-        mtime = self.get_cube_profile(collection, keys=['mtime'])
-        return mtime
-
-    def get_user_profile(self, username, keys=None, check_only=False,
-                         one=False):
-        result = self.get_profile(self.mongodb_config.c_user_profile_data,
-                                  username, keys, check_only, one)
-        return result
-
-    def get_cube_profile(self, collection, keys=None, check_only=False,
-                         one=False):
-        return self.get_profile(self.mongodb_config.c_cube_profile_data,
-                                collection, keys, check_only, one)
-
-    def get_profile(self, _cube, name, keys=None, check_only=False,
-                    one=False):
-        '''
-        find and return the user's profile data
-        exists will just check if the user exists or not, then return
-        '''
-        keys = set_default(keys, list, null_ok=True,
-                           err_msg="keys must be a list")
-        spec = {'_id': name}
-        cursor = _cube.find(spec).sort([('_id', -1)])
-        if cursor and check_only:
-            # return back only the count
-            return cursor.count()
-        # return back the user's actual profile doc
-        profile = list(cursor)
-        if profile:
-            profile = profile[0]
-        else:
-            profile = {}
-
-        if keys and profile:
-            # extract out the nexted items; we have
-            # lists of singleton lists
-            result = []
-            for k in keys:
-                # we don't want nested lists in lists;
-                # this (and other's like it) where i'm
-                # looking for 'list' type rather that'
-                # 'iterable' type need to be fixed
-                v = profile.get(k)
-                result.append(v)
-        elif keys and not profile:
-            result = [None for k in keys]
-        else:
-            result = [profile]
-
-        if one:
-            assert len(result) == 1
-            return result[0]
-        else:
-            return result
+    def cube_exists(self, owner, cube, raise_if_not=False):
+        ''' cube exists if there is a valid cube profile '''
+        return self.get_cube_profile(owner=owner, cube=cube,
+                                     raise_if_not=raise_if_not,
+                                     exists_only=True)
 
     def cube_profile(self, admin=False):
         ''' return back a mongodb connection to give cube collection '''
@@ -171,16 +79,105 @@ class MetriqueHdlr(RequestHandler):
         else:
             return self.mongodb_config.c_cube_profile_data
 
-    def user_profile(self, admin=False):
-        ''' return back a mongodb connection to give cube collection '''
-        if admin:
-            return self.mongodb_config.c_user_profile_admin
+    @staticmethod
+    def estimate_obj_size(obj):
+        return len(cPickle.dumps(obj))
+
+    def get_fields(self, owner, cube, fields=None):
+        '''
+        Return back a dict of (field, 0/1) pairs, where
+        the matching fields have 1.
+        '''
+        if not (owner and cube):
+            self._raise(400, "owner and cube required")
+        logger.debug('... fields: %s' % fields)
+        if fields == '__all__':
+            # None will make pymongo return back entire objects
+            _fields = None
         else:
-            return self.mongodb_config.c_user_profile_data
+            # to return `_id`, it must be included in fields
+            _fields = {'_id': -1, '_start': 1, '_end': 1}
+            _split_fields = [f for f in strip_split(fields)]
+            _fields.update(dict([(f, 1) for f in set(_split_fields)]))
+        return _fields
+
+    def get_cube_mtime(self, owner, cube):
+        if not (owner and cube):
+            self._raise(400, "owner and cube required")
+        collection = self.cjoin(owner, cube)
+        return self.get_cube_profile(collection, keys=['mtime'])
+
+    def get_user_profile(self, username, keys=None, raise_if_not=False,
+                         exists_only=False, mask=None):
+        if not username:
+            self._raise(400, "username required")
+        return self.get_profile(self.mongodb_config.c_user_profile_data,
+                                _id=username, keys=keys,
+                                raise_if_not=raise_if_not,
+                                exists_only=exists_only,
+                                mask=mask)
+
+    def get_cube_profile(self, owner, cube, keys=None, raise_if_not=False,
+                         exists_only=False, mask=None):
+        if not owner and cube:
+            self._raise(400, "owner and cube required")
+        collection = self.cjoin(owner, cube)
+        return self.get_profile(self.mongodb_config.c_cube_profile_data,
+                                _id=collection, keys=keys,
+                                raise_if_not=raise_if_not,
+                                exists_only=exists_only,
+                                mask=mask)
+
+    def get_profile(self, _cube, _id, keys=None, raise_if_not=False,
+                    exists_only=False, mask=None):
+        '''
+        find and return the user's profile data
+        exists will just check if the user exists or not, then return
+        '''
+        if not _id:
+            self._raise(400, "_id required")
+        keys = set_default(keys, list, null_ok=True,
+                           err_msg="keys must be a list")
+        mask = set_default(mask, list, null_ok=True,
+                           err_msg="keys must be a list")
+        spec = {'_id': _id}
+        cursor = _cube.find(spec)
+        if not cursor:
+            if raise_if_not:
+                self._raise(400, 'profile does not exist: %s' % _id)
+            elif exists_only:
+                return False
+            else:
+                return {}
+        elif exists_only:
+            # return back only the count
+            return True if cursor.count() else False
+        else:
+            # return back the user's actual profile doc
+            # which is the first and only item in the cursor
+            profile = cursor.next()
+
+        if keys:
+            if profile:
+                # extract out the nested items; we have
+                # lists of singleton lists
+                result = [profile.get(k) for k in keys if not k in mask]
+            else:
+                # keep the same list length, for tuple unpacking assignments
+                # like a, b = ...get_profile(..., keys=['a', 'b'])
+                result = [None for k in keys]
+            if len(keys) == 1:
+                # return it un-nested
+                result = result[0]
+        else:
+            result = profile
+        return result
 
     def sample_timeline(self, owner, cube, sample_size=None, query=None):
+        if not (owner and cube):
+            self._raise(400, "owner and cube required")
         if sample_size is None:
-            sample_size = DEFAULT_SAMPLE_SIZE
+            sample_size = SAMPLE_SIZE
         query = set_default(query, '', null_ok=True)
         spec = parse_pql_query(query)
         _cube = self.timeline(owner, cube)
@@ -204,29 +201,63 @@ class MetriqueHdlr(RequestHandler):
     def timeline(self, owner, cube, admin=False):
         ''' return back a mongodb connection to give cube collection '''
         if not (owner and cube):
-            raise ValueError("owner and cube required")
-        collection = '%s__%s' % (owner, cube)
+            self._raise(400, "owner and cube required")
+        collection = self.cjoin(owner, cube)
         if admin:
             return self._timeline_admin[collection]
         else:
             return self._timeline_data[collection]
 
-    def valid_meta(self, x, valid_set):
+    def user_profile(self, admin=False):
+        ''' return back a mongodb connection to give cube collection '''
+        if admin:
+            return self.mongodb_config.c_user_profile_admin
+        else:
+            return self.mongodb_config.c_user_profile_data
+
+    def update_cube_profile(self, owner, cube, action, key, value):
+        self.cube_exists(owner, cube, raise_if_not=True)
+        collection = self.cjoin(owner, cube)
+        _cube = self.cube_profile(admin=True)
+        return self.update_profile(_cube=_cube, _id=collection,
+                                   action=action, key=key, value=value)
+
+    def update_user_profile(self, username, action, key, value):
+        self.user_exists(username, raise_if_not=True)
+        _cube = self.user_profile(admin=True)
+        return self.update_profile(_cube=_cube, _id=username,
+                                   action=action, key=key, value=value)
+
+    def update_profile(self, _cube, _id, action, key, value):
+        # FIXME: add optional type check...
+        self.valid_action(action)
+        spec = {'_id': _id}
+        update = {'$%s' % action: {key: value}}
+        _cube.update(spec, update, safe=True)
+        return True
+
+    def valid_in_set(self, x, valid_set, raise_if_not=True):
         if isinstance(x, basestring):
             x = [x]
-        if not set(x) <= valid_set:
-            raise ValueError("invalid meta; "
-                             "got (%s). expected: %s" % (x, valid_set))
-        return x
+        elif not isinstance(x, (list, tuple, set)):
+            raise TypeError("expected string or iterable; got %s" % type(x))
+        is_subset = set(x) <= valid_set
+        if is_subset:
+            return True
+        elif raise_if_not:
+            self._raise(400, "invalid item in set; "
+                        "got (%s). expected: %s" % (x, valid_set))
+        else:
+            return False
 
-    def valid_role(self, roles):
-        return self.valid_meta(roles, VALID_ROLES)
+    def valid_cube_role(self, roles):
+        return self.valid_in_set(roles, VALID_CUBE_ROLES)
 
     def valid_group(self, groups):
-        return self.valid_meta(groups, VALID_GROUPS)
+        return self.valid_in_set(groups, VALID_GROUPS)
 
     def valid_action(self, actions):
-        return self.valid_meta(actions, VALID_CUBE_ROLE_ACTIONS)
+        return self.valid_in_set(actions, VALID_ACTIONS)
 
 ##################### http request #################################
     def get_argument(self, key, default=None, with_json=True):
@@ -234,6 +265,10 @@ class MetriqueHdlr(RequestHandler):
         Assume incoming arguments are json encoded,
         get_arguments should always deserialize on the way in
         '''
+        # FIXME: it seems this should be unnecessary to do
+        # manually; what if we set content-type to JSON in header?
+        # would json decoding happen automatically?
+
         # arguments are expected to be json encoded!
         _arg = super(MetriqueHdlr, self).get_argument(key, default)
 
@@ -263,12 +298,17 @@ class MetriqueHdlr(RequestHandler):
         return super(MetriqueHdlr, self).prepare()
 
     def prepare(self):
+        # FIXME: check size of request content
+        # if more than 16M... reject
         if self.metrique_config.async:
             return self._prepare_async()
         else:
             return super(MetriqueHdlr, self).prepare()
 
     def write(self, value):
+        # content expected to always be JSON
+        # but isn't this unecessary? can we set content type to
+        # JSON in header and this be handled automatically?
         result = json.dumps(value, ensure_ascii=False)
         super(MetriqueHdlr, self).write(result)
 
@@ -276,6 +316,7 @@ class MetriqueHdlr(RequestHandler):
     def get_current_user(self):
         current_user = self.get_secure_cookie("user")
         if current_user:
+            logger.debug('EXISTING AUTH OK: %s' % current_user)
             return current_user
         else:
             ok, current_user = self._parse_auth_headers()
@@ -284,52 +325,42 @@ class MetriqueHdlr(RequestHandler):
                 logger.debug('NEW AUTH OK: %s' % current_user)
                 return current_user
             else:
-                return ok
-
-    def is_admin_user(self, username, password):
-        '''
-        admin pass is stored in metrique server config
-        admin user gets 'rw' to all cubes
-        '''
-        admin_user = self.metrique_config.admin_user
-        admin_password = self.metrique_config.admin_password
-        if username == admin_user and password == admin_password:
-            logger.debug('AUTH ADMIN: True')
-            return True, username
-        else:
-            return False, username
+                logger.debug('NEW AUTH FAILED: %s' % current_user)
+                self.clear_cookie("user")
+                return None
 
     def basic(self, username, password):
         if not (username and password):
             return False, username
         if not isinstance(password, basestring):
-            raise TypeError(
-                "password expected to be a string; got %s" % type(password))
-        passhash = self.get_user_profile(username, keys=['passhash'],
-                                         one=True)
+            self._raise(400, "password expected to be a string; "
+                        "got %s" % type(password))
+        passhash = self.get_user_profile(username, keys=['passhash'])
         if passhash and sha256_crypt.verify(password, passhash):
-            logger.debug('AUTH BASIC: True')
+            logger.error('AUTH BASIC OK [%s]' % username)
             return True, username
         else:
+            logger.error('AUTH BASIC ERROR [%s]' % username)
             return False, username
 
-    @staticmethod
-    def krb_basic(username, password, krb_realm):
-            try:
-                authed = kerberos.checkPassword(username, password,
-                                                '', krb_realm)
-                return authed, username
-            except kerberos.BasicAuthError as e:
-                logger.error('KRB ERROR: %s' % e)
-                return False, username
+    def krb_basic(self, username, password):
+        realm = self.metrique_config.realm
+        try:
+            authed = kerberos.checkPassword(username, password,
+                                            '', realm)
+            logger.error('KRB AUTH [%s]: %s' % (username, authed))
+            return authed, username
+        except kerberos.BasicAuthError as e:
+            logger.error('KRB ERROR [%s]: %s' % (username, e))
+            return False, username
 
     def _scrape_username_password(self):
-        username = ''
-        password = ''
+        username, password = '', ''
         auth_header = self.request.headers.get('Authorization')
         if auth_header and auth_header.startswith('Basic '):
             auth = base64.decodestring(auth_header[6:])
             username, password = auth.split(':', 2)
+        password = None if password == 'None' else password
         return username, password
 
     def _parse_basic_auth(self, username, password):
@@ -337,38 +368,36 @@ class MetriqueHdlr(RequestHandler):
 
     def _parse_krb_basic_auth(self, username, password):
         krb_auth = self.metrique_config.krb_auth
-        krb_realm = self.metrique_config.krb_realm
-        if not all((kerberos, krb_auth, krb_realm, username, password)):
+        if not all((kerberos, krb_auth, username, password)):
             return False, username
         else:
             return self.krb_basic(username, password,
-                                  self.metrique_config.krb_realm)
+                                  self.metrique_config.realm)
 
     def _parse_auth_headers(self):
         username, password = self._scrape_username_password()
-        _admin, username = self.is_admin_user(username, password)
         _basic, username = self._parse_basic_auth(username, password)
         _krb_basic, username = self._parse_krb_basic_auth(username, password)
-
-        if any((_admin, _basic, _krb_basic)):
+        if _basic or _krb_basic:
             return True, username
         else:
             return False, username
 
-    def _has_cube_role(self, owner, role, cube=None):
-        if not cube:
-            return False
-        self.valid_role(role)
+    def _has_cube_role(self, owner, cube, role):
+        ''' valid roles: read, write, admin, own '''
+        if not (owner and cube):
+            self._raise(400, "owner and cube required")
+        self.valid_cube_role(role)
         user_role = self.get_user_profile(self.current_user, keys=['role'])
         if user_role and self.cjoin(owner, cube) in user_role:
             return True
         else:
             return False
 
-    def _is_self(self, user):
+    def is_self(self, user):
         return self.current_user == user
 
-    def _in_group(self, group):
+    def self_in_group(self, group):
         self.valid_group(group)
         user_group = self.get_user_profile(self.current_user, keys=['group'])
         if user_group and group in user_group:
@@ -376,74 +405,53 @@ class MetriqueHdlr(RequestHandler):
         else:
             return False
 
-    def _is_admin(self, owner, cube=None):
-        _is_admin = self._is_self('admin')
-        _is_group_admin = self._in_group('admin')
-        _cube_role = self._has_cube_role(owner,
-                                         'admin', cube)
-        return any((_is_admin, _is_group_admin, _cube_role))
+    def is_admin(self, owner, cube=None):
+        _is_group_admin = lambda: self.self_in_group('admin')
+        _cube_role = lambda: self._has_cube_role(owner, 'admin', cube)
+        return _is_group_admin() or _cube_role()
 
-    def _is_write(self, owner, cube=None):
-        _is_admin = self._is_admin(owner, cube)
-        _cube_role = self._has_cube_role(owner,
-                                         'write', cube)
-        return any((_is_admin, _cube_role))
+    def is_write(self, owner, cube=None):
+        _cube_role = lambda: self._has_cube_role(owner, 'write', cube)
+        _is_admin = lambda: self.is_admin(owner, cube)
+        return _cube_role() or _is_admin()
 
-    def _is_read(self, owner, cube=None):
-        _is_admin = self._is_admin(owner, cube)
-        _cube_role = self._has_cube_role(owner,
-                                         'read', cube)
-        return any((_is_admin, _cube_role))
+    def is_read(self, owner, cube=None):
+        _is_admin = lambda: self.is_admin(owner, cube)
+        _cube_role = lambda: self._has_cube_role(owner, 'read', cube)
+        return _cube_role() or _is_admin()
 
-    def _requires(self, owner, role_func, cube=None, raise_fail=True):
-        assert role_func in (self._is_read, self._is_write,
-                             self._is_admin)
-        _exists = None
-        if owner and cube:
-            _exists = self.cube_exists(owner, cube)
-
-        if cube and _exists:
-            _is_self = self._is_self(owner)
-            _is_role = role_func(owner, cube)
-            ok = any((_is_self, _is_role))
-        elif not cube:
-            # check if they fit the role we're looking for
-            ok = role_func(owner)
+    def _requires(self, admin_func, raise_if_not=True):
+        if admin_func():
+            return True
+        elif raise_if_not:
+            self._raise(400, 'insufficient privileges')
         else:
-            # there's no current owner... cube doesn't exist
-            ok = True
-        if not ok and raise_fail:
-            self._raise(401, "insufficient privleges")
-        else:
-            return ok
+            return False
 
-    def _requires_self_admin(self, owner, raise_fail=True):
-        _is_admin = self._is_admin(owner)
-        _is_self = self._is_self(owner)
-        return any((_is_self, _is_admin))
+    def requires_owner_admin(self, owner, cube=None, raise_if_not=True):
+        _is_self = lambda: self.is_self(owner)
+        _is_admin = lambda: self.is_admin(owner, cube)
+        admin_func = lambda: _is_admin() or _is_self()
+        return self._requires(admin_func, raise_if_not)
 
-    def _requires_self_read(self, owner, raise_fail=True):
-        _is_admin = self._is_admin(owner)
-        _is_self = self._is_self(owner)
-        _is_read = self._is_read(owner)
-        return any((_is_self, _is_read, _is_admin))
+    def requires_owner_read(self, owner, cube=None, raise_if_not=True):
+        _is_self = lambda: self.is_self(owner)
+        _is_read = self.is_read(owner, cube=cube)
+        admin_func = lambda: _is_read() or _is_self()
+        return self._requires(admin_func, raise_if_not)
 
-    def _requires_owner_admin(self, owner, cube=None, raise_fail=True):
-        self._requires(owner=owner, cube=cube, role_func=self._is_admin,
-                       raise_fail=raise_fail)
-
-    def _requires_owner_write(self, owner, cube=None, raise_fail=True):
-        self._requires(owner=owner, cube=cube, role_func=self._is_write,
-                       raise_fail=raise_fail)
-
-    def _requires_owner_read(self, owner, cube=None, raise_fail=True):
-        self._requires(owner=owner, cube=cube, role_func=self._is_read,
-                       raise_fail=raise_fail)
+    def requires_owner_write(self, owner, cube=None, raise_if_not=True):
+        _is_self = lambda: self.is_self(owner)
+        _is_write = self.is_write(owner, cube=cube)
+        admin_func = lambda: _is_write() or _is_self()
+        return self._requires(admin_func, raise_if_not)
 
 ##################### utils #################################
     def _raise(self, code, msg):
             if code == 401:
-                self.set_header('WWW-Authenticate', 'Basic realm="metrique"')
+                _realm = self.metrique_config.realm
+                basic_realm = 'Basic realm="%s"' % _realm
+                self.set_header('WWW-Authenticate', basic_realm)
             raise HTTPError(code, msg)
 
     @staticmethod
@@ -453,8 +461,13 @@ class MetriqueHdlr(RequestHandler):
         if date == '~':
             return ''
 
+        # replace all occurances of 'T' with ' '
+        # this is used for when datetime is passed in
+        # like YYYY-MM-DDTHH:MM:SS instead of
+        #      YYYY-MM-DD HH:MM:SS as expected
         dt_str = date.replace('T', ' ')
-        dt_str = re.sub('(\+\d\d:\d\d)?$', '', dt_str)
+        # drop all occurances of 'timezone' like substring
+        dt_str = re.sub('\+\d\d:\d\d', '', dt_str)
 
         before = lambda d: '_start <= %f' % dt2ts(d)
         after = lambda d: '(_end >= %f or _end == None)' % dt2ts(d)
@@ -475,25 +488,34 @@ class PingHdlr(MetriqueHdlr):
     ''' RequestHandler for pings '''
     def get(self):
         auth = self.get_argument('auth')
-        if auth and not self.current_user:
-            self._raise(403, "authentication failed")
-        else:
-            pong = self.ping()
-        self.write(pong)
+        result = self.ping(auth)
+        self.write(result)
 
-    def ping(self):
-        logger.debug('got ping @ %s' % datetime.utcnow())
-        response = {
-            'action': 'ping',
-            'response': 'pong',
-            #'from_host': FQDN,  # when network is down getting the
-            # fqdn with socket module causes hangups
-            'current_user': self.current_user,
-        }
-        return response
+    def ping(self, auth=None):
+        user = self.current_user
+        if auth and not user:
+            self._raise(401, "authentication required")
+        else:
+            logger.debug(
+                'got ping from %s @ %s' % (user, datetime.utcnow()))
+            response = {
+                'action': 'ping',
+                'response': 'pong',
+                'current_user': user,
+            }
+            return response
 
 
 class ObsoleteAPIHdlr(MetriqueHdlr):
     ''' RequestHandler for handling obsolete API calls '''
+    def delete(self):
+        self._raise(410, "this API version is no long supported")
+
     def get(self):
-        self._raise(410, "This API version is no long supported")
+        self._raise(410, "this API version is no long supported")
+
+    def post(self):
+        self._raise(410, "this API version is no long supported")
+
+    def update(self):
+        self._raise(410, "this API version is no long supported")

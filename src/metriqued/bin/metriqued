@@ -18,15 +18,15 @@ metrique-server.py contains a CLI for metrique server.
 
 import os
 import time
+import traceback
 import signal
+import sys
 
-from metriqued.config import DEFAULT_METRIQUE_CONF, DEFAULT_PID_FILE
-from metriqued.config import metrique
+from metriqued.config import METRIQUE_CONF, PID_FILE, metrique
 from metriqued.tornadohttp import TornadoHTTPServer
 from metriqued.utils import get_pid_from_file, remove_pid_file
 
-from metriqueu.defaults import DEFAULT_METRIQUE_HTTP_HOST
-from metriqueu.defaults import DEFAULT_METRIQUE_HTTP_PORT
+from metriqueu.defaults import METRIQUE_HTTP_HOST, METRIQUE_HTTP_PORT
 
 
 def stop(pid, pid_file, kill=False):
@@ -46,7 +46,7 @@ def stop(pid, pid_file, kill=False):
                 os.kill(pid, signal.SIGTERM)
             code = 0  # OK!
         except OSError as e:
-            print 'ERROR: %s' % e
+            print 'STOP ERROR: %s' % e
             raise
     print 'Removing stale pid file...'
     remove_pid_file(pid_file)
@@ -59,19 +59,21 @@ def start(**kwargs):
     code = 1
 
     if pid and status(pid):
-        print "WARNING: already running... (%s)" % pid
+        raise SystemExit("process already running... (%s)" % pid)
 
     metriqued = TornadoHTTPServer(**kwargs)
     try:
         metriqued.start()
     except RuntimeError as e:
         # already started...
-        print 'ERROR: metriqued already started; %s' % e
+        print 'START ERROR: metriqued already started; %s' % e
+        print traceback.format_exc(e)
         # a pid file was possibly created; clean up
         stop(pid, pid_file)
     except Exception as e:
         # a pid file was possibly created; clean up
-        print 'ERROR: %s' % e
+        print 'START ERROR: %s' % e
+        print traceback.format_exc(e)
         stop(pid, pid_file)
     else:
         code = 0  # OK
@@ -88,7 +90,8 @@ def restart(pid, pid_file, kill=False, timeout=None):
         time.sleep(1)
         timeout -= 1
         if timeout == 0:
-            print 'ERROR: timed out waiting for running process to stop'
+            print ('RESTART ERROR: timed out waiting for running '
+                   'process to stop')
             break
     else:
         return start(**kwargs)
@@ -121,15 +124,15 @@ if __name__ == '__main__':
                        action='store_true')
 
     _args.add_argument('-c', '--server-config-file',
-                       type=str, default=DEFAULT_METRIQUE_CONF)
+                       type=str, default=METRIQUE_CONF)
 
     _args.add_argument('-H', '--host',
-                       type=str, default=DEFAULT_METRIQUE_HTTP_HOST)
+                       type=str, default=METRIQUE_HTTP_HOST)
     _args.add_argument('-P', '--port',
-                       type=str, default=DEFAULT_METRIQUE_HTTP_PORT)
+                       type=str, default=METRIQUE_HTTP_PORT)
 
     _args.add_argument('-i', '--pid-file',
-                       type=str, default=DEFAULT_PID_FILE)
+                       type=str, default=PID_FILE)
 
     # FIXME: in the near future, we'll be able to start up
     # multiple servers in parallel; instance-id would

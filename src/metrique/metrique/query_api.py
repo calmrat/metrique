@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 from metrique.result import Result
 from metrique.utils import api_owner_cube
 
-DEFAULT_SAMPLE_SIZE = 1
+SAMPLE_SIZE = 1
 
 
 @api_owner_cube
@@ -122,7 +122,7 @@ def distinct(self, field, cube=None, owner=None, **kwargs):
 
 
 @api_owner_cube
-def sample(self, sample_size=DEFAULT_SAMPLE_SIZE, fields=None,
+def sample(self, sample_size=SAMPLE_SIZE, fields=None,
            date=None, raw=False, query=None, **kwargs):
     '''
     Draws a sample of objects at random.

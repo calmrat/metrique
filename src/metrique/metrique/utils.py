@@ -9,8 +9,7 @@ import pytz
 import simplejson as json
 import sys
 
-from metriqueu.defaults import DEFAULT_SYSTEM_CUBES_PATH
-from metriqueu.defaults import DEFAULT_CLIENT_CUBES_PATH
+from metriqueu.defaults import SYSTEM_CUBES_PATH, CLIENT_CUBES_PATH
 from metriqueu.utils import dt2ts
 
 json_encoder = json.JSONEncoder()
@@ -41,13 +40,13 @@ def set_cube_path(path=None):
     If no path provided, default to making *metrique.client.cubes*
     get added to the current namespace.
     '''
-    path = path or DEFAULT_CLIENT_CUBES_PATH
+    path = path or CLIENT_CUBES_PATH
     path = os.path.expanduser(path)
     if path not in sys.path:
         sys.path.append(path)
-    if DEFAULT_SYSTEM_CUBES_PATH not in sys.path:
+    if SYSTEM_CUBES_PATH not in sys.path:
         # also append system cubes path for easy/consistent importing
-        sys.path.append(DEFAULT_SYSTEM_CUBES_PATH)
+        sys.path.append(SYSTEM_CUBES_PATH)
     return sorted(sys.path)
 
 
@@ -60,7 +59,7 @@ def get_cube(cube, path=None):
     :param string path:
         path to look for cubes (eg '~/.metrique/cubes/')
     '''
-    path = path or DEFAULT_CLIENT_CUBES_PATH
+    path = path or CLIENT_CUBES_PATH
     set_cube_path(path)
     pkg, mod, cls = cube_pkg_mod_cls(cube)
     _pkg = __import__(pkg, fromlist=[mod])

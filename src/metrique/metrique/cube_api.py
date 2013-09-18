@@ -120,7 +120,7 @@ def drop_index(self, index_or_name, **kwargs):
 ######## SAVE/REMOVE ########
 
 @api_owner_cube
-def save_objects(self, objects, batch_size=None, **kwargs):
+def save(self, objects, batch_size=None, **kwargs):
     '''
     Save a list of objects the given metrique.cube.
     Returns back a list of object ids (_id|_oid) saved.
@@ -154,7 +154,7 @@ def save_objects(self, objects, batch_size=None, **kwargs):
 
 
 @api_owner_cube
-def remove_objects(self, ids, backup=False, **kwargs):
+def remove(self, ids, backup=False, **kwargs):
     '''
     Remove objects from cube timeline
 

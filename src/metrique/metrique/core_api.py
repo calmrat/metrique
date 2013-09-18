@@ -44,7 +44,7 @@ import requests
 import simplejson as json
 
 from metrique.config import Config
-from metrique.config import DEFAULT_CONFIG_FILE
+from metrique.config import CONFIG_FILE
 from metrique import query_api, user_api, cube_api
 from metrique.utils import json_encode, get_cube
 
@@ -106,16 +106,16 @@ class HTTPClient(object):
                  force=True, debug=0, config_file=None,
                  cube=None, api_auto_login=None,
                  **kwargs):
-        self._config_file = config_file or DEFAULT_CONFIG_FILE
+        self._config_file = config_file or CONFIG_FILE
         self.load_config(force=force)
         logging.basicConfig()
         self.logger = logging.getLogger('metrique.%s' % self.__module__)
         self.config.debug = self.logger, debug
         self.config.async = async
 
-        if cube and isinstance(cube, basestring):
+        if isinstance(cube, basestring):
             self.set_cube(cube)
-        else:
+        elif cube:
             raise TypeError(
                 "expected cube as a string, got %s" % type(cube))
 
@@ -164,7 +164,7 @@ class HTTPClient(object):
             return runner(_url,
                           auth=(api_username, api_password),
                           cookies=self.session.cookies,
-                          verify=self.config.ssl_verify,
+                          verify=self.config.api_ssl_verify,
                           allow_redirects=allow_redirects)
         except requests.exceptions.ConnectionError:
             raise requests.exceptions.ConnectionError(

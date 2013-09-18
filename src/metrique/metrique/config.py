@@ -22,14 +22,11 @@ import re
 
 from jsonconf import JSONConf
 
-from metriqueu.defaults import DEFAULT_CONFIG_DIR
-from metriqueu.defaults import DEFAULT_METRIQUE_HTTP_HOST
-from metriqueu.defaults import DEFAULT_METRIQUE_HTTP_PORT
-from metriqueu.defaults import DEFAULT_CLIENT_CUBES_PATH
-from metriqueu.defaults import DEFAULT_API_REL_PATH
+from metriqueu.defaults import CONFIG_DIR, CLIENT_CUBES_PATH, API_REL_PATH
+from metriqueu.defaults import METRIQUE_HTTP_HOST, METRIQUE_HTTP_PORT
 
-DEFAULT_CONFIG_FILE = os.path.join(DEFAULT_CONFIG_DIR, 'http_api')
-DEFAULT_BATCH_SIZE = -1
+CONFIG_FILE = os.path.join(CONFIG_DIR, 'http_api')
+BATCH_SIZE = -1
 
 API_VERSION = 'v2'
 
@@ -37,7 +34,7 @@ API_VERSION = 'v2'
 class Config(JSONConf):
     ''' Client config (property) class '''
     def __init__(self, config_file, force=True, *args, **kwargs):
-        config_file = config_file or DEFAULT_CONFIG_FILE
+        config_file = config_file or CONFIG_FILE
         super(Config, self).__init__(config_file=config_file, force=force,
                                      *args, **kwargs)
 
@@ -54,7 +51,7 @@ class Config(JSONConf):
     @property
     def api_host(self):
         ''' The hostname/url/ip to connect to metrique api '''
-        return self._default('api_host', DEFAULT_METRIQUE_HTTP_HOST)
+        return self._default('api_host', METRIQUE_HTTP_HOST)
 
     @api_host.setter
     def api_host(self, value):
@@ -71,7 +68,7 @@ class Config(JSONConf):
     @property
     def api_port(self):
         ''' Port need to connect to metrique api '''
-        return self._default('api_port', DEFAULT_METRIQUE_HTTP_PORT)
+        return self._default('api_port', METRIQUE_HTTP_PORT)
 
     @api_port.setter
     def api_port(self, value):
@@ -95,7 +92,7 @@ class Config(JSONConf):
         ''' Reletive paths from url.root needed
             to trigger/access the metrique http api
         '''
-        def_rel_path = os.path.join(DEFAULT_API_REL_PATH, self.api_version)
+        def_rel_path = os.path.join(API_REL_PATH, self.api_version)
         return self._default('api_rel_path', def_rel_path)
 
     @property
@@ -150,7 +147,7 @@ class Config(JSONConf):
     @property
     def batch_size(self):
         ''' The number of objs to push save_objects at a time'''
-        return self._default('batch_size', DEFAULT_BATCH_SIZE)
+        return self._default('batch_size', BATCH_SIZE)
 
     @batch_size.setter
     def batch_size(self, value):
@@ -159,7 +156,7 @@ class Config(JSONConf):
     @property
     def cubes_path(self):
         ''' Path to client modules '''
-        return self._default('cubes_path', DEFAULT_CLIENT_CUBES_PATH)
+        return self._default('cubes_path', CLIENT_CUBES_PATH)
 
     @property
     def debug(self):

@@ -2,40 +2,21 @@
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 # Author: "Chris Ward <cward@redhat.com>
 
-from bson import SON
+import base64
+from collections import OrderedDict
 import logging
 logger = logging.getLogger(__name__)
 import os
 import pql
+import uuid
 
 from metriqueu.utils import batch_gen
 
 OBJECTS_MAX_BYTES = 16777216
 EXISTS_SPEC = {'$exists': 1}
-BASE_INDEX = [('_start', -1), ('_end', -1), ('_oid', -1), ('_hash', 1)]
-
-
-def exec_update_role(_cube, username, role, action):
-    spec = {'_id': role}
-    update = {'$%s' % action: {'value': username}}
-    _cube.update(spec, update, safe=True, multi=False)
-    return True
-
-
-def get_cube_quota_count(doc):
-    if doc:
-        cube_quota = doc.get('cube_quota', None)
-        cube_count = doc.get('cube_count', None)
-    else:
-        cube_quota = None
-        cube_count = None
-    if cube_quota is None:
-        cube_quota = 0  # FIXME: SET AS CONFIGURABLE DEFAULT
-    if cube_count is None:
-        cube_count = 0  # FIXME: SET AS CONFIGURABLE DEFAULT
-    cube_quota = int(cube_quota)
-    cube_count = int(cube_count)
-    return cube_quota, cube_count
+BASE_INDEX = OrderedDict(
+    [('_id', 1), ('_start', -1), ('_end', -1), ('_oid', -1), ('_hash', 1)])
+SYSTEM_INDEXES = [BASE_INDEX]
 
 
 def get_pid_from_file(pid_file):
@@ -47,22 +28,29 @@ def get_pid_from_file(pid_file):
     return pid
 
 
-def ifind(_cube, _start=None, _end=None, _oid=None, _hash=None,
-          fields=None, spec=None, sort=None, **kwargs):
+def ifind(_cube, _id=None, _start=None, _end=None, _oid=None, _hash=None,
+          fields=None, spec=None, sort=None, hint=False, one=False,
+          **kwargs):
     # note, to force limit; use __getitem__ like...
     # docs_limited_50 = ifind(...)[50]
     # SEE:
     # http://api.mongodb.org/python/current/api/pymongo/cursor.html
     # section #pymongo.cursor.Cursor.__getitem__
     # trying to use limit=... fails to work given our index
-    index_spec = make_index_spec(_start, _end, _oid, _hash)
+    index_spec = make_index_spec(_id, _start, _end, _oid, _hash)
     # FIXME: index spec is bson... can we .update() bson???
     # like here, below?
     if spec:
         index_spec.update(spec)
-    result = _cube.find(index_spec, fields,
-                        sort=sort, **kwargs).hint(BASE_INDEX)
-    return result
+
+    if one:
+        return _cube.find_one(index_spec, fields, sort=sort, **kwargs)
+    else:
+        cursor = _cube.find(index_spec, fields, sort=sort, **kwargs)
+        if hint:
+            return cursor.hint(BASE_INDEX)
+        else:
+            return cursor
 
 
 def insert_bulk(_cube, docs, size=-1):
@@ -77,24 +65,24 @@ def insert_bulk(_cube, docs, size=-1):
             _cube.insert(batch, manipulate=False)
 
 
-def log_head(owner, cube, cmd, *args):
-    logger.debug('%s (%s.%s): %s' % (cmd, owner, cube, args))
-
-
-def make_update_spec(_start):
-    return {'$set': {'_end': _start}}
-
-
-def make_index_spec(_start=None, _end=None, _oid=None, _hash=None):
-    _start = EXISTS_SPEC if not _start else _start
-    _end = EXISTS_SPEC if not _end else _end
-    _oid = EXISTS_SPEC if not _oid else _oid
-    _hash = EXISTS_SPEC if not _hash else _hash
-    spec = SON([('_start', _start),
-                ('_end', _end),
-                ('_oid', _oid),
-                ('_hash', _hash)])
+def make_index_spec(_id=None, _start=None, _end=None, _oid=None, _hash=None):
+    _id = _id or EXISTS_SPEC
+    _start = _start or EXISTS_SPEC
+    _end = _end or EXISTS_SPEC
+    _oid = _oid or EXISTS_SPEC
+    _hash = _hash or EXISTS_SPEC
+    spec = OrderedDict([('_id', _id),
+                        ('_start', _start),
+                        ('_end', _end),
+                        ('_oid', _oid),
+                        ('_hash', _hash)])
     return spec
+
+
+def new_cookie_secret():
+    cs = base64.b64encode(uuid.uuid4().bytes + uuid.uuid4().bytes)
+    logger.warn('new cookie secret: %s' % cs)
+    return cs
 
 
 def parse_pql_query(query):
@@ -122,7 +110,7 @@ def parse_oids(oids, delimeter=','):
 
 def remove_pid_file(pid_file, quiet=True):
     if not pid_file:
-        logger.warn('no pid_file arg provided...')
+        logger.info('no pid_file arg provided...')
         return
     try:
         os.remove(pid_file)

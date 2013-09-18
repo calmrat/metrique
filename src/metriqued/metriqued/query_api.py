@@ -8,7 +8,7 @@ import pql
 import random
 from tornado.web import authenticated
 
-from metriqued.utils import ifind, parse_pql_query, log_head
+from metriqued.utils import ifind, parse_pql_query
 from metriqued.core_api import MetriqueHdlr
 
 from metriqueu.utils import set_default
@@ -21,17 +21,14 @@ class AggregateHdlr(MetriqueHdlr):
     '''
     @authenticated
     def get(self, owner, cube):
-        self._requires_owner_read(owner, cube)
         pipeline = self.get_argument('pipeline')
-        if not pipeline:
-            # alias for pipeline
-            pipeline = self.get_argument('query', '[]')
-        result = self.aggregate(owner=owner, cube=cube,
-                                pipeline=pipeline)
+        result = self.aggregate(owner=owner, cube=cube, pipeline=pipeline)
         self.write(result)
 
     def aggregate(self, owner, cube, pipeline):
-        log_head(owner, cube, 'aggregate', pipeline)
+        self.cube_exists(owner, cube)
+        self.requires_owner_read(owner, cube)
+        pipeline = set_default(pipeline, None, null_ok=False)
         return self.timeline(owner, cube).aggregate(pipeline)
 
 
@@ -42,7 +39,6 @@ class CountHdlr(MetriqueHdlr):
     '''
     @authenticated
     def get(self, owner, cube):
-        self._requires_owner_read(owner, cube)
         query = self.get_argument('query')
         date = self.get_argument('date')
         result = self.count(owner=owner, cube=cube,
@@ -50,20 +46,18 @@ class CountHdlr(MetriqueHdlr):
         self.write(result)
 
     def count(self, owner, cube, query, date=None):
-        if not query:
-            query = '_oid == exists(True)'
-        log_head(owner, cube, 'count', query, date)
+        self.cube_exists(owner, cube)
+        self.requires_owner_read(owner, cube)
+        set_default(query, '')
+        logger.debug('pql query: %s' % query)
         try:
             spec = pql.find(query + self.get_date_pql_string(date))
         except Exception as e:
-            raise ValueError("Invalid Query (%s)" % str(e))
-
-        logger.debug('Mongo Query: %s' % spec)
-
-        docs = self.timeline(owner, cube).find(spec)
-        result = docs.count() if docs else 0
-        docs.close()
-        return result
+            self._raise(400, "Invalid Query (%s)" % str(e))
+        logger.debug('mongo query: %s' % spec)
+        _cube = self.timeline(owner, cube)
+        docs = ifind(_cube=_cube, spec=spec)
+        return docs.count() if docs else 0
 
 
 class DeptreeHdlr(MetriqueHdlr):
@@ -73,7 +67,6 @@ class DeptreeHdlr(MetriqueHdlr):
     '''
     @authenticated
     def get(self, owner, cube):
-        self._requires_owner_read(owner, cube)
         field = self.get_argument('field')
         oids = self.get_argument('oids')
         date = self.get_argument('date')
@@ -84,7 +77,10 @@ class DeptreeHdlr(MetriqueHdlr):
         self.write(result)
 
     def deptree(self, owner, cube, field, oids, date, level):
-        log_head(owner, cube, 'deptree', date)
+        self.cube_exists(owner, cube)
+        self.requires_owner_read(owner, cube)
+        if level and level <= 0:
+            self._raise(400, 'level must be >= 1')
         oids = self.parse_oids(oids)
         checked = set(oids)
         fringe = oids
@@ -95,8 +91,10 @@ class DeptreeHdlr(MetriqueHdlr):
                 break
             spec = pql.find(
                 '_oid in %s and %s != None' % (fringe, field) + pql_date)
-            deps = self.timeline(owner, cube).find(spec, ['_oid', field])
-            fringe = set([oid for doc in deps for oid in doc[field]])
+            _cube = self.timeline(owner, cube)
+            fields = {'_id': -1, '_oid': 1, field: 1}
+            docs = ifind(_cube=_cube, spec=spec, fields=fields)
+            fringe = set([oid for doc in docs for oid in doc[field]])
             fringe = filter(lambda oid: oid not in checked, fringe)
             checked |= set(fringe)
             loop_k += 1
@@ -110,14 +108,13 @@ class DistinctHdlr(MetriqueHdlr):
     '''
     @authenticated
     def get(self, owner, cube):
-        self._requires_owner_read(owner, cube)
         field = self.get_argument('field')
-        result = self.distinct(owner=owner, cube=cube,
-                               field=field)
+        result = self.distinct(owner=owner, cube=cube, field=field)
         self.write(result)
 
     def distinct(self, owner, cube, field):
-        log_head(owner, cube, 'distinct', field)
+        self.cube_exists(owner, cube)
+        self.requires_owner_read(owner, cube)
         return self.timeline(owner, cube).distinct(field)
 
 
@@ -125,50 +122,33 @@ class FetchHdlr(MetriqueHdlr):
     ''' RequestHandler for fetching lumps of cube data '''
     @authenticated
     def get(self, owner, cube):
-        self._requires_owner_read(owner, cube)
         fields = self.get_argument('fields')
         date = self.get_argument('date')
-        sort = self.get_argument('sort', None)
-        skip = self.get_argument('skip', 0)
-        limit = self.get_argument('limit', 0)
+        sort = self.get_argument('sort')
+        skip = self.get_argument('skip')
+        limit = self.get_argument('limit')
         oids = self.get_argument('oids', [])
-        result = self.fetch(owner=owner, cube=cube,
-                            fields=fields, date=date,
-                            sort=sort, skip=skip,
+        result = self.fetch(owner=owner, cube=cube, fields=fields,
+                            date=date, sort=sort, skip=skip,
                             limit=limit, oids=oids)
         self.write(result)
 
     def fetch(self, owner, cube, fields=None, date=None,
               sort=None, skip=0, limit=0, oids=None):
-        log_head(owner, cube, 'fetch', date)
-        if oids is None:
-            oids = []
-        sort = self.check_sort(sort, son=True)
-
+        self.cube_exists(owner, cube)
+        self.requires_owner_read(owner, cube)
+        oids = set_default(oids, [], null_ok=True)
+        sort = self.check_sort(sort)
         fields = self.get_fields(owner, cube, fields)
 
+        spec = {'$in': self.parse_oids(oids)}
         # b/c there are __special_property__ objects
         # in every collection, we must filter them out
         # checking for _oid should suffice
-        base_spec = {'_oid': {'$exists': 1}}
-
-        spec = {'_oid': {'$in': self.parse_oids(oids)}} if oids else {}
         dt_str = self.get_date_pql_string(date, '')
         if dt_str:
             spec.update(pql.find(dt_str))
-
-        pipeline = [
-            {'$match': base_spec},
-            {'$match': spec},
-            {'$skip': skip},
-            {'$project': fields},
-            {'$sort': sort},
-        ]
-        if limit:
-            pipeline.append({'$limit': limit})
-
-        result = self.timeline(owner, cube).aggregate(pipeline)['result']
-        return result
+        return ifind(spec=spec, sort=sort, limit=limit, skip=skip)
 
 
 class FindHdlr(MetriqueHdlr):
@@ -178,13 +158,12 @@ class FindHdlr(MetriqueHdlr):
     '''
     @authenticated
     def get(self, owner, cube):
-        self._requires_owner_read(owner, cube)
         query = self.get_argument('query')
-        fields = self.get_argument('fields', '')
+        fields = self.get_argument('fields')
         date = self.get_argument('date')
-        sort = self.get_argument('sort', None)
-        one = self.get_argument('one', False)
-        explain = self.get_argument('explain', False)
+        sort = self.get_argument('sort')
+        one = self.get_argument('one')
+        explain = self.get_argument('explain')
         merge_versions = self.get_argument('merge_versions', True)
         result = self.find(owner=owner, cube=cube,
                            query=query, fields=fields,
@@ -195,12 +174,12 @@ class FindHdlr(MetriqueHdlr):
 
     def find(self, owner, cube, query, fields=None, date=None,
              sort=None, one=False, explain=False, merge_versions=True):
-        if not query:
-            query = '_oid == exists(True)'
-        log_head(owner, cube, 'find', query, date)
-        sort = self.check_sort(sort)
+        self.cube_exists(owner, cube)
+        self.requires_owner_read(owner, cube)
 
+        sort = self.check_sort(sort)
         fields = self.get_fields(owner, cube, fields)
+
         if date is None or ('_id' in fields and fields['_id']):
             merge_versions = False
 
@@ -210,15 +189,16 @@ class FindHdlr(MetriqueHdlr):
 
         _cube = self.timeline(owner, cube)
         if explain:
-            result = _cube.find(spec, fields, sort=sort).explain()
+            result = ifind(_cube, spec=spec, fields=fields,
+                           sort=sort).explain()
         elif one:
-            result = _cube.find_one(spec, fields, sort=sort)
+            result = ifind(_cube, spec=spec, fields=fields,
+                           sort=sort, one=True)
         elif merge_versions:
             # merge_versions ignores sort (for now)
             result = self._merge_versions(_cube, spec, fields)
         else:
-            result = _cube.find(spec, fields, sort=sort)
-            result = tuple(result)
+            result = tuple(ifind(spec, fields=fields, sort=sort))
         return result
 
     @staticmethod
@@ -226,7 +206,7 @@ class FindHdlr(MetriqueHdlr):
         '''
         merge versions with unchanging fields of interest
         '''
-        logger.debug("Merging docs...")
+        logger.debug("merging doc version...")
         # contains a dummy document to avoid some condition
         # checks in merge_doc
         ret = [{'_oid': None}]
@@ -242,11 +222,12 @@ class FindHdlr(MetriqueHdlr):
                 last_items = set(last.items())
                 if all(item in last_items or item[0] in no_check
                        for item in doc.iteritems()):
-                        # the fields of interest did not change, merge docs:
-                        last['_end'] = doc['_end']
-                        ret.pop()
+                    # the fields of interest did not change, merge docs:
+                    last['_end'] = doc['_end']
+                    ret.pop()
 
-        docs = _cube.find(spec, fields, sort=[('_oid', 1), ('_start', 1)])
+        sort = self.check_sort([('_oid', 1), ('_start', 1)])
+        docs = ifind(_cube, spec=spec, sort=sort)
         [merge_doc(doc) for doc in docs]
         return ret[1:]
 
@@ -258,11 +239,10 @@ class SampleHdlr(MetriqueHdlr):
     '''
     @authenticated
     def get(self, owner, cube):
-        self._requires_owner_read(owner, cube)
         sample_size = self.get_argument('sample_size')
         fields = self.get_argument('fields')
         date = self.get_argument('date')
-        query = self.get_argument('date')
+        query = self.get_argument('query')
         result = self.sample(owner=owner, cube=cube,
                              sample_size=sample_size,
                              fields=fields, date=date,
@@ -271,9 +251,10 @@ class SampleHdlr(MetriqueHdlr):
 
     def sample(self, owner, cube, sample_size=None, fields=None,
                date=None, query=None):
+        self.cube_exists(owner, cube)
+        self.requires_owner_read(owner, cube)
         fields = self.get_fields(owner, cube, fields)
         dt_str = self.get_date_pql_string(date, '')
-        # for example, 'doc_version == 1.0'
         query = set_default(query, '', null_ok=True)
         if query:
             query = ' and '.join((dt_str, query))
@@ -284,29 +265,6 @@ class SampleHdlr(MetriqueHdlr):
         if n <= sample_size:
             docs = tuple(_docs)
         else:
-            # testing multiple approaches, on a collection with 1100001 objs
-            # In [27]: c.cube_stats(cube='test')
-            # {'cube': 'test', 'mtime': 1379078573, 'size': 1100001}
-
-            # this approach has results like these:
-            # >>>  %time c.query_sample(cube='test')
-            # CPU times: user 7 ms, sys: 0 ns, total: 7 ms
-            # Wall time: 7.7 s
-            #to_sample = set(random.sample(xrange(n), sample_size))
-            #docs = []
-            #for i in xrange(n):
-            #    docs.append(_docs.next()) if i in to_sample else _docs.next()
-
-            # this approach has results like these:
-            # >>>  %time c.query_sample(cube='test')
-            # CPU times: user 7 ms, sys: 0 ns, total: 7 ms
-            # Wall time: 1.35 s
-            # Out[20]:
-            #   _end    _oid              _start
-            # 0  NaT  916132 2013-09-13 13:22:53
-            # note: i saw it go up as high as 3.5 seconds
-            # but ran only a small sample of tests ... ;)
-            # key, perhaps, is that it's sorted
             to_sample = sorted(set(random.sample(xrange(n), sample_size)))
             docs = [_docs[i] for i in to_sample]
         return docs

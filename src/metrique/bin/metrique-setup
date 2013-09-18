@@ -5,7 +5,7 @@ from functools import partial
 from pprint import PrettyPrinter
 import sys
 
-from metrique.config import DEFAULT_CONFIG_FILE
+from metrique.config import CONFIG_FILE
 from jsonconf import JSONConf
 
 ### FIXME: make this a usable argparsers CLI ###
@@ -16,7 +16,7 @@ prompter = lambda x: raw_input(x)
 if len(sys.argv) > 1:
     config_file = sys.argv[1]
 else:
-    config_file = DEFAULT_CONFIG_FILE
+    config_file = CONFIG_FILE
 
 c = JSONConf(config_file)
 

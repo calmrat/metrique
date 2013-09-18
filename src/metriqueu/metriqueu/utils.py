@@ -5,44 +5,9 @@
 from bson.objectid import ObjectId
 from calendar import timegm
 from datetime import datetime as dt
-from decorator import decorator
 from dateutil.parser import parse as dt_parse
-import hashlib
+from hashlib import sha1
 import pytz
-
-sha1 = hashlib.sha1
-
-
-def _memo(func, *args, **kw):
-    # sort and convert list items to tuple for hashability
-    if type(kw) is list:
-        kw = frozenset(kw)
-    args = list(args)
-    for k, arg in enumerate(args):
-        if type(arg) is list:
-            args[k] = frozenset(arg)
-    # frozenset is used to ensure hashability
-    key = frozenset(args), frozenset(kw.iteritems())
-    cache = func.cache  # attributed added by memoize
-    if key in cache:
-        return cache[key]
-    else:
-        cache[key] = result = func(*args, **kw)
-    return result
-
-
-def memo(f):
-    ''' memoize function output '''
-    f.cache = {}
-    return decorator(_memo, f)
-
-
-def new_oid():
-    '''
-    Creates a new ObjectId and casts it to string,
-    so it's easily serializable
-    '''
-    return str(ObjectId())
 
 
 def batch_gen(data, batch_size):
@@ -54,36 +19,12 @@ def batch_gen(data, batch_size):
     if not data:
         return
 
-    if batch_size == -1:
+    if batch_size <= 0:
         # override: yield the whole list
         yield data
 
     for i in range(0, len(data), batch_size):
         yield data[i:i + batch_size]
-
-
-def milli2sec(ts):
-    ''' normalize timestamps to timestamp int's (seconds) '''
-    if not ts:
-        return ts
-    return float(float(ts) / 1000.)  # convert milli to seconds
-
-
-def ts2dt(ts, milli=False, tz_aware=True):
-    ''' convert timestamp int's (seconds) to datetime objects '''
-    if not ts:
-        return ts
-    elif isinstance(ts, dt):  # its a dt already
-        return ts
-    # ts must be float and in seconds
-    elif milli:
-        ts = float(ts) / 1000.  # convert milli to seconds
-    else:
-        ts = float(ts)  # already in seconds
-    if tz_aware:
-        return dt.fromtimestamp(ts, tz=pytz.utc)
-    else:
-        return dt.utcfromtimestamp(ts)
 
 
 def dt2ts(dt):
@@ -96,28 +37,65 @@ def dt2ts(dt):
         return timegm(dt.timetuple())
 
 
-def jsonhash(obj):
+def jsonhash(obj, root=True):
     '''
     calculate the objects hash based on all field values
     '''
+    # FIXME: check if 'mutable mapping'
     if isinstance(obj, dict):
-        return sha1(
-            repr(frozenset(
-                dict(
-                    [(jsonhash(k), jsonhash(v)) for k, v in obj.items()]
-                ).items()
-            ))
-        ).hexdigest()
+        result = frozenset(
+            [(jsonhash(k),
+              jsonhash(v, False)) for k, v in obj.items()])
+    # FIXME: check if 'iterable'
     elif isinstance(obj, (list, tuple, set)):
-        return sha1(
-            repr(tuple(
-                sorted(
-                    [jsonhash(e) for e in list(obj)]
-                )
-            ))
-        ).hexdigest()
+        result = tuple(sorted(jsonhash(e, False) for e in obj))
     else:
-        return repr(obj)
+        result = repr(obj)
+    return sha1(repr(result)).hexdigest() if root else result
+
+
+def milli2sec(ts):
+    ''' normalize timestamps to timestamp int's (seconds) '''
+    if not ts:
+        return ts
+    return float(float(ts) / 1000.)  # convert milli to seconds
+
+
+def new_oid():
+    '''
+    Creates a new ObjectId and casts it to string,
+    so it's easily serializable
+    '''
+    return str(ObjectId())
+
+
+def set_default(key, default, null_ok=False, err_msg=None):
+    if not err_msg:
+        err_msg = "non-null value required for %s" % key
+    if not null_ok and key is None and default is None:
+            raise RuntimeError(err_msg)
+    try:
+        # if we get 'type' obj, eg `list`
+        result = key if key is not None else default()
+    except (TypeError, AttributeError):
+        result = key if key is not None else default
+    return result
+
+
+def ts2dt(ts, milli=False, tz_aware=True):
+    ''' convert timestamp int's (seconds) to datetime objects '''
+    if not ts or isinstance(ts, dt):
+        # its not a timestamp or is already a datetime
+        return ts
+    # ts must be float and in seconds
+    elif milli:
+        ts = float(ts) / 1000.  # convert milli to seconds
+    else:
+        ts = float(ts)  # already in seconds
+    if tz_aware:
+        return dt.fromtimestamp(ts, tz=pytz.utc)
+    else:
+        return dt.utcfromtimestamp(ts)
 
 
 def utcnow(dt=False, tz_aware=False):
@@ -128,14 +106,3 @@ def utcnow(dt=False, tz_aware=False):
         return now
     else:
         return dt2ts(now)
-
-
-def set_default(key, default, null_ok=False, err_msg=None):
-    if not err_msg:
-        err_msg = "non-null value required for %s" % key
-    if not null_ok and key is None and default is None:
-            raise RuntimeError(err_msg)
-    try:
-        return key or default()  # if we get 'type' obj, eg `list`
-    except (TypeError, AttributeError):
-        return key or default

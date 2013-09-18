@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 import os
 
 from metriqueu.utils import set_default
-from metriqueu.defaults import DEFAULT_METRIQUE_LOGIN_URL
+from metriqueu.defaults import METRIQUE_LOGIN_URL
 
 
 def aboutme(self, username=None):
@@ -53,8 +53,15 @@ def login(self, username=None, password=None):
     :param String password:
         Password (plain text), if any of user
     '''
-    username = set_default(username, self.config.api_username)
-    username = set_default(password, self.config.api_password)
+    username = set_default(username, self.config.api_username,
+                           err_msg='username required')
+    password = set_default(password, self.config.api_password,
+                           err_msg='password required')
+    if username and not username == self.config.api_username:
+        self.config.api_username = username
+    if password and not password == self.config.api_password:
+        self.config.api_password = password
+
     self._load_session()  # new session
     result = self._post('login', username=username,
                         password=password, api_url=False)
@@ -100,7 +107,7 @@ def update_passwd(self, new_password, old_password=None,
         if save:
             self.config.save()
 
-    if response.headers.get('location') == DEFAULT_METRIQUE_LOGIN_URL:
+    if response.headers.get('location') == METRIQUE_LOGIN_URL:
         login(self, self.config.api_username, self.config.api_password)
 
     return True
