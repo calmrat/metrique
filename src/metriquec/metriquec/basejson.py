@@ -8,10 +8,10 @@ Base cube for extracting data from JSON documents
 
 import simplejson as json
 
-from metriquec.basecube import BaseCube
+from metrique.core_api import HTTPClient
 
 
-class BaseJSON(BaseCube):
+class BaseJSON(HTTPClient):
     """
     Object used for extracting data in JSON format
     """

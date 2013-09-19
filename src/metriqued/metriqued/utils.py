@@ -3,7 +3,7 @@
 # Author: "Chris Ward <cward@redhat.com>
 
 import base64
-from collections import OrderedDict
+from bson import SON
 import logging
 logger = logging.getLogger(__name__)
 import os
@@ -14,8 +14,8 @@ from metriqueu.utils import batch_gen
 
 OBJECTS_MAX_BYTES = 16777216
 EXISTS_SPEC = {'$exists': 1}
-BASE_INDEX = OrderedDict(
-    [('_id', 1), ('_start', -1), ('_end', -1), ('_oid', -1), ('_hash', 1)])
+BASE_INDEX = [('_id', 1), ('_start', -1), ('_end', -1),
+              ('_oid', -1), ('_hash', 1)]
 SYSTEM_INDEXES = [BASE_INDEX]
 
 
@@ -71,11 +71,11 @@ def make_index_spec(_id=None, _start=None, _end=None, _oid=None, _hash=None):
     _end = _end or EXISTS_SPEC
     _oid = _oid or EXISTS_SPEC
     _hash = _hash or EXISTS_SPEC
-    spec = OrderedDict([('_id', _id),
-                        ('_start', _start),
-                        ('_end', _end),
-                        ('_oid', _oid),
-                        ('_hash', _hash)])
+    spec = SON([('_id', _id),
+                ('_start', _start),
+                ('_end', _end),
+                ('_oid', _oid),
+                ('_hash', _hash)])
     return spec
 
 
@@ -134,15 +134,3 @@ def set_property(dct, key, value, _types):
     else:
         dct[key] = value
     return dct
-
-
-def strip_split(item):
-    if isinstance(item, basestring):
-        return [s.strip() for s in item.split(',')]
-    elif item is None:
-        return []
-    elif not isinstance(item, (list, tuple)):
-        raise ValueError('Expected a list/tuple')
-    else:
-        # nothing to do here...
-        return item

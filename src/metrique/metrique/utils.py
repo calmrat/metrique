@@ -130,7 +130,7 @@ def api_owner_cube(func_or_name):
         func.__doc__ = (func.__doc__ or '') + '\n'.join(docs)
 
         def _api(func, self, *args, **kwargs):
-            owner = kwargs.get('owner') or self.config.api_username
+            owner = kwargs.get('owner') or self.config.username
             if not owner:
                 raise ValueError('owner required!')
             cube = kwargs.get('cube') or self.name

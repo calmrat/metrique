@@ -25,13 +25,13 @@ c._autosave = False
 pp.pprint(c.config)
 
 _p = "Metrique Host: "
-c.setup_basic('api_host', partial(prompter, _p))
+c.setup_basic('host', partial(prompter, _p))
 
 _p = "Metrique Username: "
-c.setup_basic('api_username', partial(prompter, _p))
+c.setup_basic('username', partial(prompter, _p))
 
 _p = "Metrique Password: "
-c.setup_basic('api_password', partial(prompter, _p))
+c.setup_basic('password', partial(prompter, _p))
 
 pp.pprint(c.config)
 

@@ -31,9 +31,11 @@ class AboutMeHdlr(MetriqueHdlr):
 
     def aboutme(self, owner):
         self.user_exists(owner)
-        self.requires_self_read(owner)
         mask = ['passhash']
-        return self.get_user_profile(owner, one=True, mask=mask)
+        if self.is_self(owner):
+            return self.get_user_profile(owner, mask=mask)
+        else:
+            mask += []
 
 
 class LoginHdlr(MetriqueHdlr):
@@ -91,22 +93,20 @@ class RegisterHdlr(MetriqueHdlr):
 
     def register(self, username, password=None, null_password_ok=False):
         if self.user_exists(username):
-            raise ValueError("user exists")
+            self._raise(409, "user exists")
         passhash = sha256_crypt.encrypt(password) if password else None
         if not (passhash or null_password_ok):
-            raise ValueError("[%s] no password provided" % username)
+            self._raise(400, "[%s] no password provided" % username)
         doc = {'_id': username,
                '_ctime': utcnow(),
                '_groups': [],  # _these should be private (owner/admin only)
-               'own': [],
+               '_own': [],
                '_read': [],
                '_write': [],
                '_admin': [],
-               'cube_quota': CUBE_QUOTA,
-               'passhash': passhash,
-               #'cube_count': 0,  # can be calculated counting 'own'
+               '_cube_quota': CUBE_QUOTA,
+               '_passhash': passhash,
                }
-        doc['passhash'] = passhash
         self.user_profile(admin=True).save(doc, upset=True, safe=True)
         logger.debug("new user added (%s)" % (username))
         return True
@@ -137,22 +137,22 @@ class UpdatePasswordHdlr(MetriqueHdlr):
         ''' Change a logged in user's password '''
         # FIXME: take out a lock... for updating any properties
         self.user_exists(username)
-        self.requires_self_admin(username)
+        self.requires_owner_admin(username)
         if not new_password:
-            raise ValueError('new password can not be null')
+            self._raise(400, 'new password can not be null')
         if not old_password:
             old_password = ''
         old_passhash = None
         if old_password:
-            old_passhash = self.get_user_profile(username, ['passhash'])
+            old_passhash = self.get_user_profile(username, ['_passhash'])
             if old_passhash and sha256_crypt.verify(old_password,
                                                     old_passhash):
                 new_passhash = sha256_crypt.encrypt(new_password)
             else:
-                raise ValueError("old password does not match")
+                self._raise(400, "old password does not match")
         else:
             new_passhash = sha256_crypt.encrypt(new_password)
-        self.update_user_profile(username, 'set', 'passhash', new_passhash)
+        self.update_user_profile(username, 'set', '_passhash', new_passhash)
         logger.debug("passwd updated (%s)" % username)
         return True
 
@@ -175,7 +175,7 @@ class UpdateGroupHdlr(MetriqueHdlr):
     def update_group(self, username, group, action='addToSet'):
         ''' Change a logged in user's password '''
         self.user_exists(username)
-        self.requires_self_admin(username)
+        self.requires_owner_admin(username)
         self.valid_group(group)
         self.valid_action(action)
         self.update_user_profile(username, action, 'groups', group)
@@ -203,7 +203,7 @@ class UpdateProfileHdlr(MetriqueHdlr):
         update user profile
         '''
         self.user_exists(username)
-        self.requires_self_admin(username)
+        self.requires_owner_admin(username)
         if backup:
             backup = self.get_user_profile(username)
 
@@ -226,7 +226,7 @@ class UpdatePropertiesHdlr(MetriqueHdlr):
     @authenticated
     def post(self, username=None):
         backup = self.get_argument('backup')
-        cube_quota = self.get_argument('cube_quota')
+        cube_quota = self.get_argument('_cube_quota')
         result = self.update_properties(username=username,
                                         backup=backup,
                                         cube_quota=cube_quota)
@@ -245,7 +245,7 @@ class UpdatePropertiesHdlr(MetriqueHdlr):
             backup = self.get_user_profile(username)
 
         spec = {'_id': username}
-        cuba_quota = set_property({}, 'cube_quota', cube_quota,
+        cuba_quota = set_property({}, '_cube_quota', cube_quota,
                                   [int, float])
 
         # FIXME: make update_user_profile (or new method) to accept

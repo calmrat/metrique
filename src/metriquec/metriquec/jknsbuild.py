@@ -113,7 +113,7 @@ class Build(BaseJSON):
             nums = [b['number'] for b in job['builds']]
             builds = [self.get_build(uri, job_name, n, force) for n in nums]
             try:
-                results[job_name] += self.cube_save_objects(builds)
+                results[job_name] += self.cube_save(builds)
             except Exception as e:
                 self.logger.error(
                     '(%s) Failed to save: %s:%s' % (e, job_name, builds))
@@ -139,7 +139,7 @@ class Build(BaseJSON):
                     try:
                         build = future.result()
                         if build:
-                            results[job_name] += self.cube_save_objects([build])
+                            results[job_name] += self.cube_save([build])
                     except Exception as e:
                         self.logger.error(
                             '(%s) Failed to save: %s' % (e, job_name))

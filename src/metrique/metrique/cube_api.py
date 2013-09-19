@@ -15,6 +15,7 @@ from copy import deepcopy
 from datetime import datetime
 import logging
 logger = logging.getLogger(__name__)
+import os
 
 from metrique.utils import api_owner_cube
 from metriqueu.utils import batch_gen, set_default, ts2dt, dt2ts, utcnow
@@ -40,34 +41,42 @@ def sample_fields(self, sample_size=None, query=None, **kwargs):
     return sorted(result)
 
 
-@api_owner_cube
-def stats(self, **kwargs):
-    return self._get(kwargs.get('cmd'))
+def stats(self, cube, owner=None, keys=None):
+    owner = owner or self.config.username
+    cmd = os.path.join(owner, cube, 'stats')
+    result = self._get(cmd)
+    if not keys:
+        return result
+    elif keys and isinstance(keys, basestring):
+        return result.get(keys)
+    else:
+        return [result.get(k) for k in keys]
 
 
 ### ADMIN ####
 
-@api_owner_cube
-def drop(self, force=False, **kwargs):
+def drop(self, cube, force=False, owner=None):
     '''
     Drops current cube from timeline
 
     :param bool force: really, do it!
     '''
+    owner = owner or self.config.username
     if not force:
         raise ValueError(
             "DANGEROUS: set false=True to drop %s.%s" % (
-                kwargs.get('owner'), kwargs.get('cube')))
-    return self._delete(kwargs.get('cmd'))
+                owner, cube))
+    cmd = os.path.join(owner, cube, 'drop')
+    return self._delete(cmd)
 
 
-@api_owner_cube
-def register(self, **kwargs):
+def register(self, cube, owner=None):
     '''
-    Drops current cube from timeline
-
+    Register a new user cube
     '''
-    return self._post(kwargs.get('cmd'))
+    owner = owner or self.config.username
+    cmd = os.path.join(owner, cube, 'register')
+    return self._post(cmd)
 
 
 @api_owner_cube
@@ -133,7 +142,7 @@ def save(self, objects, batch_size=None, **kwargs):
 
     olen = len(objects) if objects else None
     if not olen:
-        self.logger.debug("... No objects to save")
+        self.logger.info("... No objects to save")
         return []
 
     # get 'now' utc timezone aware datetime object
@@ -269,10 +278,10 @@ def _activity_import(cube, ids, batch_size):
             if len(updates) > 1:
                 batched_updates += updates
         if len(batched_updates) >= batch_size:
-            cube.save_objects(batched_updates)
+            cube.cube_save(batched_updates)
             batched_updates = []
     if batched_updates:
-        cube.save_objects(batched_updates)
+        cube.cube_save(batched_updates)
 
 
 def activity_import(self, ids=None, save_batch_size=1000, chunk_size=1000):

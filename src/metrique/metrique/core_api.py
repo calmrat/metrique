@@ -55,14 +55,17 @@ class HTTPClient(object):
     use to call special, shared call of _get (http request)
     '''
     name = None
+    defaults = {}
+    fields = {}
 
-    user_aboutme = user_api.aboutme
-    user_login = user_api.login
-    user_logout = user_api.logout
-    user_register = user_api.register
-    user_update_passwd = user_api.update_passwd
+    # frequently 'typed' commands have shorter aliases too
+    user_aboutme = aboutme = user_api.aboutme
+    user_login = login = user_api.login
+    user_logout = logout = user_api.logout
+    user_passwd = passwd = user_api.update_passwd
     user_update_profile = user_api.update_profile
-    user_update_properties = user_api.update_properties
+    user_register = user_api.register
+    user_set_properties = user_api.update_properties
 
     cube_list_all = cube_api.list_all
     cube_stats = cube_api.stats
@@ -78,8 +81,6 @@ class HTTPClient(object):
     cube_index = cube_api.ensure_index
     cube_index_drop = cube_api.drop_index
 
-    # these are the most frequently 'typed' commands
-    # so we'll provide shorter aliases too
     query_find = find = query_api.find
     query_deptree = deptree = query_api.deptree
     query_count = count = query_api.count
@@ -101,10 +102,10 @@ class HTTPClient(object):
             cube_cls = cls
         return object.__new__(cube_cls)
 
-    def __init__(self, api_host=None, api_username=None,
-                 api_password=None, async=True,
+    def __init__(self, host=None, username=None,
+                 password=None, async=True,
                  force=True, debug=0, config_file=None,
-                 cube=None, api_auto_login=None,
+                 cube=None, auto_login=None,
                  **kwargs):
         self._config_file = config_file or CONFIG_FILE
         self.load_config(force=force)
@@ -119,18 +120,18 @@ class HTTPClient(object):
             raise TypeError(
                 "expected cube as a string, got %s" % type(cube))
 
-        if api_host:
-            self.config.api_host = api_host
-        if api_username:
-            self.config.api_username = api_username
-        if api_password:
-            self.config.api_password = api_password
+        if host:
+            self.config.host = host
+        if username:
+            self.config.username = username
+        if password:
+            self.config.password = password
 
         self._load_session()
 
-        if api_auto_login:
-            self.config.api_auto_login = api_auto_login
-        self._api_auto_login_attempted = False
+        if auto_login:
+            self.config.auto_login = auto_login
+        self._auto_login_attempted = False
 
     def load_config(self, config_file=None, force=False):
         config_file = config_file or self._config_file
@@ -148,6 +149,41 @@ class HTTPClient(object):
     def get_cube(self, cube):
         return get_cube(cube)
 
+    def get_last_oid(self):
+        '''
+        Query metrique for the last known object id (_oid)
+        in a given cube.
+
+        If a field is specified, find the mtime for
+        the given cube.field if there are actually
+        documents in the cube with the given field.
+        '''
+        # FIXME: use ifind
+        self.logger.debug(
+            "Get last ID: cube(%s)" % self.name)
+        query = None
+        last_oid = self.find(query, fields=['_oid'],
+                             sort=[('_oid', -1)], one=True, raw=True)
+        if last_oid:
+            last_oid = last_oid.get('_oid')
+        self.logger.info(" ... Last ID: %s" % last_oid)
+        return last_oid
+
+    def get_property(self, property, field=None, default=None):
+        '''
+        First try to use the field's property, if defined
+        Then try to use the default property, if defined
+        Then use the default for when neither is found
+        Or None, if no default is defined
+        '''
+        try:
+            return self.fields[field][property]
+        except KeyError:
+            try:
+                return self.defaults[property]
+            except (TypeError, KeyError):
+                return default
+
     def _kwargs_json(self, **kwargs):
         return dict([(k, json.dumps(v, default=json_encode,
                                     ensure_ascii=False,
@@ -158,13 +194,13 @@ class HTTPClient(object):
         # load a fresh new session
         self.session = requests.Session()
 
-    def _get_response(self, runner, _url, api_username, api_password,
+    def _get_response(self, runner, _url, username, password,
                       allow_redirects=True):
         try:
             return runner(_url,
-                          auth=(api_username, api_password),
+                          auth=(username, password),
                           cookies=self.session.cookies,
-                          verify=self.config.api_ssl_verify,
+                          verify=self.config.ssl_verify,
                           allow_redirects=allow_redirects)
         except requests.exceptions.ConnectionError:
             raise requests.exceptions.ConnectionError(
@@ -189,36 +225,36 @@ class HTTPClient(object):
 
     def _run(self, kind, cmd, api_url=True,
              allow_redirects=True, full_response=False,
-             api_username=None, api_password=None,
+             username=None, password=None,
              **kwargs):
-        if not api_username:
-            api_username = self.config.api_username
+        if not username:
+            username = self.config.username
         else:
             # we actually want to pass this to the server
-            kwargs['api_username'] = api_username
+            kwargs['username'] = username
 
-        if not api_password:
-            api_password = self.config.api_password
+        if not password:
+            password = self.config.password
         else:
-            kwargs['api_password'] = api_password
+            kwargs['password'] = password
 
         runner = self._build_runner(kind, kwargs)
         _url = self._build_url(cmd, api_url)
 
         _response = self._get_response(runner, _url,
-                                       api_username, api_password,
+                                       username, password,
                                        allow_redirects)
 
-        _auto = self.config.api_auto_login
-        _attempted = self._api_auto_login_attempted
+        _auto = self.config.auto_login
+        _attempted = self._auto_login_attempted
 
         if _response.status_code in [401, 403] and _auto and not _attempted:
-            self._api_auto_login_attempted = True
+            self._auto_login_attempted = True
             # try to login and rerun the request
             self.logger.debug('HTTP 40*: going to try to auto re-log-in')
-            self.user_login(api_username, api_password)
+            self.user_login(username, password)
             _response = self._get_response(runner, _url,
-                                           api_username, api_password,
+                                           username, password,
                                            allow_redirects)
 
         try:
@@ -230,7 +266,7 @@ class HTTPClient(object):
             raise
         else:
             # reset autologin flag since we've logged in successfully
-            self._api_auto_login_attempted = False
+            self._auto_login_attempted = False
             if full_response:
                 return _response
             else:
@@ -250,11 +286,11 @@ class HTTPClient(object):
 
     @property
     def current_user(self):
-        # alias for whoami(); returns back username in config.api_username
+        # alias for whoami(); returns back username in config.username
         return self.whoami()
 
     def whoami(self, auth=False):
         if auth:
             self.user_login()
         else:
-            return self.config['api_username']
+            return self.config['username']

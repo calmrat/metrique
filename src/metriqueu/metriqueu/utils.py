@@ -98,11 +98,23 @@ def ts2dt(ts, milli=False, tz_aware=True):
         return dt.utcfromtimestamp(ts)
 
 
-def utcnow(dt=False, tz_aware=False):
+def utcnow(as_datetime=False, tz_aware=False):
     now = dt.utcnow()
     if tz_aware:
         return pytz.UTC.localize(now)
-    elif dt:
+    elif as_datetime:
         return now
     else:
         return dt2ts(now)
+
+
+def strip_split(item):
+    if isinstance(item, basestring):
+        return [s.strip() for s in item.split(',')]
+    elif item is None:
+        return []
+    elif not isinstance(item, (list, tuple)):
+        raise ValueError('Expected a list/tuple')
+    else:
+        # nothing to do here...
+        return item

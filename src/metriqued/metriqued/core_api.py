@@ -10,8 +10,7 @@ usermanagement, logging, etc.
 '''
 
 import base64
-from collections import OrderedDict
-from datetime import datetime
+from bson import SON
 import logging
 logger = logging.getLogger(__name__)
 try:
@@ -26,9 +25,9 @@ import simplejson as json
 from tornado.web import RequestHandler, HTTPError
 from tornado import gen
 
-from metriqued.utils import parse_pql_query, ifind, strip_split
+from metriqued.utils import parse_pql_query, ifind
 
-from metriqueu.utils import set_default, dt2ts
+from metriqueu.utils import set_default, dt2ts, utcnow, strip_split
 
 SAMPLE_SIZE = 1
 VALID_CUBE_ROLES = set(('admin', 'own', 'read', 'write'))
@@ -43,7 +42,7 @@ class MetriqueHdlr(RequestHandler):
     '''
 ##################### mongo db #################################
     @staticmethod
-    def check_sort(sort):
+    def check_sort(sort, son=False):
         '''
         ordered dict (or son) is required for pymongo's $sort operators
         '''
@@ -53,7 +52,10 @@ class MetriqueHdlr(RequestHandler):
             assert len(sort[0]) == 2
         except (AssertionError, IndexError, TypeError):
             raise ValueError("Invalid sort value; try [('_oid': -1)]")
-        return OrderedDict(sort)
+        if son:
+            return SON(sort)
+        else:
+            return sort
 
     @staticmethod
     def cjoin(owner, cube):
@@ -66,7 +68,7 @@ class MetriqueHdlr(RequestHandler):
                                      raise_if_not=raise_if_not,
                                      exists_only=True)
 
-    def cube_exists(self, owner, cube, raise_if_not=False):
+    def cube_exists(self, owner, cube, raise_if_not=True):
         ''' cube exists if there is a valid cube profile '''
         return self.get_cube_profile(owner=owner, cube=cube,
                                      raise_if_not=raise_if_not,
@@ -104,8 +106,7 @@ class MetriqueHdlr(RequestHandler):
     def get_cube_mtime(self, owner, cube):
         if not (owner and cube):
             self._raise(400, "owner and cube required")
-        collection = self.cjoin(owner, cube)
-        return self.get_cube_profile(collection, keys=['mtime'])
+        return self.get_cube_profile(owner, cube, keys=['mtime'])
 
     def get_user_profile(self, username, keys=None, raise_if_not=False,
                          exists_only=False, mask=None):
@@ -142,7 +143,8 @@ class MetriqueHdlr(RequestHandler):
                            err_msg="keys must be a list")
         spec = {'_id': _id}
         cursor = _cube.find(spec)
-        if not cursor:
+        count = cursor.count()
+        if not count:
             if raise_if_not:
                 self._raise(400, 'profile does not exist: %s' % _id)
             elif exists_only:
@@ -151,9 +153,9 @@ class MetriqueHdlr(RequestHandler):
                 return {}
         elif exists_only:
             # return back only the count
-            return True if cursor.count() else False
+            return True if count else False
         else:
-            # return back the user's actual profile doc
+            # return back the profile doc
             # which is the first and only item in the cursor
             profile = cursor.next()
 
@@ -216,7 +218,7 @@ class MetriqueHdlr(RequestHandler):
             return self.mongodb_config.c_user_profile_data
 
     def update_cube_profile(self, owner, cube, action, key, value):
-        self.cube_exists(owner, cube, raise_if_not=True)
+        self.cube_exists(owner, cube)
         collection = self.cjoin(owner, cube)
         _cube = self.cube_profile(admin=True)
         return self.update_profile(_cube=_cube, _id=collection,
@@ -329,31 +331,6 @@ class MetriqueHdlr(RequestHandler):
                 self.clear_cookie("user")
                 return None
 
-    def basic(self, username, password):
-        if not (username and password):
-            return False, username
-        if not isinstance(password, basestring):
-            self._raise(400, "password expected to be a string; "
-                        "got %s" % type(password))
-        passhash = self.get_user_profile(username, keys=['passhash'])
-        if passhash and sha256_crypt.verify(password, passhash):
-            logger.error('AUTH BASIC OK [%s]' % username)
-            return True, username
-        else:
-            logger.error('AUTH BASIC ERROR [%s]' % username)
-            return False, username
-
-    def krb_basic(self, username, password):
-        realm = self.metrique_config.realm
-        try:
-            authed = kerberos.checkPassword(username, password,
-                                            '', realm)
-            logger.error('KRB AUTH [%s]: %s' % (username, authed))
-            return authed, username
-        except kerberos.BasicAuthError as e:
-            logger.error('KRB ERROR [%s]: %s' % (username, e))
-            return False, username
-
     def _scrape_username_password(self):
         username, password = '', ''
         auth_header = self.request.headers.get('Authorization')
@@ -364,15 +341,33 @@ class MetriqueHdlr(RequestHandler):
         return username, password
 
     def _parse_basic_auth(self, username, password):
-        return self.basic(username, password)
+        if not (username and password):
+            return False, username
+        if not isinstance(password, basestring):
+            self._raise(400, "password expected to be a string; "
+                        "got %s" % type(password))
+        passhash = self.get_user_profile(username, keys=['_passhash'])
+        if passhash and sha256_crypt.verify(password, passhash):
+            logger.error('AUTH BASIC OK [%s]' % username)
+            return True, username
+        else:
+            logger.error('AUTH BASIC ERROR [%s]' % username)
+            return False, username
 
     def _parse_krb_basic_auth(self, username, password):
         krb_auth = self.metrique_config.krb_auth
         if not all((kerberos, krb_auth, username, password)):
             return False, username
         else:
-            return self.krb_basic(username, password,
-                                  self.metrique_config.realm)
+            realm = self.metrique_config.realm
+            try:
+                authed = kerberos.checkPassword(username, password,
+                                                '', realm)
+                logger.error('KRB AUTH [%s]: %s' % (username, authed))
+                return authed, username
+            except kerberos.BasicAuthError as e:
+                logger.error('KRB ERROR [%s]: %s' % (username, e))
+                return False, username
 
     def _parse_auth_headers(self):
         username, password = self._scrape_username_password()
@@ -383,7 +378,7 @@ class MetriqueHdlr(RequestHandler):
         else:
             return False, username
 
-    def _has_cube_role(self, owner, cube, role):
+    def has_cube_role(self, owner, cube, role):
         ''' valid roles: read, write, admin, own '''
         if not (owner and cube):
             self._raise(400, "owner and cube required")
@@ -407,24 +402,29 @@ class MetriqueHdlr(RequestHandler):
 
     def is_admin(self, owner, cube=None):
         _is_group_admin = lambda: self.self_in_group('admin')
-        _cube_role = lambda: self._has_cube_role(owner, 'admin', cube)
-        return _is_group_admin() or _cube_role()
+        _is_super_user = lambda x: x in self.metrique_config.superusers
+        _is_admin = _is_group_admin() or _is_super_user(self.current_user)
+        if cube:
+            _cube_role = lambda: self.has_cube_role(owner, cube, 'admin')
+            return _is_admin or _cube_role()
+        else:
+            return _is_admin
 
     def is_write(self, owner, cube=None):
-        _cube_role = lambda: self._has_cube_role(owner, 'write', cube)
+        _cube_role = lambda: self.has_cube_role(owner, cube, 'write')
         _is_admin = lambda: self.is_admin(owner, cube)
         return _cube_role() or _is_admin()
 
     def is_read(self, owner, cube=None):
         _is_admin = lambda: self.is_admin(owner, cube)
-        _cube_role = lambda: self._has_cube_role(owner, 'read', cube)
+        _cube_role = lambda: self.has_cube_role(owner, cube, 'read')
         return _cube_role() or _is_admin()
 
     def _requires(self, admin_func, raise_if_not=True):
         if admin_func():
             return True
         elif raise_if_not:
-            self._raise(400, 'insufficient privileges')
+            self._raise(401, 'insufficient privileges')
         else:
             return False
 
@@ -436,13 +436,13 @@ class MetriqueHdlr(RequestHandler):
 
     def requires_owner_read(self, owner, cube=None, raise_if_not=True):
         _is_self = lambda: self.is_self(owner)
-        _is_read = self.is_read(owner, cube=cube)
+        _is_read = lambda: self.is_read(owner, cube=cube)
         admin_func = lambda: _is_read() or _is_self()
         return self._requires(admin_func, raise_if_not)
 
     def requires_owner_write(self, owner, cube=None, raise_if_not=True):
         _is_self = lambda: self.is_self(owner)
-        _is_write = self.is_write(owner, cube=cube)
+        _is_write = lambda: self.is_write(owner, cube=cube)
         admin_func = lambda: _is_write() or _is_self()
         return self._requires(admin_func, raise_if_not)
 
@@ -497,7 +497,7 @@ class PingHdlr(MetriqueHdlr):
             self._raise(401, "authentication required")
         else:
             logger.debug(
-                'got ping from %s @ %s' % (user, datetime.utcnow()))
+                'got ping from %s @ %s' % (user, utcnow(as_datetime=True)))
             response = {
                 'action': 'ping',
                 'response': 'pong',

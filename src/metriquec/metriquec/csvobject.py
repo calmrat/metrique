@@ -38,4 +38,4 @@ class CSVObject(BaseCSV):
         # save the uri for reference too
         objects = self.set_column(objects, 'uri', uri)
         objects = self.set_column(objects, '_oid', _oid if _oid else new_oid)
-        return self.cube_save_objects(objects)
+        return self.cube_save(objects)

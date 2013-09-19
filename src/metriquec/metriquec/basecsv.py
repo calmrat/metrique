@@ -12,10 +12,10 @@ import os
 import re
 from urllib2 import urlopen
 
-from metriquec.basecube import BaseCube
+from metrique.core_api import HTTPClient
 
 
-class BaseCSV(BaseCube):
+class BaseCSV(HTTPClient):
     """
     Object used for extracting data from CSV files
 

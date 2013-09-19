@@ -148,7 +148,9 @@ class FetchHdlr(MetriqueHdlr):
         dt_str = self.get_date_pql_string(date, '')
         if dt_str:
             spec.update(pql.find(dt_str))
-        return ifind(spec=spec, sort=sort, limit=limit, skip=skip)
+        _cube = self.timeline(owner, cube)
+        return ifind(_cube=_cube, spec=spec, sort=sort,
+                     limit=limit, skip=skip)
 
 
 class FindHdlr(MetriqueHdlr):
@@ -183,7 +185,9 @@ class FindHdlr(MetriqueHdlr):
         if date is None or ('_id' in fields and fields['_id']):
             merge_versions = False
 
-        query += self.get_date_pql_string(date)
+        query = query or ''
+        if query:
+            query += self.get_date_pql_string(date)
 
         spec = parse_pql_query(query)
 
@@ -198,7 +202,7 @@ class FindHdlr(MetriqueHdlr):
             # merge_versions ignores sort (for now)
             result = self._merge_versions(_cube, spec, fields)
         else:
-            result = tuple(ifind(spec, fields=fields, sort=sort))
+            result = tuple(ifind(_cube, spec=spec, fields=fields, sort=sort))
         return result
 
     @staticmethod

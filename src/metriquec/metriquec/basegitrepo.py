@@ -31,13 +31,13 @@ else:
 import os
 import subprocess
 
-from metriquec.basecube import BaseCube
-from metrique.config import DEFAULT_CONFIG_DIR
+from metrique.core_api import HTTPClient
+from metrique.config import CONFIG_DIR
 
-TMP_DIR = os.path.join(DEFAULT_CONFIG_DIR, 'gitrepos/')
+TMP_DIR = os.path.join(CONFIG_DIR, 'gitrepos/')
 
 
-class BaseGitRepo(BaseCube):
+class BaseGitRepo(HTTPClient):
     """
     Driver to help extract data from GIT repos
     """

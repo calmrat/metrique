@@ -14,7 +14,6 @@ from metriqued.core_api import MetriqueHdlr
 from metriqued.utils import insert_bulk
 from metriqued.utils import ifind
 from metriqued.utils import BASE_INDEX, SYSTEM_INDEXES
-from metriqued.config import CUBE_QUOTA
 
 from metriqueu.utils import dt2ts, utcnow, jsonhash
 
@@ -33,8 +32,9 @@ class DropHdlr(MetriqueHdlr):
 
         Wraps pymongo's drop() for the given cube (collection)
         '''
-        self.cube_exists(owner, cube, raise_if_not=True)
         self.requires_owner_admin(owner, cube)
+        if not self.cube_exists(owner, cube):
+            self._raise(404, '%s.%s does not exist' % (owner, cube))
         spec = {'_id': self.cjoin(owner, cube)}
         # drop the cube
         self.timeline(owner, cube, admin=True).drop()
@@ -43,7 +43,7 @@ class DropHdlr(MetriqueHdlr):
         self.cube_profile(admin=True).remove(spec)
         # pull the cube from the owner's profile
         collection = self.cjoin(owner, cube)
-        self.update_user_profile(owner, 'pull', 'own', collection)
+        self.update_user_profile(owner, 'pull', '_own', collection)
         return True
 
 
@@ -73,7 +73,7 @@ class IndexHdlr(MetriqueHdlr):
         :param string/list drop:
             index (or name of index) to drop
         '''
-        self.cube_exists(owner, cube, raise_if_not=True)
+        self.cube_exists(owner, cube)
         _cube = self.timeline(owner, cube, admin=True)
         if drop is not None:
             self.requires_owner_admin(owner, cube)
@@ -147,7 +147,7 @@ class ListHdlr(MetriqueHdlr):
         return read + own
 
     def sample_fields(self, owner, cube, sample_size=None, query=None):
-        self.cube_exists(owner, cube, raise_if_not=True)
+        self.cube_exists(owner, cube)
         self.requires_owner_read(owner, cube)
         docs = self.sample_timeline(owner, cube, sample_size, query)
         cube_fields = list(set([k for d in docs for k in d.keys()]))
@@ -179,7 +179,8 @@ class RegisterHdlr(MetriqueHdlr):
             self._raise(409, "cube already exists")
 
         # FIXME: move to remaining =  self.check_user_cube_quota(...)
-        quota, own = self.get_user_profile(owner, keys=['cube_quota', 'own'])
+        quota, own = self.get_user_profile(owner, keys=['_cube_quota',
+                                                        '_own'])
         if quota is None:
             remaining = True
         else:
@@ -188,7 +189,7 @@ class RegisterHdlr(MetriqueHdlr):
             remaining = quota - own
 
         if not remaining or remaining <= 0:
-            self._raise(409, "quota_depleted (%s of %s)" % (quota, own))
+            self._raise(409, "quota depleted (%s of %s)" % (quota, own))
 
         now_utc = utcnow()
         collection = self.cjoin(owner, cube)
@@ -197,10 +198,8 @@ class RegisterHdlr(MetriqueHdlr):
                'owner': owner,
                'created': now_utc,
                'mtime': now_utc,
-               'cube_quota': CUBE_QUOTA,
                'read': [],
                'write': [],
-               'own': [],
                'admin': []}
         self.cube_profile(admin=True).insert(doc)
 
@@ -340,7 +339,7 @@ class SaveObjectsHdlr(MetriqueHdlr):
         _hash_spec = {'$in': list(_hashes)}
 
         fields = {'_hash': 1, '_id': -1}
-        docs = ifind(_hash=_hash_spec, fields=fields)
+        docs = ifind(_cube=_cube, _hash=_hash_spec, fields=fields)
         _dup_hashes = set([doc['_hash'] for doc in docs])
         objects = [obj for obj in objects if obj['_hash'] not in _dup_hashes]
         objects = filter(None, objects)
@@ -353,7 +352,7 @@ class SaveObjectsHdlr(MetriqueHdlr):
         # get list of objects which have other versions
         _oid_spec = {'$in': list(_oids)}
         fields = {'_oid': 1, '_id': -1}
-        docs = ifind(_oid=_oid_spec, fields=fields)
+        docs = ifind(_cube=_cube, _oid=_oid_spec, fields=fields)
         _known_oids = set([doc['_oid'] for doc in docs])
 
         no_snap = [obj for obj in objects

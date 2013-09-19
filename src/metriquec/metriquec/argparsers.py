@@ -14,11 +14,23 @@ To use the cli, cubes must import the cube_cli function
         cube_cli(Bug)
 
 '''
-
 import argparse
 import simplejson as json
 
 from metrique.utils import get_cube
+
+
+def extract(args, cube):
+    ext_args = args.extract_args
+    ext_kwargs = args.extract_kwargs
+    return cube.extract(force=args.force, *ext_args, **ext_kwargs)
+
+
+def register(args, cube):
+    _cube = args.cube or cube.name
+    if not _cube:
+        raise ValueError("cube name required")
+    return cube.cube_register(_cube)
 
 
 class _ArgParser(argparse.Action):
@@ -56,21 +68,28 @@ class _KwargParser(argparse.Action):
 
 
 _cube_args = argparse.ArgumentParser(prog='Cube CLI')
-_cube_args.add_argument('-d', '--debug', type=int, default=2)
+_cube_args.add_argument('-d', '--debug', type=int, default=None)
 _cube_args.add_argument('-a', '--no-async', action='store_true')
-_cube_args.add_argument('-H', '--api-host', action='store_true')
-_cube_args.add_argument('-P', '--api-port', action='store_true')
-_cube_args.add_argument('-u', '--api-username', action='store_true')
-_cube_args.add_argument('-p', '--api-password', action='store_true')
-_cube_args.add_argument('-c', '--cube-config-file', type=str)
+_cube_args.add_argument('-L', '--no-login', action='store_true')
+_cube_args.add_argument('-H', '--api-host', type=str)
+_cube_args.add_argument('-P', '--api-port', type=str)
+_cube_args.add_argument('-u', '--api-username', type=str)
+_cube_args.add_argument('-p', '--api-password', type=str)
+_cube_args.add_argument('-C', '--cube-config-file', type=str)
+_cube_args.add_argument('-c', '--cube', type=str)
+_cube_args.add_argument('-o', '--owner', type=str)
 
-_sub_args = _cube_args.add_subparsers(description='Cube Extract CLI',
-                                      dest='extract')
-_extr_args = _sub_args.add_parser('extract', help='Extract help')
-_extr_args.add_argument('-g', '--extract_args', type=str,
-                        action=_ArgParser, nargs='+', default=[])
-_extr_args.add_argument('-k', '--extract_kwargs', type=str,
-                        action=_KwargParser, nargs='+', default={})
+_sub = _cube_args.add_subparsers(description='Cube Commands CLI')
+_ext_args = _sub.add_parser('extract', help='Extract help')
+_ext_args.add_argument('-g', '--extract_args', type=str,
+                       action=_ArgParser, nargs='+', default=[])
+_ext_args.add_argument('-k', '--extract_kwargs', type=str,
+                       action=_KwargParser, nargs='+', default={})
+_ext_args.add_argument('-f', '--force', action='store_true')
+_ext_args.set_defaults(func=extract)
+
+_reg_args = _sub.add_parser('register', help='Extract help')
+_reg_args.set_defaults(func=register)
 
 
 def cube_cli(cube_cls=None):
@@ -94,20 +113,15 @@ def cube_cli(cube_cls=None):
     kwargs['debug'] = args.debug
     kwargs['async'] = not args.no_async
     kwargs['config_file'] = args.cube_config_file
-    kwargs['api_host'] = args.api_host
-    kwargs['api_port'] = args.api_port
-    kwargs['api_username'] = args.api_username
-    kwargs['api_password'] = args.api_password
+    kwargs['host'] = args.api_host
+    kwargs['port'] = args.api_port
+    kwargs['username'] = args.api_username
+    kwargs['password'] = args.api_password
 
     cube = cube_cls(**kwargs)
 
-    ext_args = args.extract_args
-    ext_kwargs = args.extract_kwargs
-    result = None
-    if args.extract:
-        result = cube.extract(*ext_args, **ext_kwargs)
+    if not args.no_login:
+        cube.login(cube.config.username,
+                   cube.config.password)
 
-    dct = {'cube': cube,
-           'args': args,
-           'result': result}
-    return dct
+    return args.func(args, cube)

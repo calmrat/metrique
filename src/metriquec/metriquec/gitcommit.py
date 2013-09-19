@@ -97,7 +97,7 @@ class Commit(BaseGitRepo):
         self.logger.debug("Total Commits: %s" % len(repo_shas))
         delta_shas = repo_shas - known_shas
         commits = self._build_commits(delta_shas, uri)
-        return self.cube_save_objects(commits)
+        return self.cube_save(commits)
 
     def extract(self, uri, fetch=True, shas=None, force=False, **kwargs):
         if not isinstance(uri, (list, tuple)):

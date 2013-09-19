@@ -32,6 +32,8 @@ WRITE_CONCERN = 1
 ADMIN_USER = 'admin'
 DATA_USER = 'metrique'
 
+SUPERUSERS = [ADMIN_USER]
+
 METRIQUE_DB = 'metrique'
 TIMELINE_DB = 'timeline'
 
@@ -58,16 +60,17 @@ class metrique(JSONConf):
         self._properties = {}
 
     @property
-    def admin_user(self):
-        return self._default('admin_user', ADMIN_USER)
+    def superusers(self):
+        return self._default('superusers', SUPERUSERS)
 
-    @property
-    def admin_password(self):
-        return self._default('admin_password', None)
-
-    @admin_password.setter
-    def admin_password(self, value):
-        self.config['admin_password'] = value
+    @superusers.setter
+    def superusers(self, value):
+        if isinstance(value, basestring):
+            value = [value]
+        if not isinstance(value, list):
+            raise TypeError(
+                "superuser must be a single or list of strings")
+        self.config['superusers'] = value
 
     @property
     def async(self):
@@ -87,7 +90,14 @@ class metrique(JSONConf):
 
     @property
     def cookie_secret(self):
-        return self._default('cookie_secret', new_cookie_secret())
+        if self.config['cookie_secret']:
+            return self.config['cookie_secret']
+        else:
+            # automatically generate a new cookie secret
+            # NOTE A NEW SECRET WILL INVALIDATE ALL PREVIOUS
+            # COOKIES; IN PRODUCTION, MAKE SURE TO HARDCODE
+            # THE COOKIE SECRETE IN metrique_config.json
+            return self._default('cookie_secret', new_cookie_secret())
 
     @property
     def debug(self):

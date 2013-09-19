@@ -6,6 +6,7 @@
 Base cube for extracting data from SQL databases
 '''
 
+from collections import defaultdict
 from dateutil.parser import parse as dt_parse
 from functools import partial
 import pytz
@@ -13,15 +14,15 @@ import re
 import time
 import traceback
 
-from metriquec.basecube import BaseCube
+from metrique.core_api import HTTPClient
 
-from metriqueu.utils import batch_gen, ts2dt
+from metriqueu.utils import batch_gen, ts2dt, strip_split
 
 DEFAULT_ROW_LIMIT = 100000
 DEFAULT_RETRIES = 10
 
 
-class BaseSql(BaseCube):
+class BaseSql(HTTPClient):
     '''
     Base, common functionality driver for connecting
     and extracting data from SQL databases.
@@ -33,107 +34,49 @@ class BaseSql(BaseCube):
 
     FIXME ... MORE DOCS TO COME
     '''
-    def __init__(self, host, port, db, row_limit=DEFAULT_ROW_LIMIT, **kwargs):
-        self.host = host
-        self.port = port
+    def __init__(self, sql_host, sql_port, db, **kwargs):
+        self.host = sql_host
+        self.port = sql_port
         self.db = db
-        self.row_limit = row_limit
         self.retry_on_error = Exception
         super(BaseSql, self).__init__(**kwargs)
+        self.row_limit = self.config.get('row_limit', DEFAULT_ROW_LIMIT)
 
-    @property
-    def proxy(self):
-        raise NotImplementedError("BaseSql has not defined a proxy")
-
-    def _fetchall(self, sql, start, field_order):
+    def activity_get(self, ids=None, mtime=None):
         '''
+        Generator that yields by ids ascending.
+        Each yield has format: (id, [(when, field, removed, added)])
+        For fields that are containers, added and removed must be lists
+        (no None allowed)
         '''
+        raise NotImplementedError(
+            'The activity_get method is not implemented in this cube.')
 
-        self.logger.debug('Fetching rows...')
-        rows = self.proxy.fetchall(sql, self.row_limit, start)
-        self.logger.debug('... fetched (%i)' % len(rows))
+    def _build_rows(self, rows):
+        _rows = {}
         if not rows:
-            return []
+            return _rows
+        self.logger.debug('Building dict_rows from sql_rows(%i)' % len(rows))
+        for row in rows:
+            _rows.setdefault(row['_oid'], []).append(row)
+        return _rows
 
-        for k, row in enumerate(rows):
-            _row = []
-            for column in row:
-                if type(column) is buffer:
-                    # unwrap/convert the aggregated string 'buffer'
-                    # objects to string
-                    column = str(column).replace('"', '').strip()
-                    if not column:
-                        column = None
-                    else:
-                        column = column.split('\n')
-                _row.append(column)
-            rows[k] = _row
-
-        k = len(rows)
-
-        self.logger.debug('Preparing row data...')
-        t0 = time.time()
-        objects = [self._prep_object(row, field_order) for row in rows]
-        t1 = time.time()
-        self.logger.debug('... Rows prepared %i docs (%i/sec)' % (
-            k, float(k) / (t1 - t0)))
-        return objects
-
-    def _prep_object(self, row, field_order):
+    def _build_objects(self, rows):
         '''
-        0th item is always the object '_oid'
-        Otherwise, fields is expected to map 1:1 with row columns
+        Given a set of rows/columns, build metrique object dictionaries
+        Normalize null values to be type(None).
         '''
-        row = list(row)
-        obj = {'_oid': row.pop(0)}
-        for k, column in enumerate(row, 0):
-            field = field_order[k]
-
-            column = self._normalize_container(column, field)
-            column = self._type(column, field)
-            column = self._convert(column, field)
-
-            if not column:
-                obj.update({field: None})
+        objects = []
+        if not rows:
+            return objects
+        self.logger.debug('Building objects from rows(%i)' % len(rows))
+        for col_rows in rows.itervalues():
+            if len(col_rows) > 1:
+                obj = self._normalize_object(col_rows)
+                objects.append(obj)
             else:
-                obj.update({field: column})
-        return obj
-
-    def _type(self, value, field):
-        container = self.get_property('container', field)
-        _type = self.get_property('type', field)
-        if None in [value, _type] or isinstance(value, _type):
-            # skip converting null values
-            # and skip converting if _type is null
-            return value
-        elif container:
-            # appy type to all values in the list
-            items = []
-            for item in value:
-                if isinstance(item, basestring):
-                    item = item.decode('utf8')
-                items.append(_type(item))
-            value = items
-        else:
-            # apply type to the single value
-            if isinstance(value, basestring):
-                value = value.decode('utf8')
-            value = _type(value)
-        return value
-
-    def _normalize_container(self, value, field):
-        container = self.get_property('container', field)
-        value_is_list = type(value) is list
-        if container and not value_is_list:
-            # and normalize to be a singleton list
-            value = [value] if value else None
-        elif not container and value_is_list:
-            raise ValueError(
-                "Expected single value (%s), got list (%s)" % (
-                    field, value))
-        else:
-            value = value
-        return value
+                objects.append(col_rows[0])
+        return objects
 
     def _convert(self, value, field):
         convert = self.get_property('convert', field)
@@ -156,22 +99,29 @@ class BaseSql(BaseCube):
             delta_batch_size = self.config.sql_delta_batch_size
         return id_delta, delta_batch_size
 
-    def _fetch_mtime(self, last_update):
-        mtime = None
-        if last_update:
-            if isinstance(last_update, basestring):
-                mtime = dt_parse(last_update)
+    def _extract(self, force, id_delta, field_order):
+        '''
+        '''
+        sql = self._gen_sql(force, id_delta, field_order)
+
+        start = 0
+        _stop = False
+        _rows = []
+        while not _stop:
+            rows = self._fetchall(sql, start, field_order)
+            _rows.extend(rows)
+
+            k = len(rows)
+            if k < self.row_limit:
+                _stop = True
             else:
-                mtime = last_update
-        else:
-            # list_cube_fields returns back a dict from the server that
-            # contains a global _mtime that represents the last time
-            # any field was updated.
-            mtime = self.cube_stats().get('mtime')
-        # convert timestamp to datetime object
-        mtime = ts2dt(mtime)
-        self.logger.info("Last update mtime: %s" % mtime)
-        return mtime
+                start += k
+                # theoretically, k == self.row_limit
+                assert k == self.row_limit
+
+        __rows = self._build_rows(_rows)
+        objects = self._build_objects(__rows)
+        return objects
 
     def _extract_id_delta(self, id_delta, delta_batch_size,
                           force, field_order, retries):
@@ -240,7 +190,7 @@ class BaseSql(BaseCube):
             return []
 
     def extract(self, exclude_fields=None, force=False, id_delta=None,
-                last_update=None, update=False, delta_batch_size=None,
+                last_update=None, delta_batch_size=None,
                 retries=DEFAULT_RETRIES, row_limit=None, parse_timestamp=None,
                 dry_run=False, **kwargs):
         '''
@@ -260,7 +210,7 @@ class BaseSql(BaseCube):
         if parse_timestamp is None:
             parse_timestamp = self.get_property('parse_timestamp', None, True)
 
-        exclude_fields = self.parse_fields(exclude_fields)
+        exclude_fields = strip_split(exclude_fields)
         id_delta, delta_batch_size = self._delta_init(
             id_delta, force, delta_batch_size)
 
@@ -277,7 +227,7 @@ class BaseSql(BaseCube):
             pass
         elif not force:
             # include objects updated since last mtime too
-            mtime = self._fetch_mtime(last_update, exclude_fields)
+            mtime = self._fetch_mtime(last_update)
             id_delta.extend(self._get_mtime_id_delta(mtime, parse_timestamp))
 
         # this is to set the 'index' of sql columns so we can extract
@@ -299,111 +249,110 @@ class BaseSql(BaseCube):
         if dry_run:
             return objects
         else:
-            return self.cube_save_objects(objects, update=update)
+            return self.cube_save(objects)
 
-    def _build_rows(self, rows):
-        _rows = {}
-        if not rows:
-            return _rows
-        self.logger.debug('Building dict_rows from sql_rows(%i)' % len(rows))
-        for row in rows:
-            _rows.setdefault(row['_oid'], []).append(row)
-        return _rows
+    def _fetchall(self, sql, start, field_order):
+        '''
+        '''
 
-    def _build_objects(self, rows):
-        '''
-        Given a set of rows/columns, build metrique object dictionaries
-        Normalize null values to be type(None).
-        '''
-        objects = []
+        self.logger.debug('Fetching rows...')
+        rows = self.proxy.fetchall(sql, self.row_limit, start)
+        self.logger.debug('... fetched (%i)' % len(rows))
         if not rows:
-            return objects
-        self.logger.debug('Building objects from rows(%i)' % len(rows))
-        for col_rows in rows.itervalues():
-            if len(col_rows) > 1:
-                obj = self._normalize_object(col_rows)
-                objects.append(obj)
-            else:
-                objects.append(col_rows[0])
+            return []
+
+        for k, row in enumerate(rows):
+            _row = []
+            for column in row:
+                if type(column) is buffer:
+                    # unwrap/convert the aggregated string 'buffer'
+                    # objects to string
+                    column = str(column).replace('"', '').strip()
+                    if not column:
+                        column = None
+                    else:
+                        column = column.split('\n')
+                _row.append(column)
+            rows[k] = _row
+
+        k = len(rows)
+
+        self.logger.debug('Preparing row data...')
+        t0 = time.time()
+        objects = [self._prep_object(row, field_order) for row in rows]
+        t1 = time.time()
+        self.logger.debug('... Rows prepared %i docs (%i/sec)' % (
+            k, float(k) / (t1 - t0)))
         return objects
 
-    def __row_iter(self, rows):
-        for row in rows:
-            for field, tokens in row.iteritems():
-                # _oid field doesn't require normalization
-                if field != '_oid':
-                    yield field, tokens
-
-    def _normalize_object(self, rows):
-        o = rows.pop(0)
-        for field, tokens in self.__row_iter(rows):
-            if o[field] == tokens:
-                continue
-
-            if type(o[field]) is list:
-                if type(tokens) is list:
-                    o[field].extend(tokens)
-                elif tokens not in o[field]:
-                    o[field].append(tokens)
-                else:
-                    # skip non-unique duplicate values
-                    continue
+    def _fetch_mtime(self, last_update):
+        mtime = None
+        if last_update:
+            if isinstance(last_update, basestring):
+                mtime = dt_parse(last_update)
             else:
-                o[field] = [o[field], tokens]
+                mtime = last_update
+        else:
+            # list_cube_fields returns back a dict from the server that
+            # contains a global _mtime that represents the last time
+            # any field was updated.
+            mtime = self.cube_stats(owner=self.config.username,
+                                    cube=self.name, keys='mtime')
+        # convert timestamp to datetime object
+        mtime = ts2dt(mtime)
+        self.logger.info("Last update mtime: %s" % mtime)
+        return mtime
 
-            #try:
-            #    del o[field][o[field].index(None)]
-            #    # if we have more than one value, drop any
-            #    # redundant None (null) values, if any
-            #except (ValueError):
-            #    pass
+    @property
+    def fieldmap(self):
+        '''
+        Dictionary of field_id: field_name
+        '''
+        fieldmap = defaultdict(str)
+        for field in self.fields:
+            field_id = self.get_property('what', field)
+            if field_id is not None:
+                fieldmap[field_id] = field
+        return fieldmap
 
-    def _extract(self, force, id_delta, field_order):
+    def _gen_sql(self, force, id_delta, field_order):
         '''
         '''
-        sql = self._gen_sql(force, id_delta, field_order)
+        self.logger.debug('Generating SQL...')
+        db = self.get_property('db')
+        table = self.get_property('table')
 
-        start = 0
-        _stop = False
-        _rows = []
-        while not _stop:
-            rows = self._fetchall(sql, start, field_order)
-            _rows.extend(rows)
+        selects = self._get_sql_selects(field_order)
 
-            k = len(rows)
-            if k < self.row_limit:
-                _stop = True
-            else:
-                start += k
-                # theoretically, k == self.row_limit
-                assert k == self.row_limit
+        base_from = '%s.%s' % (db, table)
+        froms = 'FROM ' + ', '.join([base_from])
 
-        __rows = self._build_rows(_rows)
-        objects = self._build_objects(__rows)
-        return objects
+        left_joins = self._get_sql_left_joins(field_order)
 
-    def _get_sql_clause(self, clause, default=None):
-        '''
-        '''
-        clauses = []
-        for f in self.fields.keys():
-            try:
-                _clause = self.fields[f]['sql'].get(clause)
-            except KeyError:
-                if default:
-                    _clause = default
-                else:
-                    raise
-            if type(_clause) is list:
-                clauses.extend(_clause)
-            else:
-                clauses.append(_clause)
-        clauses = list(set(clauses))
-        try:
-            del clauses[clauses.index(None)]
-        except ValueError:
-            pass
-        return clauses
+        delta_filter = []
+        where = ''
+        if force and id_delta:
+            delta_filter.extend(
+                self._get_id_delta_sql(table, id_delta))
+
+        elif not force:
+            # apply delta sql clause's if we're not forcing a full run
+            if id_delta:
+                delta_filter.extend(
+                    self._get_id_delta_sql(table, id_delta))
+            if self.get_property('delta', None, True):
+                delta_filter.extend(self._get_last_id_sql())
+
+        if delta_filter:
+            where = 'WHERE ' + ' OR '.join(delta_filter)
+
+        sql = 'SELECT %s %s %s %s' % (
+            selects, froms, left_joins, where)
+
+        sql += self._sql_sort(table)
+        sql = self._sql_distinct(sql)
+
+        return sql
 
     def _get_id_delta_sql(self, table, id_delta):
         '''
@@ -478,6 +427,29 @@ class BaseSql(BaseCube):
         else:
             return []
 
+    def _get_sql_clause(self, clause, default=None):
+        '''
+        '''
+        clauses = []
+        for f in self.fields.keys():
+            try:
+                _clause = self.fields[f]['sql'].get(clause)
+            except KeyError:
+                if default:
+                    _clause = default
+                else:
+                    raise
+            if type(_clause) is list:
+                clauses.extend(_clause)
+            else:
+                clauses.append(_clause)
+        clauses = list(set(clauses))
+        try:
+            del clauses[clauses.index(None)]
+        except ValueError:
+            pass
+        return clauses
+
     def _get_sql_selects(self, field_order):
         table = self.get_property('table')
         _id = self.get_property('column')
@@ -532,44 +504,74 @@ class BaseSql(BaseCube):
                     left_joins.append(_lj)
         return ' '.join(left_joins)
 
-    def _gen_sql(self, force, id_delta, field_order):
+    def _normalize_object(self, rows):
+        o = rows.pop(0)
+        for field, tokens in self.__row_iter(rows):
+            if o[field] == tokens:
+                continue
+
+            if type(o[field]) is list:
+                if type(tokens) is list:
+                    o[field].extend(tokens)
+                elif tokens not in o[field]:
+                    o[field].append(tokens)
+                else:
+                    # skip non-unique duplicate values
+                    continue
+            else:
+                o[field] = [o[field], tokens]
+
+            #try:
+            #    del o[field][o[field].index(None)]
+            #    # if we have more than one value, drop any
+            #    # redundant None (null) values, if any
+            #except (ValueError):
+            #    pass
+
+    def _normalize_container(self, value, field):
+        container = self.get_property('container', field)
+        value_is_list = type(value) is list
+        if container and not value_is_list:
+            # and normalize to be a singleton list
+            value = [value] if value else None
+        elif not container and value_is_list:
+            raise ValueError(
+                "Expected single value (%s), got list (%s)" % (
+                    field, value))
+        else:
+            value = value
+        return value
+
+    @property
+    def proxy(self):
+        raise NotImplementedError("BaseSql has not defined a proxy")
+
+    def _prep_object(self, row, field_order):
         '''
+        0th item is always the object '_oid'
+        Otherwise, fields is expected to map 1:1 with row columns
         '''
-        self.logger.debug('Generating SQL...')
-        db = self.get_property('db')
-        table = self.get_property('table')
+        row = list(row)
+        obj = {'_oid': row.pop(0)}
+        for k, column in enumerate(row, 0):
+            field = field_order[k]
 
-        selects = self._get_sql_selects(field_order)
+            column = self._normalize_container(column, field)
+            column = self._type(column, field)
+            column = self._convert(column, field)
 
-        base_from = '%s.%s' % (db, table)
-        froms = 'FROM ' + ', '.join([base_from])
+            if not column:
+                obj.update({field: None})
+            else:
+                obj.update({field: column})
+        return obj
 
-        left_joins = self._get_sql_left_joins(field_order)
-
-        delta_filter = []
-        where = ''
-        if force and id_delta:
-            delta_filter.extend(
-                self._get_id_delta_sql(table, id_delta))
-
-        elif not force:
-            # apply delta sql clause's if we're not forcing a full run
-            if id_delta:
-                delta_filter.extend(
-                    self._get_id_delta_sql(table, id_delta))
-            if self.get_property('delta', None, True):
-                delta_filter.extend(self._get_last_id_sql())
-
-        if delta_filter:
-            where = 'WHERE ' + ' OR '.join(delta_filter)
-
-        sql = 'SELECT %s %s %s %s' % (
-            selects, froms, left_joins, where)
-
-        sql += self._sql_sort(table)
-        sql = self._sql_distinct(sql)
-
-        return sql
+    def __row_iter(self, rows):
+        for row in rows:
+            for field, tokens in row.iteritems():
+                # _oid field doesn't require normalization
+                if field != '_oid':
+                    yield field, tokens
 
     def _sql_distinct(self, sql):
         # whether to query for distinct rows only or not; default, no
@@ -584,3 +586,25 @@ class BaseSql(BaseCube):
             return " ORDER BY %s.%s ASC" % (table, _id)
         else:
             return ""
+
+    def _type(self, value, field):
+        container = self.get_property('container', field)
+        _type = self.get_property('type', field)
+        if None in [value, _type] or isinstance(value, _type):
+            # skip converting null values
+            # and skip converting if _type is null
+            return value
+        elif container:
+            # appy type to all values in the list
+            items = []
+            for item in value:
+                if isinstance(item, basestring):
+                    item = item.decode('utf8')
+                items.append(_type(item))
+            value = items
+        else:
+            # apply type to the single value
+            if isinstance(value, basestring):
+                value = value.decode('utf8')
+            value = _type(value)
+        return value
