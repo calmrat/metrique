@@ -146,6 +146,7 @@ def save(self, objects, batch_size=None, **kwargs):
         return []
 
     # get 'now' utc timezone aware datetime object
+    # FIXME IMPORTANT timestamp should be really taken before extract
     now = utcnow(tz_aware=True)
 
     if (batch_size <= 0) or (olen <= batch_size):

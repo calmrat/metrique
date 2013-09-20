@@ -292,3 +292,15 @@ class HTTPClient(object):
             self.user_login()
         else:
             return self.config['username']
+
+    def get_cmd(self, owner, cube, api_name):
+        owner = owner or self.config.username
+        if not owner:
+            raise ValueError('owner required!')
+        cube = cube or self.name
+        if not cube:
+            raise ValueError('cube required!')
+        if api_name:
+            return os.path.join(owner, cube, api_name)
+        else:
+            return os.path.join(owner, cube)

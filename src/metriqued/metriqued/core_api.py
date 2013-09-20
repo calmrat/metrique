@@ -20,14 +20,13 @@ except ImportError:
 from passlib.hash import sha256_crypt
 import cPickle
 import random
-import re
 import simplejson as json
 from tornado.web import RequestHandler, HTTPError
 from tornado import gen
 
 from metriqued.utils import parse_pql_query, ifind
 
-from metriqueu.utils import set_default, dt2ts, utcnow, strip_split
+from metriqueu.utils import set_default, utcnow, strip_split
 
 SAMPLE_SIZE = 1
 VALID_CUBE_ROLES = set(('admin', 'own', 'read', 'write'))
@@ -98,7 +97,7 @@ class MetriqueHdlr(RequestHandler):
             _fields = None
         else:
             # to return `_id`, it must be included in fields
-            _fields = {'_id': -1, '_start': 1, '_end': 1}
+            _fields = {'_id': 0, '_oid': 1, '_start': 1, '_end': 1}
             _split_fields = [f for f in strip_split(fields)]
             _fields.update(dict([(f, 1) for f in set(_split_fields)]))
         return _fields
@@ -454,35 +453,6 @@ class MetriqueHdlr(RequestHandler):
                 basic_realm = 'Basic realm="%s"' % _realm
                 self.set_header('WWW-Authenticate', basic_realm)
             raise HTTPError(code, msg)
-
-    @staticmethod
-    def get_date_pql_string(date, prefix=' and '):
-        if date is None:
-            return prefix + '_end == None'
-        if date == '~':
-            return ''
-
-        # replace all occurances of 'T' with ' '
-        # this is used for when datetime is passed in
-        # like YYYY-MM-DDTHH:MM:SS instead of
-        #      YYYY-MM-DD HH:MM:SS as expected
-        dt_str = date.replace('T', ' ')
-        # drop all occurances of 'timezone' like substring
-        dt_str = re.sub('\+\d\d:\d\d', '', dt_str)
-
-        before = lambda d: '_start <= %f' % dt2ts(d)
-        after = lambda d: '(_end >= %f or _end == None)' % dt2ts(d)
-        split = date.split('~')
-        logger.warn(split)
-        if len(split) == 1:
-            ret = '%s and %s' % (before(dt_str), after(dt_str))
-        elif split[0] == '':
-            ret = '%s' % before(split[1])
-        elif split[1] == '':
-            ret = '%s' % after(split[0])
-        else:
-            ret = '%s and %s' % (before(split[1]), after(split[0]))
-        return prefix + ret
 
 
 class PingHdlr(MetriqueHdlr):
