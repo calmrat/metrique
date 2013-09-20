@@ -41,16 +41,13 @@ def jsonhash(obj, root=True):
     '''
     calculate the objects hash based on all field values
     '''
-    # FIXME: check if 'mutable mapping'
     if isinstance(obj, dict):
         result = frozenset(
-            [(jsonhash(k),
-              jsonhash(v, False)) for k, v in obj.items()])
-    # FIXME: check if 'iterable'
-    elif isinstance(obj, (list, tuple, set)):
-        result = tuple(sorted(jsonhash(e, False) for e in obj))
+            (k, jsonhash(v, False)) for k, v in obj.items())
+    elif isinstance(obj, list):
+        result = tuple(jsonhash(e, False) for e in obj)
     else:
-        result = repr(obj)
+        result = obj
     return sha1(repr(result)).hexdigest() if root else result
 
 
