@@ -265,20 +265,6 @@ class SaveObjectsHdlr(MetriqueHdlr):
                                    objects=objects, mtime=mtime)
         self.write(result)
 
-    @staticmethod
-    def _prepare_key(obj, key):
-        if key in obj:
-            if not isinstance(obj[key], (int, float)):
-                raise TypeError(
-                    'Expected int/float type, got: %s' % type(obj[key]))
-            _key = obj[key]
-            _with_key = True
-            del obj[key]
-        else:
-            _key = None
-            _with_key = False
-        return _key, _with_key
-
     def prepare_objects(self, _cube, objects, mtime):
         '''
         :param dict obj: dictionary that will be converted to mongodb doc
@@ -286,29 +272,26 @@ class SaveObjectsHdlr(MetriqueHdlr):
 
         Do some basic object validatation and add an _start timestamp value
         '''
-        olen_r = len(objects)
-        logger.debug('Received %s objects' % olen_r)
-
         new_obj_hashes = []
         for obj in objects:
-            _start, _with_start = self._prepare_key(obj, '_start')
-            _end, _with_end = self._prepare_key(obj, '_end')
+            _start = obj.pop('_start') if '_start' in obj else None
+            _end = obj.pop('_end') if '_end' in obj else None
 
-            if _with_end and not _with_start:
-                    self._raise(400, "objects with _end must have _start")
-
-            keys = set(obj.keys())
-            if '_id' in keys:
-                self._raise(400, "_id field CAN NOT be defined: %s" % obj)
-
-            if '_hash' in keys:
-                self._raise(400, "_hash field CAN NOT be defined: %s" % obj)
-
-            if '_oid' not in keys:
-                self._raise(400, "_oid field MUST be defined: %s" % obj)
-
+            if _end is not None and _start is None:
+                self._raise(400, "objects with _end must have _start")
             if not _start:
                 _start = mtime
+            if not isinstance(_start, (int, float)):
+                self._raise(400, "_start must be float/int")
+            if not isinstance(_end, (int, float)) and _end is not None:
+                self._raise(400, "_end must be float/int/None")
+
+            if '_id' in obj:
+                self._raise(400, "_id field CAN NOT be defined: %s" % obj)
+            if '_hash' in obj:
+                self._raise(400, "_hash field CAN NOT be defined: %s" % obj)
+            if '_oid' not in obj:
+                self._raise(400, "_oid field MUST be defined: %s" % obj)
 
             # hash the object (minus _start/_end)
             _hash = jsonhash(obj)
@@ -335,12 +318,6 @@ class SaveObjectsHdlr(MetriqueHdlr):
         _dup_hashes = set([doc['_hash'] for doc in docs])
         objects = [obj for obj in objects if obj['_hash'] not in _dup_hashes]
         objects = filter(None, objects)
-
-        olen_n = len(objects)
-        olen_diff = olen_r - olen_n
-        logger.debug('Found %s Existing (current) objects' % (olen_diff))
-        logger.debug('Saving %s NEW objects' % olen_n)
-
         return objects
 
     def save_objects(self, owner, cube, objects, mtime=None):
@@ -366,12 +343,21 @@ class SaveObjectsHdlr(MetriqueHdlr):
                 "invalid mtime (%s); "
                 "must be > current mtime (%s)" % (mtime, current_mtime))
         _cube = self.timeline(owner, cube, admin=True)
+
+        olen_r = len(objects)
+        logger.debug('[%s.%s] Recieved %s objects' % (owner, cube, olen_r))
+
         objects = self.prepare_objects(_cube, objects, mtime)
+
+        logger.debug('[%s.%s] %s objects match their current version in db' % (
+            owner, cube, olen_r - len(objects)))
 
         if not objects:
             logger.debug('[%s.%s] No NEW objects to save' % (owner, cube))
             return []
         else:
+            logger.debug('[%s.%s] Saving %s objects' % (owner, cube,
+                                                        len(objects)))
             # End the most recent versions in the db of those objects that
             # have newer versionsi (newest version must have _end == None,
             # activity import saves objects for which this might not be true):
@@ -380,16 +366,18 @@ class SaveObjectsHdlr(MetriqueHdlr):
             if to_snap:
                 db_versions = ifind(_cube=_cube, _oid={'$in': to_snap.keys()},
                                     _end=None, fields={'_id': 1, '_oid': 1})
+                snapped = 0
                 for doc in db_versions:
                     _cube.update({'_id': doc['_id']},
                                  {'$set': {'_end': to_snap[doc['_oid']]}},
                                  multi=False)
-                logger.debug('[%s.%s] Updated %s old versions' %
-                             (owner, cube, db_versions.count()))
+                    snapped += 1
+                logger.debug('[%s.%s] Updated %s OLD versions' %
+                             (owner, cube, snapped))
             # Insert all new versions:
             insert_bulk(_cube, objects)
-            logger.debug('[%s.%s] Saved %s objects' % (owner, cube,
-                                                       len(objects)))
+            logger.debug('[%s.%s] Saved %s NEW versions' % (owner, cube,
+                                                            len(objects)))
             # return object ids saved
             return [o['_oid'] for o in objects]
 
