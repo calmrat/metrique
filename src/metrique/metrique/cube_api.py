@@ -247,29 +247,27 @@ def _activity_import_doc(cube, time_doc, activities):
     return batch_updates
 
 
-# FIXME: make sure the query being sent (in all cases...) hits BASE_INDEX
-def _get_time_docs_cursor(cube, ids):
-    if isinstance(ids, list):
-        q = '_oid in %s' % ids
-    if isinstance(ids, tuple):
-        q = '_oid >= %s and _oid <= %s' % ids
+def _activity_import(cube, oids):
+    # get time docs cursor
+    if isinstance(oids, list):
+        q = '_oid in %s' % oids
+    if isinstance(oids, tuple):
+        q = '_oid >= %s and _oid <= %s' % oids
     time_docs = cube.find(q, fields='__all__', date='~',
                           sort=[('_oid', 1), ('_start', 1)], raw=True)
-    return time_docs
-
-
-def _activity_import(cube, ids, batch_size):
-    time_docs = _get_time_docs_cursor(cube, ids)
 
     # generator that yields by ids ascending
     # has format: (id, [(when, field, removed, added)])
-    act_generator = cube.activity_get(ids)
+    act_generator = cube.activity_get(oids)
 
     last_doc_id = -1
     aid = -1
-    batched_updates = []
+    remove_ids = []
+    save_objects = []
     for time_doc in time_docs:
         _oid = time_doc['_oid']
+        _id = time_doc.pop('_id')
+        time_doc.pop('_hash')
         # we want to update only the oldest version of the object
         while aid < _oid:
             aid, acts = act_generator.next()
@@ -277,18 +275,17 @@ def _activity_import(cube, ids, batch_size):
             last_doc_id = _oid
             updates = _activity_import_doc(cube, time_doc, acts)
             if len(updates) > 1:
-                batched_updates += updates
-        if len(batched_updates) >= batch_size:
-            cube.cube_save(batched_updates)
-            batched_updates = []
-    if batched_updates:
-        cube.cube_save(batched_updates)
+                save_objects += updates
+                remove_ids.append(_id)
+    cube.cube_remove(ids=remove_ids)
+    cube.cube_save(save_objects)
 
 
-def activity_import(self, ids=None, save_batch_size=1000, chunk_size=1000):
+def activity_import(self, ids=None, chunk_size=1000):
     '''
-    Run the activity import for a given cube, if the
-    cube supports it.
+    WARNING: Do NOT run extract while activity import is running,
+             it might result in data corruption.
+    Run the activity import for a given cube, if the cube supports it.
 
     Essentially, recreate object histories from
     a cubes 'activity history' table row data,
@@ -314,13 +311,11 @@ def activity_import(self, ids=None, save_batch_size=1000, chunk_size=1000):
         ids = (0, max_oid)
     if isinstance(ids, tuple):
         for i in range(ids[0], ids[1] + 1, chunk_size):
-            _activity_import(self, (i, min(ids[1], i + chunk_size - 1)),
-                             batch_size=save_batch_size)
+            _activity_import(self, (i, min(ids[1], i + chunk_size - 1)))
     else:
         if not isinstance(ids, list):
             raise ValueError(
                 "Expected ids to be None, tuple or list. Got %s" % type(list))
 
         for i in range(0, len(ids), chunk_size):
-            _activity_import(self, ids[i:i + chunk_size],
-                             batch_size=save_batch_size)
+            _activity_import(self, ids[i:i + chunk_size])
