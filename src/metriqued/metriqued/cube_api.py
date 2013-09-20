@@ -239,17 +239,16 @@ class RemoveObjectsHdlr(MetriqueHdlr):
             self._raise(400, "Expected list, got %s: %s" %
                         (type(ids), ids))
         else:
-            _oid_spec = {'$in': ids}
+            _cube = self.timeline(owner, cube, admin=True)
+            spec = {'_id': {'$in': ids}}
             if backup:
-                docs = ifind(_oid=_oid_spec)
+                docs = _cube.find(spec)
                 if docs:
                     docs = tuple(docs)
             else:
                 docs = []
 
-            _cube = self.timeline(owner, cube, admin=True)
-            full_spec = {'_oid': _oid_spec}
-            _cube.remove(full_spec, safe=True)
+            _cube.remove(spec, safe=True)
             return docs
 
 
