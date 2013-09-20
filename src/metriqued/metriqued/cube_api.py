@@ -5,7 +5,6 @@
 from bson import ObjectId
 import logging
 logger = logging.getLogger(__name__)
-from itertools import chain
 from tornado.web import authenticated
 
 from metriqued.core_api import MetriqueHdlr
@@ -279,7 +278,7 @@ class SaveObjectsHdlr(MetriqueHdlr):
         else:
             _key = None
             _with_key = False
-        return obj, _key, _with_key
+        return _key, _with_key
 
     def prepare_objects(self, _cube, objects, mtime):
         '''
@@ -291,11 +290,10 @@ class SaveObjectsHdlr(MetriqueHdlr):
         olen_r = len(objects)
         logger.debug('Received %s objects' % olen_r)
 
-        _hashes = set()
-        _oids = set()
+        new_obj_hashes = []
         for obj in objects:
-            obj, _start, _with_start = self._prepare_key(obj, '_start')
-            obj, _end, _with_end = self._prepare_key(obj, '_end')
+            _start, _with_start = self._prepare_key(obj, '_start')
+            _end, _with_end = self._prepare_key(obj, '_end')
 
             if _with_end and not _with_start:
                     self._raise(400, "objects with _end must have _start")
@@ -309,7 +307,6 @@ class SaveObjectsHdlr(MetriqueHdlr):
 
             if '_oid' not in keys:
                 self._raise(400, "_oid field MUST be defined: %s" % obj)
-            _oids.add(obj['_oid'])
 
             if not _start:
                 _start = mtime
@@ -317,7 +314,8 @@ class SaveObjectsHdlr(MetriqueHdlr):
             # hash the object (minus _start/_end)
             _hash = jsonhash(obj)
             obj['_hash'] = _hash
-            _hashes.add(_hash)
+            if _end is None:
+                new_obj_hashes.append(_hash)
 
             # add back _start and _end properties
             obj['_start'] = _start
@@ -332,11 +330,9 @@ class SaveObjectsHdlr(MetriqueHdlr):
         # get the estimate size, as follows
         #est_size_hashes = estimate_obj_size(_hashes)
 
-        # Get dup hashes and filter objects to include only non dup hashes
-        _hash_spec = {'$in': list(_hashes)}
-
-        fields = {'_hash': 1, '_id': -1}
-        docs = ifind(_cube=_cube, _hash=_hash_spec, _end=None, fields=fields)
+        # Filter out objects whose most recent version did not change
+        docs = ifind(_cube=_cube, _hash={'$in': new_obj_hashes},
+                     _end=None, fields={'_hash': 1, '_id': -1})
         _dup_hashes = set([doc['_hash'] for doc in docs])
         objects = [obj for obj in objects if obj['_hash'] not in _dup_hashes]
         objects = filter(None, objects)
@@ -346,103 +342,7 @@ class SaveObjectsHdlr(MetriqueHdlr):
         logger.debug('Found %s Existing (current) objects' % (olen_diff))
         logger.debug('Saving %s NEW objects' % olen_n)
 
-        # get list of objects which have other versions
-        _oid_spec = {'$in': list(_oids)}
-        fields = {'_oid': 1, '_id': -1}
-        docs = ifind(_cube=_cube, _oid=_oid_spec, fields=fields)
-        _known_oids = set([doc['_oid'] for doc in docs])
-
-        no_snap = [obj for obj in objects
-                   if not obj.get('_oid') in _known_oids]
-        to_snap = [obj for obj in objects
-                   if obj.get('_oid') in _known_oids]
-        return no_snap, to_snap, _oids
-
-    @staticmethod
-    def _save_and_snapshot(_cube, objects):
-        '''
-        Each object in objects must have '_oid' and '_start' fields
-        specified and it can *not* have fields '_end' and '_id'
-        specified.
-        In timeline(TL), the most recent version of an object has
-        _end == None.
-        For each object this method tries to find the most recent
-        version of it
-        in TL. If there is one, if the field-values specified in the
-        new object are different than those in th object from TL, it
-        will end the old object and insert the new one (fields that
-        are not specified in the new object are copied from the old one).
-        If there is not a version of the object in TL, it will just
-        insert it.
-
-        :param pymongo.collection _cube:
-            cube object (pymongo collection connection)
-        :param list objects:
-            list of dictionary-like objects
-        '''
-        logger.debug('... To snapshot: %s objects.' % len(objects))
-
-        # .update() all oid version with end:null to end:new[_start]
-        # then insert new
-
-        _starts = dict([(doc['_oid'], doc['_start']) for doc in objects])
-        _oids = _starts.keys()
-
-        _oid_spec = {'$in': _oids}
-        _end_spec = None
-        fields = {'_id': 1, '_oid': 1}
-        current_docs = ifind(_cube=_cube, _oid=_oid_spec,
-                             _end=_end_spec, fields=fields)
-        current_ids = [(doc['_id'], doc['_oid']) for doc in current_docs]
-
-        for _id, _oid in current_ids:
-            update = {'$set': {'_end': _starts[_oid]}}
-            _cube.update({'_id': _id}, update, multi=False)
-        logger.debug('... "snapshot" saving %s objects.' % len(objects))
-        insert_bulk(_cube, objects)
-
-    @staticmethod
-    def _save_no_snapshot(_cube, objects):
-        '''
-        Save all the objects (docs) into the given cube (mongodb collection)
-        Each object must have '_oid', '_start', '_end' fields.
-        The '_id' field is voluntary and its presence or absence determines
-        the save method (see below).
-
-        Use `save` to overwrite the entire document with the new version
-        or `insert` when we have a document without a _id, indicating
-        it's a new document, rather than an update of an existing doc.
-
-        :param pymongo.collection _cube:
-            cube object (pymongo collection connection)
-        :param list objects:
-            list of dictionary-like objects
-        '''
-        logger.debug('... "no snapshot" saving %s objects.' % len(objects))
-        insert_bulk(_cube, objects)
-
-    def _save_objects(self, _cube, no_snap, to_snap, mtime):
-        '''
-        Save all the objects (docs) into the given cube (mongodb collection)
-        Each object must have '_oid' and '_start' fields.
-        If an object has an '_end' field, it will be saved without snapshot,
-        otherwise it will be saved with snapshot.
-        The '_id' field is allowed only if the object also has the '_end' field
-        and its presence or absence determines the save method.
-
-
-        :param pymongo.collection _cube:
-            cube object (pymongo collection connection)
-        :param list objects:
-            list of dictionary-like objects
-        '''
-        # Split the objects based on the presence of '_end' field:
-        self._save_no_snapshot(_cube, no_snap) if len(no_snap) > 0 else []
-        self._save_and_snapshot(_cube, to_snap) if len(to_snap) > 0 else []
-        # update cube's mtime doc
-        _cube.save({'_id': '__mtime__', 'value': mtime})
-        # return object ids saved
-        return [o['_oid'] for o in chain(no_snap, to_snap)]
+        return objects
 
     def save_objects(self, owner, cube, objects, mtime=None):
         '''
@@ -462,19 +362,37 @@ class SaveObjectsHdlr(MetriqueHdlr):
         self.requires_owner_write(owner, cube)
         mtime = dt2ts(mtime) if mtime else utcnow()
         current_mtime = self.get_cube_mtime(owner, cube)
-        if current_mtime > mtime:
+        if current_mtime and mtime and current_mtime > mtime:
             raise ValueError(
                 "invalid mtime (%s); "
                 "must be > current mtime (%s)" % (mtime, current_mtime))
         _cube = self.timeline(owner, cube, admin=True)
-        no_snap, to_snap, _oids = self.prepare_objects(_cube, objects, mtime)
+        objects = self.prepare_objects(_cube, objects, mtime)
+
         if not objects:
             logger.debug('[%s.%s] No NEW objects to save' % (owner, cube))
             return []
         else:
-            olen = len(no_snap) + len(to_snap)
-            logger.debug('[%s.%s] Saved %s objects' % (owner, cube, olen))
-            return self._save_objects(_cube, no_snap, to_snap, mtime)
+            # End the most recent versions in the db of those objects that
+            # have newer versionsi (newest version must have _end == None,
+            # activity import saves objects for which this might not be true):
+            to_snap = dict([(o['_oid'], o['_start']) for o in objects
+                            if o['_end'] is None])
+            if to_snap:
+                db_versions = ifind(_cube=_cube, _oid={'$in': to_snap.keys()},
+                                    _end=None, fields={'_id': 1, '_oid': 1})
+                for doc in db_versions:
+                    _cube.update({'_id': doc['_id']},
+                                 {'$set': {'_end': to_snap[doc['_oid']]}},
+                                 multi=False)
+                logger.debug('[%s.%s] Updated %s old versions' %
+                             (owner, cube, db_versions.count()))
+            # Insert all new versions:
+            insert_bulk(_cube, objects)
+            logger.debug('[%s.%s] Saved %s objects' % (owner, cube,
+                                                       len(objects)))
+            # return object ids saved
+            return [o['_oid'] for o in objects]
 
 
 class StatsHdlr(MetriqueHdlr):
