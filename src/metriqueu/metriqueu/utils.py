@@ -4,7 +4,7 @@
 
 from bson.objectid import ObjectId
 from calendar import timegm
-from datetime import datetime as dt
+from datetime import datetime
 from dateutil.parser import parse as dt_parse
 from hashlib import sha1
 import pytz
@@ -27,14 +27,18 @@ def batch_gen(data, batch_size):
         yield data[i:i + batch_size]
 
 
-def dt2ts(dt):
+def dt2ts(dt, drop_micro=False):
     ''' convert datetime objects to timestamp int's (seconds) '''
     if isinstance(dt, (int, long, float, complex)):  # its a ts already
-        return dt
+        ts = dt
     elif isinstance(dt, basestring):  # convert to datetime first
-        return dt2ts(dt_parse(dt))
+        ts = dt2ts(dt_parse(dt))
     else:
-        return timegm(dt.timetuple())
+        ts = timegm(dt.timetuple())
+    if drop_micro:
+        return int(ts)
+    else:
+        return ts
 
 
 def jsonhash(obj, root=True):
@@ -81,28 +85,41 @@ def set_default(key, default, null_ok=False, err_msg=None):
 
 def ts2dt(ts, milli=False, tz_aware=True):
     ''' convert timestamp int's (seconds) to datetime objects '''
-    if not ts or isinstance(ts, dt):
-        # its not a timestamp or is already a datetime
-        return ts
-    # ts must be float and in seconds
+    # anything already a datetime will still be returned
+    # tz_aware, if set to true
+    if not ts:
+        return ts  # its not a timestamp, throw it back
+    elif isinstance(ts, datetime):
+        pass
     elif milli:
         ts = float(ts) / 1000.  # convert milli to seconds
     else:
         ts = float(ts)  # already in seconds
     if tz_aware:
-        return dt.fromtimestamp(ts, tz=pytz.utc)
+        if isinstance(ts, datetime):
+            ts.replace(tzinfo=pytz.utc)
+            return ts
+        else:
+            return datetime.fromtimestamp(ts, tz=pytz.utc)
     else:
-        return dt.utcfromtimestamp(ts)
+        if isinstance(ts, datetime):
+            return ts
+        else:
+            return datetime.utcfromtimestamp(ts)
 
 
-def utcnow(as_datetime=False, tz_aware=False):
-    now = dt.utcnow()
+def utcnow(as_datetime=False, tz_aware=False, drop_micro=False):
+    if drop_micro:
+        now = datetime.utcnow().replace(microsecond=0)
+    else:
+        now = datetime.utcnow()
     if tz_aware:
+        # implise as_datetime=True
         return pytz.UTC.localize(now)
     elif as_datetime:
         return now
     else:
-        return dt2ts(now)
+        return dt2ts(now, drop_micro)
 
 
 def strip_split(item):
@@ -111,7 +128,6 @@ def strip_split(item):
     elif item is None:
         return []
     elif not isinstance(item, (list, tuple)):
-        raise ValueError('Expected a list/tuple')
-    else:
-        # nothing to do here...
+        raise TypeError('Expected a list/tuple')
+    else:  # nothing to do here...
         return item
