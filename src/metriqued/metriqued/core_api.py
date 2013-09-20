@@ -461,25 +461,26 @@ class MetriqueHdlr(RequestHandler):
         if date == '~':
             return ''
 
+        before = lambda d: '_start <= %f' % dt2ts(d)
+        after = lambda d: '(_end >= %f or _end == None)' % dt2ts(d)
+        split = date.split('~')
         # replace all occurances of 'T' with ' '
         # this is used for when datetime is passed in
         # like YYYY-MM-DDTHH:MM:SS instead of
         #      YYYY-MM-DD HH:MM:SS as expected
-        dt_str = date.replace('T', ' ')
-        # drop all occurances of 'timezone' like substring
-        dt_str = re.sub('\+\d\d:\d\d', '', dt_str)
-
-        before = lambda d: '_start <= %f' % dt2ts(d)
-        after = lambda d: '(_end >= %f or _end == None)' % dt2ts(d)
-        split = date.split('~')
-        logger.warn(split)
+        # and drop all occurances of 'timezone' like substring
+        split = [re.sub('\+\d\d:\d\d', '', d.replace('T', ' ')) for d in split]
         if len(split) == 1:
-            ret = '%s and %s' % (before(dt_str), after(dt_str))
+            # 'dt'
+            ret = '%s and %s' % (before(split[0]), after(split[0]))
         elif split[0] == '':
+            # '~dt'
             ret = '%s' % before(split[1])
         elif split[1] == '':
+            # 'dt~'
             ret = '%s' % after(split[0])
         else:
+            # 'dt~dt'
             ret = '%s and %s' % (before(split[1]), after(split[0]))
         return prefix + ret
 
