@@ -102,10 +102,15 @@ class MetriqueHdlr(RequestHandler):
             _fields.update(dict([(f, 1) for f in set(_split_fields)]))
         return _fields
 
-    def get_cube_mtime(self, owner, cube):
+    def get_cube_last_start(self, owner, cube):
         if not (owner and cube):
             self._raise(400, "owner and cube required")
-        return self.get_cube_profile(owner, cube, keys=['mtime'])
+        _cube = self.timeline(owner, cube)
+        doc = ifind(_cube, sort=[('_start', -1)], one=True)
+        if doc:
+            return doc.get('_start')
+        else:
+            return None
 
     def get_user_profile(self, username, keys=None, raise_if_not=False,
                          exists_only=False, mask=None, null_value=None):

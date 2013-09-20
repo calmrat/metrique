@@ -186,8 +186,7 @@ class FindHdlr(MetriqueHdlr):
                                               fields['_id']):
             merge_versions = False
 
-        query = query or ''
-        query += get_date_pql_string(date)
+        query = get_date_pql_string(date, query)
 
         spec = parse_pql_query(query)
 

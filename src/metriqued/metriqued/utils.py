@@ -20,9 +20,13 @@ BASE_INDEX = [('_start', -1), ('_end', -1),
 SYSTEM_INDEXES = [BASE_INDEX]
 
 
-def get_date_pql_string(date, prefix=' and '):
+def get_date_pql_string(date, prefix=' and ', query=None):
     if date is None:
-        return prefix + '_end == None'
+        if query:
+            return prefix + '_end == None'
+        else:
+            return '_end == None'
+
     if date == '~':
         return ''
 
@@ -47,7 +51,10 @@ def get_date_pql_string(date, prefix=' and '):
     else:
         # 'dt~dt'
         ret = '%s and %s' % (before(split[1]), after(split[0]))
-    return prefix + ret
+    if query:
+        return query + prefix + ret
+    else:
+        return prefix + ret
 
 
 def get_pid_from_file(pid_file):
@@ -70,12 +77,12 @@ def ifind(_cube, _start=EXISTS_SPEC, _end=EXISTS_SPEC, _oid=EXISTS_SPEC,
     # section #pymongo.cursor.Cursor.__getitem__
     # trying to use limit=... fails to work given our index
     index_spec = make_index_spec(_start, _end, _oid, _hash)
-    logger.debug('ifind... INDEX SPEC: %s' % index_spec)
+    #logger.debug('ifind... INDEX SPEC: %s' % index_spec)
     # FIXME: index spec is bson... can we .update() bson???
     # like here, below?
     if spec:
         index_spec.update(spec)
-    logger.debug('ifind... UPDATED SPEC: %s' % index_spec)
+    #logger.debug('ifind... UPDATED SPEC: %s' % index_spec)
 
     if one:
         return _cube.find_one(index_spec, fields, sort=sort, **kwargs)

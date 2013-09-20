@@ -193,7 +193,6 @@ class RegisterHdlr(MetriqueHdlr):
         doc = {'_id': collection,
                'owner': owner,
                'created': now_utc,
-               'mtime': None,
                'read': [],
                'write': [],
                'admin': []}
@@ -361,7 +360,7 @@ class SaveObjectsHdlr(MetriqueHdlr):
         self.cube_exists(owner, cube)
         self.requires_owner_write(owner, cube)
         mtime = dt2ts(mtime) if mtime else utcnow()
-        current_mtime = self.get_cube_mtime(owner, cube)
+        current_mtime = self.get_cube_last_start(owner, cube)
         if current_mtime and mtime and current_mtime > mtime:
             raise ValueError(
                 "invalid mtime (%s); "
@@ -410,10 +409,9 @@ class StatsHdlr(MetriqueHdlr):
     def stats(self, owner, cube):
         self.cube_exists(owner, cube)
         self.requires_owner_read(owner, cube)
-        mtime = self.get_cube_mtime(owner, cube)
         _cube = self.timeline(owner, cube)
         size = _cube.count()
-        stats = dict(cube=cube, mtime=mtime, size=size)
+        stats = dict(cube=cube, size=size)
         return stats
 
 
