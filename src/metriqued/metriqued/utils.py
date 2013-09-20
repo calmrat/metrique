@@ -9,14 +9,45 @@ logger = logging.getLogger(__name__)
 import os
 import pql
 import uuid
+import re
 
-from metriqueu.utils import batch_gen
+from metriqueu.utils import batch_gen, dt2ts
 
 OBJECTS_MAX_BYTES = 16777216
 EXISTS_SPEC = {'$exists': 1}
-BASE_INDEX = [('_id', 1), ('_start', -1), ('_end', -1),
+BASE_INDEX = [('_start', -1), ('_end', -1),
               ('_oid', -1), ('_hash', 1)]
 SYSTEM_INDEXES = [BASE_INDEX]
+
+
+def get_date_pql_string(date, prefix=' and '):
+    if date is None:
+        return prefix + '_end == None'
+    if date == '~':
+        return ''
+
+    before = lambda d: '_start <= %f' % dt2ts(d)
+    after = lambda d: '(_end >= %f or _end == None)' % dt2ts(d)
+    split = date.split('~')
+    # replace all occurances of 'T' with ' '
+    # this is used for when datetime is passed in
+    # like YYYY-MM-DDTHH:MM:SS instead of
+    #      YYYY-MM-DD HH:MM:SS as expected
+    # and drop all occurances of 'timezone' like substring
+    split = [re.sub('\+\d\d:\d\d', '', d.replace('T', ' ')) for d in split]
+    if len(split) == 1:
+        # 'dt'
+        ret = '%s and %s' % (before(split[0]), after(split[0]))
+    elif split[0] == '':
+        # '~dt'
+        ret = '%s' % before(split[1])
+    elif split[1] == '':
+        # 'dt~'
+        ret = '%s' % after(split[0])
+    else:
+        # 'dt~dt'
+        ret = '%s and %s' % (before(split[1]), after(split[0]))
+    return prefix + ret
 
 
 def get_pid_from_file(pid_file):
@@ -28,8 +59,9 @@ def get_pid_from_file(pid_file):
     return pid
 
 
-def ifind(_cube, _id=None, _start=None, _end=None, _oid=None, _hash=None,
-          fields=None, spec=None, sort=None, hint=False, one=False,
+def ifind(_cube, _start=EXISTS_SPEC, _end=EXISTS_SPEC, _oid=EXISTS_SPEC,
+          _hash=EXISTS_SPEC,
+          fields=None, spec=None, sort=None, hint=True, one=False,
           **kwargs):
     # note, to force limit; use __getitem__ like...
     # docs_limited_50 = ifind(...)[50]
@@ -37,11 +69,13 @@ def ifind(_cube, _id=None, _start=None, _end=None, _oid=None, _hash=None,
     # http://api.mongodb.org/python/current/api/pymongo/cursor.html
     # section #pymongo.cursor.Cursor.__getitem__
     # trying to use limit=... fails to work given our index
-    index_spec = make_index_spec(_id, _start, _end, _oid, _hash)
+    index_spec = make_index_spec(_start, _end, _oid, _hash)
+    logger.debug('ifind... INDEX SPEC: %s' % index_spec)
     # FIXME: index spec is bson... can we .update() bson???
     # like here, below?
     if spec:
         index_spec.update(spec)
+    logger.debug('ifind... UPDATED SPEC: %s' % index_spec)
 
     if one:
         return _cube.find_one(index_spec, fields, sort=sort, **kwargs)
@@ -65,14 +99,9 @@ def insert_bulk(_cube, docs, size=-1):
             _cube.insert(batch, manipulate=False)
 
 
-def make_index_spec(_id=None, _start=None, _end=None, _oid=None, _hash=None):
-    _id = _id or EXISTS_SPEC
-    _start = _start or EXISTS_SPEC
-    _end = _end or EXISTS_SPEC
-    _oid = _oid or EXISTS_SPEC
-    _hash = _hash or EXISTS_SPEC
-    spec = SON([('_id', _id),
-                ('_start', _start),
+def make_index_spec(_start=EXISTS_SPEC, _end=EXISTS_SPEC,
+                    _oid=EXISTS_SPEC, _hash=EXISTS_SPEC):
+    spec = SON([('_start', _start),
                 ('_end', _end),
                 ('_oid', _oid),
                 ('_hash', _hash)])

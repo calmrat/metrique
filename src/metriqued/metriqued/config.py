@@ -90,7 +90,7 @@ class metrique(JSONConf):
 
     @property
     def cookie_secret(self):
-        if self.config['cookie_secret']:
+        if self.config.get('cookie_secret'):
             return self.config['cookie_secret']
         else:
             # automatically generate a new cookie secret

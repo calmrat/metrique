@@ -40,9 +40,9 @@ def count(self, query=None, date=None, **kwargs):
     return self._get(kwargs.get('cmd'), query=query, date=date)
 
 
-@api_owner_cube
 def find(self, query, fields=None, date=None, sort=None, one=False,
-         raw=False, explain=False, merge_versions=True, **kwargs):
+         raw=False, explain=False, merge_versions=True,
+         cube=None, owner=None):
     '''
     Run a `pql` based query on the given cube. Optionally:
 
@@ -56,8 +56,11 @@ def find(self, query, fields=None, date=None, sort=None, one=False,
     :param bool explain: return execution plan instead of results
     :param boolean merge_versions:
         merge versions with unchanging fields od interest
+    :param string cube: name of cube to work with
+    :param string owner: owner of cube
     '''
-    result = self._get(kwargs.get('cmd'), query=query, fields=fields,
+    cmd = self.get_cmd(owner, cube, 'find')
+    result = self._get(cmd, query=query, fields=fields,
                        date=date, sort=sort, one=one, explain=explain,
                        merge_versions=merge_versions)
     return result if raw or explain else Result(result, date)

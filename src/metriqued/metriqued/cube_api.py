@@ -339,7 +339,7 @@ class SaveObjectsHdlr(MetriqueHdlr):
         _hash_spec = {'$in': list(_hashes)}
 
         fields = {'_hash': 1, '_id': -1}
-        docs = ifind(_cube=_cube, _hash=_hash_spec, fields=fields)
+        docs = ifind(_cube=_cube, _hash=_hash_spec, _end=None, fields=fields)
         _dup_hashes = set([doc['_hash'] for doc in docs])
         objects = [obj for obj in objects if obj['_hash'] not in _dup_hashes]
         objects = filter(None, objects)

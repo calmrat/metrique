@@ -8,7 +8,7 @@ import pql
 import random
 from tornado.web import authenticated
 
-from metriqued.utils import ifind, parse_pql_query
+from metriqued.utils import ifind, parse_pql_query, get_date_pql_string
 from metriqued.core_api import MetriqueHdlr
 
 from metriqueu.utils import set_default
@@ -51,7 +51,7 @@ class CountHdlr(MetriqueHdlr):
         set_default(query, '')
         logger.debug('pql query: %s' % query)
         try:
-            spec = pql.find(query + self.get_date_pql_string(date))
+            spec = pql.find(query + get_date_pql_string(date))
         except Exception as e:
             self._raise(400, "Invalid Query (%s)" % str(e))
         logger.debug('mongo query: %s' % spec)
@@ -85,7 +85,7 @@ class DeptreeHdlr(MetriqueHdlr):
         checked = set(oids)
         fringe = oids
         loop_k = 0
-        pql_date = self.get_date_pql_string(date)
+        pql_date = get_date_pql_string(date)
         while len(fringe) > 0:
             if level and loop_k == abs(level):
                 break
@@ -145,7 +145,7 @@ class FetchHdlr(MetriqueHdlr):
         # b/c there are __special_property__ objects
         # in every collection, we must filter them out
         # checking for _oid should suffice
-        dt_str = self.get_date_pql_string(date, '')
+        dt_str = get_date_pql_string(date, '')
         if dt_str:
             spec.update(pql.find(dt_str))
         _cube = self.timeline(owner, cube)
@@ -182,12 +182,12 @@ class FindHdlr(MetriqueHdlr):
         sort = self.check_sort(sort)
         fields = self.get_fields(owner, cube, fields)
 
-        if date is None or ('_id' in fields and fields['_id']):
+        if date is None or fields is None or ('_id' in fields and
+                                              fields['_id']):
             merge_versions = False
 
         query = query or ''
-        if query:
-            query += self.get_date_pql_string(date)
+        query += get_date_pql_string(date)
 
         spec = parse_pql_query(query)
 
@@ -205,7 +205,6 @@ class FindHdlr(MetriqueHdlr):
             result = tuple(ifind(_cube, spec=spec, fields=fields, sort=sort))
         return result
 
-    @staticmethod
     def _merge_versions(self, _cube, spec, fields):
         '''
         merge versions with unchanging fields of interest
@@ -231,7 +230,7 @@ class FindHdlr(MetriqueHdlr):
                     ret.pop()
 
         sort = self.check_sort([('_oid', 1), ('_start', 1)])
-        docs = ifind(_cube, spec=spec, sort=sort)
+        docs = ifind(_cube, spec=spec, fields=fields, sort=sort)
         [merge_doc(doc) for doc in docs]
         return ret[1:]
 
@@ -258,7 +257,7 @@ class SampleHdlr(MetriqueHdlr):
         self.cube_exists(owner, cube)
         self.requires_owner_read(owner, cube)
         fields = self.get_fields(owner, cube, fields)
-        dt_str = self.get_date_pql_string(date, '')
+        dt_str = get_date_pql_string(date, '')
         query = set_default(query, '', null_ok=True)
         if query:
             query = ' and '.join((dt_str, query))
