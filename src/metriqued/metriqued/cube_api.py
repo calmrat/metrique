@@ -3,7 +3,6 @@
 # Author: "Chris Ward <cward@redhat.com>
 
 from bson import ObjectId
-from collections import OrderedDict
 import logging
 logger = logging.getLogger(__name__)
 from itertools import chain
@@ -16,6 +15,9 @@ from metriqued.utils import ifind
 from metriqued.utils import BASE_INDEX, SYSTEM_INDEXES
 
 from metriqueu.utils import dt2ts, utcnow, jsonhash
+
+# FIXME: change '__' between cube/owner to '.' and make dots
+# in cube names illegal
 
 
 # FIXME: add ability to backup before dropping
@@ -81,16 +83,12 @@ class IndexHdlr(MetriqueHdlr):
             # serialization->deserialization process leaves us
             # with a list of lists which pymongo rejects; convert
             # to ordered dict instead
-            if isinstance(drop, list):
-                drop = OrderedDict(drop)
             if drop in SYSTEM_INDEXES:
                 raise ValueError("can't drop system indexes")
             _cube.drop_index(drop)
         elif ensure is not None:
             # same as for drop  ^^^ see comments above
             self.requires_owner_admin(owner, cube)
-            if isinstance(ensure, list):
-                ensure = OrderedDict(ensure)
             _cube.ensure_index(ensure)
         else:
             self.requires_owner_read(owner, cube)
@@ -108,11 +106,9 @@ class ListHdlr(MetriqueHdlr):
     RequestHandler for querying about available cubes and cube.fields
     '''
     def current_user_acl(self, roles):
-        roles = self.valid_cube_role(roles)
-        if not isinstance(roles, list):
-            raise TypeError(
-                "expected roles to be list; got %s" % type(roles))
-        roles = self.get_user_profile(self.current_user, keys=roles)
+        self.valid_cube_role(roles)
+        roles = self.get_user_profile(self.current_user, keys=roles,
+                                      null_value=[])
         return roles if roles else []
 
     @authenticated
@@ -144,6 +140,7 @@ class ListHdlr(MetriqueHdlr):
         # return back a collections if user is owner or can read them
         roles = ['read', 'own']
         read, own = self.current_user_acl(roles)
+        # FIXME: return back owner/cube separated into a dict?
         return read + own
 
     def sample_fields(self, owner, cube, sample_size=None, query=None):
@@ -197,7 +194,7 @@ class RegisterHdlr(MetriqueHdlr):
         doc = {'_id': collection,
                'owner': owner,
                'created': now_utc,
-               'mtime': now_utc,
+               'mtime': None,
                'read': [],
                'write': [],
                'admin': []}

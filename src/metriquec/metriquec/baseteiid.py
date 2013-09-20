@@ -14,7 +14,7 @@ class BaseTEIID(BaseSql):
     '''
     Driver which adds support for TEIID based sql cubes.
     '''
-    def __init__(self, db, sql_host, sql_port, vdb,
+    def __init__(self, sql_db, sql_host, sql_port, sql_vdb,
                  sql_username, sql_password, **kwargs):
 
         try:
@@ -22,20 +22,22 @@ class BaseTEIID(BaseSql):
         except ImportError:
             raise ImportError("pip install psycopg2")
 
-        self.host = sql_host
-        self.db = db
-        self.vdb = vdb
-        self.port = sql_port
-        self.username = sql_username
-        self.password = sql_password
-        super(BaseTEIID, self).__init__(sql_host=self.host,
-                                        sql_port=self.port,
-                                        db=self.db, **kwargs)
+        super(BaseTEIID, self).__init__(sql_host=sql_host,
+                                        sql_port=sql_port,
+                                        sql_db=sql_db,
+                                        **kwargs)
+        self.config['sql_vdb'] = sql_vdb
+        self.config['sql_username'] = sql_username
+        self.config['sql_password'] = sql_password
         self.retry_on_error = DatabaseError
 
     @property
     def proxy(self):
-        self._proxy = TEIID(vdb=self.vdb, db=self.db, host=self.host,
-                            port=self.port, username=self.username,
-                            password=self.password, logger=self.logger)
+        self._proxy = TEIID(vdb=self.config['sql_vdb'],
+                            db=self.config['sql_db'],
+                            host=self.config['sql_host'],
+                            port=self.config['sql_port'],
+                            username=self.config['sql_username'],
+                            password=self.config['sql_password'],
+                            logger=self.logger)
         return self._proxy

@@ -21,6 +21,8 @@ from metriqueu.utils import batch_gen, ts2dt, strip_split
 DEFAULT_ROW_LIMIT = 100000
 DEFAULT_RETRIES = 10
 
+# FIXME: move sql_host... etc into extract!
+
 
 class BaseSql(HTTPClient):
     '''
@@ -34,13 +36,13 @@ class BaseSql(HTTPClient):
 
     FIXME ... MORE DOCS TO COME
     '''
-    def __init__(self, sql_host, sql_port, db, **kwargs):
-        self.host = sql_host
-        self.port = sql_port
-        self.db = db
-        self.retry_on_error = Exception
+    def __init__(self, sql_host, sql_port, sql_db, **kwargs):
         super(BaseSql, self).__init__(**kwargs)
-        self.row_limit = self.config.get('row_limit', DEFAULT_ROW_LIMIT)
+        self.config['sql_host'] = sql_host
+        self.config['sql_port'] = sql_port
+        self.config['sql_db'] = sql_db
+        self.row_limit = self.config.get('sql_row_limit', DEFAULT_ROW_LIMIT)
+        self.retry_on_error = Exception
 
     def activity_get(self, ids=None, mtime=None):
         '''
@@ -98,6 +100,10 @@ class BaseSql(HTTPClient):
         if delta_batch_size is None:
             delta_batch_size = self.config.sql_delta_batch_size
         return id_delta, delta_batch_size
+
+    @property
+    def db(self):
+        return self.config.get('sql_db')
 
     def _extract(self, force, id_delta, field_order):
         '''
@@ -296,8 +302,7 @@ class BaseSql(HTTPClient):
             # list_cube_fields returns back a dict from the server that
             # contains a global _mtime that represents the last time
             # any field was updated.
-            mtime = self.cube_stats(owner=self.config.username,
-                                    cube=self.name, keys='mtime')
+            mtime = self.get_last_start()
         # convert timestamp to datetime object
         mtime = ts2dt(mtime)
         self.logger.info("Last update mtime: %s" % mtime)
@@ -319,7 +324,7 @@ class BaseSql(HTTPClient):
         '''
         '''
         self.logger.debug('Generating SQL...')
-        db = self.get_property('db')
+        db = self.get_property('db', default=self.db)
         table = self.get_property('table')
 
         selects = self._get_sql_selects(field_order)
@@ -413,7 +418,7 @@ class BaseSql(HTTPClient):
             _sql = "%s > %s" % (_column, mtime)
             filters.append(_sql)
 
-        db = self.get_property('db')
+        db = self.get_property('db', default=self.db)
         table = self.get_property('table')
         _id = self.get_property('column')
 

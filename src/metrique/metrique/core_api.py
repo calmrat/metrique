@@ -102,11 +102,10 @@ class HTTPClient(object):
             cube_cls = cls
         return object.__new__(cube_cls)
 
-    def __init__(self, host=None, username=None,
-                 password=None, async=True,
-                 force=True, debug=0, config_file=None,
-                 cube=None, auto_login=None,
-                 **kwargs):
+    def __init__(self, host=None, port=None, username=None,
+                 password=None, async=True, force=True,
+                 debug=0, config_file=None, cube=None,
+                 auto_login=None):
         self._config_file = config_file or CONFIG_FILE
         self.load_config(force=force)
         logging.basicConfig()
@@ -122,6 +121,8 @@ class HTTPClient(object):
 
         if host:
             self.config.host = host
+        if port:
+            self.config.port = port
         if username:
             self.config.username = username
         if password:
@@ -149,25 +150,22 @@ class HTTPClient(object):
     def get_cube(self, cube):
         return get_cube(cube)
 
-    def get_last_oid(self):
-        '''
-        Query metrique for the last known object id (_oid)
-        in a given cube.
-
-        If a field is specified, find the mtime for
-        the given cube.field if there are actually
-        documents in the cube with the given field.
-        '''
+    def get_last_field(self, field):
         # FIXME: use ifind
-        self.logger.debug(
-            "Get last ID: cube(%s)" % self.name)
         query = None
-        last_oid = self.find(query, fields=['_oid'],
-                             sort=[('_oid', -1)], one=True, raw=True)
-        if last_oid:
-            last_oid = last_oid.get('_oid')
-        self.logger.info(" ... Last ID: %s" % last_oid)
-        return last_oid
+        last = self.find(query, fields=[field],
+                         sort=[(field, -1)], one=True, raw=True)
+        if last:
+            last = last.get(field)
+        self.logger.debug(
+            "last %s.%s: %s" % (self.name, field, last))
+        return last
+
+    def get_last_oid(self):
+        return self.get_last_field('_oid')
+
+    def get_last_start(self):
+        return self.get_last_field('_start')
 
     def get_property(self, property, field=None, default=None):
         '''

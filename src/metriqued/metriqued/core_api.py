@@ -109,14 +109,14 @@ class MetriqueHdlr(RequestHandler):
         return self.get_cube_profile(owner, cube, keys=['mtime'])
 
     def get_user_profile(self, username, keys=None, raise_if_not=False,
-                         exists_only=False, mask=None):
+                         exists_only=False, mask=None, null_value=None):
         if not username:
             self._raise(400, "username required")
         return self.get_profile(self.mongodb_config.c_user_profile_data,
                                 _id=username, keys=keys,
                                 raise_if_not=raise_if_not,
                                 exists_only=exists_only,
-                                mask=mask)
+                                mask=mask, null_value=null_value)
 
     def get_cube_profile(self, owner, cube, keys=None, raise_if_not=False,
                          exists_only=False, mask=None):
@@ -130,7 +130,7 @@ class MetriqueHdlr(RequestHandler):
                                 mask=mask)
 
     def get_profile(self, _cube, _id, keys=None, raise_if_not=False,
-                    exists_only=False, mask=None):
+                    exists_only=False, mask=None, null_value=None):
         '''
         find and return the user's profile data
         exists will just check if the user exists or not, then return
@@ -146,7 +146,7 @@ class MetriqueHdlr(RequestHandler):
         count = cursor.count()
         if not count:
             if raise_if_not:
-                self._raise(400, 'profile does not exist: %s' % _id)
+                self._raise(400, 'resource does not exist: %s' % _id)
             elif exists_only:
                 return False
             else:
@@ -163,11 +163,12 @@ class MetriqueHdlr(RequestHandler):
             if profile:
                 # extract out the nested items; we have
                 # lists of singleton lists
-                result = [profile.get(k) for k in keys if not k in mask]
+                result = [profile.get(k, null_value) for k in keys
+                          if not k in mask]
             else:
                 # keep the same list length, for tuple unpacking assignments
                 # like a, b = ...get_profile(..., keys=['a', 'b'])
-                result = [None for k in keys]
+                result = [null_value for k in keys]
             if len(keys) == 1:
                 # return it un-nested
                 result = result[0]

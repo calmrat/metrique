@@ -18,11 +18,16 @@ import argparse
 import simplejson as json
 
 from metrique.utils import get_cube
+from jsonconf import JSONConf
 
 
 def extract(args, cube):
     ext_args = args.extract_args
     ext_kwargs = args.extract_kwargs
+    if 'config_file' in ext_kwargs:
+        config = JSONConf(config_file=ext_kwargs['config_file'])
+        del ext_kwargs['config_file']
+        cube.config.update(config)
     return cube.extract(force=args.force, *ext_args, **ext_kwargs)
 
 
