@@ -59,11 +59,11 @@ def get_date_pql_string(date, prefix=' and ', query=None):
 
 def get_pid_from_file(pid_file):
     pid_file = os.path.expanduser(pid_file)
-    if os.path.exists(pid_file):
-        pid = int(open(pid_file).readlines()[0])
-    else:
-        pid = 0
-    return pid
+    try:
+        return int(''.join(open(pid_file).readlines()).strip())
+    except IOError as e:
+        logger.warn(e)
+        return 0
 
 
 def ifind(_cube, _start=EXISTS_SPEC, _end=EXISTS_SPEC, _oid=EXISTS_SPEC,

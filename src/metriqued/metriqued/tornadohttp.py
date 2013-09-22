@@ -56,16 +56,17 @@ class TornadoHTTPServer(object):
         mconf.ssl = ssl = set_default(ssl, mconf.ssl)
 
         self._pid_file = pid_file = set_default(pid_file, mconf.pid_file)
-        self._child_pids = []
+        self.parent_pid = None
+        self.child_pid = None
 
         self._prepare_handlers()
 
         self.uri = 'https://%s' % host if ssl else 'http://%s' % host
+        self.uri += ':%s' % port
 
         logger.debug('======= metrique =======')
         logger.debug(' Host: %s' % self.uri)
         logger.debug('  SSL: %s' % ssl)
-        logger.debug(' Port: %s' % port)
         logger.debug('Async: %s' % async)
         logger.debug('======= mongodb ========')
         logger.debug(' Host: %s' % mbconf.host)
@@ -79,22 +80,25 @@ class TornadoHTTPServer(object):
     def pid_file(self):
         return self._pid_file
 
-    def _set_pid(self):
+    def set_pid(self):
         if os.path.exists(self.pid_file):
             raise RuntimeError(
                 "pid (%s) found in (%s)" % (self.pid,
                                             self.metrique_config.pid_file))
-        with open(self.pid_file, 'w') as file:
-            file.write(str(self.pid))
+        else:
+            with open(self.pid_file, 'w') as _file:
+                _file.write(str(self.pid))
         logger.debug("PID stored (%s)" % self.pid)
-        return self.pid
 
     def _remove_pid(self):
+        error = None
         try:
             os.remove(self.pid_file)
-        except OSError as e:
+        except OSError as error:
             logger.error(
-                'pid file not removed (%s); %e' % (self.pid_file, e))
+                'pid file not removed (%s); %s' % (self.pid_file, error))
+        else:
+            logger.debug("removed PID file: %s" % self.pid_file)
 
     def _prepare_handlers(self):
         base_handlers = [
@@ -179,59 +183,64 @@ class TornadoHTTPServer(object):
         else:
             self.server = HTTPServer(self._web_app)
 
-    def spawn_instance(self):
-        logger.debug("spawning new tornado webapp instance...")
-        self._parent_pid = ppid = os.getpid()
-        pid = os.fork()
-        if pid == 0:
-            real_pid = self._set_pid()
-            logger.debug(" ... child (%s)" % real_pid)
-            signal.signal(signal.SIGTERM, self._inst_terminate_handler)
-            signal.signal(signal.SIGINT, self._inst_kill_handler)
-            self._pid = real_pid
-            self._inst_start_handler()
-        else:
-            child_pid = pid
-            logger.debug(
-                " ... parent (%s); child (%s)" % (ppid, child_pid))
-
-    def start(self):
-        ''' Start a new tornado web app '''
-        self.spawn_instance()
-
-    def stop(self, pid=None, sig=signal.SIGTERM):
-        ''' Stop a running tornado web app '''
-        os.kill(self.pid, signal.SIGTERM)
-        self._remove_pid()
-        logger.debug("removed PID file")
-
-    def _inst_start_handler(self):
-        self._mongodb_check()
+    def _init_basic_server(self):
         host = self.metrique_config.host
         port = self.metrique_config.port
-        self._prepare_web_app()
-        logger.debug("tornado listening on %s:%s" % (self.uri, port))
         self.server.listen(port=port, address=host)
-        self.ioloop = IOLoop.instance()
-        self.ioloop.start()
+        IOLoop.instance().start()
 
-        # FIXME: try... if it fails, bump port up by one
-        #proc_k = self.metrique_config.max_processes
-        #self.server.bind(port=port, address=host)
-        #self.server.start(proc_k)  # fork some sub-processes
-        #self.ioloop = IOLoop.instance()
-        #self.ioloop.start()
+    def spawn_instance(self):
+        logger.debug("spawning new tornado webapp instance...")
+
+        self._mongodb_check()
+
+        self.set_pid()
+
+        signal.signal(signal.SIGTERM, self._inst_terminate_handler)
+        signal.signal(signal.SIGINT, self._inst_kill_handler)
+
+        self._init_basic_server()
+
+    def start(self, fork=False):
+        ''' Start a new tornado web app '''
+        self._prepare_web_app()
+        if fork:
+            pid = os.fork()
+            self.parent_pid = self.pid
+            if pid == 0:
+                self.spawn_instance()
+            else:
+                time.sleep(0.5)  # give child a moment to start
+                self.child_pid = pid
+        else:
+            pid = self.pid
+            self.spawn_instance()
+        logger.debug("tornado listening on %s" % self.uri)
+        return pid
+
+    def stop(self, delay=None):
+        ''' Stop a running tornado web app '''
+        if self.child_pid:
+            os.kill(self.child_pid, signal.SIGTERM)
+            self._remove_pid()
+        else:
+            self.server.stop()  # stop this tornado instance
+            delayed_kill = partial(self._inst_delayed_stop, delay)
+            IOLoop.instance().add_callback(delayed_kill)
+
+    def _inst_stop(self, sig, delay=None):
+        if self.child_pid:
+            os.kill(self.child_pid, sig)
+        else:
+            self.stop(delay=delay)
 
     def _inst_terminate_handler(self, sig, frame):
         logger.debug("[INST] (%s) recieved TERM signal" % self.pid)
-        self.ioloop.add_callback(self._inst_delayed_stop)
-        self.server.stop()  # stop this tornado instance
+        self._inst_stop(sig)
 
     def _inst_kill_handler(self, sig, frame):
         logger.debug("[INST] (%s) recieved KILL signal" % self.pid)
-        kill_now = partial(self._inst_delayed_stop, 0)
-        self.ioloop.add_callback(kill_now)
-        self.server.stop()  # stop this tornado instance
+        self._inst_stop(sig, 0)
 
     def _inst_delayed_stop(self, delay=None):
         if delay is None:
@@ -239,14 +248,13 @@ class TornadoHTTPServer(object):
                 delay = 0
             else:
                 delay = 5
-
         logger.debug("stop ioloop called (%s)... " % self.pid)
         TIMEOUT = float(delay) + time.time()
         logger.debug("Shutting down in T-%i seconds ..." % delay)
-        self.ioloop.add_timeout(TIMEOUT, self._stop_ioloop)
+        IOLoop.instance().add_timeout(TIMEOUT, self._stop_ioloop)
 
     def _stop_ioloop(self):
-        self.ioloop.stop()
+        IOLoop.instance().stop()
         logger.debug("IOLoop stopped")
 
     def _mongodb_check(self):

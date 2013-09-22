@@ -15,7 +15,7 @@ aggregations and (mongodb) mapreduce, along with python,
 ipython, pandas, numpy, matplotlib, and so on, is well
 integrated with the scientific python computing stack.
 
-    >>> from metrique.core_api import pyclient
+    >>> from metrique import pyclient
     >>> g = pyclient(cube="gitrepo_commit"")
     >>> g.ping()
     pong
@@ -43,8 +43,6 @@ import os
 import requests
 import simplejson as json
 
-from metrique.config import Config
-from metrique.config import CONFIG_FILE
 from metrique import query_api, user_api, cube_api
 from metrique.utils import json_encode, get_cube
 
@@ -108,7 +106,7 @@ class HTTPClient(object):
                  password=None, async=True, force=True,
                  debug=0, config_file=None, cube=None,
                  auto_login=None):
-        self._config_file = config_file or CONFIG_FILE
+        self._config_file = config_file
         self.load_config(force=force)
         logging.basicConfig()
         self.logger = logging.getLogger('metrique.%s' % self.__module__)
@@ -137,7 +135,8 @@ class HTTPClient(object):
         self._auto_login_attempted = False
 
     def load_config(self, config_file=None, force=False):
-        config_file = config_file or self._config_file
+        from metrique.config import Config, CONFIG_FILE
+        config_file = config_file or self._config_file or CONFIG_FILE
         try:
             self.config = Config(config_file=config_file, force=force)
         except Exception:

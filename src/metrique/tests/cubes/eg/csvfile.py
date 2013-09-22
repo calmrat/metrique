@@ -7,8 +7,8 @@ import os
 from metriquec.csvobject import CSVObject
 
 cwd = os.path.dirname(os.path.abspath(__file__))
-root = '/'.join(cwd.split('/')[0:-1])
-fixtures = os.path.join(root, 'fixtures')
+tests_root = '/'.join(cwd.split('/')[0:-2])
+fixtures = os.path.join(tests_root, 'fixtures')
 DEFAULT_URI = os.path.join(fixtures, 'us-idx-eod.csv')
 DEFAULT_ID = 'symbol'
 

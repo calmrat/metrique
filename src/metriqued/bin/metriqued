@@ -20,7 +20,6 @@ import os
 import time
 import traceback
 import signal
-import sys
 
 from metriqued.config import METRIQUE_CONF, PID_FILE, metrique
 from metriqued.tornadohttp import TornadoHTTPServer
@@ -53,7 +52,7 @@ def stop(pid, pid_file, kill=False):
     return code
 
 
-def start(**kwargs):
+def start(fork=False, **kwargs):
     pid = kwargs.get('pid')
     pid_file = kwargs.get('pid_file')
     code = 1
@@ -63,7 +62,7 @@ def start(**kwargs):
 
     metriqued = TornadoHTTPServer(**kwargs)
     try:
-        metriqued.start()
+        metriqued.start(fork=fork)
     except RuntimeError as e:
         # already started...
         print 'START ERROR: metriqued already started; %s' % e
@@ -80,7 +79,7 @@ def start(**kwargs):
     return code
 
 
-def restart(pid, pid_file, kill=False, timeout=None):
+def restart(pid, pid_file, kill=False, timeout=None, fork=False):
     if timeout is None:
         timeout = -1
     if status(pid):
@@ -94,7 +93,7 @@ def restart(pid, pid_file, kill=False, timeout=None):
                    'process to stop')
             break
     else:
-        return start(**kwargs)
+        return start(fork=fork, **kwargs)
 
 
 def status(pid, quiet=True):
@@ -121,6 +120,8 @@ if __name__ == '__main__':
     _args.add_argument('-d', '--debug',
                        type=int, default=True)
     _args.add_argument('-a', '--async-off',
+                       action='store_true')
+    _args.add_argument('-f', '--fork',
                        action='store_true')
 
     _args.add_argument('-c', '--server-config-file',
@@ -163,22 +164,23 @@ if __name__ == '__main__':
     else:
         port = args.port
 
-    async = not async_off  # shawhing!
+    async = not async_off
+    fork = args.fork
 
-    pid = int(get_pid_from_file(pid_file))
+    pid = get_pid_from_file(pid_file)
 
     kwargs = dict(host=host, port=port, debug=debug, async=async)
     print
     if cmd == 'start':
-        code = start(**kwargs)
+        code = start(fork=fork, **kwargs)
     elif cmd == 'stop':
         code = stop(pid, pid_file)
     elif cmd == 'kill':
         code = stop(pid, pid_file, kill=True)
     elif cmd == 'restart':
-        code = restart(pid, pid_file)
+        code = restart(pid, pid_file, fork=fork)
     elif cmd == 'killstart':
-        code = restart(pid, pid_file, kill=True)
+        code = restart(pid, pid_file, kill=True, fork=fork)
     elif cmd == 'status':
         status(pid, quiet=False)
     else:
