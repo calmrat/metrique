@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 # header definitions
 __pkgs__ = ['metrique', 'metriqued', 'metriquec', 'metriqueu']
 __src__ = 'src/'
-__actions__ = ['build', 'sdist', 'install']
+__actions__ = ['build', 'sdist', 'install', 'develop']
 __bumps__ = ['x', 'y', 'z', 'r']
 #RE_RELEASE = re.compile(r"__release__ = [\"']?((\d+)a?)[\"']?")
 RE_VERSION_X = re.compile(r"__version__\s+=\s+[\"']((\d+).\d+.\d+)[\"']")
@@ -212,6 +212,13 @@ def build(path, action='sdist', upload=False, dry_run=False):
     sp.call(cmd)
 
 
+def develop(path):
+    cmd = ['python', 'setup.py' 'develop']
+    cmd_str = ' '.join(cmd)
+    logger.info('(%s) %s' % (os.getcwd(), cmd_str))
+    sp.call(cmd)
+
+
 action = args.action
 upload = args.upload
 dry_run = args.dry_run
@@ -219,6 +226,9 @@ nobump = args.nobump
 bump_kind = args.bump_kind
 bump_only = args.bump_only
 ga = args.ga_release
+
+if action == 'develop':
+    [develop(path=path) for path in setup_paths]
 
 if not nobump:
     [bump(path=path,
