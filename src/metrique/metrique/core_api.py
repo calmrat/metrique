@@ -295,7 +295,7 @@ class HTTPClient(object):
         else:
             return self.config['username']
 
-    def get_cmd(self, owner, cube, api_name):
+    def get_cmd(self, owner, cube, api_name=''):
         owner = owner or self.config.username
         if not owner:
             raise ValueError('owner required!')

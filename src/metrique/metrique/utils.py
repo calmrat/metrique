@@ -2,8 +2,7 @@
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 # Author: "Chris Ward" <cward@redhat.com>
 
-from datetime import datetime as dt
-from decorator import decorator
+from datetime import datetime
 import os
 import pytz
 import simplejson as json
@@ -15,46 +14,18 @@ from metriqueu.utils import dt2ts
 json_encoder = json.JSONEncoder()
 
 
-# FIXME: OBSOLETE EXPERIMENT: REMOVE ME
-def api_owner_cube(func_or_name):
-    def wrapper(func):
-        docs = [':param string cube: name of cube to work with',
-                '    :param string owner: owner of cube']
-        func.__doc__ = (func.__doc__ or '') + '\n'.join(docs)
-
-        def _api(func, self, *args, **kwargs):
-            owner = kwargs.get('owner') or self.config.username
-            if not owner:
-                raise ValueError('owner required!')
-            cube = kwargs.get('cube') or self.name
-            if not cube:
-                raise ValueError('cube required!')
-            if callable(func_or_name):
-                api_name = func.__name__
-            else:
-                api_name = func_or_name
-            if api_name:
-                kwargs['cmd'] = os.path.join(owner, cube, api_name)
-            else:
-                kwargs['cmd'] = os.path.join(owner, cube)
-            return func(self, *args, **kwargs)
-        return decorator(_api, func)
-    if callable(func_or_name):
-        return wrapper(func_or_name)
-    return wrapper
-
-
 def csv2list(csv, delimiter=','):
-    ''' convert a str(csv,csv) into a list of strings '''
+    ''' convert a str(csv,csv) into a list of sorted strings '''
     if type(csv) in [list, tuple, set]:
-        return list(map(str, csv))
-    elif csv:
-        return [s.strip() for s in csv.split(delimiter)]
+        result = list(map(str, csv))
+    elif isinstance(csv, basestring):
+        result = [s.strip() for s in csv.split(delimiter)]
     elif csv is None:
-        return []
+        result = []
     else:
         raise TypeError(
             "Failed to convert csv string to list; got %s" % csv)
+    return sorted(result)
 
 
 def cube_pkg_mod_cls(cube):
@@ -71,13 +42,8 @@ def cube_pkg_mod_cls(cube):
     _cube = cube.split('_')
     pkg = _cube[0]
     mod = '_'.join(_cube[1:])
-    cls = ''.join([s[0].upper() + s[1:] for s in _cube[1:]])
-    return pkg, mod, cls
-
-
-def doublequote(item):
-    ''' convert a given obj to string, double-quoted'''
-    return '"%s"' % item
+    _cls = ''.join([s[0].upper() + s[1:] for s in _cube[1:]])
+    return pkg, mod, _cls
 
 
 def get_cube(cube, path=None):
@@ -91,10 +57,12 @@ def get_cube(cube, path=None):
     '''
     path = path or CLIENT_CUBES_PATH
     set_cube_path(path)
-    pkg, mod, cls = cube_pkg_mod_cls(cube)
+    if path not in sys.path:
+        raise ValueError("invalid cube path: %s" % path)
+    pkg, mod, _cls = cube_pkg_mod_cls(cube)
     _pkg = __import__(pkg, fromlist=[mod])
     _mod = getattr(_pkg, mod)
-    _cls = getattr(_mod, cls)
+    _cls = getattr(_mod, _cls)
     return _cls
 
 
@@ -107,10 +75,7 @@ def get_timezone_converter(from_timezone):
     from_tz = pytz.timezone(from_timezone)
 
     def timezone_converter(self, dt):
-        try:
-            return from_tz.localize(dt).astimezone(utc)
-        except Exception:
-            return None
+        return from_tz.localize(dt).astimezone(utc)
     return timezone_converter
 
 
@@ -118,21 +83,10 @@ def json_encode(obj):
     '''
     Convert datetime.datetime to timestamp
     '''
-    if isinstance(obj, dt):
+    if isinstance(obj, datetime):
         return dt2ts(obj)
     else:
         return json_encoder.default(obj)
-
-
-def list2csv(_list, quote=False):
-    ''' convert a list of objects into a csv string '''
-    if quote:
-        _list = map(doublequote, _list)
-    return ','.join(map(str, _list))
-
-
-def perc(numerator, denominator):
-    return (float(numerator) / denominator) * 100
 
 
 def set_cube_path(path=None):
@@ -142,13 +96,14 @@ def set_cube_path(path=None):
     If no path provided, default to making *metrique.client.cubes*
     get added to the current namespace.
     '''
-    path = path or CLIENT_CUBES_PATH
-    path = os.path.expanduser(path)
-    if path not in sys.path:
-        sys.path.append(path)
+    if path:
+        path = os.path.expanduser(path)
+        if path not in sys.path:
+            sys.path.append(path)
     if SYSTEM_CUBES_PATH not in sys.path:
         # also append system cubes path for easy/consistent importing
         sys.path.append(SYSTEM_CUBES_PATH)
-    return sorted(sys.path)
-
-
+    if CLIENT_CUBES_PATH not in sys.path:
+        # also append default client cubes path for easy/consistent importing
+        sys.path.append(CLIENT_CUBES_PATH)
+    return sys.path

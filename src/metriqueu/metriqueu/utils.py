@@ -28,7 +28,7 @@ def batch_gen(data, batch_size):
 
 
 def dt2ts(dt, drop_micro=False):
-    ''' convert datetime objects to timestamp int's (seconds) '''
+    ''' convert datetime objects to timestamp seconds (float) '''
     if isinstance(dt, (int, long, float, complex)):  # its a ts already
         ts = dt
     elif isinstance(dt, basestring):  # convert to datetime first
@@ -36,9 +36,9 @@ def dt2ts(dt, drop_micro=False):
     else:
         ts = timegm(dt.timetuple())
     if drop_micro:
-        return int(ts)
+        return float(int(ts))
     else:
-        return ts
+        return float(ts)
 
 
 def jsonhash(obj, root=True):

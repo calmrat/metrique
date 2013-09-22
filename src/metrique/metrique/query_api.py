@@ -11,25 +11,23 @@ import logging
 logger = logging.getLogger(__name__)
 
 from metrique.result import Result
-from metrique.utils import api_owner_cube
 
 SAMPLE_SIZE = 1
 
 
-@api_owner_cube
-def aggregate(self, pipeline, **kwargs):
+def aggregate(self, pipeline, cube=None, owner=None):
     '''
     Proxy for pymongodb's .aggregate framework call
     on a given cube
 
     :param list pipeline: The aggregation pipeline. $match, $project, etc.
     '''
-    result = self._get(kwargs.get('cmd'), pipeline=pipeline)
+    cmd = self.get_cmd(owner, cube, 'aggregate')
+    result = self._get(cmd, pipeline=pipeline)
     return result['result']
 
 
-@api_owner_cube
-def count(self, query=None, date=None, **kwargs):
+def count(self, query=None, date=None, cube=None, owner=None):
     '''
     Run a `pql` based query on the given cube, but
     only return back the count (Integer)
@@ -37,7 +35,8 @@ def count(self, query=None, date=None, **kwargs):
     :param string query: The query in pql
     :param string date: Date (date range) that should be queried
     '''
-    return self._get(kwargs.get('cmd'), query=query, date=date)
+    cmd = self.get_cmd(owner, cube, 'aggregate')
+    return self._get(cmd, query=query, date=date)
 
 
 def find(self, query, fields=None, date=None, sort=None, one=False,
@@ -66,8 +65,7 @@ def find(self, query, fields=None, date=None, sort=None, one=False,
     return result if raw or explain else Result(result, date)
 
 
-@api_owner_cube
-def deptree(self, field, oids, date=None, level=None, **kwargs):
+def deptree(self, field, oids, date=None, level=None, cube=None, owner=None):
     '''
     Dependency tree builder recursively fetchs objects that
     are children of the initial set of objects provided.
@@ -80,14 +78,14 @@ def deptree(self, field, oids, date=None, level=None, **kwargs):
         will be queried.
     :param integer level: limit depth of recursion
     '''
-    result = self._get(kwargs.get('cmd'), field=field,
+    cmd = self.get_cmd(owner, cube, 'aggregate')
+    result = self._get(cmd, field=field,
                        oids=oids, date=date, level=level)
     return sorted(result)
 
 
-@api_owner_cube
 def fetch(self, fields=None, date=None, sort=None, skip=0, limit=0,
-          oids=None, raw=False, **kwargs):
+          oids=None, raw=False, cube=None, owner=None):
     '''
     Fetch field values for (potentially) all objects
     of a given, with skip, limit, id "filter" arguments
@@ -107,26 +105,26 @@ def fetch(self, fields=None, date=None, sort=None, skip=0, limit=0,
         specific list of oids we should fetch
     :param boolean raw: return the documents in their (dict) form
     '''
-    result = self._get(kwargs.get('cmd'), fields=fields, date=date, sort=sort,
+    cmd = self.get_cmd(owner, cube, 'aggregate')
+    result = self._get(cmd, fields=fields, date=date, sort=sort,
                        skip=skip, limit=limit, oids=oids)
     return result if raw else Result(result, date)
 
 
-@api_owner_cube
-def distinct(self, field, cube=None, owner=None, **kwargs):
+def distinct(self, field, cube=None, owner=None):
     '''
     Return back all distinct token values of a given field
 
     :param string field:
         Field to get distinct token values from
     '''
-    result = self._get(kwargs.get('cmd'), field=field)
+    cmd = self.get_cmd(owner, cube, 'aggregate')
+    result = self._get(cmd, field=field)
     return sorted(result)
 
 
-@api_owner_cube
 def sample(self, sample_size=SAMPLE_SIZE, fields=None,
-           date=None, raw=False, query=None, **kwargs):
+           date=None, raw=False, query=None, cube=None, owner=None):
     '''
     Draws a sample of objects at random.
 
@@ -138,6 +136,7 @@ def sample(self, sample_size=SAMPLE_SIZE, fields=None,
         will be queried.
     :param boolean raw: if True, then return result as a dictionary
     '''
-    result = self._get(kwargs.get('cmd'), sample_size=sample_size,
+    cmd = self.get_cmd(owner, cube, 'aggregate')
+    result = self._get(cmd, sample_size=sample_size,
                        fields=fields, query=query, date=date)
     return result if raw else Result(result, date)
