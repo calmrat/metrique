@@ -15,7 +15,7 @@ aggregations and (mongodb) mapreduce, along with python,
 ipython, pandas, numpy, matplotlib, and so on, is well
 integrated with the scientific python computing stack.
 
-    >>> from metrique import pyclient
+    >>> from metrique.core_api import pyclient
     >>> g = pyclient(cube="gitrepo_commit"")
     >>> g.ping()
     pong
@@ -55,7 +55,9 @@ class HTTPClient(object):
     use to call special, shared call of _get (http request)
     '''
     name = None
+    # defaults is frequently overrided in subclasses as a property
     defaults = {}
+    # fields is frequently overrided in subclasses as a property too
     fields = {}
 
     # frequently 'typed' commands have shorter aliases too
@@ -304,3 +306,8 @@ class HTTPClient(object):
             return os.path.join(owner, cube, api_name)
         else:
             return os.path.join(owner, cube)
+
+
+# import alias
+# ATTENTION: this is the main interface for clients!
+pyclient = HTTPClient
