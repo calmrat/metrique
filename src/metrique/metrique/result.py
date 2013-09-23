@@ -29,31 +29,6 @@ NUMPY_NUMERICAL = [np.float16, np.float32, np.float64, np.float128,
                    np.int8, np.int16, np.int32, np.int64]
 
 
-def mask_filter(f):
-    '''
-    Generic decorator for getting back filtered frame
-    data according to True/False mask filter frame matching
-
-    :param Pandas.DataFrame mask_frame:
-        DataFrame that maps index:True/False where True means it
-        matches the filter and False means it does not
-    :param bool filter_:
-        True will return back a DataFrame that contains only items
-        which matched the mask_frame filter. False returns back the
-        opposite.
-    '''
-    return decorator(_mask_filter, f)
-
-
-def _mask_filter(f, self, *args, **kwargs):
-    filter_ = args[-1]  # by convention, filter_ expected as last arg
-    mask_frame = f(self, *args, **kwargs)
-    if filter_ is None:
-        return mask_frame
-    else:
-        return type(self)(self[mask_frame == filter_])
-
-
 def filtered(f):
     '''
     Decorator function that wraps functions returning pandas
@@ -74,7 +49,6 @@ class Result(DataFrame):
     ''' Custom DataFrame implementation for Metrique '''
     def __init__(self, data=None, date=None):
         super(Result, self).__init__(data)
-        self._result_data = data
         # The converts are here so that None is converted to NaT
         self.to_datetime('_start')
         self.to_datetime('_end')
@@ -139,32 +113,6 @@ class Result(DataFrame):
         else:
             return self.filter(before_end & after_start)
 
-    def _auto_select_scale(self, dts, start=None, end=None, ideal=300):
-        '''
-        Guess what a good timeseries scale might be,
-        given a particular data set, attempting to
-        make the total number of x values as close to
-        `ideal` as possible
-
-        This is a helper for plotting
-        '''
-        start = start or min(dts)
-        end = start or max(dts)
-        maximum_count = len(filter(lambda dt: start <= dt and dt <= end, dts))
-        daily_count = (end - start).days
-        if maximum_count <= ideal:
-            return 'maximum'
-        elif daily_count <= ideal:
-            return 'daily'
-        elif daily_count / 7 <= ideal:
-            return 'weekly'
-        elif daily_count / 30 <= ideal:
-            return 'monthly'
-        elif daily_count / 91 <= ideal:
-            return 'quarterly'
-        else:
-            return 'yearly'
-
     def history(self, dates=None, linreg_since=None, lin_reg_days=20):
         '''
         Works only on a Result that has _start and _end columns.
@@ -209,6 +157,8 @@ class Result(DataFrame):
             series[d] = 0 if series[d] < 0 else series[d]
 
         return series
+
+    ######################## DATES RANGE ##########################
 
     def get_dates_range(self, scale='auto', start=None, end=None):
         '''
@@ -258,6 +208,32 @@ class Result(DataFrame):
         ret = ret + [end] if end > ret[-1] else ret
         ret = filter(lambda ts: self.check_in_bounds(ts), ret)
         return ret
+
+    def _auto_select_scale(self, dts, start=None, end=None, ideal=300):
+        '''
+        Guess what a good timeseries scale might be,
+        given a particular data set, attempting to
+        make the total number of x values as close to
+        `ideal` as possible
+
+        This is a helper for plotting
+        '''
+        start = start or min(dts)
+        end = start or max(dts)
+        maximum_count = len(filter(lambda dt: start <= dt and dt <= end, dts))
+        daily_count = (end - start).days
+        if maximum_count <= ideal:
+            return 'maximum'
+        elif daily_count <= ideal:
+            return 'daily'
+        elif daily_count / 7 <= ideal:
+            return 'weekly'
+        elif daily_count / 30 <= ideal:
+            return 'monthly'
+        elif daily_count / 91 <= ideal:
+            return 'quarterly'
+        else:
+            return 'yearly'
 
     ######################## FILTERS ##########################
 
