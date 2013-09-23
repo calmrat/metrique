@@ -10,6 +10,7 @@ import os
 import pql
 import uuid
 import re
+from hashlib import sha1
 
 from metriqueu.utils import batch_gen, dt2ts
 
@@ -104,6 +105,20 @@ def insert_bulk(_cube, docs, size=-1):
     else:
         for batch in batch_gen(docs, size):
             _cube.insert(batch, manipulate=False)
+
+
+def jsonhash(obj, root=True):
+    '''
+    calculate the objects hash based on all field values
+    '''
+    if isinstance(obj, dict):
+        result = frozenset(
+            (k, jsonhash(v, False)) for k, v in obj.items())
+    elif isinstance(obj, list):
+        result = tuple(jsonhash(e, False) for e in obj)
+    else:
+        result = obj
+    return sha1(repr(result)).hexdigest() if root else result
 
 
 def make_index_spec(_start=EXISTS_SPEC, _end=EXISTS_SPEC,

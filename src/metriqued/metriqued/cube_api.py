@@ -9,11 +9,10 @@ from tornado.web import authenticated
 
 from metriqued.core_api import MetriqueHdlr
 
-from metriqued.utils import insert_bulk
-from metriqued.utils import ifind
+from metriqued.utils import insert_bulk, ifind, jsonhash
 from metriqued.utils import BASE_INDEX, SYSTEM_INDEXES
 
-from metriqueu.utils import dt2ts, utcnow, jsonhash
+from metriqueu.utils import dt2ts, utcnow
 
 # FIXME: change '__' between cube/owner to '.' and make dots
 # in cube names illegal

@@ -6,7 +6,6 @@ from bson.objectid import ObjectId
 from calendar import timegm
 from datetime import datetime
 from dateutil.parser import parse as dt_parse
-from hashlib import sha1
 import pytz
 
 
@@ -39,20 +38,6 @@ def dt2ts(dt, drop_micro=False):
         return float(int(ts))
     else:
         return float(ts)
-
-
-def jsonhash(obj, root=True):
-    '''
-    calculate the objects hash based on all field values
-    '''
-    if isinstance(obj, dict):
-        result = frozenset(
-            (k, jsonhash(v, False)) for k, v in obj.items())
-    elif isinstance(obj, list):
-        result = tuple(jsonhash(e, False) for e in obj)
-    else:
-        result = obj
-    return sha1(repr(result)).hexdigest() if root else result
 
 
 def milli2sec(ts):
