@@ -8,7 +8,8 @@ import pql
 import random
 from tornado.web import authenticated
 
-from metriqued.utils import ifind, parse_pql_query, get_date_pql_string
+from metriqued.utils import ifind, parse_pql_query
+from metriqued.utils import date_pql_string, query_add_date
 from metriqued.core_api import MetriqueHdlr
 
 from metriqueu.utils import set_default
@@ -51,7 +52,7 @@ class CountHdlr(MetriqueHdlr):
         set_default(query, '')
         logger.debug('pql query: %s' % query)
         try:
-            spec = pql.find(query + get_date_pql_string(date))
+            spec = pql.find(query_add_date(query, date))
         except Exception as e:
             self._raise(400, "Invalid Query (%s)" % str(e))
         logger.debug('mongo query: %s' % spec)
@@ -85,12 +86,12 @@ class DeptreeHdlr(MetriqueHdlr):
         checked = set(oids)
         fringe = oids
         loop_k = 0
-        pql_date = get_date_pql_string(date)
+        pql_date = date_pql_string(date)
         while len(fringe) > 0:
             if level and loop_k == abs(level):
                 break
             spec = pql.find(
-                '_oid in %s and %s != None' % (fringe, field) + pql_date)
+                '_oid in %s and %s != None and %s' % (fringe, field, pql_date))
             _cube = self.timeline(owner, cube)
             fields = {'_id': -1, '_oid': 1, field: 1}
             docs = ifind(_cube=_cube, spec=spec, fields=fields)
@@ -145,7 +146,7 @@ class FetchHdlr(MetriqueHdlr):
         # b/c there are __special_property__ objects
         # in every collection, we must filter them out
         # checking for _oid should suffice
-        dt_str = get_date_pql_string(date, '')
+        dt_str = date_pql_string(date)
         if dt_str:
             spec.update(pql.find(dt_str))
         _cube = self.timeline(owner, cube)
@@ -186,9 +187,7 @@ class FindHdlr(MetriqueHdlr):
                                               fields['_id']):
             merge_versions = False
 
-        query = query or ''
-        query += get_date_pql_string(date, query, ' and ' if query else '')
-
+        query = query_add_date(query, date)
         spec = parse_pql_query(query)
 
         _cube = self.timeline(owner, cube)
@@ -257,10 +256,7 @@ class SampleHdlr(MetriqueHdlr):
         self.cube_exists(owner, cube)
         self.requires_owner_read(owner, cube)
         fields = self.get_fields(owner, cube, fields)
-        dt_str = get_date_pql_string(date, '')
-        query = set_default(query, '', null_ok=True)
-        if query:
-            query = ' and '.join((dt_str, query))
+        query = query_add_date(query, date)
         spec = parse_pql_query(query)
         _cube = self.timeline(owner, cube)
         _docs = ifind(_cube=_cube, spec=spec, fields=fields)

@@ -21,13 +21,9 @@ BASE_INDEX = [('_start', -1), ('_end', -1),
 SYSTEM_INDEXES = [BASE_INDEX]
 
 
-def get_date_pql_string(date, prefix=' and ', query=None):
+def date_pql_string(date):
     if date is None:
-        if query:
-            return prefix + '_end == None'
-        else:
-            return '_end == None'
-
+        return '_end == None'
     if date == '~':
         return ''
 
@@ -42,20 +38,23 @@ def get_date_pql_string(date, prefix=' and ', query=None):
     split = [re.sub('\+\d\d:\d\d', '', d.replace('T', ' ')) for d in split]
     if len(split) == 1:
         # 'dt'
-        ret = '%s and %s' % (before(split[0]), after(split[0]))
+        return '%s and %s' % (before(split[0]), after(split[0]))
     elif split[0] == '':
         # '~dt'
-        ret = '%s' % before(split[1])
+        return before(split[1])
     elif split[1] == '':
         # 'dt~'
-        ret = '%s' % after(split[0])
+        return after(split[0])
     else:
         # 'dt~dt'
-        ret = '%s and %s' % (before(split[1]), after(split[0]))
-    if query:
-        return query + prefix + ret
-    else:
-        return prefix + ret
+        return '%s and %s' % (before(split[1]), after(split[0]))
+
+
+def query_add_date(query, date):
+    date_pql = date_pql_string(date)
+    if query and date_pql:
+        return '%s and %s' % (query, date_pql)
+    return query or date_pql
 
 
 def get_pid_from_file(pid_file):
