@@ -55,3 +55,4 @@ if args.target == 'all':
 else:
     test_paths = [os.path.join(src, args.target, __tests__)]
 
+raise NotImplementedError("CLI for running tests coming soon")

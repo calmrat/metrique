@@ -32,7 +32,7 @@ class BaseSql(object):
         try:
             row_limit = int(row_limit)
         except (TypeError, ValueError):
-            raise ValueError(
+            raise TypeError(
                 "row_limit must be a number. Got (%s)" % row_limit)
         return row_limit
 

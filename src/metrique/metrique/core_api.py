@@ -5,15 +5,15 @@
 '''
 metrique
 ~~~~~~~~
-**Python/MongoDB Data Warehouse and Information Platform**
+**data warehouse and information platform**
 
-Metrique can be used to bring data into an intuitive,
-indexable data object collection that supports
-transparent historical version snapshotting,
-advanced ad-hoc server-side querying, including (mongodb)
-aggregations and (mongodb) mapreduce, along with python,
-ipython, pandas, numpy, matplotlib, and so on, is well
-integrated with the scientific python computing stack.
+metrique can be used to bring data from arbitrary sources
+into an intuitive, data object collection that supports
+transparent historical version snapshotting, advanced
+ad-hoc server-side querying, including (mongodb)
+aggregations and (mongodb) mapreduce, along with client
+and serverside python, ipython, pandas, numpy, matplotlib,
+and more.
 
     >>> from metrique import pyclient
     >>> g = pyclient(cube="gitrepo_commit"")
@@ -44,18 +44,24 @@ import requests
 import simplejson as json
 
 from metrique import query_api, user_api, cube_api
+from metrique.config import Config
 from metrique.utils import json_encode, get_cube
 
 
 class HTTPClient(object):
     '''
-    Base class that other metrique api wrapper sub-classes
-    use to call special, shared call of _get (http request)
+    This is the main client bindings for metrique http
+    rest api.
+
+    The is a base class that clients are expected to
+    subclass to build metrique cubes.
+
+
     '''
     name = None
-    # defaults is frequently overrided in subclasses as a property
+    ' defaults is frequently overrided in subclasses as a property '
     defaults = {}
-    # fields is frequently overrided in subclasses as a property too
+    ' fields is frequently overrided in subclasses as a property too '
     fields = {}
 
     # frequently 'typed' commands have shorter aliases too
@@ -91,7 +97,14 @@ class HTTPClient(object):
 
     def __new__(cls, *args, **kwargs):
         '''
-        Return the specific cube class, if specified
+        Return the specific cube class, if specified. Its
+        expected the cube will be available in sys.path.
+
+        If the cube fails to import, just move on.
+
+            >>> import pyclient
+            >>> c = pyclient(cube='git_commit')
+                <type HTTPClient(...)>
         '''
         if 'cube' in kwargs and kwargs['cube']:
             try:
@@ -107,10 +120,20 @@ class HTTPClient(object):
                  debug=0, config_file=None, cube=None,
                  auto_login=None):
         self._config_file = config_file
+        '''
+        all defaults are loaded, unless specified in
+        metrique_config.json
+        '''
         self.load_config(force=force)
+        '''
+        keep logging local to the cube so multiple
+        cubes can independently log without interferring
+        with each others logging.
+        '''
         logging.basicConfig()
         self.logger = logging.getLogger('metrique.%s' % self.__module__)
         self.config.debug = self.logger, debug
+        ' async == False disabled prepare().@gen.coroutine() tornado async '
         self.config.async = async
 
         if isinstance(cube, basestring):
@@ -128,31 +151,76 @@ class HTTPClient(object):
         if password:
             self.config.password = password
 
+        ' we load a new requests session; mainly for the cookies. '
         self._load_session()
 
         if auto_login:
             self.config.auto_login = auto_login
         self._auto_login_attempted = False
 
-    def load_config(self, config_file=None, force=False):
-        from metrique.config import Config, CONFIG_FILE
-        config_file = config_file or self._config_file or CONFIG_FILE
-        try:
-            self.config = Config(config_file=config_file, force=force)
-        except Exception:
-            logger.error("failed to load config: %s" % config_file)
-            raise
+    def _build_runner(self, kind, kwargs):
+        ''' generic caller for HTTP
+            A) POST; use data, not params
+            B) otherwise; use params
+        '''
+        kwargs_json = self._kwargs_json(**kwargs)
+        if kind == self.session.post:
+            # use data instead of params
+            runner = partial(kind, data=kwargs_json)
         else:
-            self._config_file = config_file
+            runner = partial(kind, params=kwargs_json)
+        return runner
 
-    def set_cube(self, cube):
-        self.name = cube
+    def _build_url(self, cmd, api_url):
+        ' generic path joininer for http api commands '
+        cmd = cmd or ''
+        if api_url:
+            _url = os.path.join(self.config.api_url, cmd)
+        else:
+            _url = os.path.join(self.config.host_port, cmd)
+        return _url
+
+    @property
+    def current_user(self):
+        ' alias for whoami(); returns back username in config.username '
+        return self.whoami()
+
+    def _delete(self, *args, **kwargs):
+        ' requests DELETE; using current session '
+        return self._run(self.session.delete, *args, **kwargs)
+
+    def _get(self, *args, **kwargs):
+        ' requests GET; using current session '
+        return self._run(self.session.get, *args, **kwargs)
+
+    def get_cmd(self, owner, cube, api_name=None):
+        '''
+        another helper for building api urls, specifically
+        for the case where the api call always requires
+        owner and cube; api_name is usually provided,
+        if there is a 'command name'; but it's optional.
+        '''
+        owner = owner or self.config.username
+        if not owner:
+            raise ValueError('owner required!')
+        cube = cube or self.name
+        if not cube:
+            raise ValueError('cube required!')
+        if api_name:
+            return os.path.join(owner, cube, api_name)
+        else:
+            return os.path.join(owner, cube)
 
     def get_cube(self, cube):
+        ' wrapper for utils.get_cube(); try to load a cube, pyclient '
         return get_cube(cube)
 
     def get_last_field(self, field):
-        # FIXME: use ifind
+        '''
+        shortcut for querying to get the last field value for
+        a given owner, cube.
+        '''
+        # FIXME: make sure it hits the baseindex
         query = None
         last = self.find(query, fields=[field],
                          sort=[(field, -1)], one=True, raw=True)
@@ -163,9 +231,15 @@ class HTTPClient(object):
         return last
 
     def get_last_oid(self):
+        ' get the last known object id (_oid) in a given cube '
         return self.get_last_field('_oid')
 
     def get_last_start(self):
+        ' get the last known object start (_start) in a given cube '
+        # FIXME: these "get_*" methods are assuming owner/cube
+        # are "None" defaults; ie, that the current instance
+        # has self.name set... maybe we should be explicit?
+        # pass owner, cube?
         return self.get_last_field('_start')
 
     def get_property(self, property, field=None, default=None):
@@ -174,6 +248,8 @@ class HTTPClient(object):
         Then try to use the default property, if defined
         Then use the default for when neither is found
         Or None, if no default is defined
+
+        OBSOLETE: use metriqueu.utils.set_default
         '''
         try:
             return self.fields[field][property]
@@ -183,18 +259,9 @@ class HTTPClient(object):
             except (TypeError, KeyError):
                 return default
 
-    def _kwargs_json(self, **kwargs):
-        return dict([(k, json.dumps(v, default=json_encode,
-                                    ensure_ascii=False,
-                                    encoding="ISO-8859-1"))
-                    for k, v in kwargs.items()])
-
-    def _load_session(self):
-        # load a fresh new session
-        self.session = requests.Session()
-
     def _get_response(self, runner, _url, username, password,
                       allow_redirects=True):
+        ' wrapper for running a metrique api request; get/post/etc '
         try:
             return runner(_url,
                           auth=(username, password),
@@ -205,27 +272,49 @@ class HTTPClient(object):
             raise requests.exceptions.ConnectionError(
                 'Failed to connect (%s). Try http://? or https://?' % _url)
 
-    def _build_runner(self, kind, kwargs):
-        kwargs_json = self._kwargs_json(**kwargs)
-        if kind == self.session.post:
-            # use data instead of params
-            runner = partial(kind, data=kwargs_json)
-        else:
-            runner = partial(kind, params=kwargs_json)
-        return runner
+    def _kwargs_json(self, **kwargs):
+        ' encode all arguments/parameters as JSON '
+        return dict([(k, json.dumps(v, default=json_encode,
+                                    ensure_ascii=False,
+                                    encoding="ISO-8859-1"))
+                    for k, v in kwargs.items()])
 
-    def _build_url(self, cmd, api_url):
-        cmd = cmd or ''
-        if api_url:
-            _url = os.path.join(self.config.api_url, cmd)
+    def load_config(self, config_file=None, force=False):
+        ' try to load a config file and handle when its not available '
+        config_file = config_file or self._config_file
+        try:
+            self.config = Config(config_file=config_file, force=force)
+        except Exception:
+            logger.error("failed to load config: %s" % config_file)
+            raise
         else:
-            _url = os.path.join(self.config.host_port, cmd)
-        return _url
+            self._config_file = config_file
+
+    def _load_session(self):
+        ' load a fresh new requests session; mainly, reset cookies '
+        self.session = requests.Session()
+
+    def ping(self, auth=False):
+        '''
+        global...base api call; all metrique servers will be expected
+        to have this method available. auth=True is a quick way to
+        test clients credentials.
+        '''
+        return self._get('ping', auth=auth)
+
+    def _post(self, *args, **kwargs):
+        ' requests POST; using current session '
+        return self._run(self.session.post, *args, **kwargs)
 
     def _run(self, kind, cmd, api_url=True,
              allow_redirects=True, full_response=False,
              username=None, password=None,
              **kwargs):
+        '''
+        wrapper for handling all requests; authentication,
+        preparing arguments, calling request, handling
+        exceptions, returning results.
+        '''
         if not username:
             username = self.config.username
         else:
@@ -271,40 +360,20 @@ class HTTPClient(object):
             else:
                 return json.loads(_response.content)
 
-    def _get(self, *args, **kwargs):
-        return self._run(self.session.get, *args, **kwargs)
-
-    def _post(self, *args, **kwargs):
-        return self._run(self.session.post, *args, **kwargs)
-
-    def _delete(self, *args, **kwargs):
-        return self._run(self.session.delete, *args, **kwargs)
-
-    def ping(self, auth=False):
-        return self._get('ping', auth=auth)
-
-    @property
-    def current_user(self):
-        # alias for whoami(); returns back username in config.username
-        return self.whoami()
+    def set_cube(self, cube):
+        '''
+        give this instance a "cube name"; the cube name is expected
+        to exist already in the metrique host being interacted with,
+        or the cube needs to be registered.
+        '''
+        self.name = cube
 
     def whoami(self, auth=False):
+        ' quick way of checking the username the instance is working as '
         if auth:
             self.user_login()
         else:
             return self.config['username']
-
-    def get_cmd(self, owner, cube, api_name=''):
-        owner = owner or self.config.username
-        if not owner:
-            raise ValueError('owner required!')
-        cube = cube or self.name
-        if not cube:
-            raise ValueError('cube required!')
-        if api_name:
-            return os.path.join(owner, cube, api_name)
-        else:
-            return os.path.join(owner, cube)
 
 
 # import alias

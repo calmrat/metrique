@@ -7,8 +7,9 @@ config.py contains the main configuration object for
 metrique client applications, which includes built-in
 defaults.
 
-Defaults assume local, insecure 'test', 'development'
-or 'personal' environment.
+Pure defaults assume local, insecure 'test', 'development'
+or 'personal' environment. The defaults are not meant for
+production use.
 
 To customize local client configuration, add/update
 `~/.metrique/http_api.json` (default).

@@ -1,38 +1,40 @@
 #!/usr/bin/env python
 # Author:  Jan Grec <jgrec@redhat.com>
 
-from unittest import TestCase, main
-
 from metriquec.sql.basesql import BaseSql
 
 callable_test = lambda row_limit: BaseSql(row_limit)
 
+basesql = BaseSql()
 
-class TestBaseSql(TestCase):
 
-    def setUp(self):
-        self.basesql = BaseSql()
+def try_except(func, exceptions, **kwargs):
+    try:
+        func(**kwargs)
+    except exceptions:
+        pass
 
-    def test_proxy(self):
-        # By default, proxy is not implemented
-        self.assertRaises(NotImplementedError,
-                          lambda: self.basesql.proxy)
 
-    def test_cursor(self):
-        # By default, cursor (get from proxy) is unreachable (proxy not
-        # implemented)
-        self.assertRaises(NotImplementedError,
-                          lambda: self.basesql.cursor)
+def test_proxy():
+    ' By default, proxy is not implemented '
+    try_except(lambda: basesql.proxy, NotImplementedError)
 
-    def test_configure(self):
-        # By default, configure is not implemented
-        self.assertRaises(NotImplementedError,
-                          lambda: self.basesql.configure())
 
-    def test_fetchall(self):
-        # By default, trying to get proxy will raise not implemented
-        self.assertRaises(NotImplementedError,
-                          lambda: self.basesql.fetchall("", 5))
+def test_cursor():
+    '''
+        By default, cursor (get from proxy) is unreachable (proxy not
+        implemented
+    '''
+    try_except(lambda: basesql.cursor, NotImplementedError)
 
-if __name__ == '__main__':
-    main()
+
+def test_fetchall():
+    ' By default, trying to get proxy will raise not implemented '
+    try_except(lambda: basesql.fetchall("", 5), NotImplementedError)
+
+
+def test_validate_row_limit():
+    ' check that row is an int or exception'
+    try_except(lambda: basesql._validate_row_limit('a'), TypeError)
+
+    assert isinstance(basesql._validate_row_limit(50.0), int)

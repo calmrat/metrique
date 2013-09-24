@@ -20,7 +20,13 @@ from metriqueu.utils import batch_gen, set_default, ts2dt, dt2ts, utcnow
 
 
 def list_all(self, startswith=None):
-    ''' List all valid cubes for a given metrique instance '''
+    '''
+    This is expected to list all cubes available to
+    the calling client.
+
+    :param string startswith: simple "startswith" filter string
+    :returns list: sorted list of cube names
+    '''
     return sorted(self._get(startswith))
 
 
@@ -28,10 +34,12 @@ def sample_fields(self, cube=None, sample_size=None, query=None, owner=None):
     '''
     List all valid fields for a given cube
 
+    :param int sample_size: number of random documents to query
     :param list exclude_fields:
         List (or csv) of fields to exclude from the results
     :param bool mtime:
         Include mtime details
+    :returns list: sorted list of fields
     '''
     cmd = self.get_cmd(owner, cube)
     result = self._get(cmd, sample_size=sample_size,
@@ -39,8 +47,14 @@ def sample_fields(self, cube=None, sample_size=None, query=None, owner=None):
     return sorted(result)
 
 
-def stats(self, cube=None, owner=None, keys=None):
-    cmd = self.get_cmd(owner, cube, 'stats')
+def stats(self, cube, owner=None, keys=None):
+    '''
+    Get back server reported statistics and other data
+    about a cube cube; optionally, return only the
+    keys specified, not all the stats.
+    '''
+    owner = owner or self.config.username
+    cmd = os.path.join(owner, cube, 'stats')
     result = self._get(cmd)
     if not keys:
         return result
@@ -56,7 +70,9 @@ def drop(self, cube=None, force=False, owner=None):
     '''
     Drops current cube from timeline
 
+    :param string cube: cube name
     :param bool force: really, do it!
+    :param string owner: username of cube owner
     '''
     if not force:
         raise ValueError(
@@ -69,6 +85,9 @@ def drop(self, cube=None, force=False, owner=None):
 def register(self, cube=None, owner=None):
     '''
     Register a new user cube
+
+    :param string cube: cube name
+    :param string owner: username of cube owner
     '''
     cmd = self.get_cmd(owner, cube, 'register')
     return self._post(cmd)
@@ -93,6 +112,8 @@ def list_index(self, cube=None, owner=None):
     '''
     List indexes for either timeline or warehouse.
 
+    :param string cube: cube name
+    :param string owner: username of cube owner
     '''
     cmd = self.get_cmd(owner, cube, 'index')
     result = self._get(cmd)
@@ -105,6 +126,8 @@ def ensure_index(self, key_or_list, cube=None, owner=None):
 
     :param string/list key_or_list:
         Either a single key or a list of (key, direction) pairs.
+    :param string cube: cube name
+    :param string owner: username of cube owner
     '''
     cmd = self.get_cmd(owner, cube, 'index')
     return self._post(cmd, ensure=key_or_list)
@@ -116,6 +139,8 @@ def drop_index(self, index_or_name, cube=None, owner=None):
 
     :param string/list index_or_name:
         index (or name of index) to drop
+    :param string cube: cube name
+    :param string owner: username of cube owner
     '''
     cmd = self.get_cmd(owner, cube, 'index')
     return self._delete(cmd, drop=index_or_name)
@@ -130,6 +155,8 @@ def save(self, objects, cube=None, batch_size=None, owner=None):
 
     :param list objects: list of dictionary-like objects to be stored
     :param int batch_size: maximum slice of objects to post at a time
+    :param string cube: cube name
+    :param string owner: username of cube owner
     :rtype: list - list of object ids saved
     '''
     batch_size = set_default(batch_size, self.config.batch_size)
@@ -164,6 +191,8 @@ def remove(self, ids, cube=None, backup=False, owner=None):
 
     :param list ids: list of object ids to remove
     :param bool backup: return the documents removed to client?
+    :param string cube: cube name
+    :param string owner: username of cube owner
     '''
     if not ids:
         raise RuntimeError("empty id list")
