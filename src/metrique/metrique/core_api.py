@@ -116,15 +116,17 @@ class HTTPClient(object):
         return object.__new__(cube_cls)
 
     def __init__(self, host=None, port=None, username=None,
-                 password=None, async=True, force=True,
-                 debug=0, config_file=None, cube=None,
-                 auto_login=None):
+                 password=None, async=True, debug=0, logfile=None,
+                 config_file=None, cube=None, auto_login=None):
         self._config_file = config_file
         '''
         all defaults are loaded, unless specified in
         metrique_config.json
         '''
-        self.load_config(force=force)
+        self.load_config()
+        if logfile:
+            'override logfile, if path specified'
+            self.config.logfile = logfile
         '''
         keep logging local to the cube so multiple
         cubes can independently log without interferring
@@ -279,7 +281,7 @@ class HTTPClient(object):
                                     encoding="ISO-8859-1"))
                     for k, v in kwargs.items()])
 
-    def load_config(self, config_file=None, force=False):
+    def load_config(self, config_file=None, force=True):
         ' try to load a config file and handle when its not available '
         config_file = config_file or self._config_file
         try:

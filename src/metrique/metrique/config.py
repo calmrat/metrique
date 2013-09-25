@@ -63,12 +63,13 @@ class Config(JSONConf):
                 'auto_login': True,
                 'batch_size': BATCH_SIZE,
                 'cubes_path': CLIENT_CUBES_PATH,
-                'username': os.getenv('USER'),
+                'logfile': None,
                 'password': None,
                 'ssl': False,
                 'ssl_verify': True,
                 'sql_delta_batch_size': 1000,
                 'sql_delta_batch_retries': 3,
+                'username': os.getenv('USER'),
                 }
 
     @property
@@ -109,7 +110,16 @@ class Config(JSONConf):
         if we get a level of 2, we want to apply the
         debug level to all loggers
         '''
-        logger = logger or logging.getLogger()
+        if not logger or level == 2:
+            logger = logging.getLogger()
+
+        if self.logfile:
+            logfile = os.path.expanduser(self.logfile)
+            for hdlr in logger.handlers:
+                logger.removeHandler(hdlr)
+            logger.removeHandler
+            hdlr = logging.FileHandler(logfile)
+            logger.addHandler(hdlr)
 
         if level in [-1, False]:
             logger.setLevel(logging.WARN)
@@ -117,8 +127,6 @@ class Config(JSONConf):
             logger.setLevel(logging.INFO)
         elif level in [True, 1, 2]:
             logger.setLevel(logging.DEBUG)
-            rlogger = logging.getLogger()
-            rlogger.setLevel(logging.DEBUG)
 
     @property
     def host(self):

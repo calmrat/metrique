@@ -75,7 +75,10 @@ def get_timezone_converter(from_timezone):
     from_tz = pytz.timezone(from_timezone)
 
     def timezone_converter(self, dt):
-        return from_tz.localize(dt).astimezone(utc)
+        if dt is None:
+            return None
+        else:
+            return from_tz.localize(dt).astimezone(utc)
     return timezone_converter
 
 

@@ -131,7 +131,6 @@ class BaseSql(HTTPClient):
 
     def _extract_id_delta(self, id_delta, delta_batch_size,
                           force, field_order, retries):
-        objects = []
         if not retries:
             retries = self.config.sql_delta_batch_retries
         # Sometimes we have hiccups. Try, Try and Try again
@@ -146,8 +145,8 @@ class BaseSql(HTTPClient):
             for batch in batch_gen(id_delta,
                                    delta_batch_size):
                 try:
-                    objects.extend(self._extract(force, batch,
-                                                 field_order))
+                    objects = self._extract(force, batch,
+                                            field_order)
                 except self.retry_on_error:
                     failed.extend(batch)
                     tb = traceback.format_exc()
@@ -157,6 +156,7 @@ class BaseSql(HTTPClient):
                             tb, len(failed), retries))
                     retries -= 1
                 else:
+                    yield objects
                     done.extend(batch)
                     local_done += len(batch)
                     self.logger.info(
@@ -171,7 +171,6 @@ class BaseSql(HTTPClient):
             rt = self.config.sql_delta_batch_retries
             raise RuntimeError(
                 "Query Failed after %s retries." % rt)
-        return objects, failed
 
     def _extract_loop(self, sql, start=0):
         _stop = False
@@ -198,7 +197,7 @@ class BaseSql(HTTPClient):
     def extract(self, exclude_fields=None, force=False, id_delta=None,
                 last_update=None, delta_batch_size=None,
                 retries=DEFAULT_RETRIES, row_limit=None, parse_timestamp=None,
-                dry_run=False, **kwargs):
+                **kwargs):
         '''
         Extract routine for SQL based cubes.
 
@@ -240,22 +239,16 @@ class BaseSql(HTTPClient):
         # out the sql rows and know which column : field
         field_order = list(set(self.fields) - set(exclude_fields))
 
+        saved = []
         if id_delta and delta_batch_size != 0:
-            objects, failed = self._extract_id_delta(
-                id_delta, delta_batch_size, force,
-                field_order, retries)
+            delta_gen = self._extract_id_delta(id_delta, delta_batch_size,
+                                               force, field_order, retries)
+            for batch in delta_gen:
+                saved += self.cube_save(batch)
         else:
             objects = self._extract(force, id_delta, field_order)
-            failed = []
-
-        # FIXME: Queue these up for the next extract call!?
-        if failed:
-            self.logger.error('FAILED: %s' % failed)
-
-        if dry_run:
-            return objects
-        else:
-            return self.cube_save(objects)
+            saved = self.cube_save(objects)
+        return saved
 
     def _fetchall(self, sql, start, field_order):
         '''

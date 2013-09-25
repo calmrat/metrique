@@ -54,7 +54,7 @@ def stats(self, cube, owner=None, keys=None):
     keys specified, not all the stats.
     '''
     owner = owner or self.config.username
-    cmd = os.path.join(owner, cube, 'stats')
+    cmd = self.get_cmd(owner, cube, 'stats')
     result = self._get(cmd)
     if not keys:
         return result
@@ -78,7 +78,7 @@ def drop(self, cube=None, force=False, owner=None):
         raise ValueError(
             "DANGEROUS: set false=True to drop %s.%s" % (
                 owner, cube))
-    cmd = self.get_cmd(owner, cube, 'register')
+    cmd = self.get_cmd(owner, cube, 'drop')
     return self._delete(cmd)
 
 
