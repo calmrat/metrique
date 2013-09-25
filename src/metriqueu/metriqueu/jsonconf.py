@@ -93,7 +93,7 @@ class JSONConf(object):
             return self[name]
 
     def __setattr__(self, name, value):
-        if 'config' in self.__dict__ and not hasattr(self, name):
+        if 'config' in self.__dict__:
             if name in self.config or name in self.defaults:
                 self[name] = value
                 return

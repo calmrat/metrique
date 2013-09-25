@@ -50,7 +50,6 @@ class Config(JSONConf):
     auto_login: ...
     batch_size: The number of objs to push save_objects at a time
     cubes_path: Path to client modules
-    debug: Reflect whether debug is enabled or not
     username: The username to connect to metrique api with (OPTIONAL)
     password: The password to connect to metrique api with (OPTIONAL)
     ssl: Connect with SSL (https)
@@ -64,7 +63,6 @@ class Config(JSONConf):
                 'auto_login': True,
                 'batch_size': BATCH_SIZE,
                 'cubes_path': CLIENT_CUBES_PATH,
-                'debug': -1,
                 'username': os.getenv('USER'),
                 'password': None,
                 'ssl': False,
