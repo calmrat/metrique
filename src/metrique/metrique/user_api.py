@@ -9,7 +9,6 @@ logger = logging.getLogger(__name__)
 import os
 
 from metriqueu.utils import set_default
-from metriqueu.defaults import METRIQUE_LOGIN_URL
 
 
 def aboutme(self, username=None):
@@ -107,7 +106,7 @@ def update_passwd(self, new_password, old_password=None,
         if save:
             self.config.save()
 
-    if response.headers.get('location') == METRIQUE_LOGIN_URL:
+    if response.headers.get('location') == '/login':
         login(self, self.config.username, self.config.password)
 
     return True

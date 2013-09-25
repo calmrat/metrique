@@ -8,7 +8,7 @@ import pytz
 import simplejson as json
 import sys
 
-from metriqueu.defaults import SYSTEM_CUBES_PATH, CLIENT_CUBES_PATH
+from metrique.config import SYSTEM_CUBES_PATH, CLIENT_CUBES_PATH
 from metriqueu.utils import dt2ts
 
 json_encoder = json.JSONEncoder()

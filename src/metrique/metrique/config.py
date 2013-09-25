@@ -20,13 +20,18 @@ Paths are UNIX compatible only.
 import logging
 import os
 import re
+from distutils.sysconfig import get_python_lib
 
 from jsonconf import JSONConf
 
-from metriqueu.defaults import CONFIG_DIR, CLIENT_CUBES_PATH, API_REL_PATH
-from metriqueu.defaults import METRIQUE_HTTP_HOST, METRIQUE_HTTP_PORT
+METRIQUE_HTTP_HOST = '127.0.0.1'
+METRIQUE_HTTP_PORT = 5420
 
+CONFIG_DIR = '~/.metrique'
 CONFIG_FILE = os.path.join(CONFIG_DIR, 'http_api')
+CLIENT_CUBES_PATH = os.path.join(CONFIG_DIR, 'cubes/')
+SYSTEM_CUBES_PATH = os.path.join(get_python_lib(), 'metriquec/')
+
 BATCH_SIZE = -1
 
 API_VERSION = 'v2'
@@ -44,7 +49,7 @@ class Config(JSONConf):
         ''' Reletive paths from url.root needed
             to trigger/access the metrique http api
         '''
-        def_rel_path = os.path.join(API_REL_PATH, self.api_version)
+        def_rel_path = os.path.join('api', self.api_version)
         return self._default('api_rel_path', def_rel_path)
 
     @property
@@ -197,6 +202,7 @@ class Config(JSONConf):
     @property
     def sql_delta_batch_retries(self):
         return self._default('sql_delta_batch_retries', 3)
+
     @property
     def ssl(self):
         ''' Determine if ssl schema used in a given host string'''
@@ -221,4 +227,3 @@ class Config(JSONConf):
     def username(self, value):
         ''' Set and save the username to connect to metrique api with '''
         self.config['username'] = value
-

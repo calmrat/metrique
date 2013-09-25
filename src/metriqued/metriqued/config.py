@@ -10,14 +10,13 @@ from jsonconf import JSONConf
 from metriqued.mongodb.basemongodb import BaseMongoDB
 from metriqued.utils import new_cookie_secret
 
-from metriqueu.defaults import CONFIG_DIR
-from metriqueu.defaults import METRIQUE_HTTP_HOST
-from metriqueu.defaults import METRIQUE_HTTP_PORT
-from metriqueu.defaults import METRIQUE_LOGIN_URL
-
 pjoin = os.path.join
 
+CONFIG_DIR = '~/.metrique'
 METRIQUE_CONF = pjoin(CONFIG_DIR, 'metrique_config')
+
+METRIQUE_HTTP_HOST = '127.0.0.1'
+METRIQUE_HTTP_PORT = 5420
 
 MONGODB_HOST = METRIQUE_HTTP_HOST
 MONGODB_PORT = 27017
@@ -168,7 +167,7 @@ class metrique(JSONConf):
 
     @property
     def login_url(self):
-        return self._default('login_url', METRIQUE_LOGIN_URL)
+        return self._default('login_url', '/login')
 
     @property
     def pid_file(self):
