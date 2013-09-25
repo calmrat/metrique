@@ -21,8 +21,7 @@ import time
 import traceback
 import signal
 
-from metriqued.config import METRIQUE_HTTP_HOST, METRIQUE_HTTP_PORT
-from metriqued.config import METRIQUE_CONF, PID_FILE, metrique
+from metriqued.config import PID_FILE, metrique
 from metriqued.tornadohttp import TornadoHTTPServer
 from metriqued.utils import get_pid_from_file, remove_pid_file
 
@@ -123,16 +122,12 @@ if __name__ == '__main__':
     _args.add_argument('-f', '--fork',
                        action='store_true')
 
-    _args.add_argument('-c', '--server-config-file',
-                       type=str, default=METRIQUE_CONF)
+    _args.add_argument('-c', '--server-config-file', type=str)
 
-    _args.add_argument('-H', '--host',
-                       type=str, default=METRIQUE_HTTP_HOST)
-    _args.add_argument('-P', '--port',
-                       type=str, default=METRIQUE_HTTP_PORT)
+    _args.add_argument('-H', '--host', type=str)
+    _args.add_argument('-P', '--port', type=str)
 
-    _args.add_argument('-i', '--pid-file',
-                       type=str, default=PID_FILE)
+    _args.add_argument('-i', '--pid-file', type=str, default=PID_FILE)
 
     # FIXME: in the near future, we'll be able to start up
     # multiple servers in parallel; instance-id would
