@@ -20,13 +20,18 @@ Paths are UNIX compatible only.
 import logging
 import os
 import re
+from distutils.sysconfig import get_python_lib
 
 from jsonconf import JSONConf
 
-from metriqueu.defaults import CONFIG_DIR, CLIENT_CUBES_PATH, API_REL_PATH
-from metriqueu.defaults import METRIQUE_HTTP_HOST, METRIQUE_HTTP_PORT
+METRIQUE_HTTP_HOST = '127.0.0.1'
+METRIQUE_HTTP_PORT = 5420
 
+CONFIG_DIR = '~/.metrique'
 CONFIG_FILE = os.path.join(CONFIG_DIR, 'http_api')
+CLIENT_CUBES_PATH = os.path.join(CONFIG_DIR, 'cubes/')
+SYSTEM_CUBES_PATH = os.path.join(get_python_lib(), 'metriquec/')
+
 BATCH_SIZE = -1
 
 API_VERSION = 'v2'
@@ -39,12 +44,39 @@ class Config(JSONConf):
         super(Config, self).__init__(config_file=config_file, force=force,
                                      *args, **kwargs)
 
+    '''
+    api_verison: Current api version in use
+    async: Turn on/off async (parallel) multiprocessing (where supported)
+    auto_login: ...
+    batch_size: The number of objs to push save_objects at a time
+    cubes_path: Path to client modules
+    debug: Reflect whether debug is enabled or not
+    username: The username to connect to metrique api with (OPTIONAL)
+    password: The password to connect to metrique api with (OPTIONAL)
+    ssl_verify: ...
+    sql_delta_batch_size:
+        The number of objects to query at a time in sql.id_delta
+    sql_delta_batch_retries: ...
+    '''
+    defaults = {'api_version': API_VERSION,
+                'async': True,
+                'auto_login': True,
+                'batch_size': BATCH_SIZE,
+                'cubes_path': CLIENT_CUBES_PATH,
+                'debug': -1,
+                'username': os.getenv('USER'),
+                'password': None,
+                'ssl_verify': True,
+                'sql_delta_batch_size': 1000,
+                'sql_delta_batch_retries': 3,
+                }
+
     @property
     def api_rel_path(self):
         ''' Reletive paths from url.root needed
             to trigger/access the metrique http api
         '''
-        def_rel_path = os.path.join(API_REL_PATH, self.api_version)
+        def_rel_path = os.path.join('api', self.api_version)
         return self._default('api_rel_path', def_rel_path)
 
     @property
@@ -56,44 +88,6 @@ class Config(JSONConf):
             too, so be sure to add https:// to the host!
         '''
         return os.path.join(self.host_port, self.api_rel_path)
-
-    @property
-    def api_version(self):
-        ''' Current api version in use '''
-        return self._default('api_version', API_VERSION)
-
-    @property
-    def async(self):
-        ''' Turn on/off async (parallel) multiprocessing (where supported) '''
-        return self._default('async', True)
-
-    @async.setter
-    def async(self, value):
-        self.config['async'] = value
-
-    @property
-    def auto_login(self):
-        ''' Current api version in use '''
-        return self._default('auto_login', True)
-
-    @auto_login.setter
-    def auto_login(self, value):
-        ''' Set and save in config a metrique api port to use '''
-        self.config['port'] = value
-
-    @property
-    def batch_size(self):
-        ''' The number of objs to push save_objects at a time'''
-        return self._default('batch_size', BATCH_SIZE)
-
-    @batch_size.setter
-    def batch_size(self, value):
-        self.config['batch_size'] = value
-
-    @property
-    def cubes_path(self):
-        ''' Path to client modules '''
-        return self._default('cubes_path', CLIENT_CUBES_PATH)
 
     @property
     def debug(self):
@@ -114,6 +108,22 @@ class Config(JSONConf):
             else:
                 self._set_debug(value, logger)
         self.config['debug'] = value
+
+    def _set_debug(self, level, logger=None):
+        '''
+        if we get a level of 2, we want to apply the
+        debug level to all loggers
+        '''
+        logger = logger or logging.getLogger()
+
+        if level in [-1, False]:
+            logger.setLevel(logging.WARN)
+        elif level in [0, None]:
+            logger.setLevel(logging.INFO)
+        elif level in [True, 1, 2]:
+            logger.setLevel(logging.DEBUG)
+            rlogger = logging.getLogger()
+            rlogger.setLevel(logging.DEBUG)
 
     @property
     def host(self):
@@ -164,61 +174,6 @@ class Config(JSONConf):
         self.config['port'] = value
 
     @property
-    def password(self):
-        ''' The password to connect to metrique api with (OPTIONAL)'''
-        return self._default('password')
-
-    @password.setter
-    def password(self, value):
-        ''' Set and save the password to connect to metrique api with '''
-        self.config['password'] = value
-
-    def _set_debug(self, level, logger=None):
-        '''
-        if we get a level of 2, we want to apply the
-        debug level to all loggers
-        '''
-        logger = logger or logging.getLogger()
-
-        if level in [-1, False]:
-            logger.setLevel(logging.WARN)
-        elif level in [0, None]:
-            logger.setLevel(logging.INFO)
-        elif level in [True, 1, 2]:
-            logger.setLevel(logging.DEBUG)
-            rlogger = logging.getLogger()
-            rlogger.setLevel(logging.DEBUG)
-
-    @property
-    def sql_delta_batch_size(self):
-        ''' The number of objects to query at a time in sql.id_delta '''
-        return self._default('sql_delta_batch_size', 1000)
-
-    @property
-    def sql_delta_batch_retries(self):
-        return self._default('sql_delta_batch_retries', 3)
-    @property
     def ssl(self):
         ''' Determine if ssl schema used in a given host string'''
         return bool(re.match('https://', self.host))
-
-    @property
-    def ssl_verify(self):
-        ''' Current api version in use '''
-        return self._default('ssl_verify', True)
-
-    @ssl_verify.setter
-    def ssl_verify(self, value):
-        ''' Set and save in config a metrique api port to use '''
-        self.config['ssl_verify'] = value
-
-    @property
-    def username(self):
-        ''' The username to connect to metrique api with (OPTIONAL)'''
-        return self._default('username', os.getenv('USER'))
-
-    @username.setter
-    def username(self, value):
-        ''' Set and save the username to connect to metrique api with '''
-        self.config['username'] = value
-

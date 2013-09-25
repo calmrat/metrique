@@ -26,7 +26,6 @@ __requires__ = [
 __irequires__ = [
     'metriqueu>=%s' % __version__,
     'pandas>=0.12',
-    'pql>=0.3.2',
     'requests>=1.2',
     'tornado>=3.0',
 ]

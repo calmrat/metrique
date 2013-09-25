@@ -10,29 +10,24 @@ from jsonconf import JSONConf
 from metriqued.mongodb.basemongodb import BaseMongoDB
 from metriqued.utils import new_cookie_secret
 
-from metriqueu.defaults import CONFIG_DIR
-from metriqueu.defaults import METRIQUE_HTTP_HOST
-from metriqueu.defaults import METRIQUE_HTTP_PORT
-from metriqueu.defaults import METRIQUE_LOGIN_URL
+CONFIG_DIR = '~/.metrique'
+METRIQUE_CONF = os.path.join(CONFIG_DIR, 'metrique_config')
 
-pjoin = os.path.join
-
-METRIQUE_CONF = pjoin(CONFIG_DIR, 'metrique_config')
+METRIQUE_HTTP_HOST = '127.0.0.1'
+METRIQUE_HTTP_PORT = 5420
 
 MONGODB_HOST = METRIQUE_HTTP_HOST
 MONGODB_PORT = 27017
-MONGODB_CONF = pjoin(CONFIG_DIR, 'mongodb_config')
+MONGODB_CONF = os.path.join(CONFIG_DIR, 'mongodb_config')
 
-PID_FILE = pjoin(CONFIG_DIR, 'server.pid')
+PID_FILE = os.path.join(CONFIG_DIR, 'server.pid')
 SSL = False
-SSL_CERT_FILE = pjoin(CONFIG_DIR, 'cert.pem')
-SSL_KEY_FILE = pjoin(CONFIG_DIR, 'pkey.pem')
+SSL_CERT_FILE = os.path.join(CONFIG_DIR, 'cert.pem')
+SSL_KEY_FILE = os.path.join(CONFIG_DIR, 'pkey.pem')
 WRITE_CONCERN = 1
 
 ADMIN_USER = 'admin'
 DATA_USER = 'metrique'
-
-SUPERUSERS = [ADMIN_USER]
 
 METRIQUE_DB = 'metrique'
 TIMELINE_DB = 'timeline'
@@ -57,11 +52,24 @@ class metrique(JSONConf):
             config_file = METRIQUE_CONF
         super(metrique, self).__init__(config_file=config_file,
                                        force=force)
-        self._properties = {}
+
+    defaults = {'async': True,
+                'autoreload': False,
+                'gzip': True,
+                'http_host': METRIQUE_HTTP_HOST,
+                'http_port': METRIQUE_HTTP_PORT,
+                'krb_auth': False,
+                'realm': 'metrique',
+                'log_formatter': LOG_FORMATTER,
+                'login_url': '/login',
+                'max_processes': 0,
+                'ssl': False,
+                'xsrf_cookies': False,
+                }
 
     @property
     def superusers(self):
-        return self._default('superusers', SUPERUSERS)
+        return self._default('superusers', [ADMIN_USER])
 
     @superusers.setter
     def superusers(self, value):
@@ -71,22 +79,6 @@ class metrique(JSONConf):
             raise TypeError(
                 "superuser must be a single or list of strings")
         self.config['superusers'] = value
-
-    @property
-    def async(self):
-        return self._default('async', True)
-
-    @async.setter
-    def async(self, bool_):
-        self.config['async'] = bool_
-
-    @property
-    def autoreload(self):
-        return self._default('autoreload', False)
-
-    @autoreload.setter
-    def autoreload(self, value):
-        self.config['autoreload'] = value
 
     @property
     def cookie_secret(self):
@@ -122,53 +114,9 @@ class metrique(JSONConf):
         self.config['debug'] = n
 
     @property
-    def gzip(self):
-        return self._default('gzip', True)
-
-    @gzip.setter
-    def gzip(self, value):
-        self.config['gzip'] = value
-
-    @property
-    def http_host(self):
-        return self._default('http_host', METRIQUE_HTTP_HOST)
-
-    @http_host.setter
-    def http_host(self, value):
-        self.config['http_host'] = value
-
-    @property
-    def http_port(self):
-        return self._default('http_port', METRIQUE_HTTP_PORT)
-
-    @http_port.setter
-    def http_port(self, value):
-        self.config['http_port'] = value
-
-    @property
-    def krb_auth(self):
-        return self._default('krb_auth', False)
-
-    @krb_auth.setter
-    def krb_auth(self, value):
-        self.config['krb_auth'] = value
-
-    @property
-    def realm(self):
-        return self._default('realm', 'metrique')
-
-    @property
-    def log_formatter(self):
-        return self._property_default('log_formatter', LOG_FORMATTER)
-
-    @property
     def log_file_path(self):
         return os.path.expanduser(
             self._default('log_file_path', LOGDIR_SAVEAS))
-
-    @property
-    def login_url(self):
-        return self._default('login_url', METRIQUE_LOGIN_URL)
 
     @property
     def pid_file(self):
@@ -179,26 +127,10 @@ class metrique(JSONConf):
         return pid_file
 
     @property
-    def max_processes(self):
-        return self._default('max_processes', 0)
-
-    @max_processes.setter
-    def max_processes(self, value):
-        return self._default('max_processes', value)
-
-    @property
     def static_path(self):
         abspath = os.path.dirname(os.path.abspath(__file__))
         static_path = os.path.join(abspath, 'static/')
         return self._default('static_path', static_path)
-
-    @property
-    def ssl(self):
-        return self._default('ssl', False)
-
-    @ssl.setter
-    def ssl(self, value):
-        self.config['ssl'] = value
 
     @property
     def ssl_certificate(self):
@@ -218,14 +150,6 @@ class metrique(JSONConf):
     def ssl_certificate_key(self, value):
         self.config['ssl_certificate_key'] = value
 
-    @property
-    def xsrf_cookies(self):
-        return self._default('xsrf_cookies', False)
-
-    @xsrf_cookies.setter
-    def xsrf_cookies(self, value):
-        self.config['xsrf_cookies'] = value
-
 
 class mongodb(JSONConf):
     def __init__(self, config_file=None, force=True, *args, **kwargs):
@@ -234,33 +158,18 @@ class mongodb(JSONConf):
         super(mongodb, self).__init__(config_file, force=force,
                                       *args, **kwargs)
 
-    @property
-    def admin_password(self):
-        return self._default('admin_password', None)
-
-    @admin_password.setter
-    def admin_password(self, value):
-        self.config['admin_password'] = value
-
-    @property
-    def admin_user(self):
-        return self._default('admin_user', ADMIN_USER)
-
-    @property
-    def data_password(self):
-        return self._default('data_password', None)
-
-    @data_password.setter
-    def data_password(self, value):
-        self.config['data_password'] = value
-
-    @property
-    def data_user(self):
-        return self._default('data_user', DATA_USER)
-
-    @property
-    def db_metrique(self):
-        return self._default('db_metrique', METRIQUE_DB)
+    defaults = {'admin_password': None,
+                'data_password': None,
+                'data_user': DATA_USER,
+                'db_metrique': METRIQUE_DB,
+                'db_timeline': TIMELINE_DB,
+                'collection_cube_profile': CUBE_PROFILE_COLLECTION,
+                'collection_user_profile': USER_PROFILE_COLLECTION,
+                'host': MONGODB_HOST,
+                'port': MONGODB_PORT,
+                'ssl': SSL,
+                'write_concern': WRITE_CONCERN,
+                }
 
     @property
     def db_metrique_data(self):
@@ -283,10 +192,6 @@ class mongodb(JSONConf):
                            ssl_certfile=self.ssl_certificate,
                            ssl_keyfile=self.ssl_certificate_key,
                            write_concern=self.write_concern)
-
-    @property
-    def db_timeline(self):
-        return self._default('db_timeline', TIMELINE_DB)
 
     @property
     def db_timeline_admin(self):
@@ -323,40 +228,6 @@ class mongodb(JSONConf):
         return self.db_metrique_admin[self.collection_cube_profile]
 
     @property
-    def collection_cube_profile(self):
-        return self._default('collection_cube_profile',
-                             CUBE_PROFILE_COLLECTION)
-
-    @property
-    def collection_user_profile(self):
-        return self._default('collection_user_profile',
-                             USER_PROFILE_COLLECTION)
-
-    @property
-    def host(self):
-        return self._default('host', MONGODB_HOST)
-
-    @host.setter
-    def host(self, value):
-        self.config['host'] = value
-
-    @property
-    def port(self):
-        return self._default('port', MONGODB_PORT)
-
-    @port.setter
-    def port(self, value):
-        self.config['port'] = value
-
-    @property
-    def ssl(self):
-        return self._default('ssl', SSL)
-
-    @ssl.setter
-    def ssl(self, value):
-        self.config['ssl'] = value
-
-    @property
     def ssl_certificate(self):
         return os.path.expanduser(
             self._default('ssl_certificate', SSL_CERT_FILE))
@@ -373,11 +244,3 @@ class mongodb(JSONConf):
     @ssl_certificate_key.setter
     def ssl_certificate_key(self, value):
         self.config['ssl_certificate_key'] = value
-
-    @property
-    def write_concern(self):
-        return self._default('write_concern', WRITE_CONCERN)
-
-    @write_concern.setter
-    def write_concern(self, value):
-        self.config['write_concern'] = value

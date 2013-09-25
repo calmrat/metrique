@@ -21,11 +21,10 @@ import time
 import traceback
 import signal
 
+from metriqued.config import METRIQUE_HTTP_HOST, METRIQUE_HTTP_PORT
 from metriqued.config import METRIQUE_CONF, PID_FILE, metrique
 from metriqued.tornadohttp import TornadoHTTPServer
 from metriqued.utils import get_pid_from_file, remove_pid_file
-
-from metriqueu.defaults import METRIQUE_HTTP_HOST, METRIQUE_HTTP_PORT
 
 
 def stop(pid, pid_file, kill=False):
