@@ -158,7 +158,9 @@ class mongodb(JSONConf):
         super(mongodb, self).__init__(config_file, force=force,
                                       *args, **kwargs)
 
-    defaults = {'admin_password': None,
+    defaults = {'auth': False,
+                'admin_password': None,
+                'admin_user': ADMIN_USER,
                 'data_password': None,
                 'data_user': DATA_USER,
                 'db_metrique': METRIQUE_DB,
@@ -174,9 +176,9 @@ class mongodb(JSONConf):
     @property
     def db_metrique_data(self):
         return BaseMongoDB(host=self.host, db=self.db_metrique,
-                           user=self.admin_user,
-                           password=self.admin_password,
-                           admin=False,
+                           auth=self.auth,
+                           user=self.data_user,
+                           password=self.data_password,
                            ssl=self.ssl,
                            ssl_certfile=self.ssl_certificate,
                            ssl_keyfile=self.ssl_certificate_key,
@@ -185,9 +187,9 @@ class mongodb(JSONConf):
     @property
     def db_metrique_admin(self):
         return BaseMongoDB(host=self.host, db=self.db_metrique,
+                           auth=self.auth,
                            user=self.admin_user,
                            password=self.admin_password,
-                           admin=True,
                            ssl=self.ssl,
                            ssl_certfile=self.ssl_certificate,
                            ssl_keyfile=self.ssl_certificate_key,
@@ -196,9 +198,9 @@ class mongodb(JSONConf):
     @property
     def db_timeline_admin(self):
         return BaseMongoDB(host=self.host, db=self.db_timeline,
+                           auth=self.auth,
                            user=self.admin_user,
                            password=self.admin_password,
-                           admin=True,
                            ssl=self.ssl,
                            ssl_certfile=self.ssl_certificate,
                            ssl_keyfile=self.ssl_certificate_key,
@@ -207,9 +209,13 @@ class mongodb(JSONConf):
     @property
     def db_timeline_data(self):
         return BaseMongoDB(host=self.host, db=self.db_timeline,
+                           auth=self.auth,
                            user=self.data_user,
                            password=self.data_password,
-                           ssl=self.ssl)
+                           ssl=self.ssl,
+                           ssl_certfile=self.ssl_certificate,
+                           ssl_keyfile=self.ssl_certificate_key,
+                           write_concern=self.write_concern)
 
     @property
     def c_user_profile_data(self):

@@ -164,6 +164,7 @@ def remove_pid_file(pid_file, quiet=True):
         return
     try:
         os.remove(pid_file)
+        print 'pid file removed.'
     except OSError:
         if quiet:
             pass

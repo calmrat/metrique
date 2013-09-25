@@ -46,7 +46,6 @@ def stop(pid, pid_file, kill=False):
         except OSError as e:
             print 'STOP ERROR: %s' % e
             raise
-    print 'Removing stale pid file...'
     remove_pid_file(pid_file)
     return code
 
@@ -92,6 +91,7 @@ def restart(pid, pid_file, kill=False, timeout=None, fork=False):
                    'process to stop')
             break
     else:
+        remove_pid_file(pid_file)
         return start(fork=fork, **kwargs)
 
 

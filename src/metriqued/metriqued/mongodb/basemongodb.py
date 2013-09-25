@@ -15,15 +15,15 @@ from pymongo.errors import ConnectionFailure
 
 
 class BaseMongoDB(object):
-    def __init__(self, db, host, user, password, admin=False, port=None,
-                 ssl=None, ssl_keyfile=None, ssl_certfile=None,
-                 write_concern=0):
+    def __init__(self, db, host, user=None, password=None, auth=False,
+                 port=None, ssl=None, ssl_keyfile=None,
+                 ssl_certfile=None, write_concern=0):
 
+        self.auth = auth
         self.host = host
         self.user = user
         self.password = password
         self._db = db
-        self.admin = admin
 
         self.ssl = ssl
         self.ssl_keyfile = ssl_keyfile
@@ -79,16 +79,13 @@ class BaseMongoDB(object):
         '''
         by default the default user only has read-only access to db
         '''
-        if not self.password:
-            pass
-        elif self.admin:
+        if not self.auth:
+            return
+        elif not self.password:
+            raise ValueError("no mongo authentication password provided")
+        else:
             admin_db = self._proxy['admin']
             if not admin_db.authenticate(self.user, self.password):
-                raise RuntimeError(
-                    "MongoDB failed to authenticate user (%s)" % self.user)
-        else:
-            if not self._proxy[self._db].authenticate(self.user,
-                                                      self.password):
                 raise RuntimeError(
                     "MongoDB failed to authenticate user (%s)" % self.user)
         return self._proxy[self._db]

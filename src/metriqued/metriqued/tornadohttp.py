@@ -70,6 +70,7 @@ class TornadoHTTPServer(object):
         logger.debug('Async: %s' % async)
         logger.debug('======= mongodb ========')
         logger.debug(' Host: %s' % mbconf.host)
+        logger.debug('  SSL: %s' % mbconf.ssl)
         logger.debug(' Port: %s' % mbconf.port)
 
     @property
@@ -262,7 +263,11 @@ class TornadoHTTPServer(object):
         logger.warn('testing mongodb connection status...')
         try:
             assert self.mongodb_config.db_metrique_admin.db
-        except Exception as e:
+            assert self.mongodb_config.db_metrique_data.db
+            assert self.mongodb_config.db_timeline_admin.db
+            assert self.mongodb_config.db_timeline_data.db
+        except Exception:
             host = self.mongodb_config.host
-            raise RuntimeError(
-                '%s\nFailed to communicate with MongoDB (%s)' % (e, host))
+            logger.error(
+                'Failed to communicate with MongoDB (%s)' % host)
+            raise

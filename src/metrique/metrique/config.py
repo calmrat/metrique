@@ -53,6 +53,7 @@ class Config(JSONConf):
     debug: Reflect whether debug is enabled or not
     username: The username to connect to metrique api with (OPTIONAL)
     password: The password to connect to metrique api with (OPTIONAL)
+    ssl: Connect with SSL (https)
     ssl_verify: ...
     sql_delta_batch_size:
         The number of objects to query at a time in sql.id_delta
@@ -66,6 +67,7 @@ class Config(JSONConf):
                 'debug': -1,
                 'username': os.getenv('USER'),
                 'password': None,
+                'ssl': False,
                 'ssl_verify': True,
                 'sql_delta_batch_size': 1000,
                 'sql_delta_batch_retries': 3,
@@ -81,12 +83,7 @@ class Config(JSONConf):
 
     @property
     def api_url(self):
-        ''' Url and schema - http(s)? needed to call metrique api
-
-            If you're connection to a metrique server with
-            auth = True, it's highly likely it's ssl = True
-            too, so be sure to add https:// to the host!
-        '''
+        ''' Url and schema - http(s)? needed to call metrique api '''
         return os.path.join(self.host_port, self.api_rel_path)
 
     @property
@@ -132,26 +129,21 @@ class Config(JSONConf):
 
     @host.setter
     def host(self, value):
-        ''' Set and save in config a metrique api host to use
-
-            If you're connection to a metrique server with
-            auth = True, it's highly likely it's ssl = True
-            too, so be sure to add https:// to the host!
-        '''
+        ''' Set and save in config a metrique api host to use '''
         if not isinstance(value, basestring):
             raise TypeError("host must be string")
         self.config['host'] = value
 
     @property
     def host_port(self):
-        ''' Url and schema - http(s)? needed to call metrique api
+        ''' Url and schema - http(s)? needed to call metrique api '''
+        if self.ssl:
+            protocol = 'https://'
+        else:
+            protocol = 'http://'
 
-            If you're connection to a metrique server with
-            auth = True, it's highly likely it's ssl = True
-            too, so be sure to add https:// to the host!
-        '''
         if not re.match('http', self.host):
-            host = '%s%s' % ('http://', self.host)
+            host = '%s%s' % (protocol, self.host)
         else:
             host = self.host
 
@@ -172,8 +164,3 @@ class Config(JSONConf):
         if not isinstance(value, basestring):
             raise TypeError("port must be string")
         self.config['port'] = value
-
-    @property
-    def ssl(self):
-        ''' Determine if ssl schema used in a given host string'''
-        return bool(re.match('https://', self.host))
