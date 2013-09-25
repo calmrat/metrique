@@ -2,12 +2,12 @@
 # Author:  Jan Grec <jgrec@redhat.com>
 
 from datetime import datetime
-from jsonconf import JSONConf
 import time
 from unittest import TestCase, TestLoader, TextTestRunner
 
 from metriqued.mongodb.basemongodb import BaseMongoDB
 from metrique.config import DEFAULT_MONGODB_CONF
+from metriqueu.jsonconf import JSONConf
 
 tests_db = 'tests'
 junk_c = 'junk'

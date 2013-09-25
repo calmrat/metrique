@@ -22,7 +22,7 @@ import os
 import re
 from distutils.sysconfig import get_python_lib
 
-from jsonconf import JSONConf
+from metriqueu.jsonconf import JSONConf
 
 METRIQUE_HTTP_HOST = '127.0.0.1'
 METRIQUE_HTTP_PORT = 5420

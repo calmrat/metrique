@@ -18,7 +18,7 @@ import argparse
 import simplejson as json
 
 from metrique.utils import get_cube
-from jsonconf import JSONConf
+from metriqueu.jsonconf import JSONConf
 
 
 def extract(args, cube):

@@ -1,11 +1,11 @@
 #!/usr/bin/env python
 # Author:  Jan Grec <jgrec@redhat.com>
 
-from jsonconf import JSONConf
 from unittest import TestCase, main
 
 from metriqued.mongodb.basemongodb import BaseMongoDB
 from metrique.config import DEFAULT_MONGODB_CONF
+from metriqueu.jsonconf import JSONConf
 
 
 class Test_MongoDB_Admin(TestCase):

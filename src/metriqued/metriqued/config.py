@@ -5,8 +5,8 @@
 import logging
 logger = logging.getLogger(__name__)
 import os
-from jsonconf import JSONConf
 
+from metriqueu.jsonconf import JSONConf
 from metriqued.mongodb.basemongodb import BaseMongoDB
 from metriqued.utils import new_cookie_secret
 
