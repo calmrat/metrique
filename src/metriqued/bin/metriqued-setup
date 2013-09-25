@@ -20,7 +20,7 @@ print 'Metrique Config: '
 pp.pprint(s.metrique_config.config)
 
 _p = "Metrique Hostname/IP (ie, this server): "
-s.metrique_config.setup_basic('http_host', partial(prompter, _p))
+s.metrique_config.setup_basic('host', partial(prompter, _p))
 
 _p = "Enable authentication? "
 auth_enabled = False

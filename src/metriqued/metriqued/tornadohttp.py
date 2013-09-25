@@ -51,8 +51,8 @@ class TornadoHTTPServer(object):
 
         mconf.debug = debug = set_default(debug, mconf.debug)
         mconf.async = async = set_default(async, mconf.async)
-        mconf.host = host = set_default(host, mconf.http_host)
-        mconf.port = port = set_default(port, mconf.http_port)
+        mconf.host = host = set_default(host, mconf.host)
+        mconf.port = port = set_default(port, mconf.port)
         mconf.ssl = ssl = set_default(ssl, mconf.ssl)
 
         self._pid_file = pid_file = set_default(pid_file, mconf.pid_file)

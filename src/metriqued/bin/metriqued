@@ -154,12 +154,12 @@ if __name__ == '__main__':
     m_conf = metrique(config_file=server_config_file)
 
     if not args.host:
-        host = m_conf.http_host
+        host = m_conf.host
     else:
         host = args.host
 
     if not args.port:
-        port = m_conf.http_port
+        port = m_conf.port
     else:
         port = args.port
 
