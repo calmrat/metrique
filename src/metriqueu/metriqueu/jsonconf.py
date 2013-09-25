@@ -7,6 +7,7 @@ logger = logging.getLogger(__name__)
 import os
 import re
 import cStringIO
+from collections import MutableMapping
 
 try:
     import simplejson as json
@@ -16,7 +17,7 @@ except ImportError:
 JSON_EXT = 'json'
 
 
-class JSONConf(object):
+class JSONConf(MutableMapping):
     '''
         Config object using json as its underlying data store
 
