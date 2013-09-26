@@ -24,10 +24,9 @@ import simplejson as json
 from tornado.web import RequestHandler, HTTPError
 from tornado import gen
 
-from metriqued.utils import parse_pql_query, ifind
+from metriqued.utils import parse_pql_query, ifind, BASE_INDEX
 
 from metriqueu.utils import set_default, utcnow, strip_split
-from metriqueu.utils import BASE_INDEX
 
 SAMPLE_SIZE = 1
 VALID_CUBE_ROLES = set(('admin', 'own', 'read', 'write'))
