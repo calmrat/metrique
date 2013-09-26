@@ -44,14 +44,14 @@ class TornadoHTTPServer(object):
     ''' HTTP (Tornado >=3.0) implemntation of MetriqueServer '''
     def __init__(self, metrique_config_file=None,
                  mongodb_config_file=None, host=None, port=None,
-                 ssl=False, async=True, debug=False,
+                 ssl=None, async=None, debug=None,
                  pid_file=None, **kwargs):
         self.metrique_config = mconf = metrique(metrique_config_file)
         self.mongodb_config = mbconf = mongodb(mongodb_config_file)
 
-        mconf.debug = debug
-        mconf.async = async
-        mconf.ssl = ssl
+        mconf.debug = debug = set_default(debug, mconf.debug)
+        mconf.async = async = set_default(async, mconf.async)
+        mconf.ssl = ssl = set_default(ssl, mconf.ssl)
         mconf.host = host = set_default(host, mconf.host)
         mconf.port = port = set_default(port, mconf.port)
 

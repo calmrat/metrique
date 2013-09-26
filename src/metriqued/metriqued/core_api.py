@@ -27,6 +27,7 @@ from tornado import gen
 from metriqued.utils import parse_pql_query, ifind
 
 from metriqueu.utils import set_default, utcnow, strip_split
+from metriqueu.utils import BASE_INDEX
 
 SAMPLE_SIZE = 1
 VALID_CUBE_ROLES = set(('admin', 'own', 'read', 'write'))
@@ -46,7 +47,7 @@ class MetriqueHdlr(RequestHandler):
         ordered dict (or son) is required for pymongo's $sort operators
         '''
         if not sort:
-            sort = [('_oid', -1)]
+            sort = BASE_INDEX
         try:
             assert len(sort[0]) == 2
         except (AssertionError, IndexError, TypeError):

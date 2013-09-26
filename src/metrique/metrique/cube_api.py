@@ -195,7 +195,7 @@ def remove(self, ids, cube=None, backup=False, owner=None):
     :param string owner: username of cube owner
     '''
     if not ids:
-        raise RuntimeError("empty id list")
+        return []
     else:
         cmd = self.get_cmd(owner, cube, 'remove')
         result = self._delete(cmd, ids=ids, backup=backup)
