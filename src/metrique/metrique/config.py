@@ -38,39 +38,41 @@ API_VERSION = 'v2'
 
 
 class Config(JSONConf):
-    ''' Client config (property) class '''
+    ''' Client config (property) class
+
+    DEFAULTS::
+        api_verison: Current api version in use
+        async: Turn on/off async (parallel) multiprocessing (where supported)
+        auto_login: ...
+        batch_size: The number of objs to push save_objects at a time
+        cubes_path: Path to client modules
+        username: The username to connect to metrique api with (OPTIONAL)
+        password: The password to connect to metrique api with (OPTIONAL)
+        ssl: Connect with SSL (https)
+        ssl_verify: ...
+        sql_delta_batch_size:
+            The number of objects to query at a time in sql.id_delta
+        sql_delta_batch_retries: ...
+    '''
+    defaults = {
+        'api_version': API_VERSION,
+        'async': True,
+        'auto_login': True,
+        'batch_size': BATCH_SIZE,
+        'cubes_path': CLIENT_CUBES_PATH,
+        'logfile': None,
+        'password': None,
+        'ssl': False,
+        'ssl_verify': True,
+        'sql_delta_batch_size': 1000,
+        'sql_delta_batch_retries': 3,
+        'username': os.getenv('USER'),
+    }
+
     def __init__(self, config_file, force=True, *args, **kwargs):
         config_file = config_file or CONFIG_FILE
         super(Config, self).__init__(config_file=config_file, force=force,
                                      *args, **kwargs)
-
-    '''
-    api_verison: Current api version in use
-    async: Turn on/off async (parallel) multiprocessing (where supported)
-    auto_login: ...
-    batch_size: The number of objs to push save_objects at a time
-    cubes_path: Path to client modules
-    username: The username to connect to metrique api with (OPTIONAL)
-    password: The password to connect to metrique api with (OPTIONAL)
-    ssl: Connect with SSL (https)
-    ssl_verify: ...
-    sql_delta_batch_size:
-        The number of objects to query at a time in sql.id_delta
-    sql_delta_batch_retries: ...
-    '''
-    defaults = {'api_version': API_VERSION,
-                'async': True,
-                'auto_login': True,
-                'batch_size': BATCH_SIZE,
-                'cubes_path': CLIENT_CUBES_PATH,
-                'logfile': None,
-                'password': None,
-                'ssl': False,
-                'ssl_verify': True,
-                'sql_delta_batch_size': 1000,
-                'sql_delta_batch_retries': 3,
-                'username': os.getenv('USER'),
-                }
 
     @property
     def api_rel_path(self):
@@ -88,24 +90,24 @@ class Config(JSONConf):
     @property
     def debug(self):
         ''' Reflect whether debug is enabled or not '''
-        return self._default('debug', -1)
+        return self._default('debug', False)
 
     @debug.setter
     def debug(self, value):
         ''' Update logger settings '''
         if isinstance(value, (tuple, list)):
             logger, value = value
-            self._set_debug(value, logger)
+            self._debug_set(value, logger)
         else:
             try:
                 logger = self.logger
             except AttributeError:
-                self._set_debug(value)
+                self._debug_set(value)
             else:
-                self._set_debug(value, logger)
+                self._debug_set(value, logger)
         self.config['debug'] = value
 
-    def _set_debug(self, level, logger=None):
+    def _debug_set(self, level, logger=None):
         '''
         if we get a level of 2, we want to apply the
         debug level to all loggers

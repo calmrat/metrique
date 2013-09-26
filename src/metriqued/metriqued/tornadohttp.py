@@ -44,16 +44,16 @@ class TornadoHTTPServer(object):
     ''' HTTP (Tornado >=3.0) implemntation of MetriqueServer '''
     def __init__(self, metrique_config_file=None,
                  mongodb_config_file=None, host=None, port=None,
-                 ssl=None, async=True, debug=None,
+                 ssl=False, async=True, debug=False,
                  pid_file=None, **kwargs):
         self.metrique_config = mconf = metrique(metrique_config_file)
         self.mongodb_config = mbconf = mongodb(mongodb_config_file)
 
-        mconf.debug = debug = set_default(debug, mconf.debug)
-        mconf.async = async = set_default(async, mconf.async)
+        mconf.debug = debug
+        mconf.async = async
+        mconf.ssl = ssl
         mconf.host = host = set_default(host, mconf.host)
         mconf.port = port = set_default(port, mconf.port)
-        mconf.ssl = ssl = set_default(ssl, mconf.ssl)
 
         self._pid_file = pid_file = set_default(pid_file, mconf.pid_file)
         self.parent_pid = None
@@ -260,14 +260,15 @@ class TornadoHTTPServer(object):
 
     def _mongodb_check(self):
         # Fail to start if we can't communicate with mongo
-        logger.warn('testing mongodb connection status...')
+        host = self.mongodb_config.host
+        logger.debug('testing mongodb connection status (%s) ...' % host)
         try:
             assert self.mongodb_config.db_metrique_admin.db
             assert self.mongodb_config.db_metrique_data.db
             assert self.mongodb_config.db_timeline_admin.db
             assert self.mongodb_config.db_timeline_data.db
+            logger.debug('... mongodb connection ok')
         except Exception:
-            host = self.mongodb_config.host
             logger.error(
-                'Failed to communicate with MongoDB (%s)' % host)
+                'failed to communicate with mongodb')
             raise

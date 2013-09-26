@@ -31,6 +31,33 @@ class BaseMongoDB(object):
         self.port = port
         self.write_concern = write_concern
 
+    def _auth_db(self):
+        '''
+        by default the default user only has read-only access to db
+        '''
+        if not self.auth:
+            pass
+        elif not self.password:
+            raise ValueError("no mongo authentication password provided")
+        else:
+            admin_db = self._proxy['admin']
+            if not admin_db.authenticate(self.user, self.password):
+                raise RuntimeError(
+                    "MongoDB failed to authenticate user (%s)" % self.user)
+        return self._proxy[self._db]
+
+    def close(self):
+        if hasattr(self, '_proxy'):
+            self._proxy.close()
+
+    @property
+    def db(self):
+        # return the connected, authenticated database object
+        return self._load_db_proxy()
+
+    def __getitem__(self, collection):
+        return self.db[collection]
+
     def _load_mongo_client(self, **kwargs):
         self._proxy = MongoClient(self.host, self.port,
                                   tz_aware=True,
@@ -66,32 +93,5 @@ class BaseMongoDB(object):
                 self._db_proxy = self._auth_db()
         return self._db_proxy
 
-    @property
-    def db(self):
-        # return the connected, authenticated database object
-        return self._load_db_proxy()
-
-    def close(self):
-        if hasattr(self, '_proxy'):
-            self._proxy.close()
-
-    def _auth_db(self):
-        '''
-        by default the default user only has read-only access to db
-        '''
-        if not self.auth:
-            return
-        elif not self.password:
-            raise ValueError("no mongo authentication password provided")
-        else:
-            admin_db = self._proxy['admin']
-            if not admin_db.authenticate(self.user, self.password):
-                raise RuntimeError(
-                    "MongoDB failed to authenticate user (%s)" % self.user)
-        return self._proxy[self._db]
-
     def set_collection(self, collection):
         self.collection = collection
-
-    def __getitem__(self, collection):
-        return self.db[collection]

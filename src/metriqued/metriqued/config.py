@@ -35,37 +35,35 @@ TIMELINE_DB = 'timeline'
 USER_PROFILE_COLLECTION = 'user_profile'
 CUBE_PROFILE_COLLECTION = 'cube_profile'
 
-ROOT_LOGGER = 'metrique'
 DATE_FORMAT = '%Y%m%dT%H:%M:%S'
 LOG_FORMAT = u'%(processName)s:%(message)s'
 LOG_FORMATTER = logging.Formatter(LOG_FORMAT,
                                   DATE_FORMAT)
 
-LOGDIR_SAVEAS = '%s/metriqued.log' % CONFIG_DIR
-
 CUBE_QUOTA = None
 
 
 class metrique(JSONConf):
+    defaults = {
+        'async': True,
+        'autoreload': False,
+        'gzip': True,
+        'host': METRIQUE_HTTP_HOST,
+        'krb_auth': False,
+        'log_formatter': LOG_FORMATTER,
+        'logfile': None,
+        'login_url': '/login',
+        'max_processes': 0,
+        'port': METRIQUE_HTTP_PORT,
+        'realm': 'metrique',
+        'ssl': False,
+        'xsrf_cookies': False,
+    }
+
     def __init__(self, config_file, force=True):
         if not config_file:
             config_file = METRIQUE_CONF
-        super(metrique, self).__init__(config_file=config_file,
-                                       force=force)
-
-    defaults = {'async': True,
-                'autoreload': False,
-                'gzip': True,
-                'host': METRIQUE_HTTP_HOST,
-                'port': METRIQUE_HTTP_PORT,
-                'krb_auth': False,
-                'realm': 'metrique',
-                'log_formatter': LOG_FORMATTER,
-                'login_url': '/login',
-                'max_processes': 0,
-                'ssl': False,
-                'xsrf_cookies': False,
-                }
+        super(metrique, self).__init__(config_file=config_file, force=force)
 
     @property
     def superusers(self):
@@ -94,29 +92,45 @@ class metrique(JSONConf):
     @property
     def debug(self):
         ''' Reflect whether debug is enabled or not '''
-        return self._default('debug', -1)
+        return self._default('debug', False)
 
     @debug.setter
-    def debug(self, n):
-        logger = logging.getLogger(ROOT_LOGGER)
-        if n == -1:
-            level = logging.WARN
-        elif n == 0:
-            level = logging.INFO
-        elif n == 1:
-            level = logging.DEBUG
-            logger.debug("Debug: metrique")
-        elif n == 2:
-            logger = logging.getLogger()
-            level = logging.DEBUG
-            logger.debug("Debug: metrique, tornado")
-        logger.setLevel(level)
-        self.config['debug'] = n
+    def debug(self, value):
+        ''' Update logger settings '''
+        if isinstance(value, (tuple, list)):
+            logger, value = value
+            self._debug_set(value, logger)
+        else:
+            try:
+                logger = self.logger
+            except AttributeError:
+                self._debug_set(value)
+            else:
+                self._debug_set(value, logger)
+        self.config['debug'] = value
 
-    @property
-    def log_file_path(self):
-        return os.path.expanduser(
-            self._default('log_file_path', LOGDIR_SAVEAS))
+    def _debug_set(self, level, logger=None):
+        '''
+        if we get a level of 2, we want to apply the
+        debug level to all loggers
+        '''
+        if not logger or level == 2:
+            logger = logging.getLogger()
+
+        if self.logfile:
+            logfile = os.path.expanduser(self.logfile)
+            for hdlr in logger.handlers:
+                logger.removeHandler(hdlr)
+            logger.removeHandler
+            hdlr = logging.FileHandler(logfile)
+            logger.addHandler(hdlr)
+
+        if level in [-1, False]:
+            logger.setLevel(logging.WARN)
+        elif level in [0, None]:
+            logger.setLevel(logging.INFO)
+        elif level in [True, 1, 2]:
+            logger.setLevel(logging.DEBUG)
 
     @property
     def pid_file(self):

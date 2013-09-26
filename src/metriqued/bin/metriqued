@@ -161,10 +161,13 @@ if __name__ == '__main__':
     async = not async_off
     fork = args.fork
 
-    pid = get_pid_from_file(pid_file)
-
     kwargs = dict(host=host, port=port, debug=debug, async=async)
     print
+
+    pid = None
+    if cmd != 'start':
+        pid = get_pid_from_file(pid_file)
+
     if cmd == 'start':
         code = start(fork=fork, **kwargs)
     elif cmd == 'stop':
