@@ -50,7 +50,7 @@ class CountHdlr(MetriqueHdlr):
         self.cube_exists(owner, cube)
         self.requires_owner_read(owner, cube)
         set_default(query, '')
-        logger.debug('pql query: %s' % query)
+        logger.info('pql query: %s' % query)
         try:
             spec = pql.find(query_add_date(query, date))
         except Exception as e:

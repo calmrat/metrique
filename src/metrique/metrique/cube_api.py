@@ -93,12 +93,12 @@ def register(self, cube=None, owner=None):
     return self._post(cmd)
 
 
-def update_role(self, username, cube=None, action='push',
+def update_role(self, username, cube=None, action='addToSet',
                 role='read', owner=None):
     '''
     Add/Remove cube ACLs
 
-    :param string action: action to take (push, pull)
+    :param string action: action to take (addToSet, pull)
     :param string role:
         Permission: read, write, admin)
     '''

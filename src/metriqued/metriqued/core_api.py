@@ -388,22 +388,14 @@ class MetriqueHdlr(RequestHandler):
         if not (owner and cube):
             self._raise(400, "owner and cube required")
         self.valid_cube_role(role)
-        user_role = self.get_user_profile(self.current_user, keys=['role'])
-        if user_role and self.cjoin(owner, cube) in user_role:
+        cube_role = self.get_cube_profile(owner, cube, keys=[role])
+        if cube_role and self.current_user in cube_role:
             return True
         else:
             return False
 
     def is_self(self, user):
         return self.current_user == user
-
-    def self_in_group(self, group):
-        self.valid_group(group)
-        user_group = self.get_user_profile(self.current_user, keys=['group'])
-        if user_group and group in user_group:
-            return True
-        else:
-            return False
 
     def is_admin(self, owner, cube=None):
         _is_group_admin = lambda: self.self_in_group('admin')
@@ -450,6 +442,14 @@ class MetriqueHdlr(RequestHandler):
         _is_write = lambda: self.is_write(owner, cube=cube)
         admin_func = lambda: _is_write() or _is_self()
         return self._requires(admin_func, raise_if_not)
+
+    def self_in_group(self, group):
+        self.valid_group(group)
+        user_group = self.get_user_profile(self.current_user, keys=['group'])
+        if user_group and group in user_group:
+            return True
+        else:
+            return False
 
 ##################### utils #################################
     def _raise(self, code, msg):
