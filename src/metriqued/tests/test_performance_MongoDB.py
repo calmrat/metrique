@@ -5,7 +5,7 @@ from datetime import datetime
 import time
 from unittest import TestCase, TestLoader, TextTestRunner
 
-from metriqued.mongodb.basemongodb import BaseMongoDB
+from metriqued.basemongodb import BaseMongoDB
 from metrique.config import DEFAULT_MONGODB_CONF
 from metriqueu.jsonconf import JSONConf
 

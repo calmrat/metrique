@@ -3,7 +3,7 @@
 
 from unittest import TestCase, main
 
-from metriqued.mongodb.basemongodb import BaseMongoDB
+from metriqued.basemongodb import BaseMongoDB
 from metrique.config import DEFAULT_MONGODB_CONF
 from metriqueu.jsonconf import JSONConf
 

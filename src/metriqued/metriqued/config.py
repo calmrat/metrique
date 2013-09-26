@@ -7,7 +7,7 @@ logger = logging.getLogger(__name__)
 import os
 
 from metriqueu.jsonconf import JSONConf
-from metriqued.mongodb.basemongodb import BaseMongoDB
+from metriqued.basemongodb import BaseMongoDB
 from metriqued.utils import new_cookie_secret
 
 CONFIG_DIR = '~/.metrique'
