@@ -23,7 +23,7 @@ from pandas.tslib import Timestamp
 import pandas as pd
 import numpy as np
 
-from metrique.utils import dt2ts
+from metriqueu.utils import dt2ts
 
 NUMPY_NUMERICAL = [np.float16, np.float32, np.float64, np.float128,
                    np.int8, np.int16, np.int32, np.int64]
