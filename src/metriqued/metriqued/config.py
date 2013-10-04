@@ -11,29 +11,12 @@ from metriqued.basemongodb import BaseMongoDB
 from metriqued.utils import new_cookie_secret
 
 CONFIG_DIR = '~/.metrique'
-METRIQUE_CONF = os.path.join(CONFIG_DIR, 'metrique_config')
-
-METRIQUE_HTTP_HOST = '127.0.0.1'
-METRIQUE_HTTP_PORT = 5420
-
-MONGODB_HOST = METRIQUE_HTTP_HOST
-MONGODB_PORT = 27017
-MONGODB_CONF = os.path.join(CONFIG_DIR, 'mongodb_config')
 
 PID_FILE = os.path.join(CONFIG_DIR, 'server.pid')
-SSL = False
 SSL_CERT_FILE = os.path.join(CONFIG_DIR, 'cert.pem')
 SSL_KEY_FILE = os.path.join(CONFIG_DIR, 'pkey.pem')
-WRITE_CONCERN = 1
 
 ADMIN_USER = 'admin'
-DATA_USER = 'metrique'
-
-METRIQUE_DB = 'metrique'
-TIMELINE_DB = 'timeline'
-
-USER_PROFILE_COLLECTION = 'user_profile'
-CUBE_PROFILE_COLLECTION = 'cube_profile'
 
 DATE_FORMAT = '%Y%m%dT%H:%M:%S'
 LOG_FORMAT = u'%(processName)s:%(message)s'
@@ -48,19 +31,19 @@ class metrique(JSONConf):
         'async': True,
         'autoreload': False,
         'gzip': True,
-        'host': METRIQUE_HTTP_HOST,
+        'host': '127.0.0.1',
         'krb_auth': False,
         'log_formatter': LOG_FORMATTER,
         'logfile': None,
         'login_url': '/login',
         'max_processes': 0,
-        'port': METRIQUE_HTTP_PORT,
+        'port': 5420,
         'realm': 'metrique',
         'ssl': False,
         'xsrf_cookies': False,
     }
 
-    default_config = METRIQUE_CONF
+    default_config = os.path.join(CONFIG_DIR, 'metrique_config')
 
     def __init__(self, config_file=None):
         super(metrique, self).__init__(config_file=config_file)
@@ -170,18 +153,18 @@ class mongodb(JSONConf):
                 'admin_password': None,
                 'admin_user': ADMIN_USER,
                 'data_password': None,
-                'data_user': DATA_USER,
-                'db_metrique': METRIQUE_DB,
-                'db_timeline': TIMELINE_DB,
-                'collection_cube_profile': CUBE_PROFILE_COLLECTION,
-                'collection_user_profile': USER_PROFILE_COLLECTION,
-                'host': MONGODB_HOST,
-                'port': MONGODB_PORT,
-                'ssl': SSL,
-                'write_concern': WRITE_CONCERN,
+                'data_user': 'metrique',
+                'db_metrique': 'metrique',
+                'db_timeline': 'timeline',
+                'collection_cube_profile': 'cube_profile',
+                'collection_user_profile': 'user_profile',
+                'host': '127.0.0.1',
+                'port': 27017,
+                'ssl': False,
+                'write_concern': 1,
                 }
 
-    default_config = MONGODB_CONF
+    default_config = os.path.join(CONFIG_DIR, 'mongodb_config')
 
     def __init__(self, config_file=None, *args, **kwargs):
         super(mongodb, self).__init__(config_file, *args, **kwargs)
