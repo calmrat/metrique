@@ -60,10 +60,10 @@ class metrique(JSONConf):
         'xsrf_cookies': False,
     }
 
-    def __init__(self, config_file, force=True):
-        if not config_file:
-            config_file = METRIQUE_CONF
-        super(metrique, self).__init__(config_file=config_file, force=force)
+    default_config = METRIQUE_CONF
+
+    def __init__(self, config_file=None):
+        super(metrique, self).__init__(config_file=config_file)
 
     @property
     def superusers(self):
@@ -166,12 +166,6 @@ class metrique(JSONConf):
 
 
 class mongodb(JSONConf):
-    def __init__(self, config_file=None, force=True, *args, **kwargs):
-        if not config_file:
-            config_file = MONGODB_CONF
-        super(mongodb, self).__init__(config_file, force=force,
-                                      *args, **kwargs)
-
     defaults = {'auth': False,
                 'admin_password': None,
                 'admin_user': ADMIN_USER,
@@ -186,6 +180,11 @@ class mongodb(JSONConf):
                 'ssl': SSL,
                 'write_concern': WRITE_CONCERN,
                 }
+
+    default_config = MONGODB_CONF
+
+    def __init__(self, config_file=None, *args, **kwargs):
+        super(mongodb, self).__init__(config_file, *args, **kwargs)
 
     @property
     def db_metrique_data(self):

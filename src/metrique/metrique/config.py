@@ -61,10 +61,10 @@ class Config(JSONConf):
         'username': os.getenv('USER'),
     }
 
-    def __init__(self, config_file='~/.metrique/http_api', force=True,
-                 *args, **kwargs):
-        super(Config, self).__init__(config_file=config_file, force=force,
-                                     *args, **kwargs)
+    default_config = '~/.metrique/http_api'
+
+    def __init__(self, config_file=None, *args, **kwargs):
+        super(Config, self).__init__(config_file=config_file, *args, **kwargs)
 
     @property
     def api_url(self):

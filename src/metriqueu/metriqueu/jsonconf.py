@@ -6,15 +6,12 @@ logging.basicConfig()
 logger = logging.getLogger(__name__)
 import os
 import re
-import cStringIO
 from collections import MutableMapping
 
 try:
     import simplejson as json
 except ImportError:
     import json
-
-JSON_EXT = 'json'
 
 
 class JSONConf(MutableMapping):
@@ -24,35 +21,16 @@ class JSONConf(MutableMapping):
         Provides helper-methods for setting and saving
         options and config object properties
     '''
-    def __init__(self, config_file, default=None, autosave=False,
-                 force=False, ignore_comments=True):
-        if not config_file:
-            raise ValueError("No config file defined")
-        elif isinstance(config_file, JSONConf):
-            config_file = config_file.config_file
-        elif isinstance(config_file, basestring):
-            if not re.search('%s$' % JSON_EXT, config_file, re.I):
-                config_file = '.'.join((config_file, JSON_EXT))
-            else:
-                config_file = config_file
-        else:
-            raise TypeError(
-                "Unknown config_file type; got: %s" % type(config_file))
-
-        config_file = os.path.expanduser(config_file)
-        config_dir = os.path.dirname(config_file)
-
-        self.config = {}
-        self.config_file = config_file
-        self.config_dir = config_dir
+    def __init__(self, config_file=None, default=None, autosave=False):
+        self.config_file = config_file or self.default_config
+        if self.config_file:
+            self._load_config()
+        if default and isinstance(default, dict):
+            self.defaults.update(default)
         self.autosave = autosave
-        self.force = force
-        self.ignore_comments = ignore_comments
 
-        self._set_defaults(default)
-        self._prepare()
-        self._load()
-
+    default_config = None
+    config = {}
     defaults = {}
 
     def __delitem__(self, key):
@@ -106,54 +84,56 @@ class JSONConf(MutableMapping):
                 self.config[option] = default
         return self.config[option]
 
-    def _load(self):
+    def _load_config(self):
         ''' load config data from disk '''
-        config_io = self._to_stringio()
-        config_json = config_io.getvalue()
+        # We don't want to throw exceptions if the default config file does not
+        # exist.
+        silent = self.config_file == self.default_config
+        config_file = self.config_file
+        if not isinstance(config_file, basestring):
+            raise TypeError(
+                "Unknown config_file type; got: %s" % type(config_file))
+        if not re.search(r'\.json$', config_file, re.I):
+            config_file = '.'.join((config_file, 'json'))
+
+        config_file = os.path.expanduser(config_file)
+        if not os.path.exists(config_file):
+            if config_file[0] != '/':
+                # try to look in the default config folder:
+                old_conf = config_file
+                config_file = '~/.metrique/%s' % config_file
+                config_file = os.path.expanduser(config_file)
+                if not os.path.exists(config_file):
+                    if not silent:
+                        raise IOError('Config files %s and %s do not exist.' %
+                                      (config_file, old_conf))
+                    return
+            else:
+                if not silent:
+                    raise IOError('Config file %s does not exist.' %
+                                  config_file)
+                return
         try:
-            config = json.loads(config_json)
+            with open(config_file) as f:
+                config = json.load(f)
         except Exception:
-            raise TypeError("Failed to load json file: %s" % self.config_file)
+            raise TypeError("Failed to load json file: %s" % config_file)
         self.config.update(config)
-        config_io.close()
+        self.config_file = config_file
 
-    def _prepare(self):
-        if os.path.exists(self.config_file):
-            pass
-        elif self.force:
-            if not os.path.exists(self.config_dir):
-                logger.debug('mkdirs (%s)' % self.config_dir)
-                os.makedirs(self.config_dir)
-            # init an empty json dict at path
-            write_empty_json_dict(self.config_file)
-        else:
-            raise IOError("Path does not exist: %s" % self.config_file)
-
-    def _set_defaults(self, default):
-        if default and isinstance(default, dict):
-            self.defaults.update(default)
-        if default and isinstance(default, JSONConf):
-            self.defaults.update(default.config)
-
-    def _to_stringio(self, fpath=None):
-        if not fpath:
-            fpath = self.config_file
-        fpath = os.path.expanduser(fpath)
-        config_io = cStringIO.StringIO()
-        # ignore comments
-        # ignore everything starting from # to eol
-        with open(fpath) as f:
-            for l in f:
-                if self._prepare:
-                    l = l.split('#', 1)[0].strip()
-                config_io.write(l)
-        return config_io
-
-    def save(self):
+    def save(self, force=True, config_file=None):
         ''' save config data to disk '''
-        with open(self.config_file, 'w') as config_file:
-            config_string = json.dumps(self.config, indent=2)
-            config_file.write(config_string)
+        config_file = config_file or self.config_file
+        if not os.path.exists(config_file):
+            if force:
+                #FIXME config dir
+                config_dir = os.path.dirname(config_file)
+                logger.debug('mkdirs (%s)' % config_dir)
+                os.makedirs(config_dir)
+            else:
+                raise IOError("Path does not exist: %s" % config_file)
+        with open(config_file, 'w') as f:
+            f.write(json.dumps(self.config, indent=2))
 
     def setdefault(self, key, value):
         self.defaults[key] = value

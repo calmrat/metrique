@@ -281,11 +281,11 @@ class HTTPClient(object):
                                     encoding="ISO-8859-1"))
                     for k, v in kwargs.items()])
 
-    def load_config(self, config_file=None, force=True):
+    def load_config(self, config_file=None):
         ' try to load a config file and handle when its not available '
         config_file = config_file or self._config_file
         try:
-            self.config = Config(config_file=config_file, force=force)
+            self.config = Config(config_file=config_file)
         except Exception:
             logger.error("failed to load config: %s" % config_file)
             raise
