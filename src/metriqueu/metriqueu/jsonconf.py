@@ -79,6 +79,13 @@ class JSONConf(MutableMapping):
     def __repr__(self):
         return repr(self.config)
 
+    def __setattr__(self, name, value):
+        if 'config' in self.__dict__:
+            if 'defaults' in self.__dict__ and name in self.defaults:
+                self[name] = value
+                return
+        super(JSONConf, self).__setattr__(name, value)
+
     def __setitem__(self, key, value):
         self.config[key] = value
         if self.autosave:

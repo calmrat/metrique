@@ -20,21 +20,8 @@ Paths are UNIX compatible only.
 import logging
 import os
 import re
-from distutils.sysconfig import get_python_lib
 
 from metriqueu.jsonconf import JSONConf
-
-METRIQUE_HTTP_HOST = '127.0.0.1'
-METRIQUE_HTTP_PORT = 5420
-
-CONFIG_DIR = '~/.metrique'
-CONFIG_FILE = os.path.join(CONFIG_DIR, 'http_api')
-CLIENT_CUBES_PATH = os.path.join(CONFIG_DIR, 'cubes/')
-SYSTEM_CUBES_PATH = os.path.join(get_python_lib(), 'metriquec/')
-
-BATCH_SIZE = -1
-
-API_VERSION = 'v2'
 
 
 class Config(JSONConf):
@@ -46,8 +33,10 @@ class Config(JSONConf):
         auto_login: ...
         batch_size: The number of objs to push save_objects at a time
         cubes_path: Path to client modules
+        host: Metrique Server host
         username: The username to connect to metrique api with (OPTIONAL)
         password: The password to connect to metrique api with (OPTIONAL)
+        port: Metrique server port
         ssl: Connect with SSL (https)
         ssl_verify: ...
         sql_delta_batch_size:
@@ -55,13 +44,16 @@ class Config(JSONConf):
         sql_delta_batch_retries: ...
     '''
     defaults = {
-        'api_version': API_VERSION,
+        'api_version': 'v2',
+        'api_rel_path': 'api/v2',
         'async': True,
         'auto_login': True,
-        'batch_size': BATCH_SIZE,
-        'cubes_path': CLIENT_CUBES_PATH,
+        'batch_size': -1,
+        'cubes_path': '~/.metrique/cubes',
+        'host': '127.0.0.1',
         'logfile': None,
         'password': None,
+        'port': 5420,
         'ssl': False,
         'ssl_verify': True,
         'sql_delta_batch_size': 1000,
@@ -69,18 +61,10 @@ class Config(JSONConf):
         'username': os.getenv('USER'),
     }
 
-    def __init__(self, config_file, force=True, *args, **kwargs):
-        config_file = config_file or CONFIG_FILE
+    def __init__(self, config_file='~/.metrique/http_api', force=True,
+                 *args, **kwargs):
         super(Config, self).__init__(config_file=config_file, force=force,
                                      *args, **kwargs)
-
-    @property
-    def api_rel_path(self):
-        ''' Reletive paths from url.root needed
-            to trigger/access the metrique http api
-        '''
-        def_rel_path = os.path.join('api', self.api_version)
-        return self._default('api_rel_path', def_rel_path)
 
     @property
     def api_url(self):
@@ -131,44 +115,14 @@ class Config(JSONConf):
             logger.setLevel(logging.DEBUG)
 
     @property
-    def host(self):
-        ''' The hostname/url/ip to connect to metrique api '''
-        return self._default('host', METRIQUE_HTTP_HOST)
-
-    @host.setter
-    def host(self, value):
-        ''' Set and save in config a metrique api host to use '''
-        if not isinstance(value, basestring):
-            raise TypeError("host must be string")
-        self.config['host'] = value
-
-    @property
     def host_port(self):
         ''' Url and schema - http(s)? needed to call metrique api '''
-        if self.ssl:
-            protocol = 'https://'
-        else:
-            protocol = 'http://'
+        protocol = 'https://' if self.ssl else 'http://'
 
-        if not re.match('http', self.host):
+        if not re.match('https?://', self.host):
             host = '%s%s' % (protocol, self.host)
         else:
             host = self.host
 
-        if not re.match('https?://', host):
-            raise ValueError("Invalid schema (%s). "
-                             "Expected: %s" % (host, 'http(s)?'))
         host_port = '%s:%s' % (host, self.port)
         return host_port
-
-    @property
-    def port(self):
-        ''' Port need to connect to metrique api '''
-        return self._default('port', METRIQUE_HTTP_PORT)
-
-    @port.setter
-    def port(self, value):
-        ''' Set and save in config a metrique api port to use '''
-        if not isinstance(value, basestring):
-            raise TypeError("port must be string")
-        self.config['port'] = value

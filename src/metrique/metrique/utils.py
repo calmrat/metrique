@@ -7,9 +7,12 @@ import os
 import pytz
 import simplejson as json
 import sys
+from distutils.sysconfig import get_python_lib
 
-from metrique.config import SYSTEM_CUBES_PATH, CLIENT_CUBES_PATH
 from metriqueu.utils import dt2ts
+
+CLIENT_CUBES_PATH = '~/.metrique/cubes/'
+SYSTEM_CUBES_PATH = os.path.join(get_python_lib(), 'metriquec/')
 
 json_encoder = json.JSONEncoder()
 
