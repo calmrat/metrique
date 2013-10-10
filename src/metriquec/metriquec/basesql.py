@@ -36,11 +36,14 @@ class BaseSql(HTTPClient):
 
     FIXME ... MORE DOCS TO COME
     '''
-    def __init__(self, sql_host, sql_port, sql_db, **kwargs):
+    def __init__(self, sql_host, sql_port, sql_db, delta_batch_size=1000,
+                 delta_batch_retries=3, **kwargs):
         super(BaseSql, self).__init__(**kwargs)
         self.config['sql_host'] = sql_host
         self.config['sql_port'] = sql_port
         self.config['sql_db'] = sql_db
+        self._delta_batch_size = delta_batch_size
+        self._delta_batch_retries = delta_batch_retries
         self.row_limit = self.config.get('sql_row_limit', DEFAULT_ROW_LIMIT)
         self.retry_on_error = Exception
 
@@ -98,7 +101,7 @@ class BaseSql(HTTPClient):
         elif isinstance(id_delta, int):
             id_delta = [id_delta]
         if delta_batch_size is None:
-            delta_batch_size = self.config.sql_delta_batch_size
+            delta_batch_size = self._delta_batch_size
         return id_delta, delta_batch_size
 
     @property
@@ -132,7 +135,7 @@ class BaseSql(HTTPClient):
     def _extract_id_delta(self, id_delta, delta_batch_size,
                           force, field_order, retries):
         if not retries:
-            retries = self.config.sql_delta_batch_retries
+            retries = self._delta_batch_retries
         # Sometimes we have hiccups. Try, Try and Try again
         # to succeed, then fail.
         # retires == -1 means unlimited retries
@@ -168,7 +171,7 @@ class BaseSql(HTTPClient):
                 else:
                     break
         else:
-            rt = self.config.sql_delta_batch_retries
+            rt = self._delta_batch_retries
             raise RuntimeError(
                 "Query Failed after %s retries." % rt)
 

@@ -39,9 +39,6 @@ class Config(JSONConf):
         port: Metrique server port
         ssl: Connect with SSL (https)
         ssl_verify: ...
-        sql_delta_batch_size:
-            The number of objects to query at a time in sql.id_delta
-        sql_delta_batch_retries: ...
     '''
     defaults = {
         'api_version': 'v2',
@@ -52,18 +49,18 @@ class Config(JSONConf):
         'cubes_path': '~/.metrique/cubes',
         'host': '127.0.0.1',
         'logfile': None,
+        'logstdout': True,
         'password': None,
         'port': 5420,
         'ssl': False,
         'ssl_verify': True,
-        'sql_delta_batch_size': 1000,
-        'sql_delta_batch_retries': 3,
         'username': os.getenv('USER'),
     }
 
     default_config = '~/.metrique/http_api'
 
     def __init__(self, config_file=None, *args, **kwargs):
+        self._debug = False
         super(Config, self).__init__(config_file=config_file, *args, **kwargs)
 
     @property
@@ -74,7 +71,7 @@ class Config(JSONConf):
     @property
     def debug(self):
         ''' Reflect whether debug is enabled or not '''
-        return self._default('debug', False)
+        return self._debug
 
     @debug.setter
     def debug(self, value):
@@ -89,7 +86,7 @@ class Config(JSONConf):
                 self._debug_set(value)
             else:
                 self._debug_set(value, logger)
-        self.config['debug'] = value
+        self._debug = value
 
     def _debug_set(self, level, logger=None):
         '''
@@ -99,11 +96,12 @@ class Config(JSONConf):
         if not logger or level == 2:
             logger = logging.getLogger()
 
-        if self.logfile:
-            logfile = os.path.expanduser(self.logfile)
+        if not self.logstdout:
             for hdlr in logger.handlers:
                 logger.removeHandler(hdlr)
-            logger.removeHandler
+
+        if self.logfile:
+            logfile = os.path.expanduser(self.logfile)
             hdlr = logging.FileHandler(logfile)
             logger.addHandler(hdlr)
 

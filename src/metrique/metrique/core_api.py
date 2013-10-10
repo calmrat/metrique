@@ -115,16 +115,18 @@ class HTTPClient(object):
             cube_cls = cls
         return object.__new__(cube_cls)
 
-    def __init__(self, host=None, port=None, username=None,
-                 password=None, async=True, debug=0, logfile=None,
-                 config_file=None, cube=None, auto_login=None):
+    def __init__(self, host=None, port=None, username=None, password=None,
+                 debug=None, logfile=None, logstdout=None, config_file=None,
+                 cube=None, async=None, api_version=None, api_rel_path=None,
+                 auto_login=None, batch_size=None, cubes_path=None,
+                 ssl=None, ssl_verify=None):
         self._config_file = config_file
         '''
         all defaults are loaded, unless specified in
         metrique_config.json
         '''
         self.load_config()
-        if logfile:
+        if logfile is not None:
             'override logfile, if path specified'
             self.config.logfile = logfile
         '''
@@ -144,14 +146,34 @@ class HTTPClient(object):
             raise TypeError(
                 "expected cube as a string, got %s" % type(cube))
 
-        if host:
+        if host is not None:
             self.config.host = host
-        if port:
+        if port is not None:
             self.config.port = port
-        if username:
+        if ssl is not None:
+            self.config.ssl = ssl
+        if ssl_verify is not None:
+            self.config.ssl_verify = ssl_verify
+        if username is not None:
             self.config.username = username
-        if password:
+        if password is not None:
             self.config.password = password
+        if api_version is not None:
+            self.config.api_version = api_version
+        if api_rel_path is not None:
+            self.config.api_rel_path = api_rel_path
+        if async is not None:
+            self.config.async = async
+        if auto_login is not None:
+            self.config.auto_login = auto_login
+        if batch_size is not None:
+            self.config.batch_size = batch_size
+        if cubes_path is not None:
+            self.config.cubes_path = cubes_path
+        if logfile is not None:
+            self.config.logfile = logfile
+        if logstdout is not None:
+            self.config.logstdout = logstdout
 
         ' we load a new requests session; mainly for the cookies. '
         self._load_session()
