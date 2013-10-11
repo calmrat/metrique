@@ -24,14 +24,16 @@ class JSONConf(MutableMapping):
     def __init__(self, config_file=None, default=None, autosave=False):
         self.config_file = config_file or self.default_config
         if self.config_file:
-            self._load_config()
+            self.load_config()
+        if self.defaults is None:
+            self.defaults = {}
         if default and isinstance(default, dict):
             self.defaults.update(default)
         self.autosave = autosave
 
+    config = None
+    defaults = None
     default_config = None
-    config = {}
-    defaults = {}
 
     def __delitem__(self, key):
         del self.config[key]
@@ -39,6 +41,8 @@ class JSONConf(MutableMapping):
     def __getattr__(self, name):
         if name in self.config or name in self.defaults:
             return self[name]
+        else:
+            raise AttributeError("invalid attribute: %s" % name)
 
     def __getitem__(self, key):
         if key in self.config:
@@ -84,7 +88,7 @@ class JSONConf(MutableMapping):
                 self.config[option] = default
         return self.config[option]
 
-    def _load_config(self):
+    def load_config(self):
         ''' load config data from disk '''
         # We don't want to throw exceptions if the default config file does not
         # exist.
@@ -118,6 +122,8 @@ class JSONConf(MutableMapping):
                 config = json.load(f)
         except Exception:
             raise TypeError("Failed to load json file: %s" % config_file)
+        if self.config is None:
+            self.config = {}
         self.config.update(config)
         self.config_file = config_file
 

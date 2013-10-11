@@ -32,18 +32,22 @@ import os
 import subprocess
 
 from metrique.core_api import HTTPClient
-from metrique.config import CONFIG_DIR
 
-TMP_DIR = os.path.join(CONFIG_DIR, 'gitrepos/')
+TMP_DIR = '~/.metrique/gitrepos'
 
 
 class BaseGitRepo(HTTPClient):
     """
     Driver to help extract data from GIT repos
     """
+    def __init__(self, **kwargs):
+        super(BaseGitRepo, self).__init__(**kwargs)
+        self.tmp_dir = os.path.expanduser(TMP_DIR)
+
     def get_repo(self, uri, fetch=True, tmp_dir=None):
+        # FIXME: use gittle to clone repos; bare=True
         if tmp_dir is None:
-            tmp_dir = TMP_DIR
+            tmp_dir = self.tmp_dir
         tmp_dir = os.path.expanduser(tmp_dir)
         # make the uri safe for filesystems
         _uri = "".join(x for x in uri if x.isalnum())
