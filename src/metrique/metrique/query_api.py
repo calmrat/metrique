@@ -35,7 +35,7 @@ def count(self, query=None, date=None, cube=None, owner=None):
     :param string query: The query in pql
     :param string date: Date (date range) that should be queried
     '''
-    cmd = self.get_cmd(owner, cube, 'aggregate')
+    cmd = self.get_cmd(owner, cube, 'count')
     return self._get(cmd, query=query, date=date)
 
 
@@ -78,7 +78,7 @@ def deptree(self, field, oids, date=None, level=None, cube=None, owner=None):
         will be queried.
     :param integer level: limit depth of recursion
     '''
-    cmd = self.get_cmd(owner, cube, 'aggregate')
+    cmd = self.get_cmd(owner, cube, 'deptree')
     result = self._get(cmd, field=field,
                        oids=oids, date=date, level=level)
     return sorted(result)
@@ -105,7 +105,7 @@ def fetch(self, fields=None, date=None, sort=None, skip=0, limit=0,
         specific list of oids we should fetch
     :param boolean raw: return the documents in their (dict) form
     '''
-    cmd = self.get_cmd(owner, cube, 'aggregate')
+    cmd = self.get_cmd(owner, cube, 'fetch')
     result = self._get(cmd, fields=fields, date=date, sort=sort,
                        skip=skip, limit=limit, oids=oids)
     return result if raw else Result(result, date)
@@ -118,7 +118,7 @@ def distinct(self, field, cube=None, owner=None):
     :param string field:
         Field to get distinct token values from
     '''
-    cmd = self.get_cmd(owner, cube, 'aggregate')
+    cmd = self.get_cmd(owner, cube, 'distinct')
     result = self._get(cmd, field=field)
     return sorted(result)
 
@@ -136,7 +136,7 @@ def sample(self, sample_size=SAMPLE_SIZE, fields=None,
         will be queried.
     :param boolean raw: if True, then return result as a dictionary
     '''
-    cmd = self.get_cmd(owner, cube, 'aggregate')
+    cmd = self.get_cmd(owner, cube, 'sample')
     result = self._get(cmd, sample_size=sample_size,
                        fields=fields, query=query, date=date)
     return result if raw else Result(result, date)
