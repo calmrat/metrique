@@ -89,3 +89,9 @@ Then install ipython with pip::
 
 If you see any error, not otherwise mentioned here, Google.
 
+
+
+.. image:: https://d2weczhvl823v0.cloudfront.net/drpoovilleorg/metrique/trend.png
+   :alt: Bitdeli badge
+   :target: https://bitdeli.com/free
+
