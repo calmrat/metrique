@@ -40,27 +40,25 @@ class Config(JSONConf):
         ssl: Connect with SSL (https)
         ssl_verify: ...
     '''
-    defaults = {
-        'api_version': 'v2',
-        'api_rel_path': 'api/v2',
-        'async': True,
-        'auto_login': True,
-        'batch_size': -1,
-        'cubes_path': '~/.metrique/cubes',
-        'host': '127.0.0.1',
-        'logfile': None,
-        'logstdout': True,
-        'password': None,
-        'port': 5420,
-        'ssl': False,
-        'ssl_verify': True,
-        'username': os.getenv('USER'),
-    }
-
-    default_config = '~/.metrique/http_api'
-
     def __init__(self, config_file=None, *args, **kwargs):
         self._debug = False
+        self.default_config = '~/.metrique/http_api'
+        self.defaults = {
+            'api_version': 'v2',
+            'api_rel_path': 'api/v2',
+            'async': True,
+            'auto_login': True,
+            'batch_size': -1,
+            'cubes_path': '~/.metrique/cubes',
+            'host': '127.0.0.1',
+            'logfile': None,
+            'logstdout': True,
+            'password': None,
+            'port': 5420,
+            'ssl': False,
+            'ssl_verify': True,
+            'username': os.getenv('USER'),
+        }
         super(Config, self).__init__(config_file=config_file, *args, **kwargs)
 
     @property

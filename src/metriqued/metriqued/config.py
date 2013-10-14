@@ -27,25 +27,24 @@ CUBE_QUOTA = None
 
 
 class metrique(JSONConf):
-    defaults = {
-        'async': True,
-        'autoreload': False,
-        'gzip': True,
-        'host': '127.0.0.1',
-        'krb_auth': False,
-        'log_formatter': LOG_FORMATTER,
-        'logfile': None,
-        'login_url': '/login',
-        'max_processes': 0,
-        'port': 5420,
-        'realm': 'metrique',
-        'ssl': False,
-        'xsrf_cookies': False,
-    }
-
-    default_config = os.path.join(CONFIG_DIR, 'metrique_config')
 
     def __init__(self, config_file=None):
+        self.default_config = os.path.join(CONFIG_DIR, 'metrique_config')
+        self.defaults = {
+            'async': True,
+            'autoreload': False,
+            'gzip': True,
+            'host': '127.0.0.1',
+            'krb_auth': False,
+            'log_formatter': LOG_FORMATTER,
+            'logfile': None,
+            'login_url': '/login',
+            'max_processes': 0,
+            'port': 5420,
+            'realm': 'metrique',
+            'ssl': False,
+            'xsrf_cookies': False,
+        }
         super(metrique, self).__init__(config_file=config_file)
 
     @property
@@ -149,24 +148,24 @@ class metrique(JSONConf):
 
 
 class mongodb(JSONConf):
-    defaults = {'auth': False,
-                'admin_password': None,
-                'admin_user': ADMIN_USER,
-                'data_password': None,
-                'data_user': 'metrique',
-                'db_metrique': 'metrique',
-                'db_timeline': 'timeline',
-                'collection_cube_profile': 'cube_profile',
-                'collection_user_profile': 'user_profile',
-                'host': '127.0.0.1',
-                'port': 27017,
-                'ssl': False,
-                'write_concern': 1,
-                }
-
-    default_config = os.path.join(CONFIG_DIR, 'mongodb_config')
 
     def __init__(self, config_file=None, *args, **kwargs):
+        self.default_config = os.path.join(CONFIG_DIR, 'mongodb_config')
+        self.defaults = {
+            'auth': False,
+            'admin_password': None,
+            'admin_user': ADMIN_USER,
+            'data_password': None,
+            'data_user': 'metrique',
+            'db_metrique': 'metrique',
+            'db_timeline': 'timeline',
+            'collection_cube_profile': 'cube_profile',
+            'collection_user_profile': 'user_profile',
+            'host': '127.0.0.1',
+            'port': 27017,
+            'ssl': False,
+            'write_concern': 1,
+        }
         super(mongodb, self).__init__(config_file, *args, **kwargs)
 
     @property
