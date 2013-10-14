@@ -295,25 +295,26 @@ def _activity_import(cube, oids):
         # we want to update only the oldest version of the object
         while aid < _oid:
             aid, acts = act_generator.next()
-        if _oid != last_doc_id and aid == _oid:
+        if _oid != last_doc_id:
             last_doc_id = _oid
-            updates = _activity_import_doc(cube, time_doc, acts)
-            if len(updates) > 1:
-                save_objects += updates
-                remove_ids.append(_id)
-        else:
-            # FIXME quick fix
-            # no activity for this bug, set the correct creation_ts
-            try:
-                # set start to creation time if available
-                creation_field = cube.get_property('cfield')
-                start = time_doc[creation_field]
-                if start != time_doc['_start']:
-                    time_doc['_start'] = start
-                    save_objects.append(time_doc)
+            if aid == _oid:
+                updates = _activity_import_doc(cube, time_doc, acts)
+                if len(updates) > 1:
+                    save_objects += updates
                     remove_ids.append(_id)
-            except:
-                pass
+            else:
+                # FIXME quick fix
+                # no activity for this bug, set the correct creation_ts
+                try:
+                    # set start to creation time if available
+                    creation_field = cube.get_property('cfield')
+                    start = time_doc[creation_field]
+                    if start != time_doc['_start']:
+                        time_doc['_start'] = start
+                        save_objects.append(time_doc)
+                        remove_ids.append(_id)
+                except:
+                    pass
 
     cube.cube_remove(ids=remove_ids)
     cube.cube_save(save_objects)
