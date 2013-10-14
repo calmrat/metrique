@@ -24,7 +24,7 @@ import simplejson as json
 from tornado.web import RequestHandler, HTTPError
 from tornado import gen
 
-from metriqued.utils import parse_pql_query, ifind, BASE_INDEX
+from metriqued.utils import parse_pql_query
 
 from metriqueu.utils import set_default, utcnow, strip_split
 
@@ -46,7 +46,8 @@ class MetriqueHdlr(RequestHandler):
         ordered dict (or son) is required for pymongo's $sort operators
         '''
         if not sort:
-            sort = BASE_INDEX
+            # FIXME
+            sort = None
         try:
             assert len(sort[0]) == 2
         except (AssertionError, IndexError, TypeError):
@@ -106,7 +107,7 @@ class MetriqueHdlr(RequestHandler):
         if not (owner and cube):
             self._raise(400, "owner and cube required")
         _cube = self.timeline(owner, cube)
-        doc = ifind(_cube, sort=[('_start', -1)], one=True)
+        doc = _cube.find_one({'_start': {'$exists': 1}}, sort=[('_start', -1)])
         if doc:
             return doc.get('_start')
         else:
@@ -188,7 +189,7 @@ class MetriqueHdlr(RequestHandler):
         query = set_default(query, '', null_ok=True)
         spec = parse_pql_query(query)
         _cube = self.timeline(owner, cube)
-        docs = ifind(_cube=_cube, spec=spec)
+        docs = _cube.find(spec)
         n = docs.count()
         if n <= sample_size:
             docs = tuple(docs)

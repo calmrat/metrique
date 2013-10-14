@@ -16,9 +16,6 @@ from metriqueu.utils import batch_gen, dt2ts
 
 OBJECTS_MAX_BYTES = 16777216
 EXISTS_SPEC = {'$exists': 1}
-BASE_INDEX = [('_start', -1), ('_end', -1),
-              ('_oid', -1), ('_hash', 1)]
-SYSTEM_INDEXES = [BASE_INDEX]
 
 
 def date_pql_string(date):
@@ -64,34 +61,6 @@ def get_pid_from_file(pid_file):
     except IOError as e:
         logger.warn(e)
         return 0
-
-
-def ifind(_cube, _start=EXISTS_SPEC, _end=EXISTS_SPEC, _oid=EXISTS_SPEC,
-          _hash=EXISTS_SPEC,
-          fields=None, spec=None, sort=None, hint=True, one=False,
-          **kwargs):
-    # note, to force limit; use __getitem__ like...
-    # docs_limited_50 = ifind(...)[50]
-    # SEE:
-    # http://api.mongodb.org/python/current/api/pymongo/cursor.html
-    # section #pymongo.cursor.Cursor.__getitem__
-    # trying to use limit=... fails to work given our index
-    index_spec = make_index_spec(_start, _end, _oid, _hash)
-    #logger.debug('ifind... INDEX SPEC: %s' % index_spec)
-    # FIXME: index spec is bson... can we .update() bson???
-    # like here, below?
-    if spec:
-        index_spec.update(spec)
-    #logger.debug('ifind... UPDATED SPEC: %s' % index_spec)
-
-    if one:
-        return _cube.find_one(index_spec, fields, sort=sort, **kwargs)
-    else:
-        cursor = _cube.find(index_spec, fields, sort=sort, **kwargs)
-        if hint:
-            return cursor.hint(BASE_INDEX)
-        else:
-            return cursor
 
 
 def insert_bulk(_cube, docs, size=-1):

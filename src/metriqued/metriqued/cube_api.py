@@ -9,8 +9,7 @@ from tornado.web import authenticated
 
 from metriqued.core_api import MetriqueHdlr
 
-from metriqued.utils import insert_bulk, ifind, jsonhash
-from metriqued.utils import BASE_INDEX, SYSTEM_INDEXES
+from metriqued.utils import insert_bulk, jsonhash
 
 from metriqueu.utils import dt2ts, utcnow
 
@@ -81,8 +80,6 @@ class IndexHdlr(MetriqueHdlr):
             # serialization->deserialization process leaves us
             # with a list of lists which pymongo rejects; convert
             # to ordered dict instead
-            if drop in SYSTEM_INDEXES:
-                raise ValueError("can't drop system indexes")
             _cube.drop_index(drop)
         elif ensure is not None:
             # same as for drop  ^^^ see comments above
@@ -202,7 +199,9 @@ class RegisterHdlr(MetriqueHdlr):
 
         # run core index
         _cube = self.timeline(owner, cube, admin=True)
-        _cube.ensure_index(BASE_INDEX)
+        # ensure basic indices:
+        _cube.ensure_index('_hash')
+        _cube.ensure_index('_oid')
         return remaining
 
 
@@ -311,8 +310,9 @@ class SaveObjectsHdlr(MetriqueHdlr):
         #est_size_hashes = estimate_obj_size(_hashes)
 
         # Filter out objects whose most recent version did not change
-        docs = ifind(_cube=_cube, _hash={'$in': new_obj_hashes},
-                     _end=None, fields={'_hash': 1, '_id': -1})
+        docs = _cube.find({'_hash': {'$in': new_obj_hashes},
+                           '_end': None},
+                          fields={'_hash': 1, '_id': -1})
         _dup_hashes = set([doc['_hash'] for doc in docs])
         objects = [obj for obj in objects if obj['_hash'] not in _dup_hashes]
         objects = filter(None, objects)
@@ -362,8 +362,9 @@ class SaveObjectsHdlr(MetriqueHdlr):
             to_snap = dict([(o['_oid'], o['_start']) for o in objects
                             if o['_end'] is None])
             if to_snap:
-                db_versions = ifind(_cube=_cube, _oid={'$in': to_snap.keys()},
-                                    _end=None, fields={'_id': 1, '_oid': 1})
+                db_versions = _cube.find({'_oid': {'$in': to_snap.keys()},
+                                          '_end': None},
+                                         fields={'_id': 1, '_oid': 1})
                 snapped = 0
                 for doc in db_versions:
                     _cube.update({'_id': doc['_id']},

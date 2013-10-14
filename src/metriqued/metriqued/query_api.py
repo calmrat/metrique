@@ -8,7 +8,7 @@ import pql
 import random
 from tornado.web import authenticated
 
-from metriqued.utils import ifind, parse_pql_query
+from metriqued.utils import parse_pql_query
 from metriqued.utils import date_pql_string, query_add_date
 from metriqued.core_api import MetriqueHdlr
 
@@ -57,7 +57,7 @@ class CountHdlr(MetriqueHdlr):
             self._raise(400, "Invalid Query (%s)" % str(e))
         logger.debug('mongo query: %s' % spec)
         _cube = self.timeline(owner, cube)
-        docs = ifind(_cube=_cube, spec=spec)
+        docs = _cube.find(spec=spec)
         return docs.count() if docs else 0
 
 
@@ -94,7 +94,7 @@ class DeptreeHdlr(MetriqueHdlr):
                 '_oid in %s and %s != None and %s' % (fringe, field, pql_date))
             _cube = self.timeline(owner, cube)
             fields = {'_id': -1, '_oid': 1, field: 1}
-            docs = ifind(_cube=_cube, spec=spec, fields=fields)
+            docs = _cube.find(spec, fields=fields)
             fringe = set([oid for doc in docs for oid in doc[field]])
             fringe = filter(lambda oid: oid not in checked, fringe)
             checked |= set(fringe)
@@ -150,8 +150,7 @@ class FetchHdlr(MetriqueHdlr):
         if dt_str:
             spec.update(pql.find(dt_str))
         _cube = self.timeline(owner, cube)
-        return ifind(_cube=_cube, spec=spec, sort=sort,
-                     limit=limit, skip=skip)
+        return _cube.find(spec=spec, sort=sort, limit=limit, skip=skip)
 
 
 class FindHdlr(MetriqueHdlr):
@@ -192,16 +191,14 @@ class FindHdlr(MetriqueHdlr):
 
         _cube = self.timeline(owner, cube)
         if explain:
-            result = ifind(_cube, spec=spec, fields=fields,
-                           sort=sort).explain()
+            result = _cube.find(spec, fields=fields, sort=sort).explain()
         elif one:
-            result = ifind(_cube, spec=spec, fields=fields,
-                           sort=sort, one=True)
+            result = _cube.find_one(spec, fields=fields, sort=sort)
         elif merge_versions:
             # merge_versions ignores sort (for now)
             result = self._merge_versions(_cube, spec, fields)
         else:
-            result = tuple(ifind(_cube, spec=spec, fields=fields, sort=sort))
+            result = tuple(_cube.find(spec, fields=fields, sort=sort))
         return result
 
     def _merge_versions(self, _cube, spec, fields):
@@ -229,7 +226,7 @@ class FindHdlr(MetriqueHdlr):
                     ret.pop()
 
         sort = self.check_sort([('_oid', 1), ('_start', 1)])
-        docs = ifind(_cube, spec=spec, fields=fields, sort=sort)
+        docs = _cube.find(spec, fields=fields, sort=sort)
         [merge_doc(doc) for doc in docs]
         return ret[1:]
 
@@ -259,7 +256,7 @@ class SampleHdlr(MetriqueHdlr):
         query = query_add_date(query, date)
         spec = parse_pql_query(query)
         _cube = self.timeline(owner, cube)
-        _docs = ifind(_cube=_cube, spec=spec, fields=fields)
+        _docs = _cube.find(spec, fields=fields)
         n = _docs.count()
         if n <= sample_size:
             docs = tuple(_docs)
