@@ -301,6 +301,20 @@ def _activity_import(cube, oids):
             if len(updates) > 1:
                 save_objects += updates
                 remove_ids.append(_id)
+        else:
+            # FIXME quick fix
+            # no activity for this bug, set the correct creation_ts
+            try:
+                # set start to creation time if available
+                creation_field = cube.get_property('cfield')
+                start = time_doc[creation_field]
+                if start != time_doc['_start']:
+                    time_doc['_start'] = start
+                    save_objects.append(time_doc)
+                    remove_ids.append(_id)
+            except:
+                pass
+
     cube.cube_remove(ids=remove_ids)
     cube.cube_save(save_objects)
 
