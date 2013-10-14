@@ -13,8 +13,6 @@ Create/Drop cube indexes.
 
 from copy import deepcopy
 from datetime import datetime
-import logging
-logger = logging.getLogger(__name__)
 
 from metriqueu.utils import batch_gen, set_default, ts2dt, dt2ts, utcnow
 
@@ -260,10 +258,10 @@ def _activity_import_doc(cube, time_doc, activities):
         if inconsistent:
             msg = 'Inconsistency: %s %s: %s -> %s, object has %s' % (
                 last_doc['_oid'], field, removed, added, last_val)
-            logger.debug(msg)
+            cube.logger.debug(msg)
             msg = '        Types: %s -> %s, object has %s.' % (
                 type(removed), type(added), type(last_val))
-            logger.debug(msg)
+            cube.logger.debug(msg)
             if '_corrupted' not in new_doc:
                 new_doc['_corrupted'] = {}
             new_doc['_corrupted'][field] = added
@@ -301,22 +299,9 @@ def _activity_import(cube, oids):
             last_doc_id = _oid
             if aid == _oid:
                 updates = _activity_import_doc(cube, time_doc, acts)
-                if len(updates) > 1:
+                if len(updates) > 0:
                     save_objects += updates
                     remove_ids.append(_id)
-            else:
-                # FIXME quick fix
-                # no activity for this bug, set the correct creation_ts
-                try:
-                    # set start to creation time if available
-                    creation_field = cube.get_property('cfield')
-                    start = time_doc[creation_field]
-                    if start != time_doc['_start']:
-                        time_doc['_start'] = start
-                        save_objects.append(time_doc)
-                        remove_ids.append(_id)
-                except:
-                    pass
 
     cube.cube_remove(ids=remove_ids)
     cube.cube_save(save_objects)
