@@ -47,11 +47,12 @@ class MetriqueHdlr(RequestHandler):
         '''
         if not sort:
             # FIXME
-            sort = None
+            return None
+
         try:
             assert len(sort[0]) == 2
         except (AssertionError, IndexError, TypeError):
-            raise ValueError("Invalid sort value; try [('_oid': -1)]")
+            raise ValueError("Invalid sort value (%s); try [('_oid': -1)]" % sort)
         if son:
             return SON(sort)
         else:

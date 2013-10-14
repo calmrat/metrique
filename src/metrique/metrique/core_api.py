@@ -117,9 +117,9 @@ class HTTPClient(object):
 
     def __init__(self, host=None, port=None, username=None, password=None,
                  debug=None, logfile=None, logstdout=None, config_file=None,
-                 cube=None, async=None, api_version=None, api_rel_path=None,
-                 auto_login=None, batch_size=None, cubes_path=None,
-                 ssl=None, ssl_verify=None):
+                 cube=None, owner=None, async=None, api_version=None,
+                 api_rel_path=None, auto_login=None, batch_size=None,
+                 cubes_path=None, ssl=None, ssl_verify=None):
         self._config_file = config_file
         '''
         all defaults are loaded, unless specified in
@@ -142,6 +142,7 @@ class HTTPClient(object):
         elif cube:
             raise TypeError(
                 "expected cube as a string, got %s" % type(cube))
+        self.owner = owner
 
         if host is not None:
             self.config.host = host
@@ -225,7 +226,7 @@ class HTTPClient(object):
         owner and cube; api_name is usually provided,
         if there is a 'command name'; but it's optional.
         '''
-        owner = owner or self.config.username
+        owner = owner or self.owner or self.config.username
         if not owner:
             raise ValueError('owner required!')
         cube = cube or self.name
