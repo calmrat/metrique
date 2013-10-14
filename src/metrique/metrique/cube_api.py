@@ -165,6 +165,8 @@ def save(self, objects, cube=None, batch_size=None, owner=None):
     if not olen:
         self.logger.info("... No objects to save")
         return []
+    else:
+        self.logger.info("Saving %s objects" % len(objects))
 
     # get 'now' utc timezone aware datetime object
     # FIXME IMPORTANT timestamp should be really taken before extract

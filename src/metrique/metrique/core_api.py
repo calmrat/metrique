@@ -134,9 +134,6 @@ class HTTPClient(object):
         cubes can independently log without interferring
         with each others logging.
         '''
-        logging.basicConfig()
-        self.logger = logging.getLogger('metrique.%s' % self.__module__)
-        self.config.debug = self.logger, debug
         ' async == False disabled prepare().@gen.coroutine() tornado async '
         self.config.async = async
 
@@ -174,6 +171,10 @@ class HTTPClient(object):
             self.config.logfile = logfile
         if logstdout is not None:
             self.config.logstdout = logstdout
+
+        logging.basicConfig()
+        self.logger = logging.getLogger('metrique.%s' % self.__module__)
+        self.config.debug = self.logger, debug
 
         ' we load a new requests session; mainly for the cookies. '
         self._load_session()

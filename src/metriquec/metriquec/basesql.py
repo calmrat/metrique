@@ -81,6 +81,7 @@ class BaseSql(HTTPClient):
                 objects.append(obj)
             else:
                 objects.append(col_rows[0])
+        self.logger.debug('... done')
         return objects
 
     def _convert(self, value, field):
