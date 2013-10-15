@@ -17,7 +17,7 @@ To customize local client configuration, add/update
 Paths are UNIX compatible only.
 '''
 
-import logging
+import multiprocessing
 import os
 import re
 
@@ -41,7 +41,6 @@ class Config(JSONConf):
         ssl_verify: ...
     '''
     def __init__(self, config_file=None, *args, **kwargs):
-        self._debug = False
         self.default_config = '~/.metrique/http_api'
         self.defaults = {
             'api_version': 'v2',
@@ -50,9 +49,11 @@ class Config(JSONConf):
             'auto_login': True,
             'batch_size': -1,
             'cubes_path': '~/.metrique/cubes',
+            'debug': None,
             'host': '127.0.0.1',
             'logfile': None,
             'logstdout': True,
+            'max_workers': multiprocessing.cpu_count(),
             'password': None,
             'port': 5420,
             'ssl': False,
@@ -65,50 +66,6 @@ class Config(JSONConf):
     def api_url(self):
         ''' Url and schema - http(s)? needed to call metrique api '''
         return os.path.join(self.host_port, self.api_rel_path)
-
-    @property
-    def debug(self):
-        ''' Reflect whether debug is enabled or not '''
-        return self._debug
-
-    @debug.setter
-    def debug(self, value):
-        ''' Update logger settings '''
-        if isinstance(value, (tuple, list)):
-            logger, value = value
-            self._debug_set(value, logger)
-        else:
-            try:
-                logger = self.logger
-            except AttributeError:
-                self._debug_set(value)
-            else:
-                self._debug_set(value, logger)
-        self._debug = value
-
-    def _debug_set(self, level, logger=None):
-        '''
-        if we get a level of 2, we want to apply the
-        debug level to all loggers
-        '''
-        if not logger or level == 2:
-            logger = logging.getLogger()
-
-        if not self.logstdout:
-            for hdlr in logger.handlers:
-                logger.removeHandler(hdlr)
-
-        if self.logfile:
-            logfile = os.path.expanduser(self.logfile)
-            hdlr = logging.FileHandler(logfile)
-            logger.addHandler(hdlr)
-
-        if level in [-1, False]:
-            logger.setLevel(logging.WARN)
-        elif level in [0, None]:
-            logger.setLevel(logging.INFO)
-        elif level in [True, 1, 2]:
-            logger.setLevel(logging.DEBUG)
 
     @property
     def host_port(self):

@@ -37,7 +37,6 @@ and more.
 
 
 import logging
-logger = logging.getLogger(__name__)
 from functools import partial
 import os
 import requests
@@ -46,6 +45,12 @@ import simplejson as json
 from metrique import query_api, user_api, cube_api
 from metrique.config import Config
 from metrique.utils import json_encode, get_cube
+
+# setup default root logger, but remove default StreamHandler (stderr)
+# Handlers will be added upon HTTPClient.__init__()
+logging.basicConfig()
+root_logger = logging.getLogger()
+[root_logger.removeHandler(hdlr) for hdlr in root_logger.handlers]
 
 
 class HTTPClient(object):
@@ -121,29 +126,31 @@ class HTTPClient(object):
                  api_rel_path=None, auto_login=None, batch_size=None,
                  cubes_path=None, ssl=None, ssl_verify=None):
         self._config_file = config_file
-        '''
-        all defaults are loaded, unless specified in
-        metrique_config.json
-        '''
+        # all defaults are loaded, unless specified in
+        # metrique_config.json
         self.load_config()
-        if logfile is not None:
-            'override logfile, if path specified'
-            self.config.logfile = logfile
-        '''
-        keep logging local to the cube so multiple
-        cubes can independently log without interferring
-        with each others logging.
-        '''
-        ' async == False disabled prepare().@gen.coroutine() tornado async '
-        self.config.async = async
+
+        # keep logging local to the cube so multiple
+        # cubes can independently log without interferring
+        # with each others logging.
+        if debug is None:
+            debug = self.config.debug
+        if logstdout is None:
+            logstdout = self.config.logstdout
+        if logfile is None:
+            logfile = self.config.logfile
+        self.debug_set(debug, logstdout, logfile)
 
         if isinstance(cube, basestring):
             self.set_cube(cube)
         elif cube:
             raise TypeError(
                 "expected cube as a string, got %s" % type(cube))
-        self.owner = owner
+        self.owner = owner or self.config.username
 
+        # FIXME: better if we set self.host, self.port, etc
+        # falling back to loading defaults defined in .config if
+        # arg is None?
         if host is not None:
             self.config.host = host
         if port is not None:
@@ -168,16 +175,8 @@ class HTTPClient(object):
             self.config.batch_size = batch_size
         if cubes_path is not None:
             self.config.cubes_path = cubes_path
-        if logfile is not None:
-            self.config.logfile = logfile
-        if logstdout is not None:
-            self.config.logstdout = logstdout
 
-        logging.basicConfig()
-        self.logger = logging.getLogger('metrique.%s' % self.__module__)
-        self.config.debug = self.logger, debug
-
-        ' we load a new requests session; mainly for the cookies. '
+        # load a new requests session; for the cookies.
         self._load_session()
 
         if auto_login:
@@ -211,6 +210,55 @@ class HTTPClient(object):
         ' alias for whoami(); returns back username in config.username '
         return self.whoami()
 
+    def debug_set(self, level, logstdout, logfile):
+        '''
+        if we get a level of 2, we want to apply the
+        debug level to all loggers
+        '''
+        BASIC_FORMAT = "%(levelname)s:%(name)s:%(message)s"
+
+        if level == 2:
+            logger = logging.getLogger()
+        elif not self.name:
+            logger = logging.getLogger(__name__)
+            logger.propagate = 0
+        else:
+            logger = logging.getLogger('%s.%s' % (__name__, self.name))
+            logger.propagate = 0
+
+        if logstdout:
+            shdlr = logging.StreamHandler()
+            shdlr.setFormatter(logging.Formatter(BASIC_FORMAT))
+            for hdlr in logger.handlers:
+                if type(hdlr) is logging.StreamHandler:
+                    break
+            else:
+                logger.addHandler(shdlr)
+        else:
+            [logger.removeHandler(hdlr) for hdlr in logger.handlers
+                if type(hdlr) is logging.StreamHandler]
+
+        if logfile:
+            logfile = os.path.expanduser(logfile)
+            fhdlr = logging.FileHandler(logfile)
+            fhdlr.setFormatter(logging.Formatter(BASIC_FORMAT))
+            for hdlr in logger.handlers:
+                if type(hdlr) is logging.FileHandler:
+                    break
+            else:
+                logger.addHandler(fhdlr)
+        else:
+            [logger.removeHandler(hdlr) for hdlr in logger.handlers
+                if type(hdlr) is logging.FileHandler]
+
+        if level in [-1, False]:
+            logger.setLevel(logging.WARN)
+        elif level in [0, None]:
+            logger.setLevel(logging.INFO)
+        elif level in [True, 1, 2]:
+            logger.setLevel(logging.DEBUG)
+        self.logger = logger
+
     def _delete(self, *args, **kwargs):
         ' requests DELETE; using current session '
         return self._run(self.session.delete, *args, **kwargs)
@@ -226,7 +274,7 @@ class HTTPClient(object):
         owner and cube; api_name is usually provided,
         if there is a 'command name'; but it's optional.
         '''
-        owner = owner or self.owner or self.config.username
+        owner = owner or self.owner
         if not owner:
             raise ValueError('owner required!')
         cube = cube or self.name
@@ -310,9 +358,8 @@ class HTTPClient(object):
         config_file = config_file or self._config_file
         try:
             self.config = Config(config_file=config_file)
-        except Exception:
-            logger.error("failed to load config: %s" % config_file)
-            raise
+        except Exception as e:
+            raise IOError("failed to load config (%s): %s" % (e, config_file))
         else:
             self._config_file = config_file
 
@@ -326,6 +373,7 @@ class HTTPClient(object):
         to have this method available. auth=True is a quick way to
         test clients credentials.
         '''
+        self.logger.debug('Ping!')
         return self._get('ping', auth=auth)
 
     def _post(self, *args, **kwargs):
@@ -376,7 +424,7 @@ class HTTPClient(object):
         except Exception as e:
             m = getattr(e, 'message')
             content = '%s\n%s' % (m, _response.content)
-            logger.error(content)
+            self.logger.error(content)
             raise
         else:
             # reset autologin flag since we've logged in successfully

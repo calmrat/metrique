@@ -11,6 +11,7 @@ Save/Remove cube objects.
 Create/Drop cube indexes.
 '''
 
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from copy import deepcopy
 from datetime import datetime
 
@@ -74,7 +75,7 @@ def drop(self, cube=None, force=False, owner=None):
     '''
     if not force:
         raise ValueError(
-            "DANGEROUS: set false=True to drop %s.%s" % (
+            "DANGEROUS: set force=True to drop %s.%s" % (
                 owner, cube))
     cmd = self.get_cmd(owner, cube, 'drop')
     return self._delete(cmd)
@@ -204,7 +205,8 @@ def remove(self, ids, cube=None, backup=False, owner=None):
 
 ######## ACTIVITY IMPORT ########
 
-def activity_import(self, oids=None, chunk_size=1000, cube=None, owner=None):
+def activity_import(self, oids=None, chunk_size=1000, max_workers=None,
+                    cube=None, owner=None):
     '''
     WARNING: Do NOT run extract while activity import is running,
              it might result in data corruption.
@@ -227,8 +229,14 @@ def activity_import(self, oids=None, chunk_size=1000, cube=None, owner=None):
                          cube=cube, owner=owner)
         oids = list(oids._oid.unique())
 
-    for i in range(0, len(oids), chunk_size):
-        _activity_import(self, oids[i:i + chunk_size], cube=cube, owner=owner)
+    max_workers = max_workers or self.config.max_workers
+    with ThreadPoolExecutor(max_workers=max_workers) as ex:
+        futures = [
+            ex.submit(_activity_import, self, oids[i:i + chunk_size],
+                      cube=cube, owner=owner)
+            for i in range(0, len(oids), chunk_size)]
+    for future in as_completed(futures):
+        future.result()  # raise exceptions if we hit any
 
 
 def _activity_import(self, oids, cube, owner):
@@ -242,6 +250,7 @@ def _activity_import(self, oids, cube, owner):
 
     remove_ids = []
     save_objects = []
+    self.logger.debug('Processing activity history')
     for time_doc in time_docs:
         _oid = time_doc['_oid']
         _id = time_doc.pop('_id')
@@ -252,9 +261,8 @@ def _activity_import(self, oids, cube, owner):
         if updates:
             save_objects += updates
             remove_ids.append(_id)
-
-    cube.cube_remove(ids=remove_ids)
-    cube.cube_save(save_objects)
+    self.cube_remove(ids=remove_ids)
+    self.cube_save(save_objects)
 
 
 def _activity_import_doc(self, time_doc, activities):

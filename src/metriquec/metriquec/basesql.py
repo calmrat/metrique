@@ -5,7 +5,7 @@
 '''
 Base cube for extracting data from SQL databases
 '''
-
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from collections import defaultdict
 from dateutil.parser import parse as dt_parse
 from functools import partial
@@ -131,10 +131,11 @@ class BaseSql(HTTPClient):
 
         __rows = self._build_rows(_rows)
         objects = self._build_objects(__rows)
+        self.cube_save(objects)
         return objects
 
-    def _extract_id_delta(self, id_delta, delta_batch_size,
-                          force, field_order, retries):
+    def extract_id_delta(self, id_delta, delta_batch_size,
+                         force, field_order, retries):
         if not retries:
             retries = self._delta_batch_retries
         # Sometimes we have hiccups. Try, Try and Try again
@@ -143,14 +144,19 @@ class BaseSql(HTTPClient):
         # FIXME: run these in a thread and kill them after
         # a given 'timeout' period passes.
         done = []
+        max_workers = self.config.max_workers
         while retries != 0:
             failed = []
             local_done = 0
-            for batch in batch_gen(id_delta,
-                                   delta_batch_size):
+
+            with ThreadPoolExecutor(max_workers=max_workers) as ex:
+                futures = [
+                    ex.submit(self._extract, force, batch, field_order)
+                    for batch in batch_gen(id_delta, delta_batch_size)]
+
+            for future in as_completed(futures):
                 try:
-                    objects = self._extract(force, batch,
-                                            field_order)
+                    result = future.result()
                 except self.retry_on_error:
                     failed.extend(batch)
                     tb = traceback.format_exc()
@@ -160,9 +166,8 @@ class BaseSql(HTTPClient):
                             tb, len(failed), retries))
                     retries -= 1
                 else:
-                    yield objects
-                    done.extend(batch)
-                    local_done += len(batch)
+                    done.extend([o['_oid'] for o in result])
+                    local_done += len(result)
                     self.logger.info(
                         'BATCH SUCCESS. %i of %i' % (
                             local_done, len(id_delta)))
@@ -175,6 +180,7 @@ class BaseSql(HTTPClient):
             rt = self._delta_batch_retries
             raise RuntimeError(
                 "Query Failed after %s retries." % rt)
+        return done
 
     def _extract_loop(self, sql, start=0):
         _stop = False
@@ -245,19 +251,13 @@ class BaseSql(HTTPClient):
 
         saved = []
         if id_delta and delta_batch_size != 0:
-            delta_gen = self._extract_id_delta(id_delta, delta_batch_size,
-                                               force, field_order, retries)
-            for batch in delta_gen:
-                saved += self.cube_save(batch)
+            saved = self.extract_id_delta(id_delta, delta_batch_size,
+                                          force, field_order, retries)
         else:
-            objects = self._extract(force, id_delta, field_order)
-            saved = self.cube_save(objects)
+            saved = self._extract(force, id_delta, field_order)
         return saved
 
     def _fetchall(self, sql, start, field_order):
-        '''
-        '''
-
         self.logger.debug('Fetching rows...')
         rows = self.proxy.fetchall(sql, self.row_limit, start)
         self.logger.debug('... fetched (%i)' % len(rows))
@@ -353,7 +353,7 @@ class BaseSql(HTTPClient):
 
         sql += self._sql_sort(table)
         sql = self._sql_distinct(sql)
-
+        self.logger.debug('... done')
         return sql
 
     def _get_id_delta_sql(self, table, id_delta):
