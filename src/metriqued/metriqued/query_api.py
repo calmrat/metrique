@@ -4,6 +4,7 @@
 
 import logging
 logger = logging.getLogger(__name__)
+from operator import itemgetter
 import pql
 import random
 from tornado.web import authenticated
@@ -225,9 +226,10 @@ class FindHdlr(MetriqueHdlr):
                     last['_end'] = doc['_end']
                     ret.pop()
 
-        sort = self.check_sort([('_oid', 1), ('_start', 1)])
+        sort = self.check_sort([('_oid', 1)])
         docs = _cube.find(spec, fields=fields, sort=sort)
-        [merge_doc(doc) for doc in docs]
+        [merge_doc(doc) for doc in sorted(docs, key=itemgetter('_oid', '_start', '_end'))]
+        logger.debug('... done')
         return ret[1:]
 
 
