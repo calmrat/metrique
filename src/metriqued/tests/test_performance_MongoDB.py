@@ -19,8 +19,6 @@ TEST_RANGE = 10000
 # MUST BE GREATER THAN TEST_RANGE
 JUNK_RANGE = TEST_RANGE + 1
 
-SAFE = False
-
 # WARNING
 # These tests creates new collection ('tests') in metrique database and in this
 # collection creates this dbs:
@@ -42,13 +40,13 @@ class Test_MongoDB_Performance(TestCase):
                                    tests_db, admin_db)
         self.junk = self.admindb[junk_c]
         self.results = self.admindb[results_c]
-        self.junk.remove(safe=SAFE)
+        self.junk.remove()
         for record in range(0, JUNK_RANGE):
-            self.junk.insert({'_id': record, 'value': 'test_value'}, safe=SAFE)
+            self.junk.insert({'_id': record, 'value': 'test_value'})
 
     def tearDown(self):
         """Removes all 'junk' records."""
-        self.junk.remove(safe=SAFE)
+        self.junk.remove()
         self.admindb.close()
         del(self.junk)
         del(self.results)
@@ -65,7 +63,7 @@ class Test_MongoDB_Performance(TestCase):
         id_set = range(0, TEST_RANGE)
         S = time.time()
         for sid in id_set:
-            self.junk.remove({'_id': sid}, safe=SAFE)
+            self.junk.remove({'_id': sid})
         D = time.time() - S
         self.save_result('remove (asc)', D)
 
@@ -93,7 +91,7 @@ class Test_MongoDB_Performance(TestCase):
         S = time.time()
         for sid in id_set:
             record = {'_id': sid, 'value': 'test_junks'}
-            self.junk.save(record, safe=SAFE)
+            self.junk.save(record)
         D = time.time() - S
         self.save_result('save', D)
 
@@ -102,7 +100,7 @@ class Test_MongoDB_Performance(TestCase):
         record = {'$set': {'value': 'test_junks'}}
         S = time.time()
         self.junk.update({'_id': {'$lt': TEST_RANGE}},
-                         record, multi=True, safe=SAFE)
+                         record, multi=True)
         D = time.time() - S
         self.save_result('update-multi', D)
 
@@ -112,7 +110,7 @@ class Test_MongoDB_Performance(TestCase):
         record = {'$set': {'value': 'test_junks'}}
         S = time.time()
         for sid in id_set:
-            self.junk.update({'_id': sid}, record, safe=SAFE)
+            self.junk.update({'_id': sid}, record)
         D = time.time() - S
         self.save_result('update (asc)', D)
 
@@ -122,7 +120,7 @@ class Test_MongoDB_Performance(TestCase):
         S = time.time()
         for sid in id_set:
             record = {'_id': sid, 'value': 'test_dumps'}
-            self.junk.insert(record, safe=SAFE)
+            self.junk.insert(record)
         D = time.time() - S
         self.save_result('insert', D)
 

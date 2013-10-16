@@ -247,7 +247,7 @@ class RemoveObjectsHdlr(MetriqueHdlr):
             else:
                 docs = []
 
-            _cube.remove(spec, safe=True)
+            _cube.remove(spec)
             return docs
 
 

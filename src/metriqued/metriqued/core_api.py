@@ -242,7 +242,7 @@ class MetriqueHdlr(RequestHandler):
         self.valid_action(action)
         spec = {'_id': _id}
         update = {'$%s' % action: {key: value}}
-        _cube.update(spec, update, safe=True)
+        _cube.update(spec, update)
         return True
 
     def valid_in_set(self, x, valid_set, raise_if_not=True):
