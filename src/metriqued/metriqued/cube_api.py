@@ -2,7 +2,7 @@
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 # Author: "Chris Ward <cward@redhat.com>
 
-from bson import ObjectId
+from bson.objectid import ObjectId
 import logging
 logger = logging.getLogger(__name__)
 from tornado.web import authenticated

@@ -16,7 +16,6 @@ __provides__ = ['metriqueu']
 __desc__ = 'Metrique - Shared Utility Libraries'
 __scripts__ = []
 __requires__ = [
-    'bson (>=0.3.3)',
     'decorator (>=3.4)',
     'futures (>=2.1)',
     'pql (>=0.3.2)',
@@ -25,7 +24,6 @@ __requires__ = [
     'simplejson (>=3.3)',
 ]
 __irequires__ = [
-    'bson>=0.3.3',
     'decorator>=3.4',
     'futures>=2.1',
     'pql>=0.3.2',

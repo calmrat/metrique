@@ -1,8 +1,6 @@
 #!/usr/bin/env python
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
-# Red Hat Internal
 # Author: "Chris Ward <cward@redhat.com>
-# GIT: http://git.engineering.redhat.com/?p=users/cward/Metrique.git
 
 '''
 Basic CSV based cube for extracting data from CSV
@@ -11,7 +9,6 @@ Basic CSV based cube for extracting data from CSV
 import os
 
 from metriquec.basecsv import BaseCSV
-from metriqueu.utils import new_oid
 
 
 class CSVObject(BaseCSV):
@@ -27,7 +24,7 @@ class CSVObject(BaseCSV):
     # in defaults above. A check will be made to compare the
     # expected header to actual
 
-    def extract(self, uri, _oid=None, cube=None, **kwargs):
+    def extract(self, uri, _oid, cube=None, **kwargs):
         '''
         '''
         if cube:
@@ -37,5 +34,5 @@ class CSVObject(BaseCSV):
         objects = self.loaduri(uri)
         # save the uri for reference too
         objects = self.set_column(objects, 'uri', uri)
-        objects = self.set_column(objects, '_oid', _oid if _oid else new_oid)
+        objects = self.set_column(objects, '_oid', _oid)
         return self.cube_save(objects)

@@ -3,7 +3,7 @@
 # Author: "Chris Ward <cward@redhat.com>
 
 import base64
-from bson import SON
+from bson.son import SON
 import logging
 logger = logging.getLogger(__name__)
 import os

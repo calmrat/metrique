@@ -61,14 +61,6 @@ def test_milli2sec():
     assert milli2sec(now_time_milli) == now_time
 
 
-def test_new_oid():
-    '''
-    '''
-    from metriqueu.utils import new_oid
-    assert isinstance(new_oid(), basestring)
-    assert len(new_oid()) == 24
-
-
 def test_set_default():
     ''' args: key, default, null_ok=False, err_msg=None '''
     from metriqueu.utils import set_default

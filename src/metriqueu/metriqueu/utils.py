@@ -2,7 +2,6 @@
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 # Author: "Chris Ward" <cward@redhat.com>
 
-from bson.objectid import ObjectId
 from calendar import timegm
 from datetime import datetime
 from dateutil.parser import parse as dt_parse
@@ -45,14 +44,6 @@ def milli2sec(ts):
     if not ts:
         return ts
     return float(float(ts) / 1000.)  # convert milli to seconds
-
-
-def new_oid():
-    '''
-    Creates a new ObjectId and casts it to string,
-    so it's easily serializable
-    '''
-    return str(ObjectId())
 
 
 def set_default(key, default, null_ok=False, err_msg=None):
