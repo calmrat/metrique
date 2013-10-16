@@ -97,3 +97,9 @@ If you see any error, not otherwise mentioned here, Google.
    :alt: Bitdeli badge
    :target: https://bitdeli.com/free
 
+
+
+.. image:: https://d2weczhvl823v0.cloudfront.net/drpoovilleorg/metrique/trend.png
+   :alt: Bitdeli badge
+   :target: https://bitdeli.com/free
+
