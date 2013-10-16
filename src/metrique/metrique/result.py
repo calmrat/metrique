@@ -178,8 +178,8 @@ class Result(DataFrame):
             Include start and end in the result if they are not included yet.
 
         '''
-        if scale not in ['auto', 'daily', 'weekly', 'monthly', 'quarterly',
-                         'yearly']:
+        if scale not in ['auto', 'maximum', 'daily', 'weekly', 'monthly',
+                         'quarterly', 'yearly']:
             raise ValueError('Incorrect scale: %s' % scale)
         start = Timestamp(start or self._start.min())
         end = Timestamp(end or max(self._end.dropna().max(),
@@ -187,15 +187,14 @@ class Result(DataFrame):
         start = start if self.check_in_bounds(start) else self._lbound
         end = end if self.check_in_bounds(end) else self._rbound
 
-        if scale == 'auto' or scale == 'maximum':
+        if scale == 'auto':
+            scale = self._auto_select_scale(start, end)
+        if scale == 'maximum':
             start_dts = list(self._start.dropna().values)
             end_dts = list(self._end.dropna().values)
             dts = map(Timestamp, set(start_dts + end_dts))
             dts = filter(lambda ts: self.check_in_bounds(ts) and
                          ts >= start and ts <= end, dts)
-        if scale == 'auto':
-            scale = self._auto_select_scale(dts, start, end)
-        if scale == 'maximum':
             return dts
 
         freq = dict(daily='D', weekly='W', monthly='M', quarterly='3M',
@@ -218,13 +217,10 @@ class Result(DataFrame):
 
         This is a helper for plotting
         '''
-        start = start or min(dts)
-        end = start or max(dts)
-        maximum_count = len(filter(lambda dt: start <= dt and dt <= end, dts))
+        start = start or self._start.min()
+        end = end or max(self._end.max(), self._start.max())
         daily_count = (end - start).days
-        if maximum_count <= ideal:
-            return 'maximum'
-        elif daily_count <= ideal:
+        if daily_count <= ideal:
             return 'daily'
         elif daily_count / 7 <= ideal:
             return 'weekly'
