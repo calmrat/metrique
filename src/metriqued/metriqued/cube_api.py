@@ -54,46 +54,44 @@ class IndexHdlr(MetriqueHdlr):
     @authenticated
     def delete(self, owner, cube):
         drop = self.get_argument('drop')
-        result = self.index(owner=owner, cube=cube, drop=drop)
-        self.write(result)
-
-    @authenticated
-    def get(self, owner, cube):
-        result = self.index(owner=owner, cube=cube)
-        self.write(result)
-
-    def index(self, owner, cube, ensure=None, drop=None):
-        '''
-        :param str cube:
-            name of cube (collection) to index
-        :param string/list ensure:
-            Either a single key or a list of (key, direction) pairs (lists)
-            to ensure index on.
-        :param string/list drop:
-            index (or name of index) to drop
-        '''
+        # DROP the index:
         self.cube_exists(owner, cube)
+        self.requires_owner_admin(owner, cube)
         _cube = self.timeline(owner, cube, admin=True)
         if drop is not None:
-            self.requires_owner_admin(owner, cube)
             # when drop is a list of tuples, the json
             # serialization->deserialization process leaves us
             # with a list of lists which pymongo rejects; convert
             # to ordered dict instead
+            # FIXME why are we not converting anymore?
             _cube.drop_index(drop)
-        elif ensure is not None:
-            # same as for drop  ^^^ see comments above
-            self.requires_owner_admin(owner, cube)
-            _cube.ensure_index(ensure)
-        else:
-            self.requires_owner_read(owner, cube)
-        return _cube.index_information()
+        self.write(_cube.index_information())
+
+    @authenticated
+    def get(self, owner, cube):
+        self.cube_exists(owner, cube)
+        self.requires_owner_read(owner, cube)
+        _cube = self.timeline(owner, cube, admin=True)
+        # LIST the indexes:
+        self.write(_cube.index_information())
 
     @authenticated
     def post(self, owner, cube):
         ensure = self.get_argument('ensure')
-        result = self.index(owner=owner, cube=cube, ensure=ensure)
-        self.write(result)
+        name = self.get_argument('name', None)
+        background = self.get_argument('background', False)
+        # ENSURE the index:
+        self.cube_exists(owner, cube)
+        self.requires_owner_admin(owner, cube)
+        _cube = self.timeline(owner, cube, admin=True)
+        if ensure is not None:
+            # when ensure is a list of tuples, the json
+            # serialization->deserialization process leaves us
+            # with a list of lists which pymongo rejects; convert
+            # to ordered dict instead
+            # FIXME why are we not converting anymore?
+            _cube.ensure_index(ensure, name=name, background=background)
+        self.write(_cube.index_information())
 
 
 class ListHdlr(MetriqueHdlr):

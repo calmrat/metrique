@@ -122,17 +122,23 @@ def list_index(self, cube=None, owner=None):
     return sorted(result)
 
 
-def ensure_index(self, key_or_list, cube=None, owner=None):
+def ensure_index(self, key_or_list, name=None, background=False,
+                 cube=None, owner=None):
     '''
     Ensures that an index exists on this cube.
 
     :param string/list key_or_list:
         Either a single key or a list of (key, direction) pairs.
+    :param string name:
+        Custom name to use for this index.
+        If none is given, a name will be generated.
+    :param bool background:
+        If this index should be created in the background.
     :param string cube: cube name
     :param string owner: username of cube owner
     '''
     cmd = self.get_cmd(owner, cube, 'index')
-    return self._post(cmd, ensure=key_or_list)
+    return self._post(cmd, ensure=key_or_list, name=name, background=background)
 
 
 def drop_index(self, index_or_name, cube=None, owner=None):

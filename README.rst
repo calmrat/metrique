@@ -4,6 +4,7 @@ Metrique
 ========
 
 .. image:: https://travis-ci.org/drpoovilleorg/metrique.png
+   :target: https://travis-ci.org/drpoovilleorg/metrique
 
 Python/MongoDB Data Warehouse and Data Glue
 
