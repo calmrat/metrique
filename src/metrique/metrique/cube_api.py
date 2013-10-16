@@ -321,7 +321,7 @@ def _activity_import_doc(self, time_doc, activities):
         # set start to creation time if available
         last_doc = batch_updates[-1]
         creation_field = self.get_property('cfield')
-        creation_ts = last_doc[creation_field]
+        creation_ts = ts2dt(last_doc[creation_field])
         if creation_ts < last_doc['_start']:
             last_doc['_start'] = creation_ts
         elif len(batch_updates) == 1:
