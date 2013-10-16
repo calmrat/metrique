@@ -94,7 +94,7 @@ def test_json_encode():
 
 def test_set_cube_path():
     ' args: path=None '
-    from metrique.config import SYSTEM_CUBES_PATH, CLIENT_CUBES_PATH
+    from metrique.utils import SYSTEM_CUBES_PATH, CLIENT_CUBES_PATH
     from metrique.utils import set_cube_path
 
     cwd = os.path.dirname(os.path.abspath(__file__))
