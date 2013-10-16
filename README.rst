@@ -3,6 +3,8 @@
 Metrique
 ========
 
+.. image:: https://travis-ci.org/drpoovilleorg/metriquei.png
+
 Python/MongoDB Data Warehouse and Data Glue
 
 *Metrique can help bring data into an intuitive, indexable 
