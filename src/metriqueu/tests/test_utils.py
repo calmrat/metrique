@@ -49,18 +49,6 @@ def test_dt2ts():
     assert dt2ts(now_date_iso) == now_time
 
 
-def test_milli2sec():
-    '''
-    args: ts
-    '''
-    from metriqueu.utils import milli2sec
-
-    now_time = time()
-    now_time_milli = now_time * 1000
-
-    assert milli2sec(now_time_milli) == now_time
-
-
 def test_set_default():
     ''' args: key, default, null_ok=False, err_msg=None '''
     from metriqueu.utils import set_default

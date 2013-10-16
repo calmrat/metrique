@@ -16,7 +16,7 @@ import re
 import simplejson as json
 
 from metriquec.basejson import BaseJSON
-from metriqueu.utils import milli2sec, dt2ts
+from metriqueu.utils import dt2ts
 
 DEFAULT_CONFIG = {
     'uri': ['http://builds.apache.org'],
@@ -39,7 +39,8 @@ def obj_hook(dct):
         _k = str(k).replace('.', '_')
         if k == 'timestamp':
             try:
-                v = milli2sec(v)
+                # convert milliseconds to seconds
+                v = v / 1000. if v else v
             except:
                 # some cases timestamp is a datetime str
                 v = dt2ts(v)

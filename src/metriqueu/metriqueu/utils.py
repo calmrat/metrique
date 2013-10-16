@@ -39,13 +39,6 @@ def dt2ts(dt, drop_micro=False):
         return float(ts)
 
 
-def milli2sec(ts):
-    ''' normalize timestamps to timestamp int's (seconds) '''
-    if not ts:
-        return ts
-    return float(float(ts) / 1000.)  # convert milli to seconds
-
-
 def set_default(key, default, null_ok=False, err_msg=None):
     if not err_msg:
         err_msg = "non-null value required for %s" % key
