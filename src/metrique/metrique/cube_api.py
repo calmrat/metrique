@@ -242,8 +242,14 @@ def activity_import(self, oids=None, chunk_size=1000, max_workers=None,
 def _activity_import(self, oids, cube, owner):
     # get time docs cursor
     time_docs = self.find('_oid in %s' % oids, fields='__all__', date='~',
-                          sort=[('_oid', 1), ('_start', 1)], raw=True,
-                          merge_versions=False, cube=cube, owner=owner)
+                          raw=True, merge_versions=False,
+                          cube=cube, owner=owner)
+    docs = {}
+    for doc in time_docs:
+        oid = doc['_oid']
+        # we want to update only the oldest version of the object
+        if oid not in docs or docs[oid]['_start'] > doc['_start']:
+            docs[oid] = doc
 
     # dict, has format: oid: [(when, field, removed, added)]
     activities = self.activity_get(oids)
@@ -251,11 +257,10 @@ def _activity_import(self, oids, cube, owner):
     remove_ids = []
     save_objects = []
     self.logger.debug('Processing activity history')
-    for time_doc in time_docs:
+    for time_doc in docs:
         _oid = time_doc['_oid']
         _id = time_doc.pop('_id')
         time_doc.pop('_hash')
-        # we want to update only the oldest version of the object
         acts = activities.setdefault(_oid, [])
         updates = _activity_import_doc(self, time_doc, acts)
         if updates:
