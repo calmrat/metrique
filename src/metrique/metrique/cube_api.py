@@ -230,7 +230,7 @@ def activity_import(self, oids=None, chunk_size=1000, max_workers=None,
     if oids is None:
         oids = self.find('_oid == exists(True)', fields='_oid', date='~',
                          cube=cube, owner=owner)
-        oids = list(oids._oid.unique())
+        oids = sorted(oids._oid.unique())
 
     max_workers = max_workers or self.config.max_workers
     with ThreadPoolExecutor(max_workers=max_workers) as ex:
@@ -292,7 +292,7 @@ def _activity_import_doc(self, time_doc, activities):
     # We want to consider only activities that happend before time_doc
     # do not move this, because time_doc._start changes
     # time_doc['_start'] is a timestamp, whereas act[0] is a datetime
-    td_start = ts2dt(time_doc['_start'])
+    td_start = time_doc['_start'] = ts2dt(time_doc['_start'])
     activities = filter(lambda act: (act[0] < td_start and
                                      act[1] in time_doc), activities)
     # make sure that activities are sorted by when descending
@@ -344,8 +344,8 @@ def _activity_import_doc(self, time_doc, activities):
         elif len(batch_updates) == 1:
             # we have only one version, that we did not change
             return []
-    except:
-        pass
+    except Exception as e:
+        self.logger.warn('Error updating creation time; %s' % e)
     return batch_updates
 
 
