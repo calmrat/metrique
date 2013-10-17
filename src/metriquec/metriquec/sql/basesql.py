@@ -21,7 +21,7 @@ class BaseSql(object):
             self.logger = logger
         self._auto_reconnect_attempted = False
 
-    def get_proxy(self):
+    def get_proxy(self, **kwargs):
         raise NotImplementedError(
             "Driver has not provided a get_proxy method!")
 
