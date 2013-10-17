@@ -23,13 +23,13 @@ __requires__ = [
     'metrique (>=%s)' % __version__,
     'celery (>=3.0)',
     'gittle (>=0.2.1)',
-    'psycopg2 (>=2.5)',
+    'psycopg2 (>=2.5.1)',
 ]
 __irequires__ = [
     'metrique>=%s' % __version__,
     'celery>=3.0',
     'gittle>=0.2.1',
-    'psycopg2>=2.5',
+    'psycopg2>=2.5.1',
 ]
 pip_src = 'https://pypi.python.org/packages/source'
 __deplinks__ = []

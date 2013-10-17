@@ -33,11 +33,13 @@ class BaseTEIID(BaseSql):
 
     @property
     def proxy(self):
-        self._proxy = TEIID(vdb=self.config['sql_vdb'],
-                            db=self.config['sql_db'],
-                            host=self.config['sql_host'],
-                            port=self.config['sql_port'],
-                            username=self.config['sql_username'],
-                            password=self.config['sql_password'],
-                            logger=self.logger)
-        return self._proxy
+        if not hasattr(self, '_teiid'):
+            self.logger.debug("TEIID proxy (NEW)")
+            self._teiid = TEIID(vdb=self.config['sql_vdb'],
+                                db=self.config['sql_db'],
+                                host=self.config['sql_host'],
+                                port=self.config['sql_port'],
+                                username=self.config['sql_username'],
+                                password=self.config['sql_password'],
+                                logger=self.logger)
+        return self._teiid

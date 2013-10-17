@@ -18,7 +18,7 @@ from metrique.core_api import HTTPClient
 
 from metriqueu.utils import batch_gen, ts2dt, strip_split
 
-DEFAULT_ROW_LIMIT = 100000
+DEFAULT_ROW_LIMIT = 1000000
 DEFAULT_RETRIES = 10
 
 # FIXME: move sql_host... etc into extract!
@@ -45,7 +45,7 @@ class BaseSql(HTTPClient):
         self._delta_batch_size = delta_batch_size
         self._delta_batch_retries = delta_batch_retries
         self.row_limit = self.config.get('sql_row_limit', DEFAULT_ROW_LIMIT)
-        self.retry_on_error = Exception
+        self.retry_on_error = None
 
     def activity_get(self, ids=None, mtime=None):
         '''
@@ -161,15 +161,24 @@ class BaseSql(HTTPClient):
                     failed.extend(batch)
                     tb = traceback.format_exc()
                     self.logger.warn(
-                        'ERROR: %s\nBATCH Failed (%i). '
+                        'BATCH Failed (%i): %s'
                         'Tries remaining: %i' % (
-                            tb, len(failed), retries))
+                            len(failed), tb, retries))
+                    del tb
                     retries -= 1
+                except Exception as e:
+                    tb = traceback.format_exc()
+                    self.logger.warn(
+                        'BATCH Skipped: %s\n %s' % (tb, e))
+                    del tb
+                    import json
+                    self.logger.error(json.dumps(batch))
+                    pass  # log the skipped oids but don't crash
                 else:
                     done.extend([o['_oid'] for o in result])
                     local_done += len(result)
                     self.logger.info(
-                        'BATCH SUCCESS. %i of %i' % (
+                        'BATCH OK. %i of %i' % (
                             local_done, len(id_delta)))
             else:
                 if failed:
@@ -323,7 +332,6 @@ class BaseSql(HTTPClient):
         self.logger.debug('Generating SQL...')
         db = self.get_property('db', default=self.db)
         table = self.get_property('table')
-
         selects = self._get_sql_selects(field_order)
 
         base_from = '%s.%s' % (db, table)

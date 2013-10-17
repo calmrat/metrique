@@ -14,8 +14,6 @@ Create/Drop cube indexes.
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from copy import deepcopy
 from datetime import datetime
-import logging
-import os
 import simplejson as json
 
 from metriqueu.utils import batch_gen, set_default, ts2dt, dt2ts, utcnow
@@ -138,7 +136,8 @@ def ensure_index(self, key_or_list, name=None, background=False,
     :param string owner: username of cube owner
     '''
     cmd = self.get_cmd(owner, cube, 'index')
-    return self._post(cmd, ensure=key_or_list, name=name, background=background)
+    return self._post(cmd, ensure=key_or_list, name=name,
+                      background=background)
 
 
 def drop_index(self, index_or_name, cube=None, owner=None):
@@ -267,13 +266,6 @@ def _activity_import(self, oids, cube, owner):
     save_objects = []
     self.logger.debug('Processing activity history')
 
-    # add a new (temporary) inconsistency log handler
-    self.incon_logger = logging.getLogger('incon')
-    logfile = os.path.expanduser('~/.metrique/activity_inconsistencies')
-    hdlr = logging.FileHandler(logfile)
-    #hdlr.setFormatter(logging.Formatter('%(message)s'))
-    self.incon_logger.addHandler(hdlr)
-
     for time_doc in docs.values():
         _oid = time_doc['_oid']
         _id = time_doc.pop('_id')
@@ -283,8 +275,6 @@ def _activity_import(self, oids, cube, owner):
         if updates:
             save_objects += updates
             remove_ids.append(_id)
-
-    del self.incon_logger
 
     self.cube_remove(ids=remove_ids)
     self.cube_save(save_objects)
@@ -324,7 +314,7 @@ def _activity_import_doc(self, time_doc, activities):
         new_doc[field] = new_val
         # Check if the object has the correct field value.
         if inconsistent:
-            incon = {'last_doc_oid': last_doc['_oid'],
+            incon = {'oid': last_doc['_oid'],
                      'field': field,
                      'removed': removed,
                      'removed_type': str(type(removed)),
@@ -332,7 +322,7 @@ def _activity_import_doc(self, time_doc, activities):
                      'added_type': str(type(added)),
                      'last_val': last_val,
                      'last_val_type': str(type(last_val))}
-            self.incon_logger.debug(json.dumps(incon))
+            self.logger.error(json.dumps(incon))
             if '_corrupted' not in new_doc:
                 new_doc['_corrupted'] = {}
             new_doc['_corrupted'][field] = added

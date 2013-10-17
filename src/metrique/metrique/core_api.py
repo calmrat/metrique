@@ -242,11 +242,17 @@ class HTTPClient(object):
             logfile = os.path.expanduser(logfile)
             fhdlr = logging.FileHandler(logfile)
             fhdlr.setFormatter(logging.Formatter(BASIC_FORMAT))
+
+            fhdlr_err = logging.FileHandler('%s.err' % logfile)
+            fhdlr_err.setFormatter(logging.Formatter())
+            fhdlr_err.setLevel(logging.ERROR)
+
             for hdlr in logger.handlers:
                 if type(hdlr) is logging.FileHandler:
                     break
             else:
                 logger.addHandler(fhdlr)
+                logger.addHandler(fhdlr_err)
         else:
             [logger.removeHandler(hdlr) for hdlr in logger.handlers
                 if type(hdlr) is logging.FileHandler]

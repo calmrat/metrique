@@ -2,8 +2,14 @@
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 # Author: "Chris Ward <cward@redhat.com>
 
+from psycopg2.extensions import TRANSACTION_STATUS_UNKNOWN
+from psycopg2.extensions import TRANSACTION_STATUS_INERROR
+from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
 import re
+
 from metriquec.sql.basesql import BaseSql
+
+TRANS_ERROR = [TRANSACTION_STATUS_UNKNOWN, TRANSACTION_STATUS_INERROR]
 
 
 class TEIID(BaseSql):
@@ -26,38 +32,49 @@ class TEIID(BaseSql):
 
     @property
     def connect_str(self):
-        return "dbname=%s user=%s password=%s host=%s port=%s" % (
+        connect_str = "dbname=%s user=%s password=%s host=%s port=%s" % (
             self.vdb, self.username, self.password, self.host, self.port)
+        self.logger.debug('TEIID Config: %s' % re.sub(
+            'password=[^ ]+', 'password=*****', connect_str))
+        return connect_str
 
-    @property
-    def proxy(self):
+    def get_proxy(self, cached=True):
         '''
         Connect to TEIID, using psycopg2; run some teiid
         specific calls to get ready for querying and return
         the proxy.
         '''
-        self.logger.debug(
-            ' TEIID Config: %s' % re.sub(
-                'password=[^ ]+', 'password=*****', self.connect_str))
+        err_state = False
+        if hasattr(self, '_proxy'):
+            trans_status = self._proxy.get_transaction_status()
+            if trans_status in TRANS_ERROR:
+                err_state = True
+                self.logger.error('Transaction Error: %s' % trans_status)
+            elif self._proxy.closed == 1:
+                err_state = True
+                self.logger.error('Connection Error: CLOSED')
 
-        if not (hasattr(self, '_proxy') and self._proxy.status):
+            if err_state:
+                del self._proxy
+
+        if err_state or not (cached and hasattr(self, '_proxy')):
             try:
+                # FIXME: only try to import if not already imported...
                 import psycopg2
             except ImportError:
                 raise ImportError("pip install psycopg2")
-            # FIXME: set a timeout??
-            self._proxy = psycopg2.connect(self.connect_str)
+            proxy = psycopg2.connect(self.connect_str)
             self.logger.debug(' ... Connected (New)')
-            # Teiid does not support setting this value at all and unless we
+            # Teiid does not support 'set' command at all; so unless we
             # specify ISOLATION_LEVEL_AUTOCOMMIT (zero), psycopg2 will send a
             # SET command the teiid server doesn't understand.
+            proxy.autocommit = True
             try:
-                self._proxy.set_isolation_level(0)
+                proxy.set_isolation_level(ISOLATION_LEVEL_AUTOCOMMIT)
             except Exception:
                 # This only seems to be necessary on early versions of
-                # psycopg2 though
-                # So in the case that we hit an exception, just ignore them.
+                # psycopg2 though; ignore exception if it occurs
                 pass
-        else:
-            self.logger.debug(' ... Connected (Cached)')
+            finally:
+                self._proxy = proxy
         return self._proxy
