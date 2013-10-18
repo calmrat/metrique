@@ -158,7 +158,7 @@ class Result(DataFrame):
 
         return series
 
-    ######################## DATES RANGE ##########################
+    ############################# DATES RANGE ################################
 
     def get_dates_range(self, scale='auto', start=None, end=None):
         '''
@@ -231,7 +231,7 @@ class Result(DataFrame):
         else:
             return 'yearly'
 
-    ######################## FILTERS ##########################
+    ############################### FILTERS ##################################
 
     @filtered
     def filter_oids(self, oids):
@@ -362,3 +362,18 @@ class Result(DataFrame):
             function that takes a DataFrame and returns a DataFrame
         '''
         return pd.concat([function(df) for _, df in self.groupby(self._oid)])
+
+    ################################ SAVE ####################################
+
+    def save_to_cube(self, oid, pyclient, cube='results', owner=None):
+        frame = self.to_dict('records')
+        obj = {'_oid': oid, 'frame': frame}
+        pyclient.cube_save([obj], cube=cube, owner=owner)
+
+
+#################################### LOAD ####################################
+
+def load_from_cube(oid, pyclient, cube='results', owner=None):
+    res = pyclient.find('_oid == %s' % oid,
+                        fields='__all__', cube=cube, owner=owner, raw=True)
+    return res
