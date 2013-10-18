@@ -1,4 +1,5 @@
 from metriqueu.jsonconf import JSONConf
+import os
 import json
 
 
@@ -18,14 +19,23 @@ class TestConf(JSONConf):
 
 
 def test_jsonconf():
+    # prepare the file:
+    d = {"async": True,
+         "n_items": 150,
+         "users": 20,
+         "bypass_security": False
+        }
+    with open("test_conf.json", "w") as f:
+        f.write(json.dumps(d, indent=4))
+
+    # test jsonconf:
     config = JSONConf("test_conf")
     with open("test_conf.json", "r") as f:
         saved = json.load(f)
     assert saved == config.config
     assert config.defaults == {}
 
-
-def test_testconf():
+    # test TestConf:
     config = TestConf("test_conf")
     with open("test_conf.json", "r") as f:
         saved = json.load(f)
@@ -47,3 +57,6 @@ def test_testconf():
     # test if properties are handled correctly:
     config.anaconda = 1
     assert config.anaconda == "1"
+
+    # delete the file:
+    os.remove("test_conf.json")
