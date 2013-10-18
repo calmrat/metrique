@@ -32,6 +32,7 @@ __irequires__ = [
     'passlib>=1.6.1',
     'pymongo>=2.6.1',
     'tornado>=3.0',
+    'argparse',
 ]
 pip_src = 'https://pypi.python.org/packages/source'
 __deplinks__ = []

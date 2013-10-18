@@ -8,9 +8,14 @@ install:
   - "pip install ./src/metrique --use-mirrors"
   - "pip install ./src/metriqued --use-mirrors"
   - "pip install ./src/metriquec --use-mirrors"
+services: 
+  - mongodb
+before_script:
+  - "mkdir ~/.metrique"
+  - "./src/metriqued/bin/metriqued start -d 2 -f"
 # command to run tests
 script: 
   - "python -m pytest src/metriqueu"
   - "python -m pytest src/metrique"
   - "python -m pytest src/metriquec"
-
+  - "python -m pytest src/metriqued"
