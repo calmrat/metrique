@@ -15,8 +15,11 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from copy import deepcopy
 from datetime import datetime
 import simplejson as json
+import traceback
 
-from metriqueu.utils import batch_gen, set_default, ts2dt, dt2ts, utcnow
+from metrique.utils import json_encode
+
+from metriqueu.utils import batch_gen, ts2dt, dt2ts, utcnow
 
 
 def list_all(self, startswith=None):
@@ -155,18 +158,17 @@ def drop_index(self, index_or_name, cube=None, owner=None):
 
 ######## SAVE/REMOVE ########
 
-def save(self, objects, cube=None, batch_size=None, owner=None):
+def save(self, objects, cube=None, owner=None):
     '''
     Save a list of objects the given metrique.cube.
     Returns back a list of object ids (_id|_oid) saved.
 
     :param list objects: list of dictionary-like objects to be stored
-    :param int batch_size: maximum slice of objects to post at a time
     :param string cube: cube name
     :param string owner: username of cube owner
     :rtype: list - list of object ids saved
     '''
-    batch_size = set_default(batch_size, self.config.batch_size)
+    batch_size = self.config.batch_size
 
     olen = len(objects) if objects else None
     if not olen:
@@ -188,8 +190,18 @@ def save(self, objects, cube=None, batch_size=None, owner=None):
         for batch in batch_gen(objects, batch_size):
             _saved = self._post(cmd, objects=batch, mtime=now)
             saved.extend(_saved)
-            k += batch_size
-            self.logger.info("... %i of %i" % (k, olen))
+            k += len(batch)
+            self.logger.info("... %i of %i posted" % (k, olen))
+
+    if saved:
+        objects = [o for o in objects if o['_oid'] in saved]
+        # journal locally as well
+        objects_json = json.dumps(objects, default=json_encode,
+                                  ensure_ascii=True,
+                                  encoding="ISO-8859-1")
+        # journal objects locally if any were saved
+        args = (self.owner, self.name, utcnow(), objects_json)
+        self.logger.journal('::'.join(map(str, args)))
     self.logger.info("... Saved %s NEW docs" % len(saved))
     return sorted(saved)
 
@@ -213,8 +225,7 @@ def remove(self, ids, cube=None, backup=False, owner=None):
 
 ######## ACTIVITY IMPORT ########
 
-def activity_import(self, oids=None, chunk_size=1000, max_workers=None,
-                    cube=None, owner=None):
+def activity_import(self, oids=None, logfile=None, cube=None, owner=None):
     '''
     WARNING: Do NOT run extract while activity import is running,
              it might result in data corruption.
@@ -228,23 +239,44 @@ def activity_import(self, oids=None, chunk_size=1000, max_workers=None,
     :param object ids:
         - None: import for all ids
         - list of ids: import for ids in the list
-    :param int chunk_size:
-        Size of the chunks into which the ids are split, activity import is
-        done and saved separately for each batch
     '''
+    if logfile:
+        logger_orig = self.logger
+        self.debug_set(self.config.debug, False, logfile)
+
     if oids is None:
         oids = self.find('_oid == exists(True)', fields='_oid', date='~',
                          cube=cube, owner=owner)
         oids = sorted(oids._oid.unique())
 
-    max_workers = max_workers or self.config.max_workers
+    max_workers = self.config.max_workers
+    batch_size = self.config.batch_size
+
     with ThreadPoolExecutor(max_workers=max_workers) as ex:
-        futures = [
-            ex.submit(_activity_import, self, oids[i:i + chunk_size],
-                      cube=cube, owner=owner)
-            for i in range(0, len(oids), chunk_size)]
+        futures = [ex.submit(_activity_import, self, oids=batch,
+                             cube=cube, owner=owner)
+                   for batch in batch_gen(oids, batch_size)]
+
+    saved = []
+    failed = []
     for future in as_completed(futures):
-        future.result()  # raise exceptions if we hit any
+        try:
+            result = future.result()
+        except RuntimeError as e:
+            failed.extend(json.loads(str(e)))
+            tb = traceback.format_exc()
+            self.logger.error('Activity Import Error: %s\n%s' % (e, tb))
+            del tb
+        else:
+            saved.extend(result)
+            self.logger.info(
+                '%i of %i extracted' % (len(saved),
+                                        len(oids)))
+    result = {'saved': sorted(saved), 'failed': sorted(failed)}
+    self.logger.debug(result)
+    # reset logger
+    self.logger = logger_orig
+    return result
 
 
 def _activity_import(self, oids, cube, owner):
@@ -259,8 +291,11 @@ def _activity_import(self, oids, cube, owner):
         if oid not in docs or docs[oid]['_start'] > doc['_start']:
             docs[oid] = doc
 
-    # dict, has format: oid: [(when, field, removed, added)]
-    activities = self.activity_get(oids)
+    try:
+        # dict, has format: oid: [(when, field, removed, added)]
+        activities = self.activity_get(oids)
+    except Exception:
+        raise RuntimeError(json.dumps(oids))
 
     remove_ids = []
     save_objects = []
@@ -278,6 +313,7 @@ def _activity_import(self, oids, cube, owner):
 
     self.cube_remove(ids=remove_ids)
     self.cube_save(save_objects)
+    return oids
 
 
 def _activity_import_doc(self, time_doc, activities):

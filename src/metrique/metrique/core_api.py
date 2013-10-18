@@ -215,7 +215,16 @@ class HTTPClient(object):
         if we get a level of 2, we want to apply the
         debug level to all loggers
         '''
-        BASIC_FORMAT = "%(levelname)s:%(name)s:%(message)s"
+        BASIC_FORMAT = "%(name)s:%(message)s"
+
+        # OBJECT SAVE JOURNAL
+        JOURNAL = 100
+        logging.addLevelName(JOURNAL, 'JOURNAL')
+
+        def journal(self, message, *args, **kwargs):
+            self.log(JOURNAL, message, *args, **kwargs)
+
+        logging.Logger.journal = journal
 
         if level == 2:
             logger = logging.getLogger()
@@ -247,12 +256,17 @@ class HTTPClient(object):
             fhdlr_err.setFormatter(logging.Formatter())
             fhdlr_err.setLevel(logging.ERROR)
 
+            jhdlr = logging.FileHandler('%s.journal' % logfile)
+            jhdlr.setFormatter(logging.Formatter())
+            jhdlr.setLevel(JOURNAL)
+
             for hdlr in logger.handlers:
                 if type(hdlr) is logging.FileHandler:
                     break
             else:
                 logger.addHandler(fhdlr)
                 logger.addHandler(fhdlr_err)
+                logger.addHandler(jhdlr)
         else:
             [logger.removeHandler(hdlr) for hdlr in logger.handlers
                 if type(hdlr) is logging.FileHandler]
@@ -300,27 +314,17 @@ class HTTPClient(object):
         shortcut for querying to get the last field value for
         a given owner, cube.
         '''
-        # FIXME: make sure it hits the baseindex
-        query = None
-        last = self.find(query, fields=[field],
+        # FIXME: these "get_*" methods are assuming owner/cube
+        # are "None" defaults; ie, that the current instance
+        # has self.name set... maybe we should be explicit?
+        # pass owner, cube?
+        last = self.find(query=None, fields=[field],
                          sort=[(field, -1)], one=True, raw=True)
         if last:
             last = last.get(field)
         self.logger.debug(
             "last %s.%s: %s" % (self.name, field, last))
         return last
-
-    def get_last_oid(self):
-        ' get the last known object id (_oid) in a given cube '
-        return self.get_last_field('_oid')
-
-    def get_last_start(self):
-        ' get the last known object start (_start) in a given cube '
-        # FIXME: these "get_*" methods are assuming owner/cube
-        # are "None" defaults; ie, that the current instance
-        # has self.name set... maybe we should be explicit?
-        # pass owner, cube?
-        return self.get_last_field('_start')
 
     def get_property(self, property, field=None, default=None):
         '''

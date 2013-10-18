@@ -11,15 +11,13 @@ from dateutil.parser import parse as dt_parse
 from functools import partial
 import pytz
 import re
+import simplejson as json
 import time
 import traceback
 
 from metrique.core_api import HTTPClient
 
 from metriqueu.utils import batch_gen, ts2dt, strip_split
-
-DEFAULT_ROW_LIMIT = 1000000
-DEFAULT_RETRIES = 10
 
 # FIXME: move sql_host... etc into extract!
 
@@ -36,15 +34,11 @@ class BaseSql(HTTPClient):
 
     FIXME ... MORE DOCS TO COME
     '''
-    def __init__(self, sql_host, sql_port, sql_db, delta_batch_size=1000,
-                 delta_batch_retries=3, **kwargs):
+    def __init__(self, sql_host, sql_port, sql_db, **kwargs):
         super(BaseSql, self).__init__(**kwargs)
         self.config['sql_host'] = sql_host
         self.config['sql_port'] = sql_port
         self.config['sql_db'] = sql_db
-        self._delta_batch_size = delta_batch_size
-        self._delta_batch_retries = delta_batch_retries
-        self.row_limit = self.config.get('sql_row_limit', DEFAULT_ROW_LIMIT)
         self.retry_on_error = None
 
     def activity_get(self, ids=None, mtime=None):
@@ -96,116 +90,64 @@ class BaseSql(HTTPClient):
             value = value
         return value
 
-    def _delta_init(self, id_delta, force, delta_batch_size):
+    def _delta_init(self, id_delta, force):
         if isinstance(id_delta, basestring):
             id_delta = id_delta.split(',')
         elif isinstance(id_delta, int):
             id_delta = [id_delta]
-        if delta_batch_size is None:
-            delta_batch_size = self._delta_batch_size
-        return id_delta, delta_batch_size
+        return id_delta
 
     @property
     def db(self):
         return self.config.get('sql_db')
 
-    def _extract(self, force, id_delta, field_order):
-        '''
-        '''
-        sql = self._gen_sql(force, id_delta, field_order)
-
-        start = 0
-        _stop = False
-        _rows = []
-        while not _stop:
-            rows = self._fetchall(sql, start, field_order)
-            _rows.extend(rows)
-
-            k = len(rows)
-            if k < self.row_limit:
-                _stop = True
-            else:
-                start += k
-                # theoretically, k == self.row_limit
-                assert k == self.row_limit
-
-        __rows = self._build_rows(_rows)
-        objects = self._build_objects(__rows)
-        self.cube_save(objects)
-        return objects
-
-    def extract_id_delta(self, id_delta, delta_batch_size,
-                         force, field_order, retries):
-        if not retries:
-            retries = self._delta_batch_retries
-        # Sometimes we have hiccups. Try, Try and Try again
-        # to succeed, then fail.
-        # retires == -1 means unlimited retries
-        # FIXME: run these in a thread and kill them after
-        # a given 'timeout' period passes.
-        done = []
-        max_workers = self.config.max_workers
+    def _extract(self, id_delta, field_order):
+        retries = self.config.retries
+        sql = self._gen_sql(id_delta, field_order)
         while retries != 0:
-            failed = []
-            local_done = 0
-
-            with ThreadPoolExecutor(max_workers=max_workers) as ex:
-                futures = [
-                    ex.submit(self._extract, force, batch, field_order)
-                    for batch in batch_gen(id_delta, delta_batch_size)]
-
-            for future in as_completed(futures):
-                try:
-                    result = future.result()
-                except self.retry_on_error:
-                    failed.extend(batch)
-                    tb = traceback.format_exc()
-                    self.logger.warn(
-                        'BATCH Failed (%i): %s'
-                        'Tries remaining: %i' % (
-                            len(failed), tb, retries))
-                    del tb
-                    retries -= 1
-                except Exception as e:
-                    tb = traceback.format_exc()
-                    self.logger.warn(
-                        'BATCH Skipped: %s\n %s' % (tb, e))
-                    del tb
-                    import json
-                    self.logger.error(json.dumps(batch))
-                    pass  # log the skipped oids but don't crash
-                else:
-                    done.extend([o['_oid'] for o in result])
-                    local_done += len(result)
-                    self.logger.info(
-                        'BATCH OK. %i of %i' % (
-                            local_done, len(id_delta)))
+            try:
+                rows = self._fetchall(sql, field_order)
+            except self.retry_on_error:
+                tb = traceback.format_exc()
+                self.logger.warn('Fetch Failed: %s' % tb)
+                del tb
+                retries -= 1
+            except Exception as e:
+                tb = traceback.format_exc()
+                self.logger.error('Fetch Skipped: %s\n %s' % (tb, e))
+                del tb
+                self.logger.journal(
+                    'SKIPPED: %s' % json.dumps(id_delta))
+                raise RuntimeError(json.dumps(id_delta))
             else:
-                if failed:
-                    id_delta = failed
-                else:
-                    break
-        else:
-            rt = self._delta_batch_retries
-            raise RuntimeError(
-                "Query Failed after %s retries." % rt)
-        return done
+                break
+        rows = self._build_rows(rows)
+        objects = self._build_objects(rows)
+        # save the objects
+        self.cube_save(objects)
+        # log the objects saved
+        return [o['_oid'] for o in objects]
 
-    def _extract_loop(self, sql, start=0):
-        _stop = False
-        _rows = []
-        while not _stop:
-            rows = self.proxy.fetchall(sql, self.row_limit, start)
-            _rows.extend(rows)
-
-            k = len(rows)
-            if k < self.row_limit:
-                _stop = True
+    def _extract_threaded(self, id_delta, field_order):
+        with ThreadPoolExecutor(max_workers=self.config.max_workers) as ex:
+            futures = [ex.submit(self._extract, batch, field_order)
+                       for batch in batch_gen(id_delta,
+                                              self.config.batch_size)]
+        saved = []
+        failed = []
+        for future in as_completed(futures):
+            try:
+                result = future.result()
+            except RuntimeError as e:
+                failed.extend(json.loads(str(e)))
             else:
-                start += k
-                # theoretically, k == self.row_limit
-                assert k == self.row_limit
-        return _rows
+                saved.extend(result)
+                self.logger.info(
+                    '%i of %i extracted' % (len(saved),
+                                            len(id_delta)))
+        result = {'saved': sorted(saved), 'failed': sorted(failed)}
+        self.logger.debug(result)
+        return result
 
     def _extract_row_ids(self, rows):
         if rows:
@@ -214,9 +156,7 @@ class BaseSql(HTTPClient):
             return []
 
     def extract(self, exclude_fields=None, force=False, id_delta=None,
-                last_update=None, delta_batch_size=None,
-                retries=DEFAULT_RETRIES, row_limit=None, parse_timestamp=None,
-                **kwargs):
+                last_update=None, parse_timestamp=None, **kwargs):
         '''
         Extract routine for SQL based cubes.
 
@@ -224,55 +164,49 @@ class BaseSql(HTTPClient):
 
         Accept, but ignore unknown kwargs.
         '''
-        if 'debug' in kwargs:
-            self.config.debug = self.logger, kwargs['debug']
-
         if not id_delta:
             id_delta = []
-        if row_limit:
-            self.row_limit = row_limit
+        id_delta = self._delta_init(id_delta, force)
+
         if parse_timestamp is None:
             parse_timestamp = self.get_property('parse_timestamp', None, True)
 
         exclude_fields = strip_split(exclude_fields)
-        id_delta, delta_batch_size = self._delta_init(
-            id_delta, force, delta_batch_size)
 
-        if force and not id_delta and delta_batch_size != 0:
-            # get a list of all object ids and batch extract them
+        if force and not id_delta:
+            # get a list of all known object ids
             table = self.get_property('table')
             _id = self.get_property('column')
-            sql = 'SELECT DISTINCT %s.%s FROM %s.%s' % (
-                table, _id, self.db, table)
-            rows = self._extract_loop(sql)
+            sql = 'SELECT DISTINCT %s.%s FROM %s.%s' % (table, _id, self.db,
+                                                        table)
+            rows = self.proxy.fetchall(sql)
             id_delta = self._extract_row_ids(rows)
-        elif force and id_delta:
-            # force:True and id_delta:True == ONLY filter on id_delta
-            pass
-        elif not force:
+        else:
             # include objects updated since last mtime too
-            mtime = self._fetch_mtime(last_update)
-            id_delta.extend(self._get_mtime_id_delta(mtime, parse_timestamp))
+            # apply delta sql clause's if we're not forcing a full run
+            if not force and self.get_property('delta', None, True):
+                if self.get_property('delta_mtime', None, False):
+                    id_delta.extend(self._get_mtime_id_delta(last_update,
+                                                             parse_timestamp))
+                if self.get_property('delta_new_ids', None, True):
+                    id_delta.extend(self._get_new_ids())
+        id_delta = sorted(set(id_delta))
 
         # this is to set the 'index' of sql columns so we can extract
         # out the sql rows and know which column : field
         field_order = list(set(self.fields) - set(exclude_fields))
 
-        saved = []
-        if id_delta and delta_batch_size != 0:
-            saved = self.extract_id_delta(id_delta, delta_batch_size,
-                                          force, field_order, retries)
+        if self.config.batch_size <= 0:
+            return self._extract(id_delta, field_order)
         else:
-            saved = self._extract(force, id_delta, field_order)
-        return saved
+            return self._extract_threaded(id_delta, field_order)
 
-    def _fetchall(self, sql, start, field_order):
-        self.logger.debug('Fetching rows...')
-        rows = self.proxy.fetchall(sql, self.row_limit, start)
-        self.logger.debug('... fetched (%i)' % len(rows))
+    def _fetchall(self, sql, field_order):
+        rows = self.proxy.fetchall(sql)
         if not rows:
             return []
 
+        # unwrap aggregated values
         for k, row in enumerate(rows):
             _row = []
             for column in row:
@@ -287,9 +221,8 @@ class BaseSql(HTTPClient):
                 _row.append(column)
             rows[k] = _row
 
-        k = len(rows)
-
         self.logger.debug('Preparing row data...')
+        k = len(rows)
         t0 = time.time()
         objects = [self._prep_object(row, field_order) for row in rows]
         t1 = time.time()
@@ -305,10 +238,7 @@ class BaseSql(HTTPClient):
             else:
                 mtime = last_update
         else:
-            # list_cube_fields returns back a dict from the server that
-            # contains a global _mtime that represents the last time
-            # any field was updated.
-            mtime = self.get_last_start()
+            mtime = self.get_last_field('_start')
         # convert timestamp to datetime object
         mtime = ts2dt(mtime)
         self.logger.info("Last update mtime: %s" % mtime)
@@ -326,7 +256,7 @@ class BaseSql(HTTPClient):
                 fieldmap[field_id] = field
         return fieldmap
 
-    def _gen_sql(self, force, id_delta, field_order):
+    def _gen_sql(self, id_delta, field_order):
         '''
         '''
         self.logger.debug('Generating SQL...')
@@ -341,17 +271,9 @@ class BaseSql(HTTPClient):
 
         delta_filter = []
         where = ''
-        if force and id_delta:
-            delta_filter.extend(
-                self._get_id_delta_sql(table, id_delta))
 
-        elif not force:
-            # apply delta sql clause's if we're not forcing a full run
-            if id_delta:
-                delta_filter.extend(
-                    self._get_id_delta_sql(table, id_delta))
-            if self.get_property('delta', None, True):
-                delta_filter.extend(self._get_last_id_sql())
+        delta_filter.extend(
+            self._get_id_delta_sql(table, id_delta))
 
         if delta_filter:
             where = 'WHERE ' + ' OR '.join(delta_filter)
@@ -376,13 +298,13 @@ class BaseSql(HTTPClient):
         else:
             return []
 
-    def _get_last_id_sql(self):
+    def _get_new_ids(self):
         '''
         '''
         table = self.get_property('table')
         _id = self.get_property('column')
-        last_id = self.get_last_oid()
-        if last_id and self.get_property('delta_new_ids', True):
+        last_id = self.get_last_field('_oid')
+        if last_id:
             # if we delta_new_ids is on, but there is no 'last_id',
             # then we need to do a FULL run...
             try:  # try to convert to integer... if not, assume unicode value
@@ -390,16 +312,21 @@ class BaseSql(HTTPClient):
             except (TypeError, ValueError):
                 pass
             if type(last_id) in [int, float]:
-                last_id_sql = "%s.%s > %s" % (table, _id, last_id)
+                where = "%s.%s > %s" % (table, _id, last_id)
             else:
-                last_id_sql = "%s.%s > '%s'" % (table, _id, last_id)
-            return [last_id_sql]
+                where = "%s.%s > '%s'" % (table, _id, last_id)
+            sql = 'SELECT DISTINCT %s.%s FROM %s.%s WHERE %s' % (
+                table, _id, self.db, table, where)
+            rows = self.proxy.fetchall(sql)
+            ids = self._extract_row_ids(rows)
         else:
-            return []
+            ids = []
+        return ids
 
-    def _get_mtime_id_delta(self, mtime, parse_timestamp):
+    def _get_mtime_id_delta(self, last_update, parse_timestamp):
         '''
         '''
+        mtime = self._fetch_mtime(last_update)
         mtime_columns = self.get_property('delta_mtime', None, [])
         if not (mtime_columns and mtime):
             return []
@@ -530,13 +457,6 @@ class BaseSql(HTTPClient):
                     continue
             else:
                 o[field] = [o[field], tokens]
-
-            #try:
-            #    del o[field][o[field].index(None)]
-            #    # if we have more than one value, drop any
-            #    # redundant None (null) values, if any
-            #except (ValueError):
-            #    pass
 
     def _normalize_container(self, value, field):
         container = self.get_property('container', field)
