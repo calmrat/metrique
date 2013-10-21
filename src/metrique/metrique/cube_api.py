@@ -14,6 +14,7 @@ Create/Drop cube indexes.
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from copy import deepcopy
 from datetime import datetime
+from operator import itemgetter
 import simplejson as json
 import traceback
 
@@ -196,12 +197,15 @@ def save(self, objects, cube=None, owner=None):
     if saved:
         objects = [o for o in objects if o['_oid'] in saved]
         # journal locally as well
-        objects_json = json.dumps(objects, default=json_encode,
-                                  ensure_ascii=True,
-                                  encoding="ISO-8859-1")
-        # journal objects locally if any were saved
-        args = (self.owner, self.name, utcnow(), objects_json)
-        self.logger.journal('::'.join(map(str, args)))
+        if self.config.journal:
+            # journal objects locally if any were saved
+            for o in sorted(objects, key=itemgetter('_oid')):
+                dump = {'owner': self.owner, 'name': self.name,
+                        'when': utcnow(), 'object': o}
+                ojson = json.dumps(dump, default=json_encode,
+                                   ensure_ascii=True,
+                                   encoding="ISO-8859-1")
+                self.journal.debug(ojson)
     self.logger.info("... Saved %s NEW docs" % len(saved))
     return sorted(saved)
 
@@ -258,12 +262,10 @@ def activity_import(self, oids=None, logfile=None, cube=None, owner=None):
                    for batch in batch_gen(oids, batch_size)]
 
     saved = []
-    failed = []
     for future in as_completed(futures):
         try:
             result = future.result()
-        except RuntimeError as e:
-            failed.extend(json.loads(str(e)))
+        except Exception as e:
             tb = traceback.format_exc()
             self.logger.error('Activity Import Error: %s\n%s' % (e, tb))
             del tb
@@ -272,6 +274,7 @@ def activity_import(self, oids=None, logfile=None, cube=None, owner=None):
             self.logger.info(
                 '%i of %i extracted' % (len(saved),
                                         len(oids)))
+    failed = set(oids) - set(saved)
     result = {'saved': sorted(saved), 'failed': sorted(failed)}
     self.logger.debug(result)
     # reset logger
@@ -291,11 +294,8 @@ def _activity_import(self, oids, cube, owner):
         if oid not in docs or docs[oid]['_start'] > doc['_start']:
             docs[oid] = doc
 
-    try:
-        # dict, has format: oid: [(when, field, removed, added)]
-        activities = self.activity_get(oids)
-    except Exception:
-        raise RuntimeError(json.dumps(oids))
+    # dict, has format: oid: [(when, field, removed, added)]
+    activities = self.activity_get(oids)
 
     remove_ids = []
     save_objects = []

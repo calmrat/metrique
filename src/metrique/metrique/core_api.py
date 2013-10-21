@@ -52,6 +52,8 @@ logging.basicConfig()
 root_logger = logging.getLogger()
 [root_logger.removeHandler(hdlr) for hdlr in root_logger.handlers]
 
+BASIC_FORMAT = "%(name)s:%(message)s"
+
 
 class HTTPClient(object):
     '''
@@ -140,6 +142,7 @@ class HTTPClient(object):
         if logfile is None:
             logfile = self.config.logfile
         self.debug_set(debug, logstdout, logfile)
+        self.journal_set(logfile)
 
         if isinstance(cube, basestring):
             self.set_cube(cube)
@@ -210,66 +213,63 @@ class HTTPClient(object):
         ' alias for whoami(); returns back username in config.username '
         return self.whoami()
 
+    def journal_set(self, logfile):
+        ' journal object json to disk '
+
+        if not self.config.journal:
+            return
+
+        null_format = logging.Formatter()
+
+        JOURNAL = 100
+        logging.addLevelName(JOURNAL, 'JOURNAL')
+
+        self._journal_logger_name = '%s.journal' % self._logger_name
+        logger = logging.getLogger(self._journal_logger_name)
+        logger.handlers = []
+
+        logger.setLevel(logging.DEBUG)
+        logger.propagate = False
+
+        logfile = os.path.expanduser('%s.journal' % logfile)
+        hdlr = logging.FileHandler(logfile)
+        hdlr.setFormatter(null_format)
+        logger.addHandler(hdlr)
+
+        self.journal = logger
+
     def debug_set(self, level, logstdout, logfile):
         '''
         if we get a level of 2, we want to apply the
         debug level to all loggers
         '''
-        BASIC_FORMAT = "%(name)s:%(message)s"
-
-        # OBJECT SAVE JOURNAL
-        JOURNAL = 100
-        logging.addLevelName(JOURNAL, 'JOURNAL')
-
-        def journal(self, message, *args, **kwargs):
-            self.log(JOURNAL, message, *args, **kwargs)
-
-        logging.Logger.journal = journal
+        basic_format = logging.Formatter(BASIC_FORMAT)
 
         if level == 2:
+            self._logger_name = None
             logger = logging.getLogger()
         elif not self.name:
-            logger = logging.getLogger(__name__)
+            self._logger_name = __name__
+            logger = logging.getLogger(self._logger_name)
             logger.propagate = 0
         else:
-            logger = logging.getLogger('%s.%s' % (__name__, self.name))
+            self._logger_name = '%s.%s' % (__name__, self.name)
+            logger = logging.getLogger(self._logger_name)
             logger.propagate = 0
 
+        # reset handlers
+        logger.handlers = []
+
         if logstdout:
-            shdlr = logging.StreamHandler()
-            shdlr.setFormatter(logging.Formatter(BASIC_FORMAT))
-            for hdlr in logger.handlers:
-                if type(hdlr) is logging.StreamHandler:
-                    break
-            else:
-                logger.addHandler(shdlr)
-        else:
-            [logger.removeHandler(hdlr) for hdlr in logger.handlers
-                if type(hdlr) is logging.StreamHandler]
+            hdlr = logging.StreamHandler()
+            hdlr.setFormatter(basic_format)
+            logger.addHandler(hdlr)
 
         if logfile:
             logfile = os.path.expanduser(logfile)
-            fhdlr = logging.FileHandler(logfile)
-            fhdlr.setFormatter(logging.Formatter(BASIC_FORMAT))
-
-            fhdlr_err = logging.FileHandler('%s.err' % logfile)
-            fhdlr_err.setFormatter(logging.Formatter())
-            fhdlr_err.setLevel(logging.ERROR)
-
-            jhdlr = logging.FileHandler('%s.journal' % logfile)
-            jhdlr.setFormatter(logging.Formatter())
-            jhdlr.setLevel(JOURNAL)
-
-            for hdlr in logger.handlers:
-                if type(hdlr) is logging.FileHandler:
-                    break
-            else:
-                logger.addHandler(fhdlr)
-                logger.addHandler(fhdlr_err)
-                logger.addHandler(jhdlr)
-        else:
-            [logger.removeHandler(hdlr) for hdlr in logger.handlers
-                if type(hdlr) is logging.FileHandler]
+            hdlr = logging.FileHandler(logfile)
+            hdlr.setFormatter(basic_format)
+            logger.addHandler(hdlr)
 
         if level in [-1, False]:
             logger.setLevel(logging.WARN)

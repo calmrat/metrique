@@ -51,6 +51,7 @@ class Config(JSONConf):
             'cubes_path': '~/.metrique/cubes',
             'debug': None,
             'host': '127.0.0.1',
+            'journal': False,
             'logfile': None,
             'logstdout': True,
             'max_workers': multiprocessing.cpu_count(),

@@ -11,15 +11,12 @@ from dateutil.parser import parse as dt_parse
 from functools import partial
 import pytz
 import re
-import simplejson as json
 import time
 import traceback
 
 from metrique.core_api import HTTPClient
 
 from metriqueu.utils import batch_gen, ts2dt, strip_split
-
-# FIXME: move sql_host... etc into extract!
 
 
 class BaseSql(HTTPClient):
@@ -112,13 +109,6 @@ class BaseSql(HTTPClient):
                 self.logger.warn('Fetch Failed: %s' % tb)
                 del tb
                 retries -= 1
-            except Exception as e:
-                tb = traceback.format_exc()
-                self.logger.error('Fetch Skipped: %s\n %s' % (tb, e))
-                del tb
-                self.logger.journal(
-                    'SKIPPED: %s' % json.dumps(id_delta))
-                raise RuntimeError(json.dumps(id_delta))
             else:
                 break
         rows = self._build_rows(rows)
@@ -134,17 +124,19 @@ class BaseSql(HTTPClient):
                        for batch in batch_gen(id_delta,
                                               self.config.batch_size)]
         saved = []
-        failed = []
         for future in as_completed(futures):
             try:
                 result = future.result()
-            except RuntimeError as e:
-                failed.extend(json.loads(str(e)))
+            except Exception as e:
+                tb = traceback.format_exc()
+                self.logger.error('Activity Import Error: %s\n%s' % (e, tb))
+                del tb
             else:
                 saved.extend(result)
                 self.logger.info(
                     '%i of %i extracted' % (len(saved),
                                             len(id_delta)))
+        failed = set(id_delta) - set(saved)
         result = {'saved': sorted(saved), 'failed': sorted(failed)}
         self.logger.debug(result)
         return result
@@ -292,8 +284,7 @@ class BaseSql(HTTPClient):
         _id = self.get_property('column')
         if id_delta:
             id_delta = sorted(set(id_delta))
-            if type(id_delta) is list:
-                id_delta = ','.join(map(str, id_delta))
+            id_delta = ','.join(map(str, id_delta))
             return ["(%s.%s IN (%s))" % (table, _id, id_delta)]
         else:
             return []
