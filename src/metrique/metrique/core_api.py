@@ -187,6 +187,14 @@ class HTTPClient(object):
             self.config.auto_login = auto_login
         self._auto_login_attempted = False
 
+    def activity_get(self, ids=None):
+        '''
+        Returns a dictionary of `id: [(when, field, removed, added)]` kv pairs
+        that represent the activity history for the particular ids.
+        '''
+        raise NotImplementedError(
+            'The activity_get method is not implemented in this cube.')
+
     def _build_runner(self, kind, kwargs):
         ''' generic caller for HTTP
             A) POST; use data, not params

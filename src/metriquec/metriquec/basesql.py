@@ -38,16 +38,6 @@ class BaseSql(HTTPClient):
         self.config['sql_db'] = sql_db
         self.retry_on_error = None
 
-    def activity_get(self, ids=None, mtime=None):
-        '''
-        Generator that yields by ids ascending.
-        Each yield has format: (id, [(when, field, removed, added)])
-        For fields that are containers, added and removed must be lists
-        (no None allowed)
-        '''
-        raise NotImplementedError(
-            'The activity_get method is not implemented in this cube.')
-
     def _build_rows(self, rows):
         _rows = {}
         if not rows:
