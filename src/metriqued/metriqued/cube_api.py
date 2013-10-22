@@ -336,9 +336,11 @@ class SaveObjectsHdlr(MetriqueHdlr):
         mtime = dt2ts(mtime) if mtime else utcnow()
         current_mtime = self.get_cube_last_start(owner, cube)
         if current_mtime and mtime and current_mtime > mtime:
-            raise ValueError(
-                "invalid mtime (%s); "
-                "must be > current mtime (%s)" % (mtime, current_mtime))
+            # don't fail, but make sure the issue is logged!
+            # likely, a ntp time sync is required
+            logger.warn(
+                "object mtime is < server mtime; %s < %s; " % (mtime,
+                                                               current_mtime))
         _cube = self.timeline(owner, cube, admin=True)
 
         olen_r = len(objects)
