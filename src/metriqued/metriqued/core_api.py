@@ -248,22 +248,19 @@ class MetriqueHdlr(RequestHandler):
     def valid_in_set(self, x, valid_set, raise_if_not=True):
         if isinstance(x, basestring):
             x = [x]
-        elif not isinstance(x, (list, tuple, set)):
+        if not isinstance(x, (list, tuple, set)):
             raise TypeError("expected string or iterable; got %s" % type(x))
-        is_subset = set(x) <= valid_set
-        if is_subset:
-            return True
-        elif raise_if_not:
+        ok = set(x) <= valid_set
+        if not ok and raise_if_not:
             self._raise(400, "invalid item in set; "
                         "got (%s). expected: %s" % (x, valid_set))
-        else:
-            return False
+        return ok
 
-    def valid_cube_role(self, roles):
-        return self.valid_in_set(roles, VALID_CUBE_ROLES)
+    def valid_cube_role(self, roles, raise_if_not=True):
+        return self.valid_in_set(roles, VALID_CUBE_ROLES, raise_if_not)
 
-    def valid_action(self, actions):
-        return self.valid_in_set(actions, VALID_ACTIONS)
+    def valid_action(self, actions, raise_if_not=True):
+        return self.valid_in_set(actions, VALID_ACTIONS, raise_if_not)
 
 ##################### http request #################################
     def get_argument(self, key, default=None, with_json=True):
@@ -376,12 +373,11 @@ class MetriqueHdlr(RequestHandler):
 
     def has_cube_role(self, owner, cube, role):
         ''' valid roles: read, write, admin, own '''
-        if not (owner and cube):
-            self._raise(400, "owner and cube required")
-        self.valid_cube_role(role)
+        self.cube_exists(owner, cube)
         cr = self.get_cube_profile(owner, cube, keys=[role])  # cube_role
         cu = self.current_user
-        ok = bool(cr and (cr == '__all__' or cu in cr))
+        u = [cu, '__all__']
+        ok = bool(cr and any(x in cr for x in u))
         return ok
 
     def is_self(self, owner):
