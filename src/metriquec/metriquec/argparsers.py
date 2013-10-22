@@ -74,7 +74,6 @@ class _KwargParser(argparse.Action):
 
 _cube_args = argparse.ArgumentParser(prog='Cube CLI')
 _cube_args.add_argument('-d', '--debug', type=int, default=None)
-_cube_args.add_argument('-a', '--no-async', action='store_true')
 _cube_args.add_argument('-L', '--no-login', action='store_true')
 _cube_args.add_argument('-H', '--api-host', type=str)
 _cube_args.add_argument('-P', '--api-port', type=str)
@@ -105,7 +104,6 @@ def cube_cli(cube_cls=None):
     Available options::
 
         --debug: 0/False (OFF), 1/True (INFO), 2 (DEBUG)
-        --no-async: Turn on async/threaded processing
         --force: set to pass this option to extract()
         --cube-config-file: api config file name
         --cube-config-dir: config dir path
@@ -116,7 +114,6 @@ def cube_cli(cube_cls=None):
     args = _cube_args.parse_args()
     kwargs = {}
     kwargs['debug'] = args.debug
-    kwargs['async'] = not args.no_async
     kwargs['config_file'] = args.cube_config_file
     kwargs['host'] = args.api_host
     kwargs['port'] = args.api_port

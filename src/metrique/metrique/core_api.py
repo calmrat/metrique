@@ -126,7 +126,8 @@ class HTTPClient(object):
                  debug=None, logfile=None, logstdout=None, config_file=None,
                  cube=None, owner=None, async=None, api_version=None,
                  api_rel_path=None, auto_login=None, batch_size=None,
-                 cubes_path=None, ssl=None, ssl_verify=None):
+                 cubes_path=None, ssl=None, ssl_verify=None,
+                 **kwargs):
         self._config_file = config_file
         # all defaults are loaded, unless specified in
         # metrique_config.json

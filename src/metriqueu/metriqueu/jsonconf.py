@@ -25,11 +25,15 @@ class JSONConf(MutableMapping):
         self.config_file = config_file or self.default_config
         if self.defaults is None:
             self.defaults = {}
-        if default and isinstance(default, dict):
-            self.defaults.update(default)
 
         if self.config is None:
             self.config = {}
+
+        if default:
+            if isinstance(default, (dict, JSONConf)):
+                self.config.update(default)
+            else:
+                raise TypeError("expected default type of dict or JSONConf")
 
         if self.config_file:
             self.load_config()
