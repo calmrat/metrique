@@ -29,8 +29,7 @@ from metriqued.utils import parse_pql_query
 from metriqueu.utils import set_default, utcnow, strip_split
 
 SAMPLE_SIZE = 1
-VALID_CUBE_ROLES = set(('admin', 'own', 'read', 'write'))
-VALID_GROUPS = set(('admin', ))
+VALID_CUBE_ROLES = set(('admin', 'read', 'write'))
 VALID_ACTIONS = set(('pull', 'addToSet', 'set'))
 
 
@@ -52,7 +51,8 @@ class MetriqueHdlr(RequestHandler):
         try:
             assert len(sort[0]) == 2
         except (AssertionError, IndexError, TypeError):
-            raise ValueError("Invalid sort value (%s); try [('_oid': -1)]" % sort)
+            raise ValueError(
+                "Invalid sort value (%s); try [('_oid': -1)]" % sort)
         if son:
             return SON(sort)
         else:
@@ -262,9 +262,6 @@ class MetriqueHdlr(RequestHandler):
     def valid_cube_role(self, roles):
         return self.valid_in_set(roles, VALID_CUBE_ROLES)
 
-    def valid_group(self, groups):
-        return self.valid_in_set(groups, VALID_GROUPS)
-
     def valid_action(self, actions):
         return self.valid_in_set(actions, VALID_ACTIONS)
 
@@ -348,118 +345,86 @@ class MetriqueHdlr(RequestHandler):
         return username, password
 
     def _parse_basic_auth(self, username, password):
-        if not (username and password):
-            return False, username
-        if not isinstance(password, basestring):
-            self._raise(400, "password expected to be a string; "
-                        "got %s" % type(password))
-        passhash = self.get_user_profile(username, keys=['_passhash'])
-        if passhash and sha256_crypt.verify(password, passhash):
-            logger.error('AUTH BASIC OK [%s]' % username)
-            return True, username
-        else:
-            logger.error('AUTH BASIC ERROR [%s]' % username)
-            return False, username
+        ok = (username and password)
+        if ok:
+            username, password = str(username), str(password)
+            passhash = self.get_user_profile(username, keys=['_passhash'])
+            ok = bool(passhash and sha256_crypt.verify(password, passhash))
+        logger.error('AUTH BASIC [%s]: %s' % (username, ok))
+        return ok
 
     def _parse_krb_basic_auth(self, username, password):
         krb_auth = self.metrique_config.krb_auth
-        if not all((kerberos, krb_auth, username, password)):
-            return False, username
-        else:
-            realm = self.metrique_config.realm
+        # kerberos module must be available, krb auth enabled, realm defined
+        # and username/password provided
+        realm = self.metrique_config.realm
+        ok = (kerberos and krb_auth and realm and username and password)
+        if ok:
             try:
-                authed = kerberos.checkPassword(username, password,
-                                                '', realm)
-                logger.error('KRB AUTH [%s]: %s' % (username, authed))
-                return authed, username
+                ok = kerberos.checkPassword(username, password, '', realm)
             except kerberos.BasicAuthError as e:
-                logger.error('KRB ERROR [%s]: %s' % (username, e))
-                return False, username
+                logger.debug('KRB ERROR [%s]: %s' % (username, e))
+                ok = False
+        logger.debug('KRB AUTH [%s]: %s' % (username, ok))
+        return ok
 
     def _parse_auth_headers(self):
         username, password = self._scrape_username_password()
-        _basic, username = self._parse_basic_auth(username, password)
-        _krb_basic, username = self._parse_krb_basic_auth(username, password)
-        if _basic or _krb_basic:
-            return True, username
-        else:
-            return False, username
+        ok = bool(self._parse_basic_auth(username, password) or
+                  self._parse_krb_basic_auth(username, password))
+        return ok, username
 
     def has_cube_role(self, owner, cube, role):
         ''' valid roles: read, write, admin, own '''
         if not (owner and cube):
             self._raise(400, "owner and cube required")
         self.valid_cube_role(role)
-        cube_role = self.get_cube_profile(owner, cube, keys=[role])
-        if cube_role and self.current_user in cube_role:
-            return True
-        else:
-            return False
+        cr = self.get_cube_profile(owner, cube, keys=[role])  # cube_role
+        cu = self.current_user
+        ok = bool(cr and (cr == '__all__' or cu in cr))
+        return ok
 
-    def is_self(self, user):
-        return self.current_user == user
+    def is_self(self, owner):
+        return self.current_user == owner
 
     def is_admin(self, owner, cube=None):
-        _is_group_admin = lambda: self.self_in_group('admin')
-        _is_super_user = lambda x: x in self.metrique_config.superusers
-        _is_admin = _is_group_admin() or _is_super_user(self.current_user)
-        if cube:
-            _cube_role = lambda: self.has_cube_role(owner, cube, 'admin')
-            return _is_admin or _cube_role()
-        else:
-            return _is_admin
+        ok = self.current_user in self.metrique_config.superusers
+        if not ok and cube:
+            ok = self.has_cube_role(owner, cube, 'admin')
+        return ok
 
     def is_write(self, owner, cube=None):
-        _cube_role = lambda: self.has_cube_role(owner, cube, 'write')
-        _is_admin = lambda: self.is_admin(owner, cube)
-        return _cube_role() or _is_admin()
+        return bool(self.has_cube_role(owner, cube, 'write') or
+                    self.is_admin(owner, cube))
 
     def is_read(self, owner, cube=None):
-        _is_admin = lambda: self.is_admin(owner, cube)
-        _cube_role = lambda: self.has_cube_role(owner, cube, 'read')
-        return _cube_role() or _is_admin()
+        return bool(self.has_cube_role(owner, cube, 'read') or
+                    self.is_admin(owner, cube))
 
-    def _requires(self, admin_func, raise_if_not=True):
-        if admin_func():
-            return True
-        elif raise_if_not:
+    def _requires(self, ok, raise_if_not=True):
+        if not ok and raise_if_not:
             self._raise(401, 'insufficient privileges')
-        else:
-            return False
+        return ok
 
     def requires_owner_admin(self, owner, cube=None, raise_if_not=True):
-        _is_self = lambda: self.is_self(owner)
-        _is_admin = lambda: self.is_admin(owner, cube)
-        admin_func = lambda: _is_admin() or _is_self()
-        return self._requires(admin_func, raise_if_not)
+        ok = bool(self.is_self(owner) or self.is_admin(owner, cube))
+        return self._requires(ok, raise_if_not)
 
     def requires_owner_read(self, owner, cube=None, raise_if_not=True):
-        _is_self = lambda: self.is_self(owner)
-        _is_read = lambda: self.is_read(owner, cube=cube)
-        admin_func = lambda: _is_read() or _is_self()
-        return self._requires(admin_func, raise_if_not)
+        ok = bool(self.is_self(owner) or self.is_read(owner, cube))
+        return self._requires(ok, raise_if_not)
 
     def requires_owner_write(self, owner, cube=None, raise_if_not=True):
-        _is_self = lambda: self.is_self(owner)
-        _is_write = lambda: self.is_write(owner, cube=cube)
-        admin_func = lambda: _is_write() or _is_self()
-        return self._requires(admin_func, raise_if_not)
-
-    def self_in_group(self, group):
-        self.valid_group(group)
-        user_group = self.get_user_profile(self.current_user, keys=['group'])
-        if user_group and group in user_group:
-            return True
-        else:
-            return False
+        ok = bool(self.is_self(owner) or self.is_write(owner, cube))
+        return self._requires(ok, raise_if_not)
 
 ##################### utils #################################
     def _raise(self, code, msg):
-            if code == 401:
-                _realm = self.metrique_config.realm
-                basic_realm = 'Basic realm="%s"' % _realm
-                self.set_header('WWW-Authenticate', basic_realm)
-            raise HTTPError(code, msg)
+        if code == 401:
+            _realm = self.metrique_config.realm
+            basic_realm = 'Basic realm="%s"' % _realm
+            self.set_header('WWW-Authenticate', basic_realm)
+        raise HTTPError(code, msg)
 
 
 class PingHdlr(MetriqueHdlr):

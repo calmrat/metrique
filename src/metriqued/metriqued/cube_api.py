@@ -156,6 +156,9 @@ class RegisterHdlr(MetriqueHdlr):
         '''
         Client registration method
 
+        Default behaivor (not currently overridable) is to permit
+        cube registrations by all registered users.
+
         Update the user__cube __meta__ doc with defaults
 
         Bump the user's total cube count, by 1
@@ -164,7 +167,6 @@ class RegisterHdlr(MetriqueHdlr):
         # where client tries to create multiple cubes
         # simultaneously and we hit race condition
         # where user creates more cubes than has quota
-        self.requires_owner_admin(owner)
         if self.cube_exists(owner, cube, raise_if_not=False):
             self._raise(409, "cube already exists")
 
