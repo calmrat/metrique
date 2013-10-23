@@ -30,7 +30,6 @@ class JSONConf(MutableMapping):
             self.config = {}
 
         if default:
-            print default, 'Z'*100
             if isinstance(default, (dict, JSONConf)):
                 self.config.update(default)
             else:
