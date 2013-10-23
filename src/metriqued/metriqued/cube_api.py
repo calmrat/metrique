@@ -78,8 +78,13 @@ class IndexHdlr(MetriqueHdlr):
     @authenticated
     def post(self, owner, cube):
         ensure = self.get_argument('ensure')
+        kwargs = dict()
         name = self.get_argument('name', None)
-        background = self.get_argument('background', False)
+        if name is not None:
+            kwargs['name'] = name
+        background = self.get_argument('background', None)
+        if background is not None:
+            kwargs['background'] = background
         # ENSURE the index:
         self.cube_exists(owner, cube)
         self.requires_owner_admin(owner, cube)
@@ -90,7 +95,7 @@ class IndexHdlr(MetriqueHdlr):
             # with a list of lists which pymongo rejects; convert
             # to ordered dict instead
             # FIXME why are we not converting anymore?
-            _cube.ensure_index(ensure, name=name, background=background)
+            _cube.ensure_index(ensure, **kwargs)
         self.write(_cube.index_information())
 
 

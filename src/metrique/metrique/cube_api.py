@@ -124,7 +124,7 @@ def list_index(self, cube=None, owner=None):
     return sorted(result)
 
 
-def ensure_index(self, key_or_list, name=None, background=False,
+def ensure_index(self, key_or_list, name=None, background=None,
                  cube=None, owner=None):
     '''
     Ensures that an index exists on this cube.
