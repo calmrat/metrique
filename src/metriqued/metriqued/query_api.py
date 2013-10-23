@@ -219,8 +219,7 @@ class FindHdlr(MetriqueHdlr):
             last = ret[-1]
             ret.append(doc)
             if doc['_oid'] == last['_oid'] and doc['_start'] == last['_end']:
-                last_items = set(last.items())
-                if all(item in last_items or item[0] in no_check
+                if all(item in last.items() or item[0] in no_check
                        for item in doc.iteritems()):
                     # the fields of interest did not change, merge docs:
                     last['_end'] = doc['_end']
@@ -228,7 +227,8 @@ class FindHdlr(MetriqueHdlr):
 
         sort = self.check_sort([('_oid', 1)])
         docs = _cube.find(spec, fields=fields, sort=sort)
-        [merge_doc(doc) for doc in sorted(docs, key=itemgetter('_oid', '_start', '_end'))]
+        docs = sorted(docs, key=itemgetter('_oid', '_start', '_end'))
+        [merge_doc(doc) for doc in docs]
         logger.debug('... done')
         return ret[1:]
 
