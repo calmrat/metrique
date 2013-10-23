@@ -377,7 +377,7 @@ def _activity_import_doc(self, time_doc, activities):
             # we have only one version, that we did not change
             return []
     except Exception as e:
-        self.logger.warn('Error updating creation time; %s' % e)
+        self.logger.error('Error updating creation time; %s' % e)
     return batch_updates
 
 

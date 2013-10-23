@@ -49,7 +49,7 @@ def cube_pkg_mod_cls(cube):
     return pkg, mod, _cls
 
 
-def get_cube(cube, path=None):
+def get_cube(cube, path=CLIENT_CUBES_PATH, init=False, config=None):
     '''
     Wraps __import__ to dynamically locate and load a client cube.
 
@@ -58,15 +58,17 @@ def get_cube(cube, path=None):
     :param string path:
         path to look for cubes (eg '~/.metrique/cubes/')
     '''
-    path = path or CLIENT_CUBES_PATH
     set_cube_path(path)
-    if path not in sys.path:
-        raise ValueError("invalid cube path: %s" % path)
     pkg, mod, _cls = cube_pkg_mod_cls(cube)
     _pkg = __import__(pkg, fromlist=[mod])
     _mod = getattr(_pkg, mod)
-    _cls = getattr(_mod, _cls)
-    return _cls
+    cube = getattr(_mod, _cls)
+    if init:
+        if config:
+            cube = cube(**config)
+        else:
+            cube = cube()
+    return cube
 
 
 def get_timezone_converter(from_timezone):

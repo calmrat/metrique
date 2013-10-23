@@ -36,6 +36,7 @@ and more.
 '''
 
 
+from copy import copy
 import logging
 from functools import partial
 import os
@@ -122,69 +123,34 @@ class HTTPClient(object):
             cube_cls = cls
         return object.__new__(cube_cls)
 
-    def __init__(self, host=None, port=None, username=None, password=None,
-                 debug=None, logfile=None, logstdout=None, config_file=None,
-                 cube=None, owner=None, async=None, api_version=None,
-                 api_rel_path=None, auto_login=None, batch_size=None,
-                 cubes_path=None, ssl=None, ssl_verify=None,
-                 **kwargs):
+    def __init__(self, config_file=None, cube=None, owner=None, **kwargs):
         self._config_file = config_file
         # all defaults are loaded, unless specified in
         # metrique_config.json
         self.load_config()
-
-        # keep logging local to the cube so multiple
-        # cubes can independently log without interferring
-        # with each others logging.
-        if debug is None:
-            debug = self.config.debug
-        if logstdout is None:
-            logstdout = self.config.logstdout
-        if logfile is None:
-            logfile = self.config.logfile
-        self.debug_set(debug, logstdout, logfile)
-        self.journal_set(logfile)
 
         if isinstance(cube, basestring):
             self.set_cube(cube)
         elif cube:
             raise TypeError(
                 "expected cube as a string, got %s" % type(cube))
+
         self.owner = owner or self.config.username
 
-        # FIXME: better if we set self.host, self.port, etc
-        # falling back to loading defaults defined in .config if
-        # arg is None?
-        if host is not None:
-            self.config.host = host
-        if port is not None:
-            self.config.port = port
-        if ssl is not None:
-            self.config.ssl = ssl
-        if ssl_verify is not None:
-            self.config.ssl_verify = ssl_verify
-        if username is not None:
-            self.config.username = username
-        if password is not None:
-            self.config.password = password
-        if api_version is not None:
-            self.config.api_version = api_version
-        if api_rel_path is not None:
-            self.config.api_rel_path = api_rel_path
-        if async is not None:
-            self.config.async = async
-        if auto_login is not None:
-            self.config.auto_login = auto_login
-        if batch_size is not None:
-            self.config.batch_size = batch_size
-        if cubes_path is not None:
-            self.config.cubes_path = cubes_path
+        # update config object with any additional kwargs
+        # passed in by the user
+        for k, v in kwargs.items():
+            if v is not None:
+                self.config[k] = v
+
+        # keep logging local to the cube so multiple
+        # cubes can independently log without interferring
+        # with each others logging.
+        self.debug_set()
+        self.journal_set()
 
         # load a new requests session; for the cookies.
         self._load_session()
-
-        if auto_login:
-            self.config.auto_login = auto_login
         self._auto_login_attempted = False
 
     def activity_get(self, ids=None):
@@ -222,10 +188,11 @@ class HTTPClient(object):
         ' alias for whoami(); returns back username in config.username '
         return self.whoami()
 
-    def journal_set(self, logfile):
+    def journal_set(self, logfile=None):
         ' journal object json to disk '
-
-        if not self.config.journal:
+        if logfile is None:
+            logfile = self.config.logfile
+        if not (self.config.journal and logfile):
             return
 
         null_format = logging.Formatter()
@@ -247,11 +214,17 @@ class HTTPClient(object):
 
         self.journal = logger
 
-    def debug_set(self, level, logstdout, logfile):
+    def debug_set(self, level=None, logstdout=None, logfile=None):
         '''
         if we get a level of 2, we want to apply the
         debug level to all loggers
         '''
+        if level is None:
+            level = self.config.debug
+        if logstdout is None:
+            logstdout = self.config.logstdout
+        if logfile is None:
+            logfile = self.config.logfile
         basic_format = logging.Formatter(BASIC_FORMAT)
 
         if level == 2:
@@ -314,9 +287,11 @@ class HTTPClient(object):
         else:
             return os.path.join(owner, cube)
 
-    def get_cube(self, cube):
+    def get_cube(self, cube, init=True, **kwargs):
         ' wrapper for utils.get_cube(); try to load a cube, pyclient '
-        return get_cube(cube)
+        config = copy(self.config)
+        config.update(kwargs)
+        return get_cube(cube=cube, init=init, config=config)
 
     def get_last_field(self, field):
         '''
@@ -372,14 +347,13 @@ class HTTPClient(object):
                                     encoding="ISO-8859-1"))
                     for k, v in kwargs.items()])
 
-    def load_config(self, config_file=None):
+    def load_config(self, config=None):
         ' try to load a config file and handle when its not available '
-        config_file = config_file or self._config_file
-        try:
-            self.config = Config(config_file=config_file)
-        except Exception as e:
-            raise IOError("failed to load config (%s): %s" % (e, config_file))
+        if type(config) is type(Config):
+            self._config_file = config.config_file
         else:
+            config_file = config or self._config_file
+            self.config = Config(config_file=config_file)
             self._config_file = config_file
 
     def _load_session(self):
@@ -401,23 +375,14 @@ class HTTPClient(object):
 
     def _run(self, kind, cmd, api_url=True,
              allow_redirects=True, full_response=False,
-             username=None, password=None,
              **kwargs):
         '''
         wrapper for handling all requests; authentication,
         preparing arguments, calling request, handling
         exceptions, returning results.
         '''
-        if not username:
-            username = self.config.username
-        else:
-            # we actually want to pass this to the server
-            kwargs['username'] = username
-
-        if not password:
-            password = self.config.password
-        else:
-            kwargs['password'] = password
+        username = self.config.username
+        password = self.config.password
 
         runner = self._build_runner(kind, kwargs)
         _url = self._build_url(cmd, api_url)

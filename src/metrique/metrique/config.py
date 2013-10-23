@@ -52,7 +52,7 @@ class Config(JSONConf):
             'debug': None,
             'host': '127.0.0.1',
             'journal': False,
-            'logfile': None,
+            'logfile': '',
             'logstdout': True,
             'max_workers': multiprocessing.cpu_count(),
             'password': None,

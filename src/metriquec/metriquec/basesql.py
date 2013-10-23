@@ -96,7 +96,7 @@ class BaseSql(HTTPClient):
                 rows = self._fetchall(sql, field_order)
             except self.retry_on_error:
                 tb = traceback.format_exc()
-                self.logger.warn('Fetch Failed: %s' % tb)
+                self.logger.error('Fetch Failed: %s' % tb)
                 del tb
                 retries -= 1
             else:
@@ -119,7 +119,7 @@ class BaseSql(HTTPClient):
                 result = future.result()
             except Exception as e:
                 tb = traceback.format_exc()
-                self.logger.error('Activity Import Error: %s\n%s' % (e, tb))
+                self.logger.error('Extract Error: %s\n%s' % (e, tb))
                 del tb
             else:
                 saved.extend(result)
