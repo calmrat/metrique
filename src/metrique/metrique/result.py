@@ -208,7 +208,7 @@ class Result(DataFrame):
         ret = filter(lambda ts: self.check_in_bounds(ts), ret)
         return ret
 
-    def _auto_select_scale(self, dts, start=None, end=None, ideal=300):
+    def _auto_select_scale(self, start=None, end=None, ideal=300):
         '''
         Guess what a good timeseries scale might be,
         given a particular data set, attempting to
