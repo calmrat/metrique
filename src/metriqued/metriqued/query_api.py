@@ -8,12 +8,13 @@ from operator import itemgetter
 import pql
 import random
 from tornado.web import authenticated
+from collections import defaultdict
 
 from metriqued.utils import parse_pql_query
 from metriqued.utils import date_pql_string, query_add_date
 from metriqued.core_api import MetriqueHdlr
 
-from metriqueu.utils import set_default
+from metriqueu.utils import set_default, dt2ts
 
 
 class AggregateHdlr(MetriqueHdlr):
@@ -231,6 +232,62 @@ class FindHdlr(MetriqueHdlr):
         [merge_doc(doc) for doc in docs]
         logger.debug('... done')
         return ret[1:]
+
+
+class HistoryHdlr(MetriqueHdlr):
+    '''
+    RequestHandler for returning back historical counts for
+    the given query
+    '''
+    @authenticated
+    def get(self, owner, cube):
+        query = self.get_argument('query')
+        by_field = self.get_argument('by_field')
+        date_list = self.get_argument('date_list')
+        result = self.find(owner=owner, cube=cube,
+                           query=query, by_field=by_field,
+                           date_list=date_list)
+        self.write(result)
+
+    def history(self, owner, cube, query, by_field=None, date_list=None):
+        self.cube_exists(owner, cube)
+        self.requires_owner_read(owner, cube)
+
+        spec = parse_pql_query(query)
+
+        _cube = self.timeline(owner, cube)
+        date_list = map(dt2ts, date_list)
+
+        # accumulate the counts
+        if by_field:
+            data = _cube.find(spec, fields=['_start', '_end', by_field])
+            res = defaultdict(lambda: defaultdict(int))
+        else:
+            data = _cube.find(spec, fields=['_start', '_end'])
+            res = defaultdict(int)
+        for doc in data:
+            for date in date_list:
+                if doc['_start'] <= date and (doc['_end'] is None or
+                                              doc['_end'] > date):
+                    if by_field:
+                        res[date][doc[by_field]] += 1
+                    else:
+                        res[date] += 1
+
+        # convert to the return form
+        ret = []
+        for date, value in res.items():
+            if by_field:
+                vals = []
+                for field_val, count in value.items():
+                    vals.append({by_field: field_val,
+                                 "count": count})
+                ret.append({"date": date,
+                            "values": vals})
+            else:
+                ret.append({"date": date,
+                            "count": value})
+        return ret
 
 
 class SampleHdlr(MetriqueHdlr):

@@ -65,6 +65,13 @@ def find(self, query, fields=None, date=None, sort=None, one=False,
     return result if raw or explain else Result(result, date)
 
 
+def history(self, query, by_field=None, date_list=None, cube=None, owner=None):
+    '''
+    '''
+    cmd = self.get_cmd(owner, cube, 'history')
+    return self._get(cmd, query=query, by_field=by_field, date_list=date_list)
+
+
 def deptree(self, field, oids, date=None, level=None, cube=None, owner=None):
     '''
     Dependency tree builder recursively fetchs objects that

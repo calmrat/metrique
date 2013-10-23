@@ -121,6 +121,7 @@ class TornadoHTTPServer(object):
 
         user_cube_handlers = [
             (ucv2(r"find"), query_api.FindHdlr),
+            (ucv2(r"history"), query_api.HistoryHdlr),
             (ucv2(r"deptree"), query_api.DeptreeHdlr),
             (ucv2(r"count"), query_api.CountHdlr),
             (ucv2(r"aggregate"), query_api.AggregateHdlr),
