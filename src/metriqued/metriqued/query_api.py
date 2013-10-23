@@ -244,9 +244,9 @@ class HistoryHdlr(MetriqueHdlr):
         query = self.get_argument('query')
         by_field = self.get_argument('by_field')
         date_list = self.get_argument('date_list')
-        result = self.find(owner=owner, cube=cube,
-                           query=query, by_field=by_field,
-                           date_list=date_list)
+        result = self.history(owner=owner, cube=cube,
+                              query=query, by_field=by_field,
+                              date_list=date_list)
         self.write(result)
 
     def history(self, owner, cube, query, by_field=None, date_list=None):

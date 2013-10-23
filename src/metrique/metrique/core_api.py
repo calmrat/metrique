@@ -96,6 +96,7 @@ class HTTPClient(object):
     cube_index_drop = cube_api.drop_index
 
     query_find = find = query_api.find
+    query_history = history = query_api.history
     query_deptree = deptree = query_api.deptree
     query_count = count = query_api.count
     query_fetch = fetch = query_api.fetch
