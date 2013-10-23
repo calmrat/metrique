@@ -182,7 +182,7 @@ class Result(DataFrame):
                          'quarterly', 'yearly']:
             raise ValueError('Incorrect scale: %s' % scale)
         start = Timestamp(start or self._start.min())
-        end = Timestamp(end or max(self._end.dropna().max(),
+        end = Timestamp(end or max(Timestamp(self._end.max()),
                                    self._start.max()))
         start = start if self.check_in_bounds(start) else self._lbound
         end = end if self.check_in_bounds(end) else self._rbound
@@ -203,8 +203,8 @@ class Result(DataFrame):
                       monthly=off.MonthEnd(), quarterly=off.QuarterEnd(),
                       yearly=off.YearEnd())
         ret = list(pd.date_range(start + offset[scale], end, freq=freq[scale]))
-        ret = [start] + ret if start < ret[0] else ret
-        ret = ret + [end] if end > ret[-1] else ret
+        ret = [start] + ret if ret and start < ret[0] else ret
+        ret = ret + [end] if ret and end > ret[-1] else ret
         ret = filter(lambda ts: self.check_in_bounds(ts), ret)
         return ret
 
