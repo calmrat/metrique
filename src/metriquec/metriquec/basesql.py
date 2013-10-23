@@ -77,13 +77,6 @@ class BaseSql(HTTPClient):
             value = value
         return value
 
-    def _delta_init(self, id_delta, force):
-        if isinstance(id_delta, basestring):
-            id_delta = id_delta.split(',')
-        elif isinstance(id_delta, int):
-            id_delta = [id_delta]
-        return id_delta
-
     @property
     def db(self):
         return self.config.get('sql_db')
@@ -137,51 +130,60 @@ class BaseSql(HTTPClient):
         else:
             return []
 
-    def extract(self, exclude_fields=None, force=False, id_delta=None,
+    def extract(self, exclude_fields=None, force=False,
                 last_update=None, parse_timestamp=None, **kwargs):
         '''
         Extract routine for SQL based cubes.
 
         ... docs coming soon ...
 
+        :param force:
+            If False (default), then it will try to extract only the objects
+            that have changed since the last extract.
+            If True, then it will try to extract all the objects.
+            If it is a list of oids, then it will try to extract only those
+            objects with oids from the list.
+
         Accept, but ignore unknown kwargs.
         '''
-        if not id_delta:
-            id_delta = []
-        id_delta = self._delta_init(id_delta, force)
-
         if parse_timestamp is None:
             parse_timestamp = self.get_property('parse_timestamp', None, True)
 
         exclude_fields = strip_split(exclude_fields)
 
-        if force and not id_delta:
+        oids = []
+
+        if force is True:
             # get a list of all known object ids
             table = self.get_property('table')
             _id = self.get_property('column')
             sql = 'SELECT DISTINCT %s.%s FROM %s.%s' % (table, _id, self.db,
                                                         table)
             rows = self.proxy.fetchall(sql)
-            id_delta = self._extract_row_ids(rows)
-        else:
+            oids = self._extract_row_ids(rows)
+
+        if force is False and self.get_property('delta', None, True):
             # include objects updated since last mtime too
             # apply delta sql clause's if we're not forcing a full run
-            if not force and self.get_property('delta', None, True):
-                if self.get_property('delta_mtime', None, False):
-                    id_delta.extend(self._get_mtime_id_delta(last_update,
-                                                             parse_timestamp))
-                if self.get_property('delta_new_ids', None, True):
-                    id_delta.extend(self._get_new_ids())
-        id_delta = sorted(set(id_delta))
+            if self.get_property('delta_mtime', None, False):
+                oids.extend(self._get_mtime_id_delta(last_update,
+                                                     parse_timestamp))
+            if self.get_property('delta_new_ids', None, True):
+                oids.extend(self._get_new_ids())
+
+        if isinstance(force, list):
+            oids = force
+
+        oids = sorted(set(oids))
 
         # this is to set the 'index' of sql columns so we can extract
         # out the sql rows and know which column : field
         field_order = list(set(self.fields) - set(exclude_fields))
 
         if self.config.batch_size <= 0:
-            return self._extract(id_delta, field_order)
+            return self._extract(oids, field_order)
         else:
-            return self._extract_threaded(id_delta, field_order)
+            return self._extract_threaded(oids, field_order)
 
     def _fetchall(self, sql, field_order):
         rows = self.proxy.fetchall(sql)
