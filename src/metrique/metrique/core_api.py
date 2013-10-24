@@ -20,7 +20,7 @@ and more.
     >>> g.ping()
     pong
     >>> ids = g.extract(uri='https://github.com/drpoovilleorg/metrique.git')
-    >>> q = c.query.fetch('git_commit', 'author, committer_ts')
+    >>> q = c.query.find('git_commit', 'author, committer_ts')
     >>> q.groupby(['author']).size().plot(kind='barh')
     >>> <matplotlib.axes.AxesSubplot at 0x6f77ad0>
 
@@ -99,7 +99,6 @@ class HTTPClient(object):
     query_history = history = query_api.history
     query_deptree = deptree = query_api.deptree
     query_count = count = query_api.count
-    query_fetch = fetch = query_api.fetch
     query_distinct = distinct = query_api.distinct
     query_sample = sample = query_api.sample
     query_aggregate = aggregate = query_api.aggregate

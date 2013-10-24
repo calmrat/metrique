@@ -44,7 +44,7 @@ job, for example, in ipython::
     >>> m = pyclient(cube='gitrepo_commit')
     >>> m.ping()
     >>> m.extract(uri='https://github.com/drpoovilleorg/metrique.git')
-    >>> q = m.fetch('gitrepo_commit', 'author, committer_ts') 
+    >>> q = m.find('gitrepo_commit', 'author, committer_ts') 
     >>> q.groupby(['author']).size().plot(kind='barh')
         <matplotlib.axes.AxesSubplot at 0x6f77ad0>
 
@@ -58,7 +58,7 @@ Or you can analyse data from apache's jenkins instance (or other)::
     >>> # Just let it run for a minute, then kill
     >>> # it... as a demo.
     >>> m.extract(uri='http://builds.apache.org')
-    >>> builds = m.fetch(fields='__all__', limit=100) 
+    >>> builds = m.find(fields='__all__', limit=100) 
 
 Known Issues
 ------------

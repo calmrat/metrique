@@ -125,7 +125,6 @@ class TornadoHTTPServer(object):
             (ucv2(r"deptree"), query_api.DeptreeHdlr),
             (ucv2(r"count"), query_api.CountHdlr),
             (ucv2(r"aggregate"), query_api.AggregateHdlr),
-            (ucv2(r"fetch"), query_api.FetchHdlr),
             (ucv2(r"distinct"), query_api.DistinctHdlr),
             (ucv2(r"sample"), query_api.SampleHdlr),
 

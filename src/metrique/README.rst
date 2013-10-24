@@ -44,7 +44,7 @@ on the host::
 And assuming you have a metriqued host to connect to,
 with data in already, you can get to work!::
 
-    >>> q = m.fetch('gitrepo_commit', 'author, committer_ts') 
+    >>> q = m.find('gitrepo_commit', 'author, committer_ts') 
     >>> q.groupby(['author']).size().plot(kind='barh')
         <matplotlib.axes.AxesSubplot at 0x6f77ad0>
 
