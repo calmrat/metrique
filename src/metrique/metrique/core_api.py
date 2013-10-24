@@ -292,7 +292,8 @@ class HTTPClient(object):
         ' wrapper for utils.get_cube(); try to load a cube, pyclient '
         config = copy(self.config)
         config.update(kwargs)
-        return get_cube(cube=cube, init=init, config=config)
+        return get_cube(cube=cube, init=init, config=config,
+                        path=self.config.cubes_path)
 
     def get_last_field(self, field):
         '''
