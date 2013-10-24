@@ -9,7 +9,7 @@ from setuptools import setup
 
 __pkg__ = 'metriqueu'
 __version__ = '0.2.0'
-__release__ = "1a"
+__release__ = 4
 __nvr__ = '%s-%s' % (__version__, __release__)
 __pkgs__ = ['metriqueu']
 __provides__ = ['metriqueu']

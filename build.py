@@ -141,6 +141,9 @@ def bump_release(line, reset=False, ga=False):
 
     if not ga:
         bumped = '"%sa"' % bumped
+    else:
+        # drop any 'a' if there is one
+        bumped = re.sub('a$', '', str(bumped))
 
     logger.debug('BUMP (RELEASE): %s->%s' % (current, bumped))
     return '__release__ = %s\n' % bumped
@@ -229,13 +232,14 @@ ga = args.ga_release
 
 if action == 'develop':
     [develop(path=path) for path in setup_paths]
-
-if not nobump:
-    [bump(path=path,
-          kind=bump_kind,
-          ga=ga) for path in setup_paths]
-
-if not bump_only:
-    [build(
-        path=path, action=action,
-        upload=upload, dry_run=dry_run) for path in pkg_paths]
+elif action in ['build', 'sdist', 'install']:
+    if not nobump:
+        [bump(path=path,
+              kind=bump_kind,
+              ga=ga) for path in setup_paths]
+    if not bump_only:
+        [build(
+            path=path, action=action,
+            upload=upload, dry_run=dry_run) for path in pkg_paths]
+else:
+    raise ValueError("Unknown action: %s" % action)
