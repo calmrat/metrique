@@ -226,6 +226,7 @@ class MetriqueHdlr(RequestHandler):
 
     def update_cube_profile(self, owner, cube, action, key, value):
         self.cube_exists(owner, cube)
+        self.valid_action(action)
         collection = self.cjoin(owner, cube)
         _cube = self.cube_profile(admin=True)
         return self.update_profile(_cube=_cube, _id=collection,
@@ -395,6 +396,7 @@ class MetriqueHdlr(RequestHandler):
 
     def is_read(self, owner, cube=None):
         return bool(self.has_cube_role(owner, cube, 'read') or
+                    self.has_cube_role(owner, cube, 'write') or
                     self.is_admin(owner, cube))
 
     def _requires(self, ok, raise_if_not=True):

@@ -106,11 +106,10 @@ class RegisterHdlr(MetriqueHdlr):
             self._raise(400, "[%s] no password provided" % username)
         doc = {'_id': username,
                '_ctime': utcnow(),
-               '_groups': [],  # _these should be private (owner/admin only)
-               '_own': [],
-               '_read': [],
-               '_write': [],
-               '_admin': [],
+               'own': [],
+               'read': [],
+               'write': [],
+               'admin': [],
                '_cube_quota': CUBE_QUOTA,
                '_passhash': passhash,
                }

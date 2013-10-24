@@ -42,7 +42,7 @@ class DropHdlr(MetriqueHdlr):
         self.cube_profile(admin=True).remove(spec)
         # pull the cube from the owner's profile
         collection = self.cjoin(owner, cube)
-        self.update_user_profile(owner, 'pull', '_own', collection)
+        self.update_user_profile(owner, 'pull', 'own', collection)
         return True
 
 
@@ -429,6 +429,9 @@ class UpdateRoleHdlr(MetriqueHdlr):
                     role='read'):
         self.cube_exists(owner, cube)
         self.requires_owner_admin(owner, cube)
-        self.valid_action(action)
         self.valid_cube_role(role)
-        return self.update_cube_profile(owner, cube, action, role, username)
+        result = self.update_cube_profile(owner, cube, action, role, username)
+        # push the collection into the list of ones user owns
+        collection = self.cjoin(owner, cube)
+        self.update_user_profile(username, 'addToSet', role, collection)
+        return result
