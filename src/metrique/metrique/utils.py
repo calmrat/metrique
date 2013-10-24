@@ -12,7 +12,7 @@ from distutils.sysconfig import get_python_lib
 
 from metriqueu.utils import dt2ts
 
-CLIENT_CUBES_PATH = '~/.metrique/cubes/'
+CLIENT_CUBES_PATH = os.path.expanduser('~/.metrique/cubes/')
 SYSTEM_CUBES_PATH = os.path.join(get_python_lib(), 'metriquec/')
 
 json_encoder = json.JSONEncoder()

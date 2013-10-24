@@ -115,15 +115,12 @@ class HTTPClient(object):
                 <type HTTPClient(...)>
         '''
         if 'cube' in kwargs and kwargs['cube']:
-            try:
-                cube_cls = get_cube(kwargs['cube'])
-            except ImportError:
-                cube_cls = cls
+            cls = get_cube(kwargs['cube'])
         else:
-            cube_cls = cls
-        return object.__new__(cube_cls)
+            cls = cls
+        return object.__new__(cls)
 
-    def __init__(self, config_file=None, cube=None, owner=None, **kwargs):
+    def __init__(self, cube=None, config_file=None, owner=None, **kwargs):
         self._config_file = config_file
         # all defaults are loaded, unless specified in
         # metrique_config.json
