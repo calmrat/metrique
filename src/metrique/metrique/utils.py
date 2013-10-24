@@ -3,6 +3,7 @@
 # Author: "Chris Ward" <cward@redhat.com>
 
 from datetime import datetime
+from dateutil.parser import parse as dt_parse
 import os
 import pytz
 import simplejson as json
@@ -90,8 +91,9 @@ def get_timezone_converter(from_timezone):
     def timezone_converter(self, dt):
         if dt is None:
             return None
-        else:
-            return from_tz.localize(dt).astimezone(utc)
+        elif isinstance(dt, basestring):
+            dt = dt_parse(dt)
+        return from_tz.localize(dt).astimezone(utc)
     return timezone_converter
 
 

@@ -84,14 +84,17 @@ class BaseSql(HTTPClient):
     def _extract(self, id_delta, field_order):
         retries = self.config.retries
         sql = self._gen_sql(id_delta, field_order)
-        while retries != 0:
+        while 1:
             try:
                 rows = self._fetchall(sql, field_order)
             except self.retry_on_error:
                 tb = traceback.format_exc()
                 self.logger.error('Fetch Failed: %s' % tb)
                 del tb
-                retries -= 1
+                if retries == 0:
+                    raise
+                else:
+                    retries -= 1
             else:
                 break
         rows = self._build_rows(rows)
@@ -470,8 +473,8 @@ class BaseSql(HTTPClient):
             field = field_order[k]
 
             column = self._normalize_container(column, field)
-            column = self._type(column, field)
             column = self._convert(column, field)
+            column = self._type(column, field)
 
             if not column:
                 obj.update({field: None})
@@ -503,21 +506,35 @@ class BaseSql(HTTPClient):
     def _type(self, value, field):
         container = self.get_property('container', field)
         _type = self.get_property('type', field)
-        if None in [value, _type] or isinstance(value, _type):
-            # skip converting null values
-            # and skip converting if _type is null
+        if None in [_type, value]:
+            # don't convert null values
             return value
         elif container:
-            # appy type to all values in the list
+            sort = self.get_property('sort', field, 1)
+            # apply type to all values in the list
             items = []
             for item in value:
                 if isinstance(item, basestring):
                     item = item.decode('utf8')
-                items.append(_type(item))
-            value = items
+                elif item is None or isinstance(item, _type):
+                    # skip converting null values
+                    # and skip converting if _type is null
+                    pass
+                else:
+                    item = _type(item)
+                items.append(item)
+            if sort == 1:
+                value = sorted(items)
+            elif sort == -1:
+                value = sorted(items, reverse=True)
+            else:
+                value = items
         else:
             # apply type to the single value
             if isinstance(value, basestring):
                 value = value.decode('utf8')
-            value = _type(value)
+            elif value is None or isinstance(value, _type):
+                pass
+            else:
+                value = _type(value)
         return value
