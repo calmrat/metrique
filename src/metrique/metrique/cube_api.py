@@ -210,7 +210,7 @@ def save(self, objects, cube=None, owner=None):
     return sorted(saved)
 
 
-def remove(self, ids, cube=None, backup=False, owner=None):
+def remove(self, query, cube=None, owner=None):
     '''
     Remove objects from cube timeline
 
@@ -219,11 +219,8 @@ def remove(self, ids, cube=None, backup=False, owner=None):
     :param string cube: cube name
     :param string owner: username of cube owner
     '''
-    if not ids:
-        return []
-    else:
-        cmd = self.get_cmd(owner, cube, 'remove')
-        result = self._delete(cmd, ids=ids, backup=backup)
+    cmd = self.get_cmd(owner, cube, 'remove')
+    result = self._delete(cmd, query=query)
     return sorted(result)
 
 

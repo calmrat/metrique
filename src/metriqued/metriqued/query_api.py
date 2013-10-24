@@ -121,40 +121,6 @@ class DistinctHdlr(MetriqueHdlr):
         return self.timeline(owner, cube).distinct(field)
 
 
-class FetchHdlr(MetriqueHdlr):
-    ''' RequestHandler for fetching lumps of cube data '''
-    @authenticated
-    def get(self, owner, cube):
-        fields = self.get_argument('fields')
-        date = self.get_argument('date')
-        sort = self.get_argument('sort')
-        skip = self.get_argument('skip')
-        limit = self.get_argument('limit')
-        oids = self.get_argument('oids', [])
-        result = self.fetch(owner=owner, cube=cube, fields=fields,
-                            date=date, sort=sort, skip=skip,
-                            limit=limit, oids=oids)
-        self.write(result)
-
-    def fetch(self, owner, cube, fields=None, date=None,
-              sort=None, skip=0, limit=0, oids=None):
-        self.cube_exists(owner, cube)
-        self.requires_owner_read(owner, cube)
-        oids = set_default(oids, [], null_ok=True)
-        sort = self.check_sort(sort)
-        fields = self.get_fields(owner, cube, fields)
-
-        spec = {'$in': self.parse_oids(oids)}
-        # b/c there are __special_property__ objects
-        # in every collection, we must filter them out
-        # checking for _oid should suffice
-        dt_str = date_pql_string(date)
-        if dt_str:
-            spec.update(pql.find(dt_str))
-        _cube = self.timeline(owner, cube)
-        return _cube.find(spec=spec, sort=sort, limit=limit, skip=skip)
-
-
 class FindHdlr(MetriqueHdlr):
     '''
     RequestHandler for returning back object
@@ -169,15 +135,19 @@ class FindHdlr(MetriqueHdlr):
         one = self.get_argument('one')
         explain = self.get_argument('explain')
         merge_versions = self.get_argument('merge_versions', True)
+        skip = self.get_argument('skip')
+        limit = self.get_argument('limit')
         result = self.find(owner=owner, cube=cube,
                            query=query, fields=fields,
                            date=date, sort=sort,
                            one=one, explain=explain,
-                           merge_versions=merge_versions)
+                           merge_versions=merge_versions,
+                           skip=skip, limit=limit)
         self.write(result)
 
     def find(self, owner, cube, query, fields=None, date=None,
-             sort=None, one=False, explain=False, merge_versions=True):
+             sort=None, one=False, explain=False, merge_versions=True,
+             skip=0, limit=0):
         self.cube_exists(owner, cube)
         self.requires_owner_read(owner, cube)
 
@@ -188,22 +158,27 @@ class FindHdlr(MetriqueHdlr):
                                               fields['_id']):
             merge_versions = False
 
+        query = query or ''
         query = query_add_date(query, date)
         spec = parse_pql_query(query)
 
         _cube = self.timeline(owner, cube)
         if explain:
-            result = _cube.find(spec, fields=fields, sort=sort).explain()
+            result = _cube.find(spec, fields=fields, sort=sort,
+                                skip=skip, limit=limit).explain()
         elif one:
-            result = _cube.find_one(spec, fields=fields, sort=sort)
+            result = _cube.find_one(spec, fields=fields, sort=sort,
+                                    skip=skip, limit=limit)
         elif merge_versions:
             # merge_versions ignores sort (for now)
-            result = self._merge_versions(_cube, spec, fields)
+            result = self._merge_versions(_cube, spec, fields,
+                                          skip=skip, limit=limit)
         else:
-            result = tuple(_cube.find(spec, fields=fields, sort=sort))
+            result = tuple(_cube.find(spec, fields=fields, sort=sort,
+                                      skip=skip, limit=limit))
         return result
 
-    def _merge_versions(self, _cube, spec, fields):
+    def _merge_versions(self, _cube, spec, fields, skip=0, limit=0):
         '''
         merge versions with unchanging fields of interest
         '''
@@ -227,7 +202,8 @@ class FindHdlr(MetriqueHdlr):
                     ret.pop()
 
         sort = self.check_sort([('_oid', 1)])
-        docs = _cube.find(spec, fields=fields, sort=sort)
+        docs = _cube.find(spec, fields=fields, sort=sort,
+                          skip=skip, limit=limit)
         docs = sorted(docs, key=itemgetter('_oid', '_start', '_end'))
         [merge_doc(doc) for doc in docs]
         logger.debug('... done')

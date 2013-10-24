@@ -94,7 +94,7 @@ class MetriqueHdlr(RequestHandler):
         if not (owner and cube):
             self._raise(400, "owner and cube required")
         logger.debug('... fields: %s' % fields)
-        if fields == '__all__':
+        if fields in ['__all__', '~']:
             # None will make pymongo return back entire objects
             _fields = None
         else:
@@ -376,7 +376,7 @@ class MetriqueHdlr(RequestHandler):
         self.cube_exists(owner, cube)
         cr = self.get_cube_profile(owner, cube, keys=[role])  # cube_role
         cu = self.current_user
-        u = [cu, '__all__']
+        u = [cu, '__all__', '~']
         ok = bool(cr and any(x in cr for x in u))
         return ok
 

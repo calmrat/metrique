@@ -98,12 +98,6 @@ def make_index_spec(_start=EXISTS_SPEC, _end=EXISTS_SPEC,
     return spec
 
 
-def new_cookie_secret():
-    cs = base64.b64encode(uuid.uuid4().bytes + uuid.uuid4().bytes)
-    logger.warn('new cookie secret: %s' % cs)
-    return cs
-
-
 def parse_pql_query(query):
     if not query:
         return {}

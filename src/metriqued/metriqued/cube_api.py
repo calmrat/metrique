@@ -8,7 +8,7 @@ logger = logging.getLogger(__name__)
 from tornado.web import authenticated
 
 from metriqued.core_api import MetriqueHdlr
-
+from metriqued.utils import query_add_date, parse_pql_query
 from metriqued.utils import insert_bulk, jsonhash
 
 from metriqueu.utils import dt2ts, utcnow
@@ -218,42 +218,40 @@ class RemoveObjectsHdlr(MetriqueHdlr):
     '''
     @authenticated
     def delete(self, owner, cube):
-        ids = self.get_argument('ids')
-        backup = self.get_argument('backup')
+        query = self.get_argument('query')
+        date = self.get_argument('date')
         result = self.remove_objects(owner=owner, cube=cube,
-                                     ids=ids, backup=backup)
+                                     query=query, date=date)
         self.write(result)
 
-    def remove_objects(self, owner, cube, ids, backup=False):
+    def remove_objects(self, owner, cube, query, date=None):
         '''
         Remove all the objects (docs) from the given
         cube (mongodb collection)
 
-        :param pymongo.collection _cube:
+        :param pymongo.collection cube:
             cube object (pymongo collection connection)
-        :param list ids:
-            list of object ids
+        :param string query:
+            pql query string
+        :param string date:
+            metrique date(range)
         '''
         self.cube_exists(owner, cube)
         self.requires_owner_admin(owner, cube)
-        if not ids:
-            logger.debug('REMOVE: no ids provided')
+        if not query:
             return []
-        elif not isinstance(ids, list):
-            self._raise(400, "Expected list, got %s: %s" %
-                        (type(ids), ids))
-        else:
-            _cube = self.timeline(owner, cube, admin=True)
-            spec = {'_id': {'$in': ids}}
-            if backup:
-                docs = _cube.find(spec)
-                if docs:
-                    docs = tuple(docs)
-            else:
-                docs = []
 
-            _cube.remove(spec)
-            return docs
+        if isinstance(query, basestring):
+            query = query_add_date(query, date)
+            spec = parse_pql_query(query)
+        elif isinstance(query, (list, tuple)):
+            spec = {'_id': {'$in': query}}
+        else:
+            raise ValueError(
+                'Expected query string or list of ids, got: %s' % type(query))
+
+        _cube = self.timeline(owner, cube, admin=True)
+        return _cube.remove(spec)
 
 
 class SaveObjectsHdlr(MetriqueHdlr):

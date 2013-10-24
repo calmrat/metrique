@@ -8,7 +8,6 @@ import os
 
 from metriqueu.jsonconf import JSONConf
 from metriqued.basemongodb import BaseMongoDB
-from metriqued.utils import new_cookie_secret
 
 CONFIG_DIR = '~/.metrique'
 
@@ -69,7 +68,8 @@ class metrique(JSONConf):
             # NOTE A NEW SECRET WILL INVALIDATE ALL PREVIOUS
             # COOKIES; IN PRODUCTION, MAKE SURE TO HARDCODE
             # THE COOKIE SECRETE IN metrique_config.json
-            return self._default('cookie_secret', new_cookie_secret())
+            return self._default('cookie_secret',
+                                 '____UPDATE_COOKIE_SECRET_CONFIG____')
 
     @property
     def debug(self):

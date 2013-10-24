@@ -5,6 +5,7 @@
 import logging
 logger = logging.getLogger(__name__)
 from passlib.hash import sha256_crypt
+import re
 from tornado.web import authenticated
 
 from metriqued.config import CUBE_QUOTA
@@ -12,6 +13,8 @@ from metriqued.core_api import MetriqueHdlr
 from metriqued.utils import set_property
 
 from metriqueu.utils import utcnow
+
+INVALID_USERNAME_RE = re.compile('[^a-z]', re.I)
 
 
 class AboutMeHdlr(MetriqueHdlr):
@@ -92,6 +95,10 @@ class RegisterHdlr(MetriqueHdlr):
         self.write(result)
 
     def register(self, username, password=None, null_password_ok=False):
+        if INVALID_USERNAME_RE.search(username):
+            self._raise(400,
+                        "Invalid username; ascii alpha [a-z] characters only!")
+        username = username.lower()
         if self.user_exists(username):
             self._raise(409, "user exists")
         passhash = sha256_crypt.encrypt(password) if password else None

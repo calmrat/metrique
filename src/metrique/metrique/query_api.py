@@ -39,9 +39,9 @@ def count(self, query=None, date=None, cube=None, owner=None):
     return self._get(cmd, query=query, date=date)
 
 
-def find(self, query, fields=None, date=None, sort=None, one=False,
-         raw=False, explain=False, merge_versions=True,
-         cube=None, owner=None):
+def find(self, query=None, fields=None, date=None, sort=None, one=False,
+         raw=False, explain=False, merge_versions=True, skip=0,
+         limit=0, cube=None, owner=None):
     '''
     Run a `pql` based query on the given cube. Optionally:
 
@@ -61,7 +61,8 @@ def find(self, query, fields=None, date=None, sort=None, one=False,
     cmd = self.get_cmd(owner, cube, 'find')
     result = self._get(cmd, query=query, fields=fields,
                        date=date, sort=sort, one=one, explain=explain,
-                       merge_versions=merge_versions)
+                       merge_versions=merge_versions,
+                       skip=skip, limit=limit)
     return result if raw or explain else Result(result, date)
 
 
@@ -89,33 +90,6 @@ def deptree(self, field, oids, date=None, level=None, cube=None, owner=None):
     result = self._get(cmd, field=field,
                        oids=oids, date=date, level=level)
     return sorted(result)
-
-
-def fetch(self, fields=None, date=None, sort=None, skip=0, limit=0,
-          oids=None, raw=False, cube=None, owner=None):
-    '''
-    Fetch field values for (potentially) all objects
-    of a given, with skip, limit, id "filter" arguments
-
-    :param fields: Fields that should be returned
-    :type fields: str, or list of str, or str of comma-separated values
-    :param string date:
-        Date (date range) that should be queried.
-        If date==None then the most recent versions of the objects
-        will be queried.
-    :param tuple sort: pymongo formated sort tuple
-    :param Integer skip:
-        number of items (sorted ASC) to skip
-    :param Integer limit:
-        number of items total to return, given skip
-    :param List oids:
-        specific list of oids we should fetch
-    :param boolean raw: return the documents in their (dict) form
-    '''
-    cmd = self.get_cmd(owner, cube, 'fetch')
-    result = self._get(cmd, fields=fields, date=date, sort=sort,
-                       skip=skip, limit=limit, oids=oids)
-    return result if raw else Result(result, date)
 
 
 def distinct(self, field, cube=None, owner=None):
