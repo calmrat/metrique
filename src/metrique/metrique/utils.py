@@ -15,14 +15,6 @@ from metriqueu.utils import dt2ts
 CLIENT_CUBES_PATH = '~/.metrique/cubes/'
 SYSTEM_CUBES_PATH = os.path.join(get_python_lib(), 'metriquec/')
 
-if CLIENT_CUBES_PATH not in sys.path:
-    # also append default client cubes path for easy/consistent importing
-    sys.path.append(CLIENT_CUBES_PATH)
-
-if SYSTEM_CUBES_PATH not in sys.path:
-    # also append system cubes path for easy/consistent importing
-    sys.path.append(SYSTEM_CUBES_PATH)
-
 json_encoder = json.JSONEncoder()
 
 
@@ -114,6 +106,11 @@ def set_cube_path(path=None):
     If no path provided, default to making *metrique.client.cubes*
     get added to the current namespace.
     '''
+    # make sure default client/system cubes path available
+    if CLIENT_CUBES_PATH not in sys.path:
+        sys.path.append(CLIENT_CUBES_PATH)
+    if SYSTEM_CUBES_PATH not in sys.path:
+        sys.path.append(SYSTEM_CUBES_PATH)
     if path:
         path = os.path.expanduser(path)
         if path not in sys.path:
