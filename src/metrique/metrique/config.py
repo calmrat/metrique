@@ -58,6 +58,7 @@ class Config(JSONConf):
             'password': None,
             'port': 5420,
             'retries': 1,
+            'sort': -1,
             'ssl': False,
             'ssl_verify': True,
             'username': os.getenv('USER'),

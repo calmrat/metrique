@@ -149,6 +149,122 @@ class HTTPClient(object):
         # load a new requests session; for the cookies.
         self._load_session()
         self._auto_login_attempted = False
+        self._cache = {}
+
+    def __getitem__(self, name):
+        if isinstance(name, slice):
+            op = 'in'
+        else:
+            op = '=='
+        return self.find('_oid %s %s' % (op, json.dumps(name)),
+                         fields='__all__',
+                         raw=True)
+
+    def __setitem__(self, name, value):
+        raise NotImplementedError
+
+    def __delitem__(self, name):
+        raise NotImplementedError
+
+    def __len__(self):
+        return self.count()
+
+    def __iter__(self):
+        return self
+
+    def insert(self, objs):
+        self.save(objs)
+
+    def extend(self, objs):
+        self.save(objs)
+
+    def next(self):
+        count = self._cache.get('counter', None)
+        if count is None:
+            k = self._cache['count'] = self.count()
+            count = self._cache['counter'] = 0
+            self._cache['sort'] = self.config.sort
+        else:
+            k = self._cache['count']
+        if count < k:
+            docs = self.find(sort=[('_oid', self._cache['sort'])],
+                             skip=count,
+                             limit=self.config.batch_size,
+                             raw=True,
+                             fields='__all__')
+            self._cache['counter'] += len(docs)
+            # FIXME: return back a generator rather than tuple?
+            return docs
+        else:
+            del self._cache['counter']
+            del self._cache['count']
+            del self._cache['sort']
+            raise StopIteration
+
+    def __getslice__(self, i, j):
+        return self.find(sort=[('_oid', self.config.sort)],
+                         raw=True, fields='__all__',
+                         skip=i, limit=j)
+
+    def __contains__(self, item):
+        return bool(self.count('_oid == %s' % item))
+
+    def keys(self):
+        i = 0
+        size = self.config.batch_size
+        for j in xrange(size, self.count(), size):
+            objs = self[i:j]
+            for o in objs:
+                yield o['_oid']
+                i = j
+        else:
+            objs = self[i:self.count()]
+            for o in objs:
+                yield o['_oid']
+
+    def values(self):
+        i = 0
+        size = self.config.batch_size
+        for j in xrange(size, self.count(), size):
+            objs = self[i:j]
+            for o in objs:
+                yield o
+                i = j
+        else:
+            objs = self[i:self.count()]
+            for o in objs:
+                yield o
+
+    def items(self):
+        i = 0
+        size = self.config.batch_size
+        for j in xrange(size, self.count(), size):
+            objs = self[i:j]
+            for o in objs:
+                yield o['_oid'], o
+                i = j
+        else:
+            objs = self[i:self.count()]
+            for o in objs:
+                yield o['_oid'], o
+
+    #def update(self, name)
+    # ...
+
+    # rather ... for listing attributes...
+    #def keys(self, **kwargs):
+    #    objs = self.query_sample(fields='__all__',
+    #                             raw=True, **kwargs)
+    #    keys = []
+    #    for o in objs:
+    #        keys.extend(o.keys())
+    #        keys = set(keys)
+    #    return sorted(keys)
+
+    #def __getattribute__(self, name):
+    #    # get fields on .attr
+    #    objs = self.find(fields='__all__',
+    #                     raw=True, **kwargs)
 
     def activity_get(self, ids=None):
         '''

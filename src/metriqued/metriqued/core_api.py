@@ -21,7 +21,7 @@ from passlib.hash import sha256_crypt
 import cPickle
 import random
 import simplejson as json
-from tornado.web import RequestHandler, HTTPError
+from tornado.web import RequestHandler, HTTPError, asynchronous
 from tornado import gen
 
 from metriqued.utils import parse_pql_query
@@ -297,17 +297,20 @@ class MetriqueHdlr(RequestHandler):
         self.metrique_config = metrique_config
         self.mongodb_config = mongodb_config
 
-    @gen.coroutine
-    def _prepare_async(self):
-        return super(MetriqueHdlr, self).prepare()
+    # FIXME: Async isn't working; not sure what i'm doing here...
+    #@asynchronous
+    #@gen.coroutine
+    #def _prepare_async(self):
+    #    return super(MetriqueHdlr, self).prepare()
 
-    def prepare(self):
-        # FIXME: check size of request content
-        # if more than 16M... reject
-        if self.metrique_config.async:
-            return self._prepare_async()
-        else:
-            return super(MetriqueHdlr, self).prepare()
+    #def prepare(self):
+    #    # FIXME: check size of request content
+    #    # if more than 16M... reject
+    #    if self.metrique_config.async:
+    #        result = self._prepare_async()
+    #    else:
+    #        result = super(MetriqueHdlr, self).prepare()
+    #    return result
 
     def write(self, value):
         # content expected to always be JSON
