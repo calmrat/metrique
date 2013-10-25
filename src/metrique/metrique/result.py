@@ -15,7 +15,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 from decorator import decorator
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from pandas import DataFrame, Series
 import pandas.tseries.offsets as off
@@ -253,6 +253,22 @@ class Result(DataFrame):
         oids = set(self[mask]._oid.tolist())
         return self[self._oid.apply(lambda oid: oid in oids)]
 
+    def persistent_oid_counts(self, dates):
+        '''
+        Counts have many objects (identified by their oids) existed before
+        or on a given date.
+
+        :param list dates:
+            List of the dates at which the count should be computed.
+        '''
+        total = pd.Series([self.on_date(d)._oid for d in dates],
+                          index=dates)
+        for i in range(1, total.size):
+            a1 = total[total.index[i - 1]]
+            a2 = total[total.index[i]]
+            total[total.index[i]] = list(set(a1) | set(a2))
+        return total.apply(len)
+
     @filtered
     def last_versions_with_age(self, col_name='age'):
         '''
@@ -283,7 +299,7 @@ class Result(DataFrame):
             else:
                 age = min(cut_ts, end) - df._start.min()
             last = df[df._end == end].copy()
-            last[col_name] = age
+            last[col_name] = age - timedelta(microseconds=age.microseconds)
             return last
 
         cut_ts = self._rbound or datetime.utcnow()
