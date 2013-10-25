@@ -229,26 +229,39 @@ class HistoryHdlr(MetriqueHdlr):
         self.cube_exists(owner, cube)
         self.requires_owner_read(owner, cube)
 
-        spec = parse_pql_query(query)
+        date_list = sorted(map(dt2ts, date_list))
+        spec = parse_pql_query(
+            '%s and _start < %s and (_end >= %s or _end == None)' % (
+                query, max(date_list), min(date_list)))
 
         _cube = self.timeline(owner, cube)
-        date_list = map(dt2ts, date_list)
+
+        agg = [{'$match': spec},
+               {'$group':
+                {'_id': '$%s' % by_field if by_field else 'id',
+                 'starts': {'$push': '$_start'},
+                 'ends': {'$push': '$_end'}}
+                }]
+        logger.debug('Aggregation: %s' % agg)
+        data = _cube.aggregate(agg)['result']
 
         # accumulate the counts
-        if by_field:
-            data = _cube.find(spec, fields=['_start', '_end', by_field])
-            res = defaultdict(lambda: defaultdict(int))
-        else:
-            data = _cube.find(spec, fields=['_start', '_end'])
-            res = defaultdict(int)
-        for doc in data:
+        res = defaultdict(lambda: defaultdict(int))
+        for group in data:
+            starts = sorted(group['starts'])
+            ends = sorted([e for e in group['ends'] if e is not None])
+            _id = group['_id']
+            ind = 0
+            # assuming date_list is sorted
             for date in date_list:
-                if doc['_start'] <= date and (doc['_end'] is None or
-                                              doc['_end'] > date):
-                    if by_field:
-                        res[date][doc[by_field]] += 1
-                    else:
-                        res[date] += 1
+                while ind < len(starts) and starts[ind] < date:
+                    ind += 1
+                res[date][_id] = ind
+            ind = 0
+            for date in date_list:
+                while ind < len(ends) and ends[ind] < date:
+                    ind += 1
+                res[date][_id] -= ind
 
         # convert to the return form
         ret = []
@@ -262,7 +275,7 @@ class HistoryHdlr(MetriqueHdlr):
                             "values": vals})
             else:
                 ret.append({"date": date,
-                            "count": value})
+                            "count": value['id']})
         return ret
 
 
