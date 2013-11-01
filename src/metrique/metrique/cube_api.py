@@ -226,7 +226,8 @@ def remove(self, query, cube=None, owner=None):
 
 ######## ACTIVITY IMPORT ########
 
-def activity_import(self, oids=None, logfile=None, cube=None, owner=None):
+def activity_import(self, oids=None, logfile=None, cube=None, owner=None,
+                    parallel=True):
     '''
     WARNING: Do NOT run extract while activity import is running,
              it might result in data corruption.
@@ -253,29 +254,36 @@ def activity_import(self, oids=None, logfile=None, cube=None, owner=None):
     max_workers = self.config.max_workers
     batch_size = self.config.batch_size
 
-    with ThreadPoolExecutor(max_workers=max_workers) as ex:
-        futures = [ex.submit(_activity_import, self, oids=batch,
-                             cube=cube, owner=owner)
-                   for batch in batch_gen(oids, batch_size)]
-
     saved = []
-    for future in as_completed(futures):
-        try:
-            result = future.result()
-        except Exception as e:
-            tb = traceback.format_exc()
-            self.logger.error('Activity Import Error: %s\n%s' % (e, tb))
-            del tb
-        else:
+    if parallel:
+        with ThreadPoolExecutor(max_workers=max_workers) as ex:
+            futures = [ex.submit(_activity_import, self, oids=batch,
+                                 cube=cube, owner=owner)
+                       for batch in batch_gen(oids, batch_size)]
+
+        for future in as_completed(futures):
+            try:
+                result = future.result()
+            except Exception as e:
+                tb = traceback.format_exc()
+                self.logger.error('Activity Import Error: %s\n%s' % (e, tb))
+                del tb
+            else:
+                saved.extend(result)
+                self.logger.info(
+                    '%i of %i extracted' % (len(saved),
+                                            len(oids)))
+    else:
+        for batch in batch_gen(oids, batch_size):
+            result = _activity_import(self, oids=batch, cube=cube, owner=owner)
             saved.extend(result)
-            self.logger.info(
-                '%i of %i extracted' % (len(saved),
-                                        len(oids)))
+
     failed = set(oids) - set(saved)
     result = {'saved': sorted(saved), 'failed': sorted(failed)}
     self.logger.debug(result)
     # reset logger
-    self.logger = logger_orig
+    if logfile:
+        self.logger = logger_orig
     return result
 
 
@@ -308,7 +316,7 @@ def _activity_import(self, oids, cube, owner):
             save_objects += updates
             remove_ids.append(_id)
 
-    self.cube_remove(ids=remove_ids)
+    self.cube_remove('_id in %s' % remove_ids)
     self.cube_save(save_objects)
     return oids
 
@@ -321,11 +329,11 @@ def _activity_import_doc(self, time_doc, activities):
     # We want to consider only activities that happend before time_doc
     # do not move this, because time_doc._start changes
     # time_doc['_start'] is a timestamp, whereas act[0] is a datetime
-    td_start = time_doc['_start'] = ts2dt(time_doc['_start'])
+    td_start = time_doc['_start'] = ts2dt(time_doc['_start'], tz_aware=False)
     activities = filter(lambda act: (act[0] < td_start and
                                      act[1] in time_doc), activities)
     # make sure that activities are sorted by when descending
-    activities = sorted(activities, reverse=True)
+    activities.sort(reverse=True)
     for when, field, removed, added in activities:
         removed = dt2ts(removed) if isinstance(removed, datetime) else removed
         added = dt2ts(added) if isinstance(added, datetime) else added
@@ -354,8 +362,15 @@ def _activity_import_doc(self, time_doc, activities):
                      'added': added,
                      'added_type': str(type(added)),
                      'last_val': last_val,
-                     'last_val_type': str(type(last_val))}
-            self.logger.error(json.dumps(incon))
+                     'last_val_type': str(type(last_val)),
+                     'when': str(when)}
+            if self.config.get('incon_log_type') == 'pretty':
+                msg = '{oid} {field}: {removed} -> {added}, has {last_val}; '
+                msg += '({removed_type} -> {added_type}, has {last_val_type})'
+                msg += ' ... {when}'
+                self.logger.error(msg.format(**incon))
+            else:
+                self.logger.error(json.dumps(incon))
             if '_corrupted' not in new_doc:
                 new_doc['_corrupted'] = {}
             new_doc['_corrupted'][field] = added
@@ -367,12 +382,13 @@ def _activity_import_doc(self, time_doc, activities):
         # set start to creation time if available
         last_doc = batch_updates[-1]
         creation_field = self.get_property('cfield')
-        creation_ts = ts2dt(last_doc[creation_field])
-        if creation_ts < last_doc['_start']:
-            last_doc['_start'] = creation_ts
-        elif len(batch_updates) == 1:
-            # we have only one version, that we did not change
-            return []
+        if creation_field:
+            creation_ts = ts2dt(last_doc[creation_field])
+            if creation_ts < last_doc['_start']:
+                last_doc['_start'] = creation_ts
+            elif len(batch_updates) == 1:
+                # we have only one version, that we did not change
+                return []
     except Exception as e:
         self.logger.error('Error updating creation time; %s' % e)
     return batch_updates
