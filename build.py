@@ -216,7 +216,9 @@ def build(path, action='sdist', upload=False, dry_run=False):
 
 
 def develop(path):
-    cmd = ['python', 'setup.py' 'develop']
+    dir = os.path.dirname(path)
+    os.chdir(dir)
+    cmd = ['python', 'setup.py', 'develop']
     cmd_str = ' '.join(cmd)
     logger.info('(%s) %s' % (os.getcwd(), cmd_str))
     sp.call(cmd)
