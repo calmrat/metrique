@@ -208,6 +208,7 @@ class RegisterHdlr(MetriqueHdlr):
         _cube.ensure_index('_hash')
         _cube.ensure_index('_oid')
         _cube.ensure_index('_start')  # used in core_api.get_cube_last_start
+        _cube.ensure_index('_end')  # default for non-historical queries
         return remaining
 
 
