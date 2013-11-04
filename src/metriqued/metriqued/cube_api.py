@@ -136,10 +136,10 @@ class ListHdlr(MetriqueHdlr):
 
     def get_readable_collections(self):
         # return back a collections if user is owner or can read them
-        roles = ['read', 'own']
-        read, own = self.current_user_acl(roles)
+        roles = ['read']
+        read = self.current_user_acl(roles)
         # FIXME: return back owner/cube separated into a dict?
-        return read + own
+        return read
 
     def sample_fields(self, owner, cube, sample_size=None, query=None):
         self.cube_exists(owner, cube)
