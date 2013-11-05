@@ -20,11 +20,9 @@ class TEIID(BaseSql):
     method. To connect, TEIID (psycopg2) expects a single string with
     all the required arguments included.
     '''
-    def __init__(self, vdb, db, host, username, password, port,
-                 **kwargs):
+    def __init__(self, vdb, host, username, password, port, **kwargs):
         super(TEIID, self).__init__(**kwargs)
         self.vdb = vdb
-        self.db = db
         self.host = host
         self.username = username
         self.password = password

@@ -44,6 +44,7 @@ def test_dt2ts():
     now_date = dt.utcfromtimestamp(now_time)
     now_date_iso = now_date.isoformat()
 
+    assert dt2ts(None) is None
     assert dt2ts(now_time) == now_time
     assert dt2ts(now_date) == now_time
     assert dt2ts(now_date_iso) == now_time

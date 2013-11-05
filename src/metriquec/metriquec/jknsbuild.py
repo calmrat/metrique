@@ -199,5 +199,5 @@ class Build(BaseJSON):
 
 
 if __name__ == '__main__':
-    from metrique.argparsers import cube_cli
+    from metriquec.argparsers import cube_cli
     cube_cli(Build)

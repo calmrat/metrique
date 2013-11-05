@@ -16,6 +16,16 @@ class BaseJSON(HTTPClient):
     Object used for extracting data in JSON format
     """
 
+    def load(self, path, strict=False):
+        '''
+        Given a string of valid JSON, load it into memory.
+
+        No strict loading (DEFAULT); ignore control characters
+        '''
+        # 'strict=False: control characters will be allowed in strings'
+        with open(path) as f:
+            return json.load(f, strict=strict)
+
     def loads(self, json_str, strict=False):
         '''
         Given a string of valid JSON, load it into memory.

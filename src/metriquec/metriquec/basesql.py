@@ -31,11 +31,10 @@ class BaseSql(HTTPClient):
 
     FIXME ... MORE DOCS TO COME
     '''
-    def __init__(self, sql_host, sql_port, sql_db, **kwargs):
+    def __init__(self, sql_host, sql_port, **kwargs):
         super(BaseSql, self).__init__(**kwargs)
         self.config['sql_host'] = sql_host
         self.config['sql_port'] = sql_port
-        self.config['sql_db'] = sql_db
         self.retry_on_error = None
 
     def _build_rows(self, rows):
@@ -76,10 +75,6 @@ class BaseSql(HTTPClient):
         else:
             value = value
         return value
-
-    @property
-    def db(self):
-        return self.config.get('sql_db')
 
     def _extract(self, id_delta, field_order):
         retries = self.config.retries
@@ -133,7 +128,7 @@ class BaseSql(HTTPClient):
         else:
             return []
 
-    def extract(self, exclude_fields=None, force=False,
+    def extract(self, exclude_fields=None, force=None,
                 last_update=None, parse_timestamp=None, **kwargs):
         '''
         Extract routine for SQL based cubes.
@@ -143,8 +138,8 @@ class BaseSql(HTTPClient):
         :param list/str exclude_fields:
             A list or csv string of the field names to exclude.
         :param force:
-            If False (default), then it will try to extract only the objects
-            that have changed since the last extract.
+            If None (use: default False), then it will try to extract
+            only the objects that have changed since the last extract.
             If True, then it will try to extract all the objects.
             If it is a list of oids, then it will try to extract only those
             objects with oids from the list.
@@ -155,15 +150,21 @@ class BaseSql(HTTPClient):
 
         oids = []
 
+        if force is None:
+            force = self.get_property('force', None, False)
+
         if force is True:
             # get a list of all known object ids
             table = self.get_property('table')
+            db = self.get_property('db')
             _id = self.get_property('column')
-            sql = 'SELECT DISTINCT %s.%s FROM %s.%s' % (table, _id, self.db,
+            sql = 'SELECT DISTINCT %s.%s FROM %s.%s' % (table, _id, db,
                                                         table)
             rows = self.proxy.fetchall(sql)
             oids = self._extract_row_ids(rows)
 
+        # [cward] FIXME: is 'delta' flag necessary? just look for
+        # the individual delta flags, no?
         if force is False and self.get_property('delta', None, True):
             # include objects updated since last mtime too
             # apply delta sql clause's if we're not forcing a full run
@@ -263,7 +264,7 @@ class BaseSql(HTTPClient):
         '''
         '''
         self.logger.debug('Generating SQL...')
-        db = self.get_property('db', default=self.db)
+        db = self.get_property('db')
         table = self.get_property('table')
         selects = self._get_sql_selects(field_order)
 
@@ -305,6 +306,7 @@ class BaseSql(HTTPClient):
         Returns a list of new oids that have not been extracted yet.
         '''
         table = self.get_property('table')
+        db = self.get_property('db')
         _id = self.get_property('column')
         last_id = self.get_last_field('_oid')
         if last_id:
@@ -319,7 +321,7 @@ class BaseSql(HTTPClient):
             else:
                 where = "%s.%s > '%s'" % (table, _id, last_id)
             sql = 'SELECT DISTINCT %s.%s FROM %s.%s WHERE %s' % (
-                table, _id, self.db, table, where)
+                table, _id, db, table, where)
             rows = self.proxy.fetchall(sql)
             ids = self._extract_row_ids(rows)
         else:
@@ -352,7 +354,7 @@ class BaseSql(HTTPClient):
             _sql = "%s > %s" % (_column, mtime)
             filters.append(_sql)
 
-        db = self.get_property('db', default=self.db)
+        db = self.get_property('db')
         table = self.get_property('table')
         _id = self.get_property('column')
 
