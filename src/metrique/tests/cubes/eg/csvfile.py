@@ -4,7 +4,7 @@
 
 import os
 
-from metriquec.csvobject import CSVObject
+from metriquec.csvdata.rows import Rows
 
 cwd = os.path.dirname(os.path.abspath(__file__))
 tests_root = '/'.join(cwd.split('/')[0:-2])
@@ -13,7 +13,7 @@ DEFAULT_URI = os.path.join(fixtures, 'us-idx-eod.csv')
 DEFAULT_ID = 'symbol'
 
 
-class Csvfile(CSVObject):
+class Csvfile(Rows):
     """
     Test Cube; csv based
     """
