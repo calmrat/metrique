@@ -22,7 +22,7 @@ class Rows(BaseCSV):
     # in defaults above. A check will be made to compare the
     # expected header to actual
 
-    def extract(self, uri, _oid, type_map=None, **kwargs):
+    def extract(self, uri, _oid, _start=None, type_map=None, **kwargs):
         '''
         '''
         self.logger.debug("Loading CSV: %s" % uri)
@@ -30,9 +30,7 @@ class Rows(BaseCSV):
         # save the uri for reference too
         objects = self.set_column(objects, 'uri', uri)
         objects = self.set_column(objects, '_oid', _oid)
-        # FIXME: note, if the fields get changed during 'self.clean_fields()'
-        # the type_map must already reflect those changes!
-        # otherwise, we need to apply the clean func to type_map keys too
+        objects = self.set_column(objects, '_start', _start)
         objects = self.normalize_types(objects, type_map)
         objects = self.normalize_nones(objects)
         return self.cube_save(objects)

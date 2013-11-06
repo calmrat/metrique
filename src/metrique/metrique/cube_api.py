@@ -329,7 +329,7 @@ def _activity_import_doc(self, time_doc, activities):
     # We want to consider only activities that happend before time_doc
     # do not move this, because time_doc._start changes
     # time_doc['_start'] is a timestamp, whereas act[0] is a datetime
-    td_start = time_doc['_start'] = ts2dt(time_doc['_start'], tz_aware=False)
+    td_start = time_doc['_start'] = ts2dt(time_doc['_start'], tz_aware=True)
     activities = filter(lambda act: (act[0] < td_start and
                                      act[1] in time_doc), activities)
     # make sure that activities are sorted by when descending
