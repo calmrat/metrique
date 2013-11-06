@@ -154,11 +154,20 @@ class HTTPClient(object):
     def __getitem__(self, name):
         if isinstance(name, slice):
             op = 'in'
+            one = False
         else:
             op = '=='
-        return self.find('_oid %s %s' % (op, json.dumps(name)),
-                         fields='__all__',
-                         raw=True)
+            one = True
+
+        result = self.find('_oid %s %s' % (op, json.dumps(name)),
+                           fields='__all__',
+                           raw=True, one=one)
+        if not result:
+            if op == 'in':
+                result = []
+            else:
+                result = {}
+        return result
 
     def __setitem__(self, name, value):
         raise NotImplementedError

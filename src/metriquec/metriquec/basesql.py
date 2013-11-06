@@ -528,14 +528,17 @@ class BaseSql(HTTPClient):
             # apply type to all values in the list
             items = []
             for item in value:
-                if isinstance(item, basestring):
-                    item = item.decode('utf8')
-                elif item is None or isinstance(item, _type):
+                if item is None or isinstance(item, _type):
                     # skip converting null values
                     # and skip converting if _type is null
                     pass
                 else:
                     item = _type(item)
+
+                # normalize strings to utf8
+                if isinstance(item, basestring):
+                    item = item.decode('utf8')
+
                 items.append(item)
             if sort == 1:
                 value = sorted(items)
