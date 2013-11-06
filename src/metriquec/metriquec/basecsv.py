@@ -24,18 +24,25 @@ class BaseCSV(HTTPClient):
     The field names are defined by the column headers,
     therefore column heders are required in the csv.
     """
+    def clean_fields(self, fields):
+        ''' periods and dollar signs are not allowed! '''
+        return [f.replace('.', '').replace('$', '') for f in fields]
 
-    def loaduri(self, uri):
-        ''' Load csv from a given uri.
+    def loaduri(self, uri, mode='rU'):
+        '''
+        Load csv from a given uri.
+        Supports: http(s) or from file
 
-            Supports: http(s) or from file
+        :param string mode:
+            file open mode. Default: 'rU' (read/universal newlines)
         '''
         if re.match('https?://', uri):
             content = urlopen(uri).readlines()
         else:
             uri = re.sub('^file://', '', uri)
             uri = os.path.expanduser(uri)
-            content = open(uri).readlines()
+            with open(uri, mode=mode) as f:
+                content = f.readlines()
         return self.loadi(content)
 
     def loads(self, csv_str):
@@ -59,7 +66,7 @@ class BaseCSV(HTTPClient):
         into a newline separated string to load
         the csv as a string and return it.
         '''
-        return self.loads('\n'.join([s.strip('\n\r') for s in csv_iter]))
+        return self.loads('\n'.join([s.strip('[\n\r]*$') for s in csv_iter]))
 
     # FIXME: REFACTOR to split out header_fields and dialect
     # into two separate methods?
@@ -95,16 +102,47 @@ class BaseCSV(HTTPClient):
         if exp_fields and fields != exp_fields:
             raise ValueError("Header mismatch!\n Got: %s\n Expected: %s" % (
                 fields, exp_fields))
+
+        fields = self.clean_fields(fields)
+
         return rows, fields, dialect
 
-    def set_column(self, objects, key, value, **kwargs):
+    def normalize_nones(self, objects):
+        for i, o in enumerate(objects):
+            for k, v in o.items():
+                if objects[i][k] in ['', u'']:
+                    objects[i][k] = None
+        return objects
+
+    def normalize_types(self, objects, type_map=None):
+        'type_map should be a dict with key:field value:type mapping'
+        _type = None
+        for i, o in enumerate(objects):
+            for field, value in o.items():
+                if type_map:
+                    _type = type_map.get(field)
+                if _type:
+                    # apply the field's type if specified
+                    # don't try to catch exceptions here; errors
+                    # here are problems in the type map which need to be fixed
+                    objects[i][field] = _type(objects[i][field])
+                else:
+                    try:
+                        # attempt to convert to float, fall back
+                        # to original string value otherwise
+                        objects[i][field] = float(objects[i][field])
+                    except (TypeError, ValueError):
+                        pass
+        return objects
+
+    def set_column(self, objects, key, value):
         '''
         Save an additional column/field to all objects in memory
         '''
         if type(value) is type or hasattr(value, '__call__'):
             # we have class or function; use the resulting object after
             # init/exec
-            [o.update({key: str(value(**kwargs))}) for o in objects]
+            [o.update({key: str(value(o))}) for o in objects]
         elif key == '_oid':
             try:
                 [o.update({key: o[value]}) for o in objects]

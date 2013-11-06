@@ -103,7 +103,7 @@ class BaseSql(HTTPClient):
         with ThreadPoolExecutor(max_workers=self.config.max_workers) as ex:
             futures = [ex.submit(self._extract, batch, field_order)
                        for batch in batch_gen(id_delta,
-                                              self.config.batch_size)]
+                                              self.config.sql_batch_size)]
         saved = []
         for future in as_completed(futures):
             try:
@@ -184,7 +184,7 @@ class BaseSql(HTTPClient):
         # out the sql rows and know which column : field
         field_order = list(set(self.fields) - set(exclude_fields))
 
-        if self.config.batch_size <= 0:
+        if self.config.sql_batch_size <= 0:
             return self._extract(oids, field_order)
         else:
             return self._extract_threaded(oids, field_order)
