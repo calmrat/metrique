@@ -235,13 +235,13 @@ class BaseSql(HTTPClient):
             if parse_timestamp is None:
                 parse_timestamp = self.get_property('parse_timestamp',
                                                     None, True)
-            if not (hasattr(mtime, 'tzinfo') and mtime.tzinfo):
-                # We need the timezone, to readjust relative to the server's tz
-                mtime = mtime.replace(tzinfo=pytz.utc)
-            mtime = mtime.strftime('%Y-%m-%d %H:%M:%S %z')
-            dt_format = "yyyy-MM-dd HH:mm:ss z"
-
             if parse_timestamp:
+                if not (hasattr(mtime, 'tzinfo') and mtime.tzinfo):
+                    # We need the timezone, to readjust relative to the
+                    # server's tz
+                    mtime = mtime.replace(tzinfo=pytz.utc)
+                mtime = mtime.strftime('%Y-%m-%d %H:%M:%S %z')
+                dt_format = "yyyy-MM-dd HH:mm:ss z"
                 mtime = "parseTimestamp('%s', '%s')" % (mtime, dt_format)
             else:
                 mtime = "'%s'" % mtime
