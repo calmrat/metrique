@@ -115,7 +115,7 @@ class HTTPClient(object):
                 <type HTTPClient(...)>
         '''
         if 'cube' in kwargs and kwargs['cube']:
-            cls = get_cube(kwargs['cube'])
+            cls = get_cube(cube=kwargs['cube'], init=False)
         else:
             cls = cls
         return object.__new__(cls)
@@ -125,12 +125,6 @@ class HTTPClient(object):
         # all defaults are loaded, unless specified in
         # metrique_config.json
         self.load_config()
-
-        if isinstance(cube, basestring):
-            self.set_cube(cube)
-        elif cube:
-            raise TypeError(
-                "expected cube as a string, got %s" % type(cube))
 
         self.owner = owner or self.config.username
 
@@ -413,8 +407,7 @@ class HTTPClient(object):
         ' wrapper for utils.get_cube(); try to load a cube, pyclient '
         config = copy(self.config)
         config.update(kwargs)
-        return get_cube(cube=cube, init=init, config=config,
-                        path=self.config.cubes_path)
+        return get_cube(cube=cube, init=init, config=config)
 
     def get_last_field(self, field):
         '''
@@ -540,14 +533,6 @@ class HTTPClient(object):
                 return _response
             else:
                 return json.loads(_response.content)
-
-    def set_cube(self, cube):
-        '''
-        give this instance a "cube name"; the cube name is expected
-        to exist already in the metrique host being interacted with,
-        or the cube needs to be registered.
-        '''
-        self.name = cube
 
     def whoami(self, auth=False):
         ' quick way of checking the username the instance is working as '

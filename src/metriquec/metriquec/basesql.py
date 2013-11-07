@@ -31,10 +31,12 @@ class BaseSql(HTTPClient):
 
     FIXME ... MORE DOCS TO COME
     '''
-    def __init__(self, sql_host, sql_port, **kwargs):
+    def __init__(self, sql_host=None, sql_port=None, **kwargs):
         super(BaseSql, self).__init__(**kwargs)
-        self.config['sql_host'] = sql_host
-        self.config['sql_port'] = sql_port
+        if sql_host:
+            self.config['sql_host'] = sql_host
+        if sql_port:
+            self.config['sql_port'] = sql_port
         self.retry_on_error = None
 
     def _build_rows(self, rows):

@@ -4,7 +4,7 @@
 
 import os
 
-from metriquec.csvdata.rows import Rows
+from metriquec.cubes import csvdata_rows
 
 cwd = os.path.dirname(os.path.abspath(__file__))
 tests_root = '/'.join(cwd.split('/')[0:-2])
@@ -13,11 +13,11 @@ DEFAULT_URI = os.path.join(fixtures, 'us-idx-eod.csv')
 DEFAULT_ID = 'symbol'
 
 
-class Csvfile(Rows):
+class Csvfile(csvdata_rows):
     """
     Test Cube; csv based
     """
-    name = 'eg_csvfile'
+    name = 'testcube_csvfile'
 
     def extract(self, uri=DEFAULT_URI, _oid=DEFAULT_ID, **kwargs):
         return super(Csvfile, self).extract(uri=uri, _oid=_oid, **kwargs)
