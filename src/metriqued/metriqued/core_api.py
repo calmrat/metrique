@@ -29,7 +29,9 @@ from metriqued.utils import parse_pql_query
 from metriqueu.utils import set_default, utcnow, strip_split
 
 SAMPLE_SIZE = 1
-VALID_CUBE_ROLES = set(('admin', 'read', 'write'))
+# 'own' is the one who created the cube; is cube superuser
+# 'admin' is cube superuser; 'read' can only read; 'write' can only write
+VALID_CUBE_ROLES = set(('own', 'admin', 'read', 'write'))
 VALID_ACTIONS = set(('pull', 'addToSet', 'set'))
 
 

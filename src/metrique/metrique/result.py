@@ -382,14 +382,42 @@ class Result(DataFrame):
     ################################ SAVE ####################################
 
     def save_to_cube(self, oid, pyclient, cube='results', owner=None):
-        frame = self.to_dict('records')
-        obj = {'_oid': oid, 'frame': frame}
+        '''
+        Saves this result objects to the specified metrique cube.
+
+        :param str oid:
+            The _oid to be used for this result.
+        :param HTTPClient pyclient:
+            A client that should be used to connect to the cube.
+        :param str cube:
+            Cube's name.
+        :param str owner:
+            Cube's owner.
+        '''
+        frame = self.to_dict('list')
+        obj = {'_oid': str(oid), 'frame': frame,
+               'lbound': self._lbound, 'rbound': self._rbound}
         pyclient.cube_save([obj], cube=cube, owner=owner)
 
 
 #################################### LOAD ####################################
 
 def load_from_cube(oid, pyclient, cube='results', owner=None):
-    res = pyclient.find('_oid == %s' % oid,
+    '''
+    Loads a result object from cube.
+
+    :param str oid:
+        The _oid of the result to be loaded.
+    :param HTTPClient pyclient:
+        A client that should be used to connect to the cube.
+    :param str cube:
+        Cube's name.
+    :param str owner:
+        Cube's owner.
+    '''
+    res = pyclient.find('_oid == "%s"' % oid,
                         fields='__all__', cube=cube, owner=owner, raw=True)
-    return res
+    result = Result(res[0]['frame'])
+    result._lbound = res[0]['lbound']
+    result._rbound = res[0]['rbound']
+    return result
