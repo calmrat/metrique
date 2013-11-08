@@ -27,7 +27,10 @@ def batch_gen(data, batch_size):
 
 def dt2ts(dt, drop_micro=False):
     ''' convert datetime objects to timestamp seconds (float) '''
-    if not dt:
+    # the equals check to 'NaT' is hack to avoid adding pandas as a dependency
+    if repr(dt) == 'NaT':
+        return None
+    elif not dt:
         return dt
     elif isinstance(dt, (int, long, float, complex)):  # its a ts already
         ts = dt
