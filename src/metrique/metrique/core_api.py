@@ -120,7 +120,8 @@ class HTTPClient(object):
             cls = cls
         return object.__new__(cls)
 
-    def __init__(self, cube=None, config_file=None, owner=None, **kwargs):
+    def __init__(self, cube=None, config_file=None, owner=None,
+                 name=None, **kwargs):
         self._config_file = config_file
         # all defaults are loaded, unless specified in
         # metrique_config.json
@@ -133,6 +134,10 @@ class HTTPClient(object):
         for k, v in kwargs.items():
             if v is not None:
                 self.config[k] = v
+
+        if name:
+            # override the cube name
+            self.name = name
 
         # keep logging local to the cube so multiple
         # cubes can independently log without interferring
