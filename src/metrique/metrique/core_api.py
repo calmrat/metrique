@@ -127,13 +127,13 @@ class HTTPClient(object):
         # metrique_config.json
         self.load_config()
 
-        self.owner = owner or self.config.username
-
         # update config object with any additional kwargs
         # passed in by the user
         for k, v in kwargs.items():
             if v is not None:
                 self.config[k] = v
+
+        self.owner = owner or self.config.username
 
         if name:
             # override the cube name

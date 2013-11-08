@@ -21,7 +21,7 @@ def aboutme(self, username=None):
     return result
 
 
-def register(self, username, password, logon_as=True):
+def register(self, username=None, password=None, logon_as=True):
     '''
     Register new user
 
