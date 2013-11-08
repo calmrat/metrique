@@ -49,7 +49,6 @@ class Config(JSONConf):
             'auto_login': True,
             'batch_size': 5000,
             'sql_batch_size': 1000,
-            'cubes_path': '~/.metrique/cubes',
             'debug': None,
             'host': '127.0.0.1',
             'journal': False,

@@ -14,6 +14,9 @@ from urllib2 import urlopen
 
 from metrique.core_api import HTTPClient
 
+mongo_re = re.compile('[\.$]*')
+space_re = re.compile(' ')
+
 
 class BaseCSV(HTTPClient):
     """
@@ -24,9 +27,12 @@ class BaseCSV(HTTPClient):
     The field names are defined by the column headers,
     therefore column heders are required in the csv.
     """
-    def clean_fields(self, fields):
+    def normalize_fields(self, fields):
         ''' periods and dollar signs are not allowed! '''
-        return [f.replace('.', '').replace('$', '') for f in fields]
+        fields = [mongo_re.sub('', f) for f in fields]
+        fields = [space_re.sub('_', f) for f in fields]
+        fields = [f.lower() for f in fields]
+        return fields
 
     def loaduri(self, uri, mode='rU'):
         '''
@@ -103,7 +109,7 @@ class BaseCSV(HTTPClient):
             raise ValueError("Header mismatch!\n Got: %s\n Expected: %s" % (
                 fields, exp_fields))
 
-        fields = self.clean_fields(fields)
+        fields = self.normalize_fields(fields)
 
         return rows, fields, dialect
 
@@ -142,7 +148,7 @@ class BaseCSV(HTTPClient):
         if type(value) is type or hasattr(value, '__call__'):
             # we have class or function; use the resulting object after
             # init/exec
-            [o.update({key: str(value(o))}) for o in objects]
+            [o.update({key: value(o)}) for o in objects]
         elif key == '_oid':
             try:
                 [o.update({key: o[value]}) for o in objects]
