@@ -116,7 +116,7 @@ class BaseCSV(HTTPClient):
     def normalize_nones(self, objects):
         for i, o in enumerate(objects):
             for k, v in o.items():
-                if objects[i][k] in ['', u'']:
+                if objects[i][k] == '':
                     objects[i][k] = None
         return objects
 
