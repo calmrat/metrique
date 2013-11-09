@@ -8,8 +8,8 @@ logger = logging.getLogger(__name__)
 from setuptools import setup
 
 __pkg__ = 'metriqued'
-__version__ = '0.2.0'
-__release__ = 4
+__version__ = '0.2.2'
+__release__ = "5a"
 __nvr__ = '%s-%s' % (__version__, __release__)
 __pkgs__ = ['metriqued']
 __provides__ = ['metriqued']

@@ -8,13 +8,15 @@ logger = logging.getLogger(__name__)
 from setuptools import setup
 
 __pkg__ = 'metriquec'
-__version__ = '0.2.0'
-__release__ = 4
+__version__ = '0.2.2'
+__release__ = "5a"
 __nvr__ = '%s-%s' % (__version__, __release__)
-__pkgs__ = [
-    'metriquec',
-    'metriquec.sql',
-]
+__pkgs__ = ['metriquec', 'metriquec.sql',
+            'metriquec.cubes',
+            'metriquec.cubes.csvdata',
+            'metriquec.cubes.jknsapi',
+            'metriquec.cubes.gitrepo',
+            ]
 __provides__ = ['metriquec']
 __datafiles__ = []
 __desc__ = 'Metrique - Cubes'

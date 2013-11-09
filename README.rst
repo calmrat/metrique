@@ -74,6 +74,16 @@ To create a new virtual environment to install metrique into::
 
     # then prepare the environment; pip install metrique, ...
 
+If you notice the following warning::
+    UserWarning: /home/USER/.python-eggs is writable by group/others and 
+    vulnerable to attack when used with get_resource_filename. Consider 
+    a more secure location (set with .set_extraction_path or the 
+    PYTHON_EGG_CACHE environment variable).
+
+Run the following to 'secure' the directory, so the warning stop::
+    chmod 700 ~/python-eggs
+    
+
 Ipython
 -------
 We also strongly suggest installing and using IPython 
@@ -88,7 +98,6 @@ To install ipython notebook install the following
 Then install ipython with pip::
 
     pip install ipython
-
 
 If you see any error, not otherwise mentioned here, Google.
 

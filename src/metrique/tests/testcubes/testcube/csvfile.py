@@ -4,7 +4,8 @@
 
 import os
 
-from metriquec.cubes import csvdata_rows
+from metrique.utils import get_cube
+csvdata_rows = get_cube('csvdata_rows')
 
 cwd = os.path.dirname(os.path.abspath(__file__))
 tests_root = '/'.join(cwd.split('/')[0:-2])

@@ -72,7 +72,7 @@ cli.add_argument('-b', '--nobump',
                  default=False)
 cli.add_argument('-bk', '--bump-kind',
                  choices=__bumps__,
-                 default='z')
+                 default='r')
 cli.add_argument('-bo', '--bump-only',
                  action='store_true',
                  default=False)

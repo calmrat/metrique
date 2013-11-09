@@ -62,6 +62,8 @@ class Config(JSONConf):
             'ssl': False,
             'ssl_verify': True,
             'username': os.getenv('USER'),
+            'cube_pkgs': ['cubes'],
+            'cube_paths': [],
         }
         super(Config, self).__init__(config_file=config_file, *args, **kwargs)
 

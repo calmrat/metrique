@@ -7,35 +7,11 @@ from dateutil.parser import parse as dt_parse
 import os
 import pytz
 import simplejson as json
-import site
 import sys
-
-import metriquec
 
 from metriqueu.utils import dt2ts
 
-USER_CUBES_SITEDIR = '~/.metrique'
-SYSTEM_CUBES_SITEDIR = metriquec.__path__[0]
 json_encoder = json.JSONEncoder()
-
-
-def addsitedirs(path=None):
-    '''
-    include these dirs along with any dirs defined in
-    .pth files found into sys.path
-    '''
-    site_dirs = [USER_CUBES_SITEDIR, SYSTEM_CUBES_SITEDIR]
-    if path:
-        site_dirs.append(path)
-    for site_dir in site_dirs:
-        site_dir = os.path.expanduser(site_dir)
-        if not os.path.exists(site_dir):
-            raise IOError("invalid site_dir: %s" % site_dir)
-        elif site_dir not in sys.path:
-            # load .pth files, if available
-            site.addsitedir(site_dir)
-        else:
-            pass
 
 
 def csv2list(csv, delimiter=','):
@@ -70,9 +46,31 @@ def cube_pkg_mod_cls(cube):
     return pkg, mod, _cls
 
 
-def get_cube(cube, init=False, config=None, path=None):
+def _load_cube_pkg(pkg, cube):
+    try:
+        # First, assume the cube module is available
+        # with the name exactly as written
+        mcubes = __import__(pkg, fromlist=[cube])
+        return getattr(mcubes, cube)
+    except AttributeError:
+        try:
+            # if that fails, try to guess the cube module
+            # based on cube 'standard naming convention'
+            # ie, group_cube -> from group.cube import CubeClass
+            _pkg, _mod, _cls = cube_pkg_mod_cls(cube)
+            mcubes = __import__('%s.%s.%s' % (pkg, _pkg, _mod),
+                                fromlist=[_cls])
+            return getattr(mcubes, _cls)
+        except ImportError:
+            pass
+    except ImportError:
+        pass
+
+
+def get_cube(cube, init=False, config=None, pkgs=None, cube_paths=None,
+             **kwargs):
     '''
-    Wraps __import__ to dynamically locate and load a client cube.
+    Dynamically locate and load a metrique cube
 
     :param string cube:
         Name of the cube Class to be imported from given module (eg, 'Build')
@@ -80,35 +78,42 @@ def get_cube(cube, init=False, config=None, path=None):
         Flag to request initialized instance or uninitialized class (default)
     :param dict config:
         dictionary to use as config for initialized cube instance
-
-    looks for *.pth file (eg, cubes.pth) which point to the
-    directory where top-level cubes modules live for system
-    cubes and user cubes.
-
-    Import all the cube classes into current namespace so we can
-    attempt an import and return back the class object.
+        Setting config implies init=True
+    :param list pkgs:
+        list of module names to search for the cubes in
+    :param string path:
+        additional path to search for modules in (added to sys.path)
     '''
     if not config:
         config = {}
+    config.update(**kwargs)
+    if not pkgs:
+        pkgs = config.get('cube_pkgs', ['cubes'])
+    if isinstance(pkgs, basestring):
+        pkgs = [pkgs]
 
-    # include these dirs along with any dirs defined in
-    # .pth files found into sys.path
-    addsitedirs(path=path)
+    # search in the given path too, if provided
+    if not cube_paths:
+        cube_paths = config.get('cube_paths', [])
+    if isinstance(cube_paths, basestring):
+        cube_paths = [cube_paths]
+    for path in cube_paths:
+        path = os.path.expanduser(path)
+        if path not in sys.path:
+            sys.path.append(path)
 
-    pkg, mod, _cls = cube_pkg_mod_cls(cube)
-    try:
-        _pkg = __import__(pkg, fromlist=[mod])
-    except ImportError as e:
-        raise ImportError('%s; (%s)' % (e, ', '.join(sys.path)))
-    _mod = getattr(_pkg, mod)
-    cube = getattr(_mod, _cls)
+    pkgs = pkgs + ['metriquec.cubes']
+    for pkg in pkgs:
+        _cube = _load_cube_pkg(pkg, cube)
+        if _cube:
+            break
+    else:
+        raise RuntimeError('"%s" not found! %s; %s \n%s)' % (
+            cube, pkgs, cube_paths, sys.path))
 
-    if init:
-        if config:
-            cube = cube(**config)
-        else:
-            cube = cube()
-    return cube
+    if init or config:
+        _cube = _cube(**config)
+    return _cube
 
 
 def get_timezone_converter(from_timezone):
