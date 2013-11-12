@@ -2,19 +2,19 @@
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 # Author: "Chris Ward <cward@redhat.com>
 
-'''
-Base cube for extracting data from JSON documents
-'''
-
-import simplejson as json
+try:
+    import simplejson as json
+except ImportError:
+    import json
 
 from metrique.core_api import HTTPClient
 
 
-class BaseJSON(HTTPClient):
+class Objs(HTTPClient):
     """
     Object used for extracting data in JSON format
     """
+    name = 'jsondata_objs'
 
     def load(self, path, strict=False):
         '''

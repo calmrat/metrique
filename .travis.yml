@@ -2,20 +2,15 @@ language: python
 python:
   - "2.6"
   - "2.7"
-# command to install dependencies
+# install metrique and dependencies to a virtenv
 install:
-  - "pip install ./src/metriqueu --use-mirrors"
-  - "pip install ./src/metrique --use-mirrors"
-  - "pip install ./src/metriqued --use-mirrors"
-  - "pip install ./src/metriquec --use-mirrors"
+  - "./build.py install"
 services: 
   - mongodb
-before_script:
-  - "mkdir ~/.metrique"
-  - "./src/metriqued/bin/metriqued start -d 2 -f"
-# command to run tests
+# NOTE: authentication will be enabled upon adding an 
+# admin user as mongod is started with the --auth parameter.
+#before_script:
+# -
 script: 
-  - "python -m pytest src/metriqueu"
-  - "python -m pytest src/metrique"
-  - "python -m pytest src/metriquec"
-  - "python -m pytest src/metriqued"
+# run tests
+  - "py.test tests"

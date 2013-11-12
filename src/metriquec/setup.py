@@ -9,13 +9,15 @@ from setuptools import setup
 
 __pkg__ = 'metriquec'
 __version__ = '0.2.2'
-__release__ = "5a"
+__release__ = "6a"
 __nvr__ = '%s-%s' % (__version__, __release__)
 __pkgs__ = ['metriquec', 'metriquec.sql',
             'metriquec.cubes',
             'metriquec.cubes.csvdata',
+            'metriquec.cubes.gitdata',
             'metriquec.cubes.jknsapi',
-            'metriquec.cubes.gitrepo',
+            'metriquec.cubes.jsondata',
+            'metriquec.cubes.sqldata',
             ]
 __provides__ = ['metriquec']
 __datafiles__ = []

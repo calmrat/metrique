@@ -2,9 +2,7 @@
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 # Author: "Chris Ward" <cward@redhat.com>
 
-import logging
-logger = logging.getLogger(__name__)
-
+import os
 try:
     from pymongo import MongoClient
     mongo_client_support = True
@@ -26,8 +24,8 @@ class BaseMongoDB(object):
         self._db = db
 
         self.ssl = ssl
-        self.ssl_keyfile = ssl_keyfile
-        self.ssl_certfile = ssl_certfile
+        self.ssl_keyfile = os.path.expanduser(ssl_keyfile)
+        self.ssl_certfile = os.path.expanduser(ssl_certfile)
         self.port = port
         self.write_concern = write_concern
 

@@ -3,9 +3,6 @@
 # Author: "Chris Ward <cward@redhat.com>
 
 import logging
-logging.basicConfig()
-logger = logging.getLogger(__name__)
-
 from functools import partial
 import os
 import signal
@@ -14,10 +11,15 @@ from tornado.httpserver import HTTPServer
 from tornado.ioloop import IOLoop
 from tornado.web import Application
 
-from metriqued.config import metrique, mongodb
+from metriqued.config import metriqued_config, mongodb_config
 from metriqued import core_api, cube_api, query_api, user_api
 
-from metriqueu.utils import set_default
+# setup default root logger, but remove default StreamHandler (stderr)
+# Handlers will be added upon __init__()
+logging.basicConfig()
+root_logger = logging.getLogger()
+[root_logger.removeHandler(hdlr) for hdlr in root_logger.handlers]
+BASIC_FORMAT = "%(name)s:%(message)s"
 
 
 def user_cube(value):
@@ -42,36 +44,91 @@ def ucv2(value):
 
 class TornadoHTTPServer(object):
     ''' HTTP (Tornado >=3.0) implemntation of MetriqueServer '''
-    def __init__(self, metrique_config_file=None,
-                 mongodb_config_file=None, host=None, port=None,
-                 ssl=None, async=None, debug=None,
-                 pid_file=None, **kwargs):
-        self.metrique_config = mconf = metrique(metrique_config_file)
-        self.mongodb_config = mbconf = mongodb(mongodb_config_file)
+    def __init__(self, config_file=None, **kwargs):
+        self.mconf = metriqued_config(config_file=config_file)
+        self.dbconf = mongodb_config(self.mconf.mongodb_config)
 
-        mconf.debug = debug = set_default(debug, mconf.debug)
-        mconf.async = async = set_default(async, mconf.async)
-        mconf.ssl = ssl = set_default(ssl, mconf.ssl)
-        mconf.host = host = set_default(host, mconf.host)
-        mconf.port = port = set_default(port, mconf.port)
+        # update metrique config object with any additional kwargs
+        for k, v in kwargs.items():
+            if v is not None:
+                self.mconf[k] = v
 
-        self._pid_file = pid_file = set_default(pid_file, mconf.pid_file)
+        self.mconf.logdir = os.path.expanduser(self.mconf.logdir)
+        if not os.path.exists(self.mconf.logdir):
+            os.makedirs(self.mconf.logdir)
+        self.mconf.logfile = os.path.join(self.mconf.logdir,
+                                          self.mconf.logfile)
+        self.debug_set()
+
         self.parent_pid = None
         self.child_pid = None
 
         self._prepare_handlers()
 
+        host = self.mconf['host']
+        ssl = self.mconf['ssl']
+        port = self.mconf['port']
         self.uri = 'https://%s' % host if ssl else 'http://%s' % host
         self.uri += ':%s' % port
 
-        logger.debug('======= metrique =======')
-        logger.debug(' Host: %s' % self.uri)
-        logger.debug('  SSL: %s' % ssl)
-        logger.debug('Async: %s' % async)
-        logger.debug('======= mongodb ========')
-        logger.debug(' Host: %s' % mbconf.host)
-        logger.debug('  SSL: %s' % mbconf.ssl)
-        logger.debug(' Port: %s' % mbconf.port)
+        self.logger.debug('======= metrique =======')
+        self.logger.debug(' Host: %s' % self.uri)
+        self.logger.debug('  SSL: %s' % ssl)
+        self.logger.debug('Async: %s' % self.mconf['async'])
+        self.logger.debug(' Conf: %s' % self.uri)
+        self.logger.debug('======= mongodb ========')
+        self.logger.debug(' Host: %s' % self.dbconf.host)
+        self.logger.debug('  SSL: %s' % self.dbconf.ssl)
+        self.logger.debug(' Port: %s' % self.dbconf.port)
+
+    def debug_set(self, level=None, logstdout=None, logfile=None):
+        '''
+        if we get a level of 2, we want to apply the
+        debug level to all loggers
+        '''
+        if level is None:
+            level = self.mconf['debug']
+        if logstdout is None:
+            logstdout = self.mconf['logstdout']
+        if logfile is None:
+            logfile = self.mconf['logfile']
+
+        logdir = os.path.expanduser(self.mconf.logdir)
+        if not os.path.exists(logdir):
+            os.makedirs(logdir)
+        logfile = os.path.join(logdir, logfile)
+
+        basic_format = logging.Formatter(BASIC_FORMAT)
+
+        if level == 2:
+            self._logger_name = None
+            logger = logging.getLogger()
+        else:
+            self._logger_name = 'metriqued.%s' % self.pid
+            logger = logging.getLogger(self._logger_name)
+            logger.propagate = 0
+
+        # reset handlers
+        logger.handlers = []
+
+        if logstdout:
+            hdlr = logging.StreamHandler()
+            hdlr.setFormatter(basic_format)
+            logger.addHandler(hdlr)
+
+        if self.mconf.log2file and logfile:
+            logfile = os.path.expanduser(logfile)
+            hdlr = logging.FileHandler(logfile)
+            hdlr.setFormatter(basic_format)
+            logger.addHandler(hdlr)
+
+        if level in [-1, False]:
+            logger.setLevel(logging.WARN)
+        elif level in [0, None]:
+            logger.setLevel(logging.INFO)
+        elif level in [True, 1, 2]:
+            logger.setLevel(logging.DEBUG)
+        self.logger = logger
 
     @property
     def pid(self):
@@ -79,27 +136,29 @@ class TornadoHTTPServer(object):
 
     @property
     def pid_file(self):
-        return self._pid_file
+        return os.path.expanduser(self.mconf['pid_file'])
 
     def set_pid(self):
         if os.path.exists(self.pid_file):
             raise RuntimeError(
                 "pid (%s) found in (%s)" % (self.pid,
-                                            self.metrique_config.pid_file))
+                                            self.pid_file))
         else:
             with open(self.pid_file, 'w') as _file:
                 _file.write(str(self.pid))
-        logger.debug("PID stored (%s)" % self.pid)
+        self.logger.debug("PID stored (%s)" % self.pid)
 
-    def _remove_pid(self):
+    def remove_pid(self, quiet=False):
         error = None
         try:
             os.remove(self.pid_file)
         except OSError as error:
-            logger.error(
-                'pid file not removed (%s); %s' % (self.pid_file, error))
+            if not quiet:
+                self.logger.error(
+                    'pid file not removed (%s); %s' % (self.pid_file, error))
         else:
-            logger.debug("removed PID file: %s" % self.pid_file)
+            if not quiet:
+                self.logger.debug("removed PID file: %s" % self.pid_file)
 
     def _prepare_handlers(self):
         base_handlers = [
@@ -141,15 +200,16 @@ class TornadoHTTPServer(object):
 
     def _prepare_web_app(self):
         ''' Config and Views'''
-        logger.debug("tornado web app setup")
-        debug = self.metrique_config.debug == 2
-        gzip = self.metrique_config.gzip
-        login_url = self.metrique_config.login_url
-        static_path = self.metrique_config.static_path
+        self.logger.debug("tornado web app setup")
+        debug = self.mconf.debug == 2
+        gzip = self.mconf.gzip
+        login_url = self.mconf.login_url
+        static_path = self.mconf.static_path
 
         # pass in metrique and mongodb config to all handlers (init)
-        init = dict(metrique_config=self.metrique_config,
-                    mongodb_config=self.mongodb_config)
+        init = dict(metrique_config=self.mconf,
+                    mongodb_config=self.dbconf,
+                    logger=self.logger)
 
         handlers = [(h[0], h[1], init) for h in self._api_v2_handlers]
 
@@ -158,22 +218,22 @@ class TornadoHTTPServer(object):
             debug=debug,
             static_path=static_path,
             handlers=handlers,
-            cookie_secret=self.metrique_config.cookie_secret,
+            cookie_secret=self.mconf.cookie_secret,
             login_url=login_url,
-            xsrf_cookies=self.metrique_config.xsrf_cookies,
+            xsrf_cookies=self.mconf.xsrf_cookies,
         )
 
-        if debug and not self.metrique_config.autoreload:
+        if debug and not self.mconf.autoreload:
             # FIXME hack to disable autoreload when debug is True
             from tornado import autoreload
             autoreload._reload_attempted = True
             autoreload._reload = lambda: None
 
-        ssl = self.metrique_config.ssl
+        ssl = self.mconf.ssl
         if ssl:
             ssl_options = dict(
-                certfile=self.metrique_config.ssl_certificate,
-                keyfile=self.metrique_config.ssl_certificate_key)
+                certfile=os.path.expanduser(self.mconf.ssl_certificate),
+                keyfile=os.path.expanduser(self.mconf.ssl_certificate_key))
             try:
                 self.server = HTTPServer(self._web_app,
                                          ssl_options=ssl_options)
@@ -185,21 +245,17 @@ class TornadoHTTPServer(object):
             self.server = HTTPServer(self._web_app)
 
     def _init_basic_server(self):
-        host = self.metrique_config.host
-        port = self.metrique_config.port
+        host = self.mconf.host
+        port = self.mconf.port
         self.server.listen(port=port, address=host)
         IOLoop.instance().start()
 
     def spawn_instance(self):
-        logger.debug("spawning new tornado webapp instance...")
-
+        self.logger.debug("spawning tornado %s..." % self.uri)
         self._mongodb_check()
-
         self.set_pid()
-
         signal.signal(signal.SIGTERM, self._inst_terminate_handler)
         signal.signal(signal.SIGINT, self._inst_kill_handler)
-
         self._init_basic_server()
 
     def start(self, fork=False):
@@ -208,22 +264,27 @@ class TornadoHTTPServer(object):
         if fork:
             pid = os.fork()
             self.parent_pid = self.pid
-            if pid == 0:
-                self.spawn_instance()
-            else:
-                time.sleep(0.5)  # give child a moment to start
+            if pid == 0:  # in child now
+                try:
+                    self.spawn_instance()
+                except Exception as e:
+                    self.logger.error(
+                        "Failed to start child instance!\n%s" % e)
+                    raise
+            else:  # still in parent
+                time.sleep(0.5)  # give child a moment to start (and fail)
+                os.kill(pid, 0)  # test that child actually exists
+                # throws exception if it doesn't; signal '0' doesn't kill
                 self.child_pid = pid
         else:
             pid = self.pid
             self.spawn_instance()
-        logger.debug("tornado listening on %s" % self.uri)
         return pid
 
     def stop(self, delay=None):
         ''' Stop a running tornado web app '''
         if self.child_pid:
             os.kill(self.child_pid, signal.SIGTERM)
-            self._remove_pid()
         else:
             self.server.stop()  # stop this tornado instance
             delayed_kill = partial(self._inst_delayed_stop, delay)
@@ -234,41 +295,42 @@ class TornadoHTTPServer(object):
             os.kill(self.child_pid, sig)
         else:
             self.stop(delay=delay)
+        self.remove_pid(quiet=True)
 
     def _inst_terminate_handler(self, sig, frame):
-        logger.debug("[INST] (%s) recieved TERM signal" % self.pid)
+        self.logger.debug("[INST] (%s) recieved TERM signal" % self.pid)
         self._inst_stop(sig)
 
     def _inst_kill_handler(self, sig, frame):
-        logger.debug("[INST] (%s) recieved KILL signal" % self.pid)
+        self.logger.debug("[INST] (%s) recieved KILL signal" % self.pid)
         self._inst_stop(sig, 0)
 
     def _inst_delayed_stop(self, delay=None):
         if delay is None:
-            if self.metrique_config.debug:
+            if self.mconf.debug:
                 delay = 0
             else:
                 delay = 5
-        logger.debug("stop ioloop called (%s)... " % self.pid)
+        self.logger.debug("stop ioloop called (%s)... " % self.pid)
         TIMEOUT = float(delay) + time.time()
-        logger.debug("Shutting down in T-%i seconds ..." % delay)
+        self.logger.debug("Shutting down in T-%i seconds ..." % delay)
         IOLoop.instance().add_timeout(TIMEOUT, self._stop_ioloop)
 
     def _stop_ioloop(self):
         IOLoop.instance().stop()
-        logger.debug("IOLoop stopped")
+        self.logger.debug("IOLoop stopped")
 
     def _mongodb_check(self):
         # Fail to start if we can't communicate with mongo
-        host = self.mongodb_config.host
-        logger.debug('testing mongodb connection status (%s) ...' % host)
+        host = self.dbconf.host
+        self.logger.debug('testing mongodb connection status (%s) ...' % host)
         try:
-            assert self.mongodb_config.db_metrique_admin.db
-            assert self.mongodb_config.db_metrique_data.db
-            assert self.mongodb_config.db_timeline_admin.db
-            assert self.mongodb_config.db_timeline_data.db
-            logger.debug('... mongodb connection ok')
+            assert self.dbconf.db_metrique_admin.db
+            assert self.dbconf.db_metrique_data.db
+            assert self.dbconf.db_timeline_admin.db
+            assert self.dbconf.db_timeline_data.db
+            self.logger.debug('... mongodb connection ok')
         except Exception:
-            logger.error(
+            self.logger.error(
                 'failed to communicate with mongodb')
             raise

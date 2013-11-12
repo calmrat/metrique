@@ -11,8 +11,6 @@ usermanagement, logging, etc.
 
 import base64
 from bson import SON
-import logging
-logger = logging.getLogger(__name__)
 try:
     import kerberos
 except ImportError:
@@ -20,14 +18,15 @@ except ImportError:
 from passlib.hash import sha256_crypt
 import cPickle
 import random
+import socket
 import simplejson as json
-from tornado.web import RequestHandler, HTTPError, asynchronous
-from tornado import gen
+from tornado.web import RequestHandler, HTTPError
 
 from metriqued.utils import parse_pql_query
 
 from metriqueu.utils import set_default, utcnow, strip_split
 
+HOSTNAME = socket.gethostname()
 SAMPLE_SIZE = 1
 # 'own' is the one who created the cube; is cube superuser
 # 'admin' is cube superuser; 'read' can only read; 'write' can only write
@@ -95,7 +94,7 @@ class MetriqueHdlr(RequestHandler):
         '''
         if not (owner and cube):
             self._raise(400, "owner and cube required")
-        logger.debug('... fields: %s' % fields)
+        self.logger.debug('... fields: %s' % fields)
         if fields in ['__all__', '~']:
             # None will make pymongo return back entire objects
             _fields = None
@@ -291,28 +290,14 @@ class MetriqueHdlr(RequestHandler):
 
         return arg
 
-    def initialize(self, metrique_config, mongodb_config):
+    def initialize(self, metrique_config, mongodb_config, logger):
         '''
         :param HTTPServer proxy:
             A pointer to the running metrique server instance
         '''
         self.metrique_config = metrique_config
         self.mongodb_config = mongodb_config
-
-    # FIXME: Async isn't working; not sure what i'm doing here...
-    #@asynchronous
-    #@gen.coroutine
-    #def _prepare_async(self):
-    #    return super(MetriqueHdlr, self).prepare()
-
-    #def prepare(self):
-    #    # FIXME: check size of request content
-    #    # if more than 16M... reject
-    #    if self.metrique_config.async:
-    #        result = self._prepare_async()
-    #    else:
-    #        result = super(MetriqueHdlr, self).prepare()
-    #    return result
+        self.logger = logger
 
     def write(self, value):
         # content expected to always be JSON
@@ -325,16 +310,16 @@ class MetriqueHdlr(RequestHandler):
     def get_current_user(self):
         current_user = self.get_secure_cookie("user")
         if current_user:
-            logger.debug('EXISTING AUTH OK: %s' % current_user)
+            self.logger.debug('EXISTING AUTH OK: %s' % current_user)
             return current_user
         else:
             ok, current_user = self._parse_auth_headers()
             if ok:
                 self.set_secure_cookie("user", current_user)
-                logger.debug('NEW AUTH OK: %s' % current_user)
+                self.logger.debug('NEW AUTH OK: %s' % current_user)
                 return current_user
             else:
-                logger.debug('NEW AUTH FAILED: %s' % current_user)
+                self.logger.debug('NEW AUTH FAILED: %s' % current_user)
                 self.clear_cookie("user")
                 return None
 
@@ -353,7 +338,7 @@ class MetriqueHdlr(RequestHandler):
             username, password = str(username), str(password)
             passhash = self.get_user_profile(username, keys=['_passhash'])
             ok = bool(passhash and sha256_crypt.verify(password, passhash))
-        logger.error('AUTH BASIC [%s]: %s' % (username, ok))
+        self.logger.error('AUTH BASIC [%s]: %s' % (username, ok))
         return ok
 
     def _parse_krb_basic_auth(self, username, password):
@@ -366,9 +351,9 @@ class MetriqueHdlr(RequestHandler):
             try:
                 ok = kerberos.checkPassword(username, password, '', realm)
             except kerberos.BasicAuthError as e:
-                logger.debug('KRB ERROR [%s]: %s' % (username, e))
+                self.logger.debug('KRB ERROR [%s]: %s' % (username, e))
                 ok = False
-        logger.debug('KRB AUTH [%s]: %s' % (username, ok))
+        self.logger.debug('KRB AUTH [%s]: %s' % (username, ok))
         return ok
 
     def _parse_auth_headers(self):
@@ -442,12 +427,12 @@ class PingHdlr(MetriqueHdlr):
         if auth and not user:
             self._raise(401, "authentication required")
         else:
-            logger.debug(
+            self.logger.debug(
                 'got ping from %s @ %s' % (user, utcnow(as_datetime=True)))
             response = {
                 'action': 'ping',
-                'response': 'pong',
                 'current_user': user,
+                'metriqued': HOSTNAME,
             }
             return response
 

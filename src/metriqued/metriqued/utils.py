@@ -3,8 +3,6 @@
 # Author: "Chris Ward <cward@redhat.com>
 
 from bson.son import SON
-import logging
-logger = logging.getLogger(__name__)
 import os
 import pql
 import re
@@ -56,8 +54,7 @@ def get_pid_from_file(pid_file):
     pid_file = os.path.expanduser(pid_file)
     try:
         return int(''.join(open(pid_file).readlines()).strip())
-    except IOError as e:
-        logger.warn(e)
+    except IOError:
         return 0
 
 
@@ -106,8 +103,6 @@ def parse_pql_query(query):
         spec = pql_parser.parse(query)
     except Exception as e:
         raise ValueError("Invalid Query (%s):\n%s" % (query, str(e)))
-    logger.debug("PQL Query: %s" % query)
-    logger.debug('Query: %s' % spec)
     return spec
 
 
@@ -121,7 +116,6 @@ def parse_oids(oids, delimeter=','):
 
 def remove_pid_file(pid_file, quiet=True):
     if not pid_file:
-        logger.info('no pid_file arg provided...')
         return
     try:
         os.remove(pid_file)

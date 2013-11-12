@@ -24,11 +24,12 @@ from metriqueu.jsonconf import JSONConf
 def extract(args, cube):
     ext_args = args.extract_args
     ext_kwargs = args.extract_kwargs
-    if 'config_file' in ext_kwargs:
-        config = JSONConf(config_file=ext_kwargs['config_file'])
-        del ext_kwargs['config_file']
+    if args.force:
+        ext_kwargs.update({'force': args.force})
+    if args.extract_config_file:
+        config = JSONConf(config_file=args.extract_config_file)
         cube.config.update(config)
-    return cube.extract(force=args.force, *ext_args, **ext_kwargs)
+    return cube.extract(*ext_args, **ext_kwargs)
 
 
 def register(args, cube):
@@ -85,6 +86,7 @@ _cube_args.add_argument('-o', '--owner', type=str)
 
 _sub = _cube_args.add_subparsers(description='Cube Commands CLI')
 _ext_args = _sub.add_parser('extract', help='Extract help')
+_ext_args.add_argument('-xC', '--extract-config-file', type=str)
 _ext_args.add_argument('-g', '--extract_args', type=str,
                        action=_ArgParser, nargs='+', default=[])
 _ext_args.add_argument('-k', '--extract_kwargs', type=str,

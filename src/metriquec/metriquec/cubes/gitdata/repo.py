@@ -2,35 +2,13 @@
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 # Author: "Chris Ward <cward@redhat.com>
 
-'''
-Basic gitrepo cube for extracting git object data from git repos
-
-Currently supports extracting the following::
-
-    commit
-'''
-
 try:
     eval('{x: x for x in range(1)}')
 except SyntaxError:
     # gittle has tons of dict comprehensions...
     raise RuntimeError("This cube requires python 2.7+")
 else:
-    try:
-        from gittle.gittle import Gittle
-    except Exception as e:
-        # FIXME: TEMP override for fedora 18's (17?)
-        # insecure version of some deps needed by dulwhich
-        # '"Install paramiko to have better SSH support...'
-        import traceback
-        import sys
-        tb = traceback.format_exc(sys.exc_info())
-        print 'SECURITY WARNING (upgrade : %s' % e
-        print tb
-        print 'are you shure you want to continue? Enter or CTRL-C to quit '
-        raw_input()
-        # importing a second time; it'll work this time
-        from gittle.gittle import Gittle
+    from gittle.gittle import Gittle
 
 import os
 import re
@@ -48,20 +26,19 @@ hash_re = re.compile('[0-9a-f]{40}', re.I)
 TMP_DIR = '~/.metrique/gitrepos'
 
 
-class Commit(HTTPClient):
-    """
-    Object used for extracting objects from git repos
-    """
-    name = 'git_commit'
+class Repo(HTTPClient):
+    '''
+    Basic gitrepo cube for extracting git object data from git repos
 
-    def __init__(self, **kwargs):
-        super(Commit, self).__init__(**kwargs)
-        self.tmp_dir = os.path.expanduser(TMP_DIR)
+    Currently supports extracting the following::
+
+        commit
+    '''
+    name = 'gitdata_repo'
 
     def get_repo(self, uri, pull=True, tmp_dir=None):
+        tmp_dir = tmp_dir or os.path.expanduser(TMP_DIR)
         # FIXME: use gittle to clone repos; bare=True
-        if tmp_dir is None:
-            tmp_dir = self.tmp_dir
         tmp_dir = os.path.expanduser(tmp_dir)
         # make the uri safe for filesystems
         _uri = "".join(x for x in uri if x.isalnum())
@@ -155,7 +132,8 @@ class Commit(HTTPClient):
         commits = self._build_commits(delta_shas, uri)
         return self.cube_save(commits)
 
-    def extract(self, uri, fetch=True, shas=None, force=False, **kwargs):
+    def extract_commits(self, uri, fetch=True, shas=None, force=False,
+                        **kwargs):
         if not isinstance(uri, (list, tuple)):
             uri = [uri]
         commits = dict([(_uri,
@@ -166,4 +144,4 @@ class Commit(HTTPClient):
 
 if __name__ == '__main__':
     from metriquec.argparsers import cube_cli
-    cube_cli(Commit)
+    cube_cli(Repo)

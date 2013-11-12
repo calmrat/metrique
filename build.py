@@ -4,15 +4,13 @@
 
 
 '''
-**build.py**
-
-This module contains a CLI for building metrique
-with setup.py and distributing via pypi pip.
+CLI for building metrique with setup.py and distributing via pypi pip
 
 metrique (https://pypi.python.org/pypi/metrique)
+metriquec (https://pypi.python.org/pypi/metriquec)
 metriqued (https://pypi.python.org/pypi/metriqued)
+metriqueu (https://pypi.python.org/pypi/metriqueu)
 '''
-
 
 import argparse
 from functools import partial
@@ -21,9 +19,8 @@ import logging
 import subprocess as sp
 import re
 
-# init logging
 logging.basicConfig(format='')
-logger = logging.getLogger(__name__)
+logger = logging.getLogger('metrique')
 
 # header definitions
 __pkgs__ = ['metrique', 'metriqued', 'metriquec', 'metriqueu']
@@ -39,7 +36,7 @@ RE_RELEASE = re.compile(r"__release__ = [\"']?((\d+)a?)[\"']?")
 '''
 ** Options **
  --debug: Enabled/Disable debug output
- --target: package to build (%s)
+ --packages: package to build (%s)
  --action: setup action (%s)
  --upload: Upload builds to pypi?
  --dry-run: flag to not actually do anything
@@ -52,15 +49,18 @@ RE_RELEASE = re.compile(r"__release__ = [\"']?((\d+)a?)[\"']?")
 # init cli argparser
 cli = argparse.ArgumentParser(
     description='Metrique Build CLI')
+cli.add_argument('action',
+                 choices=__actions__,
+                 default='sdist')
 cli.add_argument('-d', '--debug',
                  action='store_true',
                  default=False)
-cli.add_argument('-t', '--target',
-                 choices=__pkgs__,
+cli.add_argument('--packages',
+                 choices=__pkgs__ + ['all'],
                  default='all')
-cli.add_argument('-a', '--action',
-                 choices=__actions__,
-                 default='sdist')
+cli.add_argument('--user-mirrors',
+                 action='store_true',
+                 default=False)
 cli.add_argument('-u', '--upload',
                  action='store_true',
                  default=False)
@@ -91,10 +91,10 @@ else:
 
 CWD = os.getcwd()
 SRC = os.path.join(CWD, __src__)
-if args.target == 'all':
+if args.packages == 'all':
     pkg_paths = [os.path.join(SRC, pkg) for pkg in __pkgs__]
 else:
-    pkg_paths = [os.path.join(SRC, args.target)]
+    pkg_paths = [os.path.join(SRC, args.packages)]
 
 setup_paths = ['%s/setup.py' % path for path in pkg_paths]
 
@@ -195,7 +195,8 @@ def bump(path, kind='r', reset=False, ga=False):
     update_line(path, regex, bump_func)
 
 
-def build(path, action='sdist', upload=False, dry_run=False):
+def build(path, action='sdist', upload=False, dry_run=False,
+          user_mirrors=False):
     assert action in __actions__
     os.chdir(path)
 
@@ -208,6 +209,7 @@ def build(path, action='sdist', upload=False, dry_run=False):
 
     cmd = ['python', 'setup.py']
     cmd.append('--dry-run') if dry_run else None
+    cmd.append('--user-mirrors') if user_mirrors else None
     cmd.append(action)
     cmd.append('upload') if upload else None
     cmd_str = ' '.join(cmd)

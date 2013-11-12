@@ -2,15 +2,13 @@
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 # Author: "Chris Ward <cward@redhat.com>
 
-'''
-Base cube for extracting data from SQL TEIID interface
-'''
+from metrique.utils import get_cube
+sqldata_generic = get_cube('sqldata_generic')
 
-from metriquec.basesql import BaseSql
 from metriquec.sql.teiid import TEIID
 
 
-class BaseTEIID(BaseSql):
+class Teiid(sqldata_generic):
     '''
     Driver which adds support for TEIID based sql cubes.
     '''
@@ -21,9 +19,9 @@ class BaseTEIID(BaseSql):
         except ImportError:
             raise ImportError("pip install psycopg2")
 
-        super(BaseTEIID, self).__init__(sql_host=sql_host,
-                                        sql_port=sql_port,
-                                        **kwargs)
+        super(Teiid, self).__init__(sql_host=sql_host,
+                                    sql_port=sql_port,
+                                    **kwargs)
         if sql_vdb:
             self.config['sql_vdb'] = sql_vdb
         if sql_username:

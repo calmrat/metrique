@@ -2,19 +2,17 @@
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 # Author: "Chris Ward <cward@redhat.com>
 
-import logging
-logger = logging.getLogger(__name__)
 from passlib.hash import sha256_crypt
 import re
 from tornado.web import authenticated
 
-from metriqued.config import CUBE_QUOTA
 from metriqued.core_api import MetriqueHdlr
 from metriqued.utils import set_property
 
 from metriqueu.utils import utcnow
 
 INVALID_USERNAME_RE = re.compile('[^a-z]', re.I)
+CUBE_QUOTA = 1
 
 
 class AboutMeHdlr(MetriqueHdlr):
@@ -63,7 +61,7 @@ class LoginHdlr(MetriqueHdlr):
         if ok:
             # bump expiration...
             self.set_secure_cookie("user", username)
-        logger.debug("AUTH HEADERS ... [%s] %s" % (username, ok))
+        self.logger.debug("AUTH HEADERS ... [%s] %s" % (username, ok))
         self.write(ok)
 
 
@@ -114,7 +112,7 @@ class RegisterHdlr(MetriqueHdlr):
                '_passhash': passhash,
                }
         self.user_profile(admin=True).save(doc, upset=True, safe=True)
-        logger.debug("new user added (%s)" % (username))
+        self.logger.debug("new user added (%s)" % (username))
         return True
 
 
@@ -159,7 +157,7 @@ class UpdatePasswordHdlr(MetriqueHdlr):
         else:
             new_passhash = sha256_crypt.encrypt(new_password)
         self.update_user_profile(username, 'set', '_passhash', new_passhash)
-        logger.debug("passwd updated (%s)" % username)
+        self.logger.debug("passwd updated (%s)" % username)
         return True
 
 
@@ -185,7 +183,7 @@ class UpdateGroupHdlr(MetriqueHdlr):
         self.valid_group(group)
         self.valid_action(action)
         self.update_user_profile(username, action, 'groups', group)
-        logger.debug("group updated (%s)" % username)
+        self.logger.debug("group updated (%s)" % username)
         return True
 
 
@@ -259,7 +257,8 @@ class UpdatePropertiesHdlr(MetriqueHdlr):
         update = {'$set': cuba_quota}
         result = self.user_profile(admin=True).update(spec, update,
                                                       safe=True)
-        logger.debug("user properties updated (%s): %s" % (username, result))
+        self.logger.debug(
+            "user properties updated (%s): %s" % (username, result))
         if backup:
             return backup
         else:

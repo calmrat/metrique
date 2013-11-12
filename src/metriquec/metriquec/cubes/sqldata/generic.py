@@ -2,9 +2,6 @@
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 # Author: "Chris Ward <cward@redhat.com>
 
-'''
-Base cube for extracting data from SQL databases
-'''
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from collections import defaultdict
 from dateutil.parser import parse as dt_parse
@@ -15,11 +12,10 @@ import time
 import traceback
 
 from metrique.core_api import HTTPClient
-
 from metriqueu.utils import batch_gen, ts2dt, strip_split
 
 
-class BaseSql(HTTPClient):
+class Generic(HTTPClient):
     '''
     Base, common functionality driver for connecting
     and extracting data from SQL databases.
@@ -32,7 +28,7 @@ class BaseSql(HTTPClient):
     FIXME ... MORE DOCS TO COME
     '''
     def __init__(self, sql_host=None, sql_port=None, **kwargs):
-        super(BaseSql, self).__init__(**kwargs)
+        super(Generic, self).__init__(**kwargs)
         if sql_host:
             self.config['sql_host'] = sql_host
         if sql_port:
@@ -476,7 +472,7 @@ class BaseSql(HTTPClient):
 
     @property
     def proxy(self):
-        raise NotImplementedError("BaseSql has not defined a proxy")
+        raise NotImplementedError("proxy is not defined")
 
     def _prep_object(self, row, field_order):
         '''

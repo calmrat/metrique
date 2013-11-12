@@ -21,26 +21,24 @@ class JSONConf(MutableMapping):
         Provides helper-methods for setting and saving
         options and config object properties
     '''
-    def __init__(self, config_file=None, default=None, autosave=False):
-        self.config_file = config_file or self.default_config
+    def __init__(self, config_file=None, defaults=None, autosave=False):
+        self.config_file = config_file
         if self.defaults is None:
             self.defaults = {}
-
+        if defaults:
+            self.defaults.update(defaults)
         if self.config is None:
             self.config = {}
-
-        if default:
-            if isinstance(default, (dict, JSONConf)):
-                self.config.update(default)
+        if config_file:
+            if isinstance(self.config_file, JSONConf):
+                self.config.update(self.config_file)
+                self.config_file = self.config_file.config_file
             else:
-                raise TypeError("expected default type of dict or JSONConf")
-
-        if self.config_file:
-            self.load_config()
-
+                self.load_config()
         self.autosave = autosave
 
     config = None
+    config_file = None
     defaults = None
     default_config = None
 
@@ -185,20 +183,3 @@ class JSONConf(MutableMapping):
             print 'Invalid selection.'
             ans = raw_input("%s " % prompt)
         return ans in valid_yes
-
-
-def write_empty_json_dict(fname):
-    fname = os.path.expanduser(fname)
-    logger.debug('Write empty config (%s)' % fname)
-    with open(fname, 'a') as f:
-        f.write('{}')
-
-
-def test_write_empty_json_dict():
-    from random import random
-    random_filename = 'test_empty_dict.%s' % random()
-    path = os.path.join('/tmp/', random_filename)
-    write_empty_json_dict(path)
-    with open(path) as f:
-        empty_dct = json.load(f)
-        assert empty_dct == {}

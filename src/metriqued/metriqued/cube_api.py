@@ -3,8 +3,6 @@
 # Author: "Chris Ward <cward@redhat.com>
 
 from bson.objectid import ObjectId
-import logging
-logger = logging.getLogger(__name__)
 from tornado.web import authenticated
 
 from metriqued.core_api import MetriqueHdlr
@@ -343,25 +341,27 @@ class SaveObjectsHdlr(MetriqueHdlr):
         if current_mtime and mtime and current_mtime > mtime:
             # don't fail, but make sure the issue is logged!
             # likely, a ntp time sync is required
-            logger.warn(
+            self.logger.warn(
                 "object mtime is < server mtime; %s < %s; " % (mtime,
                                                                current_mtime))
         _cube = self.timeline(owner, cube, admin=True)
 
         olen_r = len(objects)
-        logger.debug('[%s.%s] Recieved %s objects' % (owner, cube, olen_r))
+        self.logger.debug(
+            '[%s.%s] Recieved %s objects' % (owner, cube, olen_r))
 
         objects = self.prepare_objects(_cube, objects, mtime)
 
-        logger.debug('[%s.%s] %s objects match their current version in db' % (
+        self.logger.debug(
+            '[%s.%s] %s objects match their current version in db' % (
             owner, cube, olen_r - len(objects)))
 
         if not objects:
-            logger.debug('[%s.%s] No NEW objects to save' % (owner, cube))
+            self.logger.debug('[%s.%s] No NEW objects to save' % (owner, cube))
             return []
         else:
-            logger.debug('[%s.%s] Saving %s objects' % (owner, cube,
-                                                        len(objects)))
+            self.logger.debug('[%s.%s] Saving %s objects' % (owner, cube,
+                                                             len(objects)))
             # End the most recent versions in the db of those objects that
             # have newer versionsi (newest version must have _end == None,
             # activity import saves objects for which this might not be true):
@@ -377,12 +377,12 @@ class SaveObjectsHdlr(MetriqueHdlr):
                                  {'$set': {'_end': to_snap[doc['_oid']]}},
                                  multi=False)
                     snapped += 1
-                logger.debug('[%s.%s] Updated %s OLD versions' %
-                             (owner, cube, snapped))
+                self.logger.debug('[%s.%s] Updated %s OLD versions' %
+                                  (owner, cube, snapped))
             # Insert all new versions:
             insert_bulk(_cube, objects)
-            logger.debug('[%s.%s] Saved %s NEW versions' % (owner, cube,
-                                                            len(objects)))
+            self.logger.debug('[%s.%s] Saved %s NEW versions' % (owner, cube,
+                                                                 len(objects)))
             # return object ids saved
             return [o['_oid'] for o in objects]
 

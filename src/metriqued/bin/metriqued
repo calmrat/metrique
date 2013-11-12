@@ -21,7 +21,7 @@ import time
 import traceback
 import signal
 
-from metriqued.config import PID_FILE, metrique
+from metriqued.config import metriqued_config
 from metriqued.tornadohttp import TornadoHTTPServer
 from metriqued.utils import get_pid_from_file, remove_pid_file
 
@@ -127,7 +127,7 @@ if __name__ == '__main__':
     _args.add_argument('-H', '--host', type=str)
     _args.add_argument('-P', '--port', type=str)
 
-    _args.add_argument('-i', '--pid-file', type=str, default=PID_FILE)
+    _args.add_argument('-i', '--pid-file', type=str)
 
     # FIXME: in the near future, we'll be able to start up
     # multiple servers in parallel; instance-id would
@@ -139,25 +139,17 @@ if __name__ == '__main__':
     # parse sys.argv
     args = _args.parse_args()
 
+    server_config_file = args.server_config_file
+    mconf = metriqued_config(config_file=server_config_file)
+
     # shorten varnames
     cmd = args.command
     debug = args.debug
     async_off = args.async_off
-    pid_file = os.path.expanduser(args.pid_file)
+    pid_file = args.pid_file or os.path.expanduser(mconf.pid_file)
 
-    server_config_file = args.server_config_file
-    m_conf = metrique(config_file=server_config_file)
-
-    if not args.host:
-        host = m_conf.host
-    else:
-        host = args.host
-
-    if not args.port:
-        port = m_conf.port
-    else:
-        port = args.port
-
+    host = args.host or mconf.host
+    port = args.port or mconf.port
     async = not async_off
     fork = args.fork
 

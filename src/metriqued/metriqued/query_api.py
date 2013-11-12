@@ -2,8 +2,6 @@
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 # Author: "Chris Ward <cward@redhat.com>
 
-import logging
-logger = logging.getLogger(__name__)
 from operator import itemgetter
 import pql
 import random
@@ -52,12 +50,12 @@ class CountHdlr(MetriqueHdlr):
         self.cube_exists(owner, cube)
         self.requires_owner_read(owner, cube)
         set_default(query, '')
-        logger.info('pql query: %s' % query)
+        self.logger.info('pql query: %s' % query)
         try:
             spec = pql.find(query_add_date(query, date))
         except Exception as e:
             self._raise(400, "Invalid Query (%s)" % str(e))
-        logger.debug('mongo query: %s' % spec)
+        self.logger.debug('mongo query: %s' % spec)
         _cube = self.timeline(owner, cube)
         docs = _cube.find(spec=spec)
         return docs.count() if docs else 0
@@ -182,7 +180,7 @@ class FindHdlr(MetriqueHdlr):
         '''
         merge versions with unchanging fields of interest
         '''
-        logger.debug("merging doc version...")
+        self.logger.debug("merging doc version...")
         # contains a dummy document to avoid some condition
         # checks in merge_doc
         ret = [{'_oid': None}]
@@ -206,7 +204,7 @@ class FindHdlr(MetriqueHdlr):
                           skip=skip, limit=limit)
         docs = sorted(docs, key=itemgetter('_oid', '_start', '_end'))
         [merge_doc(doc) for doc in docs]
-        logger.debug('... done')
+        self.logger.debug('... done')
         return ret[1:]
 
 
@@ -242,7 +240,7 @@ class HistoryHdlr(MetriqueHdlr):
                  'starts': {'$push': '$_start'},
                  'ends': {'$push': '$_end'}}
                 }]
-        logger.debug('Aggregation: %s' % agg)
+        self.logger.debug('Aggregation: %s' % agg)
         data = _cube.aggregate(agg)['result']
 
         # accumulate the counts

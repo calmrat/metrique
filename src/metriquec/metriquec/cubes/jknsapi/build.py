@@ -15,7 +15,7 @@ import requests
 import re
 import simplejson as json
 
-from metriquec.basejson import BaseJSON
+from metrique.core_api import HTTPClient
 from metriqueu.utils import dt2ts
 
 DEFAULT_CONFIG = {
@@ -31,6 +31,7 @@ SSL_VERIFY = True
 rget = partial(requests.get, verify=SSL_VERIFY)
 
 # FIXME: add a version check; this supports jkns 1.529; but doesn't 1.480
+# FIXME: subclass jsondata_objs cube?
 
 
 def obj_hook(dct):
@@ -60,11 +61,11 @@ def id_when(id):
         return dt_parse(when)
 
 
-class Build(BaseJSON):
+class Build(HTTPClient):
     """
     Object used for communication with Jenkins Build (job detail) interface
     """
-    name = 'jkns_build'
+    name = 'jknsapi_build'
 
     def extract(self, uri=None, port=None, api_path=None,
                 force=False, async=None, workers=None, **kwargs):

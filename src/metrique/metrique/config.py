@@ -23,6 +23,10 @@ import re
 
 from metriqueu.jsonconf import JSONConf
 
+CONFIG_DIR = os.path.expanduser('~/.metrique/etc')
+if not os.path.exists(CONFIG_DIR):
+    os.makedirs(CONFIG_DIR)
+
 
 class Config(JSONConf):
     ''' Client config (property) class
@@ -41,7 +45,7 @@ class Config(JSONConf):
         ssl_verify: ...
     '''
     def __init__(self, config_file=None, *args, **kwargs):
-        self.default_config = '~/.metrique/http_api'
+        self.default_config = os.path.join(CONFIG_DIR, 'http_api')
         self.defaults = {
             'api_version': 'v2',
             'api_rel_path': 'api/v2',
@@ -51,8 +55,10 @@ class Config(JSONConf):
             'sql_batch_size': 1000,
             'debug': None,
             'host': '127.0.0.1',
-            'journal': False,
-            'logfile': '',
+            'journal': True,
+            'logdir': '~/.metrique/logs',
+            'logfile': 'metrique.log',
+            'log2file': True,
             'logstdout': True,
             'max_workers': multiprocessing.cpu_count(),
             'password': None,

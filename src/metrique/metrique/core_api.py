@@ -42,17 +42,17 @@ from functools import partial
 import os
 import requests
 import simplejson as json
+import urllib
 
 from metrique import query_api, user_api, cube_api
 from metrique.config import Config
 from metrique.utils import json_encode, get_cube
 
 # setup default root logger, but remove default StreamHandler (stderr)
-# Handlers will be added upon HTTPClient.__init__()
+# Handlers will be added upon __init__()
 logging.basicConfig()
 root_logger = logging.getLogger()
 [root_logger.removeHandler(hdlr) for hdlr in root_logger.handlers]
-
 BASIC_FORMAT = "%(name)s:%(message)s"
 
 
@@ -128,7 +128,6 @@ class HTTPClient(object):
         self.load_config()
 
         # update config object with any additional kwargs
-        # passed in by the user
         for k, v in kwargs.items():
             if v is not None:
                 self.config[k] = v
@@ -138,6 +137,12 @@ class HTTPClient(object):
         if name:
             # override the cube name
             self.name = name
+
+        self.config.logdir = os.path.expanduser(self.config.logdir)
+        if not os.path.exists(self.config.logdir):
+            os.makedirs(self.config.logdir)
+        self.config.logfile = os.path.join(self.config.logdir,
+                                           self.config.logfile)
 
         # keep logging local to the cube so multiple
         # cubes can independently log without interferring
@@ -346,6 +351,7 @@ class HTTPClient(object):
             logstdout = self.config.logstdout
         if logfile is None:
             logfile = self.config.logfile
+
         basic_format = logging.Formatter(BASIC_FORMAT)
 
         if level == 2:
@@ -368,8 +374,7 @@ class HTTPClient(object):
             hdlr.setFormatter(basic_format)
             logger.addHandler(hdlr)
 
-        if logfile:
-            logfile = os.path.expanduser(logfile)
+        if self.config.log2file and logfile:
             hdlr = logging.FileHandler(logfile)
             hdlr.setFormatter(basic_format)
             logger.addHandler(hdlr)
@@ -411,8 +416,7 @@ class HTTPClient(object):
     def get_cube(self, cube, init=True, **kwargs):
         ' wrapper for utils.get_cube(); try to load a cube, pyclient '
         config = copy(self.config)
-        config.update(kwargs)
-        return get_cube(cube=cube, init=init, config=config)
+        return get_cube(cube=cube, init=init, config=config, **kwargs)
 
     def get_last_field(self, field):
         '''
@@ -538,6 +542,9 @@ class HTTPClient(object):
                 return _response
             else:
                 return json.loads(_response.content)
+
+    def save_uri(self, uri, saveas):
+        return urllib.urlretrieve(uri, saveas)
 
     def whoami(self, auth=False):
         ' quick way of checking the username the instance is working as '

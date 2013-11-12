@@ -2,159 +2,65 @@
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 # Author: "Chris Ward <cward@redhat.com>
 
-import logging
-logger = logging.getLogger(__name__)
 import os
 
 from metriqueu.jsonconf import JSONConf
 from metriqued.basemongodb import BaseMongoDB
 
-CONFIG_DIR = '~/.metrique'
+USER_DIR = os.path.expanduser('~/.metrique')
 
-PID_FILE = os.path.join(CONFIG_DIR, 'server.pid')
+LOG_DIR = os.path.join(USER_DIR, 'logs')
+PID_FILE = os.path.join(USER_DIR, 'server.pid')
+
+CONFIG_DIR = os.path.join(USER_DIR, 'etc')
+if not os.path.exists(CONFIG_DIR):
+    os.makedirs(CONFIG_DIR)
+
 SSL_CERT_FILE = os.path.join(CONFIG_DIR, 'cert.pem')
 SSL_KEY_FILE = os.path.join(CONFIG_DIR, 'pkey.pem')
 
-ADMIN_USER = 'admin'
-
-DATE_FORMAT = '%Y%m%dT%H:%M:%S'
-LOG_FORMAT = u'%(processName)s:%(message)s'
-LOG_FORMATTER = logging.Formatter(LOG_FORMAT,
-                                  DATE_FORMAT)
-
-CUBE_QUOTA = None
+here = os.path.dirname(os.path.abspath(__file__))
+STATIC_PATH = os.path.join(here, 'static/')
 
 
-class metrique(JSONConf):
-
+class metriqued_config(JSONConf):
     def __init__(self, config_file=None):
-        self.default_config = os.path.join(CONFIG_DIR, 'metrique_config')
+        self.default_config = os.path.join(CONFIG_DIR, 'metriqued')
         self.defaults = {
             'async': True,
             'autoreload': False,
+            'cookie_secret': '____UPDATE_COOKIE_SECRET_CONFIG____',
+            'debug': None,
             'gzip': True,
             'host': '127.0.0.1',
             'krb_auth': False,
-            'log_formatter': LOG_FORMATTER,
-            'logfile': None,
+            'logdir': LOG_DIR,
+            'logfile': 'metriqued.log',
+            'log2file': True,
+            'logstdout': False,
             'login_url': '/login',
             'max_processes': 0,
+            'mongodb_config': None,
+            'pid_file':  PID_FILE,
             'port': 5420,
             'realm': 'metrique',
             'ssl': False,
+            'ssl_certificate': SSL_CERT_FILE,
+            'ssl_certificate_key': SSL_KEY_FILE,
+            'static_path': STATIC_PATH,
+            'superusers': ['admin'],
             'xsrf_cookies': False,
         }
-        super(metrique, self).__init__(config_file=config_file)
-
-    @property
-    def superusers(self):
-        return self._default('superusers', [ADMIN_USER])
-
-    @superusers.setter
-    def superusers(self, value):
-        if isinstance(value, basestring):
-            value = [value]
-        if not isinstance(value, list):
-            raise TypeError(
-                "superuser must be a single or list of strings")
-        self.config['superusers'] = value
-
-    @property
-    def cookie_secret(self):
-        if self.config.get('cookie_secret'):
-            return self.config['cookie_secret']
-        else:
-            # automatically generate a new cookie secret
-            # NOTE A NEW SECRET WILL INVALIDATE ALL PREVIOUS
-            # COOKIES; IN PRODUCTION, MAKE SURE TO HARDCODE
-            # THE COOKIE SECRETE IN metrique_config.json
-            return self._default('cookie_secret',
-                                 '____UPDATE_COOKIE_SECRET_CONFIG____')
-
-    @property
-    def debug(self):
-        ''' Reflect whether debug is enabled or not '''
-        return self._default('debug', False)
-
-    @debug.setter
-    def debug(self, value):
-        ''' Update logger settings '''
-        if isinstance(value, (tuple, list)):
-            logger, value = value
-            self._debug_set(value, logger)
-        else:
-            try:
-                logger = self.logger
-            except AttributeError:
-                self._debug_set(value)
-            else:
-                self._debug_set(value, logger)
-        self.config['debug'] = value
-
-    def _debug_set(self, level, logger=None):
-        '''
-        if we get a level of 2, we want to apply the
-        debug level to all loggers
-        '''
-        if not logger or level == 2:
-            logger = logging.getLogger()
-
-        if self.logfile:
-            logfile = os.path.expanduser(self.logfile)
-            for hdlr in logger.handlers:
-                logger.removeHandler(hdlr)
-            logger.removeHandler
-            hdlr = logging.FileHandler(logfile)
-            logger.addHandler(hdlr)
-
-        if level in [-1, False]:
-            logger.setLevel(logging.WARN)
-        elif level in [0, None]:
-            logger.setLevel(logging.INFO)
-        elif level in [True, 1, 2]:
-            logger.setLevel(logging.DEBUG)
-
-    @property
-    def pid_file(self):
-        pid_file = os.path.expanduser(
-            self._default('pid_file', PID_FILE))
-        if not pid_file.endswith(".pid"):
-            raise ValueError('pid file must end with .pid')
-        return pid_file
-
-    @property
-    def static_path(self):
-        abspath = os.path.dirname(os.path.abspath(__file__))
-        static_path = os.path.join(abspath, 'static/')
-        return self._default('static_path', static_path)
-
-    @property
-    def ssl_certificate(self):
-        return os.path.expanduser(
-            self._default('ssl_certificate', SSL_CERT_FILE))
-
-    @ssl_certificate.setter
-    def ssl_certificate(self, value):
-        self.config['ssl_certificate'] = value
-
-    @property
-    def ssl_certificate_key(self):
-        return os.path.expanduser(
-            self._default('ssl_certificate_key', SSL_KEY_FILE))
-
-    @ssl_certificate_key.setter
-    def ssl_certificate_key(self, value):
-        self.config['ssl_certificate_key'] = value
+        super(metriqued_config, self).__init__(config_file=config_file)
 
 
-class mongodb(JSONConf):
-
-    def __init__(self, config_file=None, *args, **kwargs):
-        self.default_config = os.path.join(CONFIG_DIR, 'mongodb_config')
+class mongodb_config(JSONConf):
+    def __init__(self, config_file=None):
+        self.default_config = os.path.join(CONFIG_DIR, 'mongodb')
         self.defaults = {
             'auth': False,
             'admin_password': None,
-            'admin_user': ADMIN_USER,
+            'admin_user': 'admin',
             'data_password': None,
             'data_user': 'metrique',
             'db_metrique': 'metrique',
@@ -164,9 +70,11 @@ class mongodb(JSONConf):
             'host': '127.0.0.1',
             'port': 27017,
             'ssl': False,
+            'ssl_certificate': SSL_CERT_FILE,
+            'ssl_certificate_key': SSL_KEY_FILE,
             'write_concern': 1,
         }
-        super(mongodb, self).__init__(config_file, *args, **kwargs)
+        super(mongodb_config, self).__init__(config_file=config_file)
 
     @property
     def db_metrique_data(self):
@@ -227,21 +135,3 @@ class mongodb(JSONConf):
     @property
     def c_cube_profile_admin(self):
         return self.db_metrique_admin[self.collection_cube_profile]
-
-    @property
-    def ssl_certificate(self):
-        return os.path.expanduser(
-            self._default('ssl_certificate', SSL_CERT_FILE))
-
-    @ssl_certificate.setter
-    def ssl_certificate(self, value):
-        self.config['ssl_certificate'] = value
-
-    @property
-    def ssl_certificate_key(self):
-        return os.path.expanduser(
-            self._default('ssl_certificate_key', SSL_KEY_FILE))
-
-    @ssl_certificate_key.setter
-    def ssl_certificate_key(self, value):
-        self.config['ssl_certificate_key'] = value

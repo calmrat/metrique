@@ -57,15 +57,13 @@ def test_get_cube():
 
     # expected to be available (built-ins)
     get_cube('csvdata_rows')
-    try:
-        get_cube('gitrepo_commit')
-    except RuntimeError:
-        # FIXME: check for 2.6?
-        pass
-    get_cube('jknsapi_build')
+    get_cube('jsondata_objs')
+    get_cube('sqldata_generic')
+    get_cube('sqldata_teiid')
 
+    # test pulling from arbitrary path/pkg
     paths = [os.path.dirname(os.path.abspath(__file__))]
-    cube = 'testcube_csvfile'
+    cube = 'csvcube_local'
     pkgs = ['testcubes']
     get_cube(cube=cube, pkgs=pkgs, cube_paths=paths)
 
