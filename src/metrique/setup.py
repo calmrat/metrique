@@ -10,7 +10,7 @@ logger = logging.getLogger('metrique')
 
 __pkg__ = 'metrique'
 __version__ = '0.2.2'
-__release__ = "6a"
+__release__ = "7a"
 __nvr__ = '%s-%s' % (__version__, __release__)
 __pkgs__ = ['metrique']
 __provides__ = ['metrique']

@@ -109,6 +109,10 @@ def after_install(options, home_dir):
         [pip, 'install', '-U', 'pip', 'distribute', 'setuptools'],
         cwd=os.path.abspath(install_dir),
         show_stdout=True)
+    # this is needed for py2.6
+    call_subprocess([pip, 'install', '-U', 'argparse'],
+                    cwd=os.path.abspath(install_dir),
+                    show_stdout=True)
     # this dependency is installed separately because virtenv
     # path resolution issues; fails due to being unable to find
     # the python headers in the virtenv for some reason.
