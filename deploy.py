@@ -21,6 +21,10 @@ SRC_DIR = 'src'
 BUILD_DIR = 'metrique'
 USER_DIR = '~/.metrique'
 
+# set cache dir so pip doesn't have to keep downloading over and over
+PIP_CACHE = os.path.expanduser(os.path.join(USER_DIR, 'pip'))
+os.environ['PIP_DOWNLOAD_CACHE'] = PIP_CACHE
+
 
 def extend_parser(parser):
     parser.add_option(
