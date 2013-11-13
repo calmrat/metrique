@@ -17,6 +17,7 @@ metrique-server.py contains a CLI for metrique server.
 '''
 
 import os
+import sys
 import time
 import traceback
 
@@ -64,7 +65,8 @@ def start(**kwargs):
         print 'START ERROR: %s' % e
         print traceback.format_exc(e)
         stop(pid)
-    return metriqued.pid
+    # after we've started, there's nothing left to do!
+    sys.exit()
 
 
 def restart(pid, signal=None, timeout=None):
@@ -111,9 +113,7 @@ if __name__ == '__main__':
 
     _args.add_argument('-d', '--debug',
                        type=int, default=True)
-    #_args.add_argument('-f', '--fork',
-    #                   action='store_true',
-    #                   default=False)
+    _args.add_argument('--nofork', action='store_true')
     _args.add_argument('-c', '--server-config-file', type=str)
     _args.add_argument('-H', '--host', type=str)
     _args.add_argument('-P', '--port', type=str)
@@ -135,7 +135,7 @@ if __name__ == '__main__':
 
     host = args.host or mconf.host
     port = args.port or mconf.port
-    #fork = args.fork
+    nofork = args.nofork
     sig = args.signal
 
     kwargs = dict(host=host, port=port, debug=debug)
@@ -143,17 +143,22 @@ if __name__ == '__main__':
     pid_dir = os.path.expanduser(args.pid_dir)
     pids = args.pids or get_pids(pid_dir)
 
-    #if len(pids) > 1 or args.instances > 1:
-    #    # we must fork if we expect to start more than one instance
-    #    fork = True
+    if (len(pids) > 1 or args.instances > 1) and nofork:
+        raise ValueError("must... fork!")
 
     if cmd == 'start':
-        pids = []
-        for k in range(args.instances):
-            print 'E'*10
-            pids.append(start(**kwargs))
-            kwargs['port'] += 1
-        print 'Started: %s' % ', '.join(map(str, pids))
+        if nofork:
+            start(**kwargs)
+        else:
+            pids = []
+            for k in range(args.instances):
+                pid = os.fork()
+                if pid == 0:
+                    start(**kwargs)
+                else:
+                    pids.append(pid)
+                kwargs['port'] += 1
+            print 'Started: %s' % ', '.join(map(str, pids))
     elif cmd == 'stop':
         pid_loop(pids, stop, sig=sig)
     elif cmd == 'restart':
@@ -162,4 +167,3 @@ if __name__ == '__main__':
         pid_loop(pids, status, quiet=False)
     else:
         raise SystemExit('bad command "%s"... Try --help' % cmd)
-    print cmd, pids, os.getpid(), 'AHHHH'
