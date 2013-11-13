@@ -128,6 +128,7 @@ if __name__ == '__main__':
     _args.add_argument('-P', '--port', type=str)
 
     _args.add_argument('-i', '--pid-file', type=str)
+    _args.add_argument('-p', '--pid', type=str)
 
     # FIXME: in the near future, we'll be able to start up
     # multiple servers in parallel; instance-id would
@@ -147,6 +148,8 @@ if __name__ == '__main__':
     debug = args.debug
     async_off = args.async_off
     pid_file = args.pid_file or os.path.expanduser(mconf.pid_file)
+    if args.pid:
+        pid_file = '.'.join((pid_file, args.pid))
 
     host = args.host or mconf.host
     port = args.port or mconf.port

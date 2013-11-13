@@ -75,11 +75,12 @@ class TornadoHTTPServer(object):
         self.logger.debug(' Host: %s' % self.uri)
         self.logger.debug('  SSL: %s' % ssl)
         self.logger.debug('Async: %s' % self.mconf['async'])
-        self.logger.debug(' Conf: %s' % self.uri)
+        self.logger.debug(' Conf: %s' % self.mconf.config_file)
         self.logger.debug('======= mongodb ========')
         self.logger.debug(' Host: %s' % self.dbconf.host)
         self.logger.debug('  SSL: %s' % self.dbconf.ssl)
         self.logger.debug(' Port: %s' % self.dbconf.port)
+        self.logger.debug(' Conf: %s' % self.dbconf.config_file)
 
     def debug_set(self, level=None, logstdout=None, logfile=None):
         '''
@@ -136,7 +137,8 @@ class TornadoHTTPServer(object):
 
     @property
     def pid_file(self):
-        return os.path.expanduser(self.mconf['pid_file'])
+        f = '.'.join((self.mconf['pid_file'], str(self.pid)))
+        return os.path.expanduser(f)
 
     def set_pid(self):
         if os.path.exists(self.pid_file):
