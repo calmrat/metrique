@@ -22,14 +22,19 @@ class JSONConf(MutableMapping):
         options and config object properties
     '''
     def __init__(self, config_file=None, defaults=None, autosave=False):
-        self.config_file = config_file
+        if config_file is None and self.default_config:
+	    self.config_file = self.default_config
+        else:
+	    self.config_file = config_file
+
         if self.defaults is None:
             self.defaults = {}
         if defaults:
             self.defaults.update(defaults)
         if self.config is None:
             self.config = {}
-        if config_file:
+
+        if self.config_file:
             if isinstance(self.config_file, JSONConf):
                 self.config.update(self.config_file)
                 self.config_file = self.config_file.config_file
