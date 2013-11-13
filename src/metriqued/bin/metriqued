@@ -45,14 +45,14 @@ def stop(pid, sig=None):
     return code
 
 
-def start(fork=False, **kwargs):
+def start(**kwargs):
     pid = kwargs.get('pid')
     if pid and status(pid):
         raise SystemExit("process already running... (%s)" % pid)
 
     metriqued = TornadoHTTPServer(**kwargs)
     try:
-        metriqued.start(fork=fork)
+        metriqued.start()
     except RuntimeError as e:
         # already started...
         print 'START ERROR: metriqued already started; %s' % e
@@ -67,7 +67,7 @@ def start(fork=False, **kwargs):
     return metriqued.pid
 
 
-def restart(pid, signal=None, timeout=None, fork=False):
+def restart(pid, signal=None, timeout=None):
     if timeout is None:
         timeout = -1
     if status(pid):
@@ -81,7 +81,7 @@ def restart(pid, signal=None, timeout=None, fork=False):
                    'process to stop')
             break
     else:
-        return start(fork=fork, **kwargs)
+        return start(**kwargs)
 
 
 def status(pid, quiet=True):
@@ -111,9 +111,9 @@ if __name__ == '__main__':
 
     _args.add_argument('-d', '--debug',
                        type=int, default=True)
-    _args.add_argument('-f', '--fork',
-                       action='store_true',
-                       default=False)
+    #_args.add_argument('-f', '--fork',
+    #                   action='store_true',
+    #                   default=False)
     _args.add_argument('-c', '--server-config-file', type=str)
     _args.add_argument('-H', '--host', type=str)
     _args.add_argument('-P', '--port', type=str)
@@ -135,7 +135,7 @@ if __name__ == '__main__':
 
     host = args.host or mconf.host
     port = args.port or mconf.port
-    fork = args.fork
+    #fork = args.fork
     sig = args.signal
 
     kwargs = dict(host=host, port=port, debug=debug)
@@ -143,24 +143,23 @@ if __name__ == '__main__':
     pid_dir = os.path.expanduser(args.pid_dir)
     pids = args.pids or get_pids(pid_dir)
 
-    if len(pids) > 1 or args.instances > 1:
-        # we must fork if we expect to start more than one instance
-        fork = True
+    #if len(pids) > 1 or args.instances > 1:
+    #    # we must fork if we expect to start more than one instance
+    #    fork = True
 
-    print cmd, fork, os.getpid()
     if cmd == 'start':
         pids = []
         for k in range(args.instances):
             print 'E'*10
-            pids.append(start(fork=fork, **kwargs))
+            pids.append(start(**kwargs))
             kwargs['port'] += 1
         print 'Started: %s' % ', '.join(map(str, pids))
     elif cmd == 'stop':
         pid_loop(pids, stop, sig=sig)
     elif cmd == 'restart':
-        pid_loop(pids, restart, fork=fork, sig=sig, **kwargs)
+        pid_loop(pids, restart, sig=sig, **kwargs)
     elif cmd == 'status':
         pid_loop(pids, status, quiet=False)
     else:
         raise SystemExit('bad command "%s"... Try --help' % cmd)
-    print cmd, fork, pids, os.getpid(), 'AHHHH'
+    print cmd, pids, os.getpid(), 'AHHHH'

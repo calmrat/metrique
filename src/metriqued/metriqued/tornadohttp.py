@@ -263,28 +263,11 @@ class TornadoHTTPServer(object):
         signal.signal(signal.SIGINT, self._inst_kill_handler)
         self._init_basic_server()
 
-    def start(self, fork=False):
+    def start(self):
         ''' Start a new tornado web app '''
         self._prepare_web_app()
-        if fork:
-            pid = os.fork()
-            self.parent_pid = self.pid
-            if pid == 0:  # in child now
-                try:
-                    self.spawn_instance()
-                except Exception as e:
-                    self.logger.error(
-                        "Failed to start child instance!\n%s" % e)
-                    raise
-            else:  # still in parent
-                time.sleep(0.5)  # give child a moment to start (and fail)
-                os.kill(pid, 0)  # test that child actually exists
-                # throws exception if it doesn't; signal '0' doesn't kill
-                self.child_pid = pid
-        else:
-            pid = self.pid
-            self.spawn_instance()
-        return pid
+        self.spawn_instance()
+        return self.pid
 
     def stop(self, delay=None):
         ''' Stop a running tornado web app '''
