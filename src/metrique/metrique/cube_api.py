@@ -226,7 +226,7 @@ def remove(self, query, cube=None, owner=None):
 
 ######## ACTIVITY IMPORT ########
 
-def activity_import(self, oids=None, logfile=None, cube=None, owner=None,
+def activity_import(self, oids=None, cube=None, owner=None,
                     parallel=True):
     '''
     WARNING: Do NOT run extract while activity import is running,
@@ -242,14 +242,8 @@ def activity_import(self, oids=None, logfile=None, cube=None, owner=None,
         - None: import for all ids
         - list of ids: import for ids in the list
     '''
-    if logfile:
-        logger_orig = self.logger
-        self.debug_set(self.config.debug, False, logfile)
-
     if oids is None:
-        oids = self.find('_oid == exists(True)', fields='_oid', date='~',
-                         cube=cube, owner=owner)
-        oids = sorted(oids._oid.unique())
+        oids = self.distinct('_oid', cube=cube, owner=owner)
 
     max_workers = self.config.max_workers
     batch_size = self.config.batch_size
@@ -280,16 +274,12 @@ def activity_import(self, oids=None, logfile=None, cube=None, owner=None,
 
     failed = set(oids) - set(saved)
     result = {'saved': sorted(saved), 'failed': sorted(failed)}
-    self.logger.debug(result)
-    # reset logger
-    if logfile:
-        self.logger = logger_orig
     return result
 
 
 def _activity_import(self, oids, cube, owner):
     # get time docs cursor
-    time_docs = self.find('_oid in %s' % oids, fields='__all__', date='~',
+    time_docs = self.find('_oid in %s' % oids, fields='~', date='~',
                           raw=True, merge_versions=False,
                           cube=cube, owner=owner)
     docs = {}

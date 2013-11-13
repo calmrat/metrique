@@ -12,7 +12,7 @@ import time
 import traceback
 
 from metrique.core_api import HTTPClient
-from metriqueu.utils import batch_gen, ts2dt, strip_split
+from metriqueu.utils import batch_gen, ts2dt
 
 
 class Generic(HTTPClient):
@@ -89,12 +89,10 @@ class Generic(HTTPClient):
                 else:
                     retries -= 1
             else:
+                rows = self._build_rows(rows)
+                objects = self._build_objects(rows)
+                self.cube_save(objects)
                 break
-        rows = self._build_rows(rows)
-        objects = self._build_objects(rows)
-        # save the objects
-        self.cube_save(objects)
-        # log the objects saved
         return [o['_oid'] for o in objects]
 
     def _extract_threaded(self, id_delta, field_order):
@@ -126,15 +124,13 @@ class Generic(HTTPClient):
         else:
             return []
 
-    def extract(self, exclude_fields=None, force=None,
-                last_update=None, parse_timestamp=None, **kwargs):
+    def extract(self, force=None, last_update=None, parse_timestamp=None,
+                **kwargs):
         '''
         Extract routine for SQL based cubes.
 
         ... docs coming soon ...
 
-        :param list/str exclude_fields:
-            A list or csv string of the field names to exclude.
         :param force:
             If None (use: default False), then it will try to extract
             only the objects that have changed since the last extract.
@@ -144,8 +140,6 @@ class Generic(HTTPClient):
 
         Accept, but ignore unknown kwargs.
         '''
-        exclude_fields = strip_split(exclude_fields)
-
         oids = []
 
         if force is None:
@@ -180,10 +174,13 @@ class Generic(HTTPClient):
 
         # this is to set the 'index' of sql columns so we can extract
         # out the sql rows and know which column : field
-        field_order = list(set(self.fields) - set(exclude_fields))
+        field_order = tuple(self.fields)
 
         if self.config.sql_batch_size <= 0:
-            return self._extract(oids, field_order)
+            # respect the global batch size, even if sql batch
+            # size is not set
+            for batch in batch_gen(oids, self.config.batch_size):
+                return self._extract(batch, field_order)
         else:
             return self._extract_threaded(oids, field_order)
 
