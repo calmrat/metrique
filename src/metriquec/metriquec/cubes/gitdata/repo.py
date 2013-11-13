@@ -7,8 +7,11 @@ try:
 except SyntaxError:
     # gittle has tons of dict comprehensions...
     raise RuntimeError("This cube requires python 2.7+")
-else:
+
+try:
     from gittle.gittle import Gittle
+except ImportError:
+    raise ImportError("`pip install gittle` required")
 
 import os
 import re

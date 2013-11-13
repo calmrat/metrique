@@ -51,10 +51,10 @@ def extend_parser(parser):
         help='do not update (pull) git branch before install')
 
     parser.add_option(
-        '--notest',
+        '--test',
         action='store_true',
         default=False,
-        help='do not run tests after deployment completes')
+        help='run tests after deployment completes')
 
 virtualenv.extend_parser = extend_parser
 
@@ -132,7 +132,7 @@ def after_install(options, home_dir):
     if not os.path.exists(USER_DIR):
         makedirs(USER_DIR)
 
-    if not options.notest:
+    if options.test:
         call_subprocess(
             [pip, 'install', 'pytest'],
             cwd=os.path.abspath(install_dir),

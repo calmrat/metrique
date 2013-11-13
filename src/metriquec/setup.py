@@ -26,7 +26,6 @@ __scripts__ = []
 __requires__ = [
     'metrique (>=%s)' % __version__,
     'celery (>=3.0)',
-    'gittle (>=0.2.1)',
     'psycopg2 (>=2.5.1)',
 ]
 __irequires__ = [

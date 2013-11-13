@@ -9,12 +9,13 @@ from metriqued.basemongodb import BaseMongoDB
 
 USER_DIR = os.path.expanduser('~/.metrique')
 
-LOG_DIR = os.path.join(USER_DIR, 'logs')
-PID_FILE = os.path.join(USER_DIR, 'server.pid')
-
 CONFIG_DIR = os.path.join(USER_DIR, 'etc')
 if not os.path.exists(CONFIG_DIR):
     os.makedirs(CONFIG_DIR)
+
+LOG_DIR = os.path.join(USER_DIR, 'logs')
+if not os.path.exists(LOG_DIR):
+    os.makedirs(LOG_DIR)
 
 SSL_CERT_FILE = os.path.join(CONFIG_DIR, 'cert.pem')
 SSL_KEY_FILE = os.path.join(CONFIG_DIR, 'pkey.pem')
@@ -30,6 +31,7 @@ class metriqued_config(JSONConf):
             'async': True,
             'autoreload': False,
             'cookie_secret': '____UPDATE_COOKIE_SECRET_CONFIG____',
+            'configdir':  CONFIG_DIR,
             'debug': None,
             'gzip': True,
             'host': '127.0.0.1',
@@ -41,7 +43,6 @@ class metriqued_config(JSONConf):
             'login_url': '/login',
             'max_processes': 0,
             'mongodb_config': None,
-            'pid_file':  PID_FILE,
             'port': 5420,
             'realm': 'metrique',
             'ssl': False,
@@ -49,6 +50,7 @@ class metriqued_config(JSONConf):
             'ssl_certificate_key': SSL_KEY_FILE,
             'static_path': STATIC_PATH,
             'superusers': ['admin'],
+            'userdir': USER_DIR,
             'xsrf_cookies': False,
         }
         super(metriqued_config, self).__init__(config_file=config_file)

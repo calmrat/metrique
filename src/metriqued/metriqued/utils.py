@@ -50,12 +50,11 @@ def query_add_date(query, date):
     return query or date_pql
 
 
-def get_pid_from_file(pid_file):
-    pid_file = os.path.expanduser(pid_file)
-    try:
-        return int(''.join(open(pid_file).readlines()).strip())
-    except IOError:
-        return 0
+def get_pids(pid_dir):
+    pid_dir = os.path.expanduser(pid_dir)
+    # eg, server.pid.22325, server.pid.23526
+    pid_files = [f for f in os.listdir(pid_dir) if re.search('\.pid', f)]
+    return map(int, [f.split('.')[-1] for f in pid_files])
 
 
 def insert_bulk(_cube, docs, size=-1):

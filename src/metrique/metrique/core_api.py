@@ -541,7 +541,13 @@ class HTTPClient(object):
             if full_response:
                 return _response
             else:
-                return json.loads(_response.content)
+                try:
+                    return json.loads(_response.content)
+                except Exception as e:
+                    m = getattr(e, 'message')
+                    content = '%s\n%s' % (m, _response.content)
+                    self.logger.error(content)
+                    raise
 
     def save_uri(self, uri, saveas):
         return urllib.urlretrieve(uri, saveas)

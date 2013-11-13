@@ -19,14 +19,15 @@ metrique-server.py contains a CLI for metrique server.
 import os
 import time
 import traceback
-import signal
 
 from metriqued.config import metriqued_config
 from metriqued.tornadohttp import TornadoHTTPServer
-from metriqued.utils import get_pid_from_file, remove_pid_file
+from metriqued.utils import get_pids
 
 
-def stop(pid, pid_file, kill=False):
+def stop(pid, sig=None):
+    if not sig:
+        sig = 15  # ie, SIGTERM
     code = 1  # not OK
     if pid and not status(pid):
         print "WARNING: pid file and pid found (%s)" % pid
@@ -35,25 +36,17 @@ def stop(pid, pid_file, kill=False):
         print 'WARNING: invalid pid (%s)' % pid
     else:
         try:
-            if kill:
-                print "Sending SIGINT to (%s)" % pid
-                os.kill(pid, signal.SIGINT)
-            else:
-                print "Sending SIGTERM to (%s)" % pid
-                os.kill(pid, signal.SIGTERM)
+            print "Sending signal (%s) to (%s)" % (sig, pid)
+            os.kill(pid, sig)
             code = 0  # OK!
         except OSError as e:
             print 'STOP ERROR: %s' % e
             raise
-    remove_pid_file(pid_file)
     return code
 
 
 def start(fork=False, **kwargs):
     pid = kwargs.get('pid')
-    pid_file = kwargs.get('pid_file')
-    code = 1
-
     if pid and status(pid):
         raise SystemExit("process already running... (%s)" % pid)
 
@@ -65,24 +58,22 @@ def start(fork=False, **kwargs):
         print 'START ERROR: metriqued already started; %s' % e
         print traceback.format_exc(e)
         # a pid file was possibly created; clean up
-        stop(pid, pid_file)
+        stop(pid)
     except Exception as e:
         # a pid file was possibly created; clean up
         print 'START ERROR: %s' % e
         print traceback.format_exc(e)
-        stop(pid, pid_file)
-    else:
-        code = 0  # OK
-    return code
+        stop(pid)
+    return metriqued.pid
 
 
-def restart(pid, pid_file, kill=False, timeout=None, fork=False):
+def restart(pid, signal=None, timeout=None, fork=False):
     if timeout is None:
         timeout = -1
     if status(pid):
-        stop(pid, pid_file, kill)
+        stop(pid=pid, sig=sig)
     print "Waiting for process to stop..."
-    while status(pid):
+    while status(pid=pid):
         time.sleep(1)
         timeout -= 1
         if timeout == 0:
@@ -90,7 +81,6 @@ def restart(pid, pid_file, kill=False, timeout=None, fork=False):
                    'process to stop')
             break
     else:
-        remove_pid_file(pid_file)
         return start(fork=fork, **kwargs)
 
 
@@ -107,35 +97,31 @@ def status(pid, quiet=True):
         return 0
 
 
+def pid_loop(pids, func, *args, **kwargs):
+    return [func(pid=pid, *args, **kwargs) for pid in pids]
+
+
 if __name__ == '__main__':
     import argparse
 
     _args = argparse.ArgumentParser(description='metrique server CLI')
 
-    __cmds__ = ['start', 'stop', 'kill', 'restart', 'killstart', 'status']
+    __cmds__ = ['start', 'stop', 'restart', 'status']
     _args.add_argument('command', type=str, choices=__cmds__)
 
     _args.add_argument('-d', '--debug',
                        type=int, default=True)
-    _args.add_argument('-a', '--async-off',
-                       action='store_true')
     _args.add_argument('-f', '--fork',
-                       action='store_true')
-
+                       action='store_true',
+                       default=False)
     _args.add_argument('-c', '--server-config-file', type=str)
-
     _args.add_argument('-H', '--host', type=str)
     _args.add_argument('-P', '--port', type=str)
-
-    _args.add_argument('-i', '--pid-file', type=str)
-    _args.add_argument('-p', '--pid', type=str)
-
-    # FIXME: in the near future, we'll be able to start up
-    # multiple servers in parallel; instance-id would
-    # be a integer representing which instance you'd
-    # like to interact with...
-    #_args.add_argument('-iid', '--instance-id',
-    #                   type=int, default=1)
+    _args.add_argument('-i', '--instances', type=int, default=1)
+    _args.add_argument('-p', '--pid-dir', type=str, default='~/.metrique')
+    _args.add_argument('-ps', '--pids', nargs='+', type=int)
+    # 2 = SIGINT; 15 = SIGTERM
+    _args.add_argument('-s', '--signal', type=int, choices=[2, 9])
 
     # parse sys.argv
     args = _args.parse_args()
@@ -146,34 +132,35 @@ if __name__ == '__main__':
     # shorten varnames
     cmd = args.command
     debug = args.debug
-    async_off = args.async_off
-    pid_file = args.pid_file or os.path.expanduser(mconf.pid_file)
-    if args.pid:
-        pid_file = '.'.join((pid_file, args.pid))
 
     host = args.host or mconf.host
     port = args.port or mconf.port
-    async = not async_off
     fork = args.fork
+    sig = args.signal
 
-    kwargs = dict(host=host, port=port, debug=debug, async=async)
-    print
+    kwargs = dict(host=host, port=port, debug=debug)
 
-    pid = None
-    if cmd != 'start':
-        pid = get_pid_from_file(pid_file)
+    pid_dir = os.path.expanduser(args.pid_dir)
+    pids = args.pids or get_pids(pid_dir)
 
+    if len(pids) > 1 or args.instances > 1:
+        # we must fork if we expect to start more than one instance
+        fork = True
+
+    print cmd, fork, os.getpid()
     if cmd == 'start':
-        code = start(fork=fork, **kwargs)
+        pids = []
+        for k in range(args.instances):
+            print 'E'*10
+            pids.append(start(fork=fork, **kwargs))
+            kwargs['port'] += 1
+        print 'Started: %s' % ', '.join(map(str, pids))
     elif cmd == 'stop':
-        code = stop(pid, pid_file)
-    elif cmd == 'kill':
-        code = stop(pid, pid_file, kill=True)
+        pid_loop(pids, stop, sig=sig)
     elif cmd == 'restart':
-        code = restart(pid, pid_file, fork=fork)
-    elif cmd == 'killstart':
-        code = restart(pid, pid_file, kill=True, fork=fork)
+        pid_loop(pids, restart, fork=fork, sig=sig, **kwargs)
     elif cmd == 'status':
-        status(pid, quiet=False)
+        pid_loop(pids, status, quiet=False)
     else:
-        print 'Not sure what to say, honestly to %s... Try --help ?' % cmd
+        raise SystemExit('bad command "%s"... Try --help' % cmd)
+    print cmd, fork, pids, os.getpid(), 'AHHHH'
