@@ -12,13 +12,13 @@ the default pyclient config points too! ie, http_api.json
 
 from multiprocessing import Process
 import os
-import signal
+import sys
 import time
 from requests import HTTPError
 
 from metrique import pyclient
 from metriqued.tornadohttp import TornadoHTTPServer
-from metriqued.utils import get_pid_from_file
+from metriqued.utils import get_pids
 
 cwd = os.path.dirname(os.path.abspath(__file__))
 tests_root = '/'.join(cwd.split('/')[0:-1])
@@ -34,8 +34,12 @@ m = pyclient(username=username, password=password)
 
 
 def start_server():
-    m = TornadoHTTPServer(debug=True)
-    m.start(fork=False)
+    pid = os.fork()
+    if pid == 0:
+        m = TornadoHTTPServer(debug=True)
+        m.start()
+    else:
+        sys.exit()
 
 
 def runner(func):
@@ -45,8 +49,11 @@ def runner(func):
     try:
         assert func()
     finally:
-        child_pid = get_pid_from_file(pid_file)
-        os.kill(child_pid, signal.SIGINT)
+        for pid in get_pids('~/.metrique/'):
+            try:
+                os.kill(pid, 15)
+            except:
+                pass
         p.join()
 
 

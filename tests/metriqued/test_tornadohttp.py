@@ -3,13 +3,12 @@
 # Author: "Chris Ward" <cward@redhat.com>
 
 from copy import copy
-import multiprocessing as mp
 import os
-import signal
+import pytest
 import time
 
 from metriqued.tornadohttp import TornadoHTTPServer
-from metriqued.utils import get_pid_from_file
+from metriqued.utils import get_pids
 from metriqueu.jsonconf import JSONConf
 
 here = os.path.dirname(os.path.abspath(__file__))
@@ -25,33 +24,34 @@ kwargs = {'debug': True,
           'mongodb_config': mongodb_config}
 
 
-def start_server(**kwargs):
-    m = TornadoHTTPServer(config_file=metriqued_config, **kwargs)
-    m.start(fork=False)
-
-
-def validate_startup(p):
+def start(**kw):
+    m = TornadoHTTPServer(metriqued_config, **kw)
     try:
-        p.start()
-        time.sleep(1)  # give a moment to startup
-        child_pid = get_pid_from_file(pid_file)
-    finally:
-        os.kill(child_pid, signal.SIGINT)
-        p.join()
+        pid = m.start(fork=True)
+    except SystemExit:
+        return True
+    else:
+        time.sleep(1)
+        pids = get_pids('~/.metrique')
+        open('/tmp/out', 'w').write(str(pids))
+        try:
+            assert pid in pids
+        finally:
+            try:
+                os.kill(pid, 9)
+            except OSError:
+                pass
 
 
 def test_default_start():
-    _kwargs = copy(kwargs)
-    p = mp.Process(target=start_server, kwargs=_kwargs)
-    validate_startup(p)
+    start()
 
 
 def test_ssl_start():
-    _kwargs = copy(kwargs)
-    kwargs.update({
+    kw = copy(kwargs)
+    kw.update({
         'ssl': True,
         'ssl_certificate': cert,
         'ssl_certificate_key': pkey
     })
-    p = mp.Process(target=start_server, kwargs=_kwargs)
-    validate_startup(p)
+    start(**kw)

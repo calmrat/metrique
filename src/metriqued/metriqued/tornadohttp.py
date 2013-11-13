@@ -6,6 +6,7 @@ import logging
 from functools import partial
 import os
 import signal
+import sys
 import time
 from tornado.httpserver import HTTPServer
 from tornado.ioloop import IOLoop
@@ -263,11 +264,17 @@ class TornadoHTTPServer(object):
         signal.signal(signal.SIGINT, self._inst_kill_handler)
         self._init_basic_server()
 
-    def start(self):
+    def start(self, fork=False):
         ''' Start a new tornado web app '''
         self._prepare_web_app()
-        self.spawn_instance()
-        return self.pid
+        if fork:
+            pid = os.fork()
+            if pid == 0:
+                self.spawn_instance()
+        else:
+            pid = self.pid
+            self.spawn_instance()
+        return pid
 
     def stop(self, delay=None):
         ''' Stop a running tornado web app '''
@@ -284,6 +291,7 @@ class TornadoHTTPServer(object):
         else:
             self.stop(delay=delay)
         self.remove_pid(quiet=True)
+        sys.exit()
 
     def _inst_terminate_handler(self, sig, frame):
         self.logger.debug("[INST] (%s) recieved TERM signal" % self.pid)
