@@ -9,7 +9,7 @@ from setuptools import setup
 
 __pkg__ = 'metriqued'
 __version__ = '0.2.2'
-__release__ = "7a"
+__release__ = 12
 __nvr__ = '%s-%s' % (__version__, __release__)
 __pkgs__ = ['metriqued']
 __provides__ = ['metriqued']
@@ -32,7 +32,6 @@ __irequires__ = [
     'passlib>=1.6.1',
     'pymongo>=2.6.1',
     'tornado>=3.0',
-    'argparse',
 ]
 pip_src = 'https://pypi.python.org/packages/source'
 __deplinks__ = []

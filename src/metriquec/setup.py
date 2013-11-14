@@ -9,7 +9,7 @@ from setuptools import setup
 
 __pkg__ = 'metriquec'
 __version__ = '0.2.2'
-__release__ = "7a"
+__release__ = 12
 __nvr__ = '%s-%s' % (__version__, __release__)
 __pkgs__ = ['metriquec', 'metriquec.sql',
             'metriquec.cubes',
@@ -31,7 +31,6 @@ __requires__ = [
 __irequires__ = [
     'metrique>=%s' % __version__,
     'celery>=3.0',
-    'gittle>=0.2.1',
     'psycopg2>=2.5.1',
 ]
 pip_src = 'https://pypi.python.org/packages/source'

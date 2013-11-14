@@ -36,22 +36,22 @@ RE_RELEASE = re.compile(r"__release__ = [\"']?((\d+)a?)[\"']?")
 '''
 ** Options **
  --debug: Enabled/Disable debug output
- --packages: package to build (%s)
- --action: setup action (%s)
+ --packages: package to build
+ --action: setup action
  --upload: Upload builds to pypi?
  --dry-run: flag to not actually do anything
- --nobump: don't bump default:release count
- --bump-kind: bump release by default; choices: %s
+ --bump: bump nvr
+ --bump-kind: bump release by default
  --bump-only: bump nvr and quit
  --bump-only: bump nvr and quit
-''' % (__pkgs__, __actions__, __bumps__)
+ --ga-release: don't append 'a' suffix to nvr
+'''
 
 # init cli argparser
 cli = argparse.ArgumentParser(
     description='Metrique Build CLI')
 cli.add_argument('action',
-                 choices=__actions__,
-                 default='sdist')
+                 choices=__actions__)
 cli.add_argument('-d', '--debug',
                  action='store_true',
                  default=False)
@@ -67,7 +67,7 @@ cli.add_argument('-u', '--upload',
 cli.add_argument('-n', '--dry-run',
                  action='store_true',
                  default=False)
-cli.add_argument('-b', '--nobump',
+cli.add_argument('-b', '--bump',
                  action='store_true',
                  default=False)
 cli.add_argument('-bk', '--bump-kind',
@@ -208,7 +208,7 @@ def build(path, action='sdist', upload=False, dry_run=False,
         pass  # ok!
 
     cmd = ['python', 'setup.py']
-    cmd.append('--dry-run') if dry_run else None
+    cmd.append('--dry-run') if args.dry_run else None
     cmd.append('--user-mirrors') if user_mirrors else None
     cmd.append(action)
     cmd.append('upload') if upload else None
@@ -226,24 +226,20 @@ def develop(path):
     sp.call(cmd)
 
 
-action = args.action
-upload = args.upload
-dry_run = args.dry_run
-nobump = args.nobump
-bump_kind = args.bump_kind
-bump_only = args.bump_only
-ga = args.ga_release
+if args.bump_kind:
+    # imply bump if the kind is set
+    args.bump = True
 
-if action == 'develop':
+if args.action == 'develop':
     [develop(path=path) for path in setup_paths]
-elif action in ['build', 'sdist', 'install']:
-    if not nobump:
+elif args.action in ['build', 'sdist', 'install']:
+    if args.bump:
         [bump(path=path,
-              kind=bump_kind,
-              ga=ga) for path in setup_paths]
-    if not bump_only:
+              kind=args.bump_kind,
+              ga=args.ga_release) for path in setup_paths]
+    if not args.bump_only:
         [build(
-            path=path, action=action,
-            upload=upload, dry_run=dry_run) for path in pkg_paths]
+            path=path, action=args.action,
+            upload=args.upload, dry_run=args.dry_run) for path in pkg_paths]
 else:
-    raise ValueError("Unknown action: %s" % action)
+    raise ValueError("Unknown action: %s" % args.action)

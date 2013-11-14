@@ -16,13 +16,11 @@ call_subprocess = virtualenv.call_subprocess
 
 __pkgs__ = ['metrique', 'metriqued', 'metriquec', 'metriqueu']
 
-GIT_LOCATION = 'https://github.com/drpoovilleorg/metrique.git'
 SRC_DIR = 'src'
-BUILD_DIR = 'metrique'
-USER_DIR = '~/.metrique'
+USER_DIR = os.path.expanduser('~/.metrique')
 
 # set cache dir so pip doesn't have to keep downloading over and over
-PIP_CACHE = os.path.expanduser(os.path.join(USER_DIR, 'pip'))
+PIP_CACHE = os.path.join(USER_DIR, 'pip')
 os.environ['PIP_DOWNLOAD_CACHE'] = PIP_CACHE
 
 
@@ -36,8 +34,8 @@ def extend_parser(parser):
 
     parser.add_option(
         '-U', '--git-uri',
-        default=GIT_LOCATION,
-        help='git repository to use for the installation')
+        default='.',
+        help='git repository to use for the installation (DEFAULT: ".")')
 
     parser.add_option(
         '-B', '--git-branch',
@@ -56,15 +54,17 @@ def extend_parser(parser):
         default=False,
         help='run tests after deployment completes')
 
+    parser.add_option(
+        '--ipython',
+        action='store_true',
+        default=False,
+        help='install ipython')
+
+
 virtualenv.extend_parser = extend_parser
 
 
 def adjust_options(options, args):
-    if not args:
-        return  # caller will raise error
-    # build the venv in a subdirectory
-    base_dir = args[0]
-    args[0] = os.path.join(base_dir, BUILD_DIR)
     options.no_site_packages = True
 virtualenv.adjust_options = adjust_options
 
@@ -77,7 +77,6 @@ def after_install(options, home_dir):
 
     makedirs(src_dir)
 
-    install_dir = os.path.join(src_dir, BUILD_DIR)
     # if git_uri == '.'; assume cwd is a git env and work in it as-is
     if git_uri == '.':
         install_dir = os.getcwd()
@@ -109,20 +108,22 @@ def after_install(options, home_dir):
     execfile(activate, dict(__file__=activate))
 
     # make sure we have the installer basics and their up2date
+    # argparse is needed for py2.6
     call_subprocess(
-        [pip, 'install', '-U', 'pip', 'distribute', 'setuptools'],
+        [pip, 'install', '-U', 'pip', 'distribute',
+         'setuptools', 'argparse', 'virtualenv'],
         cwd=os.path.abspath(install_dir),
         show_stdout=True)
-    # this is needed for py2.6
-    call_subprocess([pip, 'install', '-U', 'argparse'],
-                    cwd=os.path.abspath(install_dir),
-                    show_stdout=True)
     # this dependency is installed separately because virtenv
     # path resolution issues; fails due to being unable to find
     # the python headers in the virtenv for some reason.
     call_subprocess([pip, 'install', '-U', 'pandas'],
                     cwd=os.path.abspath(install_dir),
                     show_stdout=True)
+    if options.ipython:
+        call_subprocess([pip, 'install', '-U', 'ipython'],
+                        cwd=os.path.abspath(install_dir),
+                        show_stdout=True)
     # FIXME: any reason user might want to use 'develop' here?
     call_subprocess([py, 'build.py', 'install', '--packages', packages],
                     cwd=os.path.abspath(install_dir),
@@ -141,6 +142,14 @@ def after_install(options, home_dir):
         call_subprocess([pytest],
                         cwd=os.path.abspath(install_dir),
                         show_stdout=True)
+
+    # make sure the the default user python eggs directory
+    # is secure
+    pyeggs_path = os.path.join(USER_DIR, '.python-eggs')
+    if not os.path.exists(pyeggs_path):
+        os.makedirs(pyeggs_path, 0700)
+    else:
+        os.chmod(pyeggs_path, 0700)
 virtualenv.after_install = after_install
 
 
