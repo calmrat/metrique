@@ -32,6 +32,7 @@ class metriqued_config(JSONConf):
             'autoreload': False,
             'cookie_secret': '____UPDATE_COOKIE_SECRET_CONFIG____',
             'configdir':  CONFIG_DIR,
+            'user_cube_quota': 3,
             'debug': None,
             'gzip': True,
             'host': '127.0.0.1',

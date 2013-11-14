@@ -22,13 +22,11 @@ __requires__ = [
     'metriqueu (>=%s)' % __version__,
     'pandas (>=0.12)',
     'requests (==1.2.3)',
-    'tornado (>=3.0)',
 ]
 __irequires__ = [
     'metriqueu>=%s' % __version__,
     'pandas>=0.12',
     'requests==1.2.3',
-    'tornado>=3.0',
 ]
 pip_src = 'https://pypi.python.org/packages/source'
 __deplinks__ = []

@@ -26,10 +26,15 @@ os.environ['PIP_DOWNLOAD_CACHE'] = PIP_CACHE
 
 def extend_parser(parser):
     parser.add_option(
+        '-a', '--action',
+        default='develop',
+        choices=['install', 'develop'],
+        help='setup.py action to execute')
+
+    parser.add_option(
         '-P', '--packages',
-        nargs='+',
+        action='append',
         choices=__pkgs__ + ['all'],
-        default='all',
         help='packages to install')
 
     parser.add_option(
@@ -73,7 +78,8 @@ def after_install(options, home_dir):
     src_dir = os.path.join(home_dir, SRC_DIR)
     git_uri = options.git_uri
     git_branch = options.git_branch
-    packages = options.packages
+    pkgs = options.packages
+    action = options.action
 
     makedirs(src_dir)
 
@@ -117,15 +123,17 @@ def after_install(options, home_dir):
     # this dependency is installed separately because virtenv
     # path resolution issues; fails due to being unable to find
     # the python headers in the virtenv for some reason.
-    call_subprocess([pip, 'install', '-U', 'pandas'],
-                    cwd=os.path.abspath(install_dir),
-                    show_stdout=True)
+    if 'all' in pkgs or 'metrique' in pkgs:
+        call_subprocess([pip, 'install', '-U', 'pandas'],
+                        cwd=os.path.abspath(install_dir),
+                        show_stdout=True)
     if options.ipython:
         call_subprocess([pip, 'install', '-U', 'ipython'],
                         cwd=os.path.abspath(install_dir),
                         show_stdout=True)
-    # FIXME: any reason user might want to use 'develop' here?
-    call_subprocess([py, 'build.py', 'install', '--packages', packages],
+    if pkgs:
+        pkgs = ['--packages'] + pkgs
+    call_subprocess([py, 'build.py', action] + pkgs,
                     cwd=os.path.abspath(install_dir),
                     show_stdout=True)
 

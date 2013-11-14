@@ -12,7 +12,6 @@ from metriqued.utils import set_property
 from metriqueu.utils import utcnow
 
 INVALID_USERNAME_RE = re.compile('[^a-z]', re.I)
-CUBE_QUOTA = 1
 
 
 class AboutMeHdlr(MetriqueHdlr):
@@ -102,13 +101,14 @@ class RegisterHdlr(MetriqueHdlr):
         passhash = sha256_crypt.encrypt(password) if password else None
         if not (passhash or null_password_ok):
             self._raise(400, "[%s] no password provided" % username)
+        cube_quota = self.metrique_config.user_cube_quota
         doc = {'_id': username,
                '_ctime': utcnow(),
                'own': [],
                'read': [],
                'write': [],
                'admin': [],
-               '_cube_quota': CUBE_QUOTA,
+               '_cube_quota': cube_quota,
                '_passhash': passhash,
                }
         self.user_profile(admin=True).save(doc, upset=True, safe=True)
