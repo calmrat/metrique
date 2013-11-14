@@ -299,12 +299,12 @@ class MetriqueHdlr(RequestHandler):
         self.mongodb_config = mongodb_config
         self.logger = logger
 
-    def write(self, value):
-        # content expected to always be JSON
-        # but isn't this unecessary? can we set content type to
-        # JSON in header and this be handled automatically?
-        result = json.dumps(value, ensure_ascii=False)
-        super(MetriqueHdlr, self).write(result)
+    def write(self, value, binary=False):
+        if binary:
+            super(MetriqueHdlr, self).write(value)
+        else:
+            result = json.dumps(value, ensure_ascii=False)
+            super(MetriqueHdlr, self).write(result)
 
 ##################### auth #################################
     def get_current_user(self):

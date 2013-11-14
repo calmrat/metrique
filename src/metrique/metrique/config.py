@@ -23,9 +23,16 @@ import re
 
 from metriqueu.jsonconf import JSONConf
 
-CONFIG_DIR = os.path.expanduser('~/.metrique/etc')
-if not os.path.exists(CONFIG_DIR):
-    os.makedirs(CONFIG_DIR)
+USER_DIR = os.path.expanduser('~/.metrique')
+CONFIG_DIR = os.path.join(USER_DIR, 'etc')
+LOG_DIR = os.path.join(USER_DIR, 'logs')
+JOURNAL_DIR = os.path.join(USER_DIR, 'journal')
+
+DEFAULT_CONFIG = os.path.join(CONFIG_DIR, 'metrique')
+
+for path in [USER_DIR, CONFIG_DIR, LOG_DIR, JOURNAL_DIR]:
+    if not os.path.exists(path):
+        os.makedirs(path)
 
 
 class Config(JSONConf):
@@ -45,18 +52,19 @@ class Config(JSONConf):
         ssl_verify: ...
     '''
     def __init__(self, config_file=None, *args, **kwargs):
-        self.default_config = os.path.join(CONFIG_DIR, 'http_api')
+        self.default_config = DEFAULT_CONFIG
         self.defaults = {
             'api_version': 'v2',
             'api_rel_path': 'api/v2',
             'async': True,
             'auto_login': True,
             'batch_size': 250,
-            'sql_batch_size': 250,
+            'configdir': CONFIG_DIR,
             'debug': None,
             'host': '127.0.0.1',
             'journal': True,
-            'logdir': '~/.metrique/logs',
+            'journaldir': JOURNAL_DIR,
+            'logdir': LOG_DIR,
             'logfile': 'metrique.log',
             'log2file': True,
             'logstdout': True,
@@ -65,9 +73,11 @@ class Config(JSONConf):
             'port': 5420,
             'retries': 1,
             'sort': -1,
+            'sql_batch_size': 250,
             'ssl': False,
             'ssl_verify': True,
             'username': os.getenv('USER'),
+            'userdir': USER_DIR,
             'cube_pkgs': ['cubes'],
             'cube_paths': [],
         }

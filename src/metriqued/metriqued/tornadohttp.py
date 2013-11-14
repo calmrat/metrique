@@ -196,6 +196,7 @@ class TornadoHTTPServer(object):
             (ucv2(r"index"), cube_api.IndexHdlr),
             (ucv2(r"save"), cube_api.SaveObjectsHdlr),
             (ucv2(r"remove"), cube_api.RemoveObjectsHdlr),
+            (ucv2(r"export"), cube_api.ExportHdlr),
             (ucv2(r"update_role"), cube_api.UpdateRoleHdlr),
             (ucv2(r"drop"), cube_api.DropHdlr),
             (ucv2(r"stats"), cube_api.StatsHdlr),

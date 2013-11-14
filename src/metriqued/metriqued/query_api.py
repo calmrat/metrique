@@ -49,13 +49,14 @@ class CountHdlr(MetriqueHdlr):
     def count(self, owner, cube, query, date=None):
         self.cube_exists(owner, cube)
         self.requires_owner_read(owner, cube)
-        set_default(query, '')
+
+        query = query or ''
+        query = query_add_date(query, date)
         self.logger.info('pql query: %s' % query)
         try:
-            spec = pql.find(query_add_date(query, date))
+            spec = parse_pql_query(query)
         except Exception as e:
             self._raise(400, "Invalid Query (%s)" % str(e))
-        self.logger.debug('mongo query: %s' % spec)
         _cube = self.timeline(owner, cube)
         docs = _cube.find(spec=spec)
         return docs.count() if docs else 0
@@ -158,7 +159,11 @@ class FindHdlr(MetriqueHdlr):
 
         query = query or ''
         query = query_add_date(query, date)
-        spec = parse_pql_query(query)
+        self.logger.info('pql query: %s' % query)
+        try:
+            spec = parse_pql_query(query)
+        except Exception as e:
+            self._raise(400, "Invalid Query (%s)" % str(e))
 
         _cube = self.timeline(owner, cube)
         if explain:

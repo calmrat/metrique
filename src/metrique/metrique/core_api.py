@@ -85,6 +85,7 @@ class HTTPClient(object):
     cube_stats = cube_api.stats
     cube_sample_fields = cube_api.sample_fields
     cube_drop = cube_api.drop
+    cube_export = cube_api.export
     cube_register = cube_api.register
     cube_update_role = cube_api.update_role
 
@@ -148,7 +149,6 @@ class HTTPClient(object):
         # cubes can independently log without interferring
         # with each others logging.
         self.debug_set()
-        self.journal_set()
 
         # load a new requests session; for the cookies.
         self._load_session()
@@ -163,7 +163,8 @@ class HTTPClient(object):
             op = '=='
             one = True
 
-        result = self.find('_oid %s %s' % (op, json.dumps(name)),
+        name_json = json.dumps(name, default=json_encode, ensure_ascii=False)
+        result = self.find('_oid %s %s' % (op, name_json),
                            fields='__all__',
                            raw=True, one=one)
         if not result:
@@ -261,24 +262,6 @@ class HTTPClient(object):
             for o in objs:
                 yield o['_oid'], o
 
-    #def update(self, name)
-    # ...
-
-    # rather ... for listing attributes...
-    #def keys(self, **kwargs):
-    #    objs = self.query_sample(fields='__all__',
-    #                             raw=True, **kwargs)
-    #    keys = []
-    #    for o in objs:
-    #        keys.extend(o.keys())
-    #        keys = set(keys)
-    #    return sorted(keys)
-
-    #def __getattribute__(self, name):
-    #    # get fields on .attr
-    #    objs = self.find(fields='__all__',
-    #                     raw=True, **kwargs)
-
     def activity_get(self, ids=None):
         '''
         Returns a dictionary of `id: [(when, field, removed, added)]` kv pairs
@@ -313,32 +296,6 @@ class HTTPClient(object):
     def current_user(self):
         ' alias for whoami(); returns back username in config.username '
         return self.whoami()
-
-    def journal_set(self, logfile=None):
-        ' journal object json to disk '
-        if logfile is None:
-            logfile = self.config.logfile
-        if not (self.config.journal and logfile):
-            return
-
-        null_format = logging.Formatter()
-
-        JOURNAL = 100
-        logging.addLevelName(JOURNAL, 'JOURNAL')
-
-        self._journal_logger_name = '%s.journal' % self._logger_name
-        logger = logging.getLogger(self._journal_logger_name)
-        logger.handlers = []
-
-        logger.setLevel(logging.DEBUG)
-        logger.propagate = False
-
-        logfile = os.path.expanduser('%s.journal' % logfile)
-        hdlr = logging.FileHandler(logfile)
-        hdlr.setFormatter(null_format)
-        logger.addHandler(hdlr)
-
-        self.journal = logger
 
     def debug_set(self, level=None, logstdout=None, logfile=None):
         '''
@@ -453,23 +410,42 @@ class HTTPClient(object):
                 return default
 
     def _get_response(self, runner, _url, username, password,
-                      allow_redirects=True):
+                      allow_redirects=True, stream=False):
         ' wrapper for running a metrique api request; get/post/etc '
+        _auto = self.config.auto_login
+        _attempted = self._auto_login_attempted
         try:
-            return runner(_url,
-                          auth=(username, password),
-                          cookies=self.session.cookies,
-                          verify=self.config.ssl_verify,
-                          allow_redirects=allow_redirects)
+            _response = runner(_url, auth=(username, password),
+                               cookies=self.session.cookies,
+                               verify=self.config.ssl_verify,
+                               allow_redirects=allow_redirects,
+                               stream=stream)
         except requests.exceptions.ConnectionError:
             raise requests.exceptions.ConnectionError(
                 'Failed to connect (%s). Try http://? or https://?' % _url)
 
+        if _response.status_code in [401, 403] and _auto and not _attempted:
+            self._auto_login_attempted = True
+            # try to login and rerun the request
+            self.logger.debug('HTTP 40*: going to try to auto re-log-in')
+            self.user_login(username, password)
+            _response = self._get_response(runner, _url, username, password,
+                                           allow_redirects, stream)
+        try:
+            _response.raise_for_status()
+            # reset autologin flag since we've logged in successfully
+            self._auto_login_attempted = False
+        except Exception as e:
+            m = getattr(e, 'message')
+            content = '%s\n%s' % (m, _response.content)
+            self.logger.error(content)
+            raise
+        return _response
+
     def _kwargs_json(self, **kwargs):
         ' encode all arguments/parameters as JSON '
-        return dict([(k, json.dumps(v, default=json_encode,
-                                    ensure_ascii=False,
-                                    encoding="ISO-8859-1"))
+        return dict([(k,
+                      json.dumps(v, default=json_encode, ensure_ascii=False))
                     for k, v in kwargs.items()])
 
     def load_config(self, config=None):
@@ -500,7 +476,7 @@ class HTTPClient(object):
 
     def _run(self, kind, cmd, api_url=True,
              allow_redirects=True, full_response=False,
-             **kwargs):
+             stream=False, filename=None, **kwargs):
         '''
         wrapper for handling all requests; authentication,
         preparing arguments, calling request, handling
@@ -514,43 +490,34 @@ class HTTPClient(object):
 
         _response = self._get_response(runner, _url,
                                        username, password,
-                                       allow_redirects)
+                                       allow_redirects,
+                                       stream)
 
-        _auto = self.config.auto_login
-        _attempted = self._auto_login_attempted
-
-        if _response.status_code in [401, 403] and _auto and not _attempted:
-            self._auto_login_attempted = True
-            # try to login and rerun the request
-            self.logger.debug('HTTP 40*: going to try to auto re-log-in')
-            self.user_login(username, password)
-            _response = self._get_response(runner, _url,
-                                           username, password,
-                                           allow_redirects)
-
-        try:
-            _response.raise_for_status()
-        except Exception as e:
-            m = getattr(e, 'message')
-            content = '%s\n%s' % (m, _response.content)
-            self.logger.error(content)
-            raise
+        if full_response:
+            return _response
+        elif stream:
+            with open(filename, 'wb') as handle:
+                for block in _response.iter_content(1024):
+                    if not block:
+                        break
+                    handle.write(block)
+            return filename
         else:
-            # reset autologin flag since we've logged in successfully
-            self._auto_login_attempted = False
-            if full_response:
-                return _response
-            else:
-                try:
-                    return json.loads(_response.content)
-                except Exception as e:
-                    m = getattr(e, 'message')
-                    content = '%s\n%s' % (m, _response.content)
-                    self.logger.error(content)
-                    raise
+            try:
+                return json.loads(_response.content)
+            except Exception as e:
+                m = getattr(e, 'message')
+                content = '%s\n%s' % (m, _response.content)
+                self.logger.error(content)
+                raise
 
     def save_uri(self, uri, saveas):
         return urllib.urlretrieve(uri, saveas)
+
+    def _save(self, filename, *args, **kwargs):
+        ' requests GET of a "file stream" using current session '
+        return self._run(self.session.get, stream=True, filename=filename,
+                         *args, **kwargs)
 
     def whoami(self, auth=False):
         ' quick way of checking the username the instance is working as '

@@ -1,12 +1,10 @@
 #!/usr/bin/env python
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 
-import logging
-logging.basicConfig()
-logger = logging.getLogger(__name__)
+import codecs
+from collections import MutableMapping
 import os
 import re
-from collections import MutableMapping
 
 try:
     import simplejson as json
@@ -23,9 +21,9 @@ class JSONConf(MutableMapping):
     '''
     def __init__(self, config_file=None, defaults=None, autosave=False):
         if config_file is None and self.default_config:
-	    self.config_file = self.default_config
+            self.config_file = self.default_config
         else:
-	    self.config_file = config_file
+            self.config_file = config_file
 
         if self.defaults is None:
             self.defaults = {}
@@ -131,7 +129,7 @@ class JSONConf(MutableMapping):
                                   config_file)
                 return
         try:
-            with open(config_file) as f:
+            with codecs.open(config_file, 'r', 'utf-8') as f:
                 config = json.load(f)
         except Exception:
             raise TypeError("Failed to load json file: %s" % config_file)
@@ -145,11 +143,10 @@ class JSONConf(MutableMapping):
             if force:
                 #FIXME config dir
                 config_dir = os.path.dirname(config_file)
-                logger.debug('mkdirs (%s)' % config_dir)
                 os.makedirs(config_dir)
             else:
                 raise IOError("Path does not exist: %s" % config_file)
-        with open(config_file, 'w') as f:
+        with codecs.open(config_file, 'w', 'utf-8') as f:
             f.write(json.dumps(self.config, indent=2))
 
     def setdefault(self, key, value):
@@ -165,7 +162,6 @@ class JSONConf(MutableMapping):
         n_opt = prompter()
         if n_opt:
             self.config[option] = n_opt
-            logger.debug('Updated Config: \n%s' % self.config)
         return n_opt
 
     def values(self):

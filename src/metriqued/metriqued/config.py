@@ -8,14 +8,14 @@ from metriqueu.jsonconf import JSONConf
 from metriqued.basemongodb import BaseMongoDB
 
 USER_DIR = os.path.expanduser('~/.metrique')
-
 CONFIG_DIR = os.path.join(USER_DIR, 'etc')
-if not os.path.exists(CONFIG_DIR):
-    os.makedirs(CONFIG_DIR)
-
 LOG_DIR = os.path.join(USER_DIR, 'logs')
-if not os.path.exists(LOG_DIR):
-    os.makedirs(LOG_DIR)
+
+DEFAULT_CONFIG = os.path.join(CONFIG_DIR, 'metriqued')
+
+for path in [USER_DIR, CONFIG_DIR, LOG_DIR]:
+    if not os.path.exists(path):
+        os.makedirs(path)
 
 SSL_CERT_FILE = os.path.join(CONFIG_DIR, 'cert.pem')
 SSL_KEY_FILE = os.path.join(CONFIG_DIR, 'pkey.pem')
@@ -26,7 +26,7 @@ STATIC_PATH = os.path.join(here, 'static/')
 
 class metriqued_config(JSONConf):
     def __init__(self, config_file=None):
-        self.default_config = os.path.join(CONFIG_DIR, 'metriqued')
+        self.default_config = DEFAULT_CONFIG
         self.defaults = {
             'async': True,
             'autoreload': False,
@@ -71,6 +71,7 @@ class mongodb_config(JSONConf):
             'collection_user_profile': 'user_profile',
             'host': '127.0.0.1',
             'port': 27017,
+            'mongoexport': '/usr/bin/mongoexport',
             'ssl': False,
             'ssl_certificate': SSL_CERT_FILE,
             'ssl_certificate_key': SSL_KEY_FILE,

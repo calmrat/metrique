@@ -3,6 +3,12 @@
 # Author: "Chris Ward <cward@redhat.com>
 
 from bson.objectid import ObjectId
+from datetime import datetime
+import gzip
+import os
+import shlex
+import subprocess
+import tempfile
 from tornado.web import authenticated
 
 from metriqued.core_api import MetriqueHdlr
@@ -11,11 +17,9 @@ from metriqued.utils import insert_bulk, jsonhash
 
 from metriqueu.utils import dt2ts, utcnow
 
-# FIXME: change '__' between cube/owner to '.' and make dots
-# in cube names illegal
+mongoexport = 'mongoexport'
 
 
-# FIXME: add ability to backup before dropping
 class DropHdlr(MetriqueHdlr):
     ''' RequestsHandler for droping given cube from timeline '''
     @authenticated
@@ -42,6 +46,61 @@ class DropHdlr(MetriqueHdlr):
         collection = self.cjoin(owner, cube)
         self.update_user_profile(owner, 'pull', 'own', collection)
         return True
+
+
+class ExportHdlr(MetriqueHdlr):
+    '''
+    RequestHandler for exporting a collection (cube) to gzipped json
+    '''
+    @authenticated
+    def get(self, owner, cube):
+        self.cube_exists(owner, cube)
+        self.requires_owner_admin(owner, cube)
+        path = ''
+        try:
+            path = self.mongoexport(owner, cube)
+            with open(path, 'rb') as f:
+                while 1:
+                    data = f.read(16384)
+                    if not data:
+                        break
+                    self.write(data, binary=True)
+        finally:
+            if os.path.exists(path):
+                os.remove(path)
+
+    # FIXME: UNICODE IS NOT PROPERLY ENCODED!
+    def mongoexport(self, owner, cube):
+        conf = self.mongodb_config
+        _cube = '__'.join((owner, cube))
+        now = datetime.now().isoformat()
+
+        fd, path = tempfile.mkstemp(prefix=_cube,
+                                    suffix='-%s.json' % now)
+        path_gz = path + '.gz'
+
+        x = conf['mongoexport']
+        db = '--db timeline'
+        collection = '--collection %s' % _cube
+        out = '--out %s' % path
+        ssl = '--ssl' if conf['ssl'] else ''
+        auth = conf['auth']
+        authdb = '--authenticationDatabase admin' if auth else ''
+        user = '--username admin' if auth else ''
+        _pass = '--password %s' % conf['password'] if auth else ''
+        cmd = ' '.join([x, db, collection, out, ssl, authdb, user, _pass])
+        self.logger.debug('Running: %s' % str(cmd))
+        try:
+            subprocess.check_call(shlex.split(cmd),
+                                  stdout=open('/dev/null', 'w'),
+                                  stderr=open('/dev/null', 'w'))
+            with open(path, 'rb') as f_in:
+                with gzip.open(path_gz, 'wb') as f_out:
+                    f_out.writelines(f_in)
+        finally:
+            if os.path.exists(path):
+                os.remove(path)
+        return path_gz
 
 
 class IndexHdlr(MetriqueHdlr):

@@ -11,15 +11,15 @@ Save/Remove cube objects.
 Create/Drop cube indexes.
 '''
 
+import codecs
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from copy import deepcopy
 from datetime import datetime
-from operator import itemgetter
+import os
 import simplejson as json
 import traceback
 
 from metrique.utils import json_encode
-
 from metriqueu.utils import batch_gen, ts2dt, dt2ts, utcnow
 
 
@@ -70,7 +70,7 @@ def stats(self, cube, owner=None, keys=None):
 
 ### ADMIN ####
 
-def drop(self, cube=None, force=False, owner=None):
+def drop(self, quiet=False, cube=None, owner=None):
     '''
     Drops current cube from timeline
 
@@ -78,12 +78,14 @@ def drop(self, cube=None, force=False, owner=None):
     :param bool force: really, do it!
     :param string owner: username of cube owner
     '''
-    if not force:
-        raise ValueError(
-            "DANGEROUS: set force=True to drop %s.%s" % (
-                owner, cube))
     cmd = self.get_cmd(owner, cube, 'drop')
-    return self._delete(cmd)
+    try:
+        return self._delete(cmd)
+    except Exception:
+        if quiet:
+            return False
+        else:
+            raise
 
 
 def register(self, cube=None, owner=None):
@@ -159,7 +161,7 @@ def drop_index(self, index_or_name, cube=None, owner=None):
 
 ######## SAVE/REMOVE ########
 
-def save(self, objects, cube=None, owner=None):
+def save(self, objects, cube=None, owner=None, journal=None):
     '''
     Save a list of objects the given metrique.cube.
     Returns back a list of object ids (_id|_oid) saved.
@@ -194,18 +196,21 @@ def save(self, objects, cube=None, owner=None):
             k += len(batch)
             self.logger.info("... %i of %i posted" % (k, olen))
 
-    if saved:
+    journal = journal or self.config.journal
+    if saved and self.config.journal:
         objects = [o for o in objects if o['_oid'] in saved]
-        # journal locally as well
-        if self.config.journal:
-            # journal objects locally if any were saved
-            for o in sorted(objects, key=itemgetter('_oid')):
-                dump = {'owner': self.owner, 'name': self.name,
-                        'when': utcnow(), 'object': o}
-                ojson = json.dumps(dump, default=json_encode,
-                                   ensure_ascii=True,
-                                   encoding="ISO-8859-1")
-                self.journal.debug(ojson)
+        cube = '%s__%s' % (self.owner, self.name)
+        journaldir = os.path.join(self.config.journaldir, cube)
+        if not os.path.exists(journaldir):
+            os.makedirs(os.path.expanduser(journaldir))
+        _path = '%s.json' % now.date().isoformat()
+        path = os.path.join(journaldir, _path)
+        exists = os.path.exists(path)
+        with codecs.open(path, 'a', 'utf-8') as journal:
+            if exists:
+                journal.write('\n')
+            json.dump(objects, journal, default=json_encode,
+                      ensure_ascii=False, indent=2)
     self.logger.info("... Saved %s NEW docs" % len(saved))
     return sorted(saved)
 
@@ -224,8 +229,18 @@ def remove(self, query, cube=None, owner=None):
     return sorted(result)
 
 
-######## ACTIVITY IMPORT ########
+def export(self, filename, cube=None, owner=None):
+    '''
+    Export the entire cube to compressed (gzip) json
 
+    :param string cube: cube name
+    :param string owner: username of cube owner
+    '''
+    cmd = self.get_cmd(owner, cube, 'export')
+    return self._save(cmd=cmd, filename=filename)
+
+
+######## ACTIVITY IMPORT ########
 def activity_import(self, oids=None, cube=None, owner=None,
                     parallel=True):
     '''
@@ -360,7 +375,7 @@ def _activity_import_doc(self, time_doc, activities):
                 msg += ' ... {when}'
                 self.logger.error(msg.format(**incon))
             else:
-                self.logger.error(json.dumps(incon))
+                self.logger.error(json.dumps(incon, ensure_ascii=False))
             if '_corrupted' not in new_doc:
                 new_doc['_corrupted'] = {}
             new_doc['_corrupted'][field] = added

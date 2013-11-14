@@ -69,7 +69,7 @@ def start(**kwargs):
     sys.exit()
 
 
-def restart(pid, signal=None, timeout=None):
+def restart(pid, signal=None, timeout=None, **kwargs):
     if timeout is None:
         timeout = -1
     if status(pid):
