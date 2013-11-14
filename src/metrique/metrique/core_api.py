@@ -373,7 +373,13 @@ class HTTPClient(object):
     def get_cube(self, cube, init=True, **kwargs):
         ' wrapper for utils.get_cube(); try to load a cube, pyclient '
         config = copy(self.config)
-        return get_cube(cube=cube, init=init, config=config, **kwargs)
+        # don't apply the name to the current obj, but to the object
+        # we get back from get_cube
+        name = kwargs.get('name')
+        if name:
+            del kwargs['name']
+        return get_cube(cube=cube, init=init, config=config,
+                        name=name, **kwargs)
 
     def get_last_field(self, field):
         '''
