@@ -6,6 +6,7 @@ from bson.objectid import ObjectId
 from datetime import datetime
 import gzip
 import os
+import re
 import shlex
 import subprocess
 import tempfile
@@ -75,7 +76,7 @@ class ExportHdlr(MetriqueHdlr):
         _cube = '__'.join((owner, cube))
         now = datetime.now().isoformat()
 
-        fd, path = tempfile.mkstemp(prefix=_cube,
+        fd, path = tempfile.mkstemp(prefix=_cube + '-',
                                     suffix='-%s.json' % now)
         path_gz = path + '.gz'
 
@@ -87,16 +88,19 @@ class ExportHdlr(MetriqueHdlr):
         auth = conf['auth']
         authdb = '--authenticationDatabase admin' if auth else ''
         user = '--username admin' if auth else ''
-        _pass = '--password %s' % conf['password'] if auth else ''
+        _pass = '--password %s' % conf['admin_password'] if auth else ''
         cmd = ' '.join([x, db, collection, out, ssl, authdb, user, _pass])
-        self.logger.debug('Running: %s' % str(cmd))
+	_cmd = re.sub('password.*$', 'password *****', cmd)
+        self.logger.debug('Running: %s' % _cmd)
         try:
-            subprocess.check_call(shlex.split(cmd),
-                                  stdout=open('/dev/null', 'w'),
-                                  stderr=open('/dev/null', 'w'))
-            with open(path, 'rb') as f_in:
-                with gzip.open(path_gz, 'wb') as f_out:
-                    f_out.writelines(f_in)
+            subprocess.check_call(shlex.split(cmd.encode('ascii')),
+                                  stdout=open(os.devnull, 'wb'),
+                                  stderr=open(os.devnull, 'wb'))
+            f_in = open(path, 'rb')
+            f_out = gzip.open(path_gz, 'wb')
+            f_out.writelines(f_in)
+	    f_in.close()
+	    f_out.close()
         finally:
             if os.path.exists(path):
                 os.remove(path)
