@@ -1,24 +1,17 @@
-#!/usr/bin/python
-# vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
-# Author: "Chris Ward <cward@redhat.com>
-
 from setuptools import setup
 
-__pkg__ = 'metrique'
-__version__ = '0.2.2'
-__release__ = 12
+__pkg__ = 'plotrique'
+__version__ = '0.1.0'
+__release__ = "3a"
 __nvr__ = '%s-%s' % (__version__, __release__)
-__pkgs__ = ['metrique']
-__provides__ = ['metrique']
-__desc__ = 'Metrique - Client Libraries'
+__pkgs__ = ['plotrique']
+__provides__ = ['plotrique']
+__desc__ = 'plotrique - Convenience plotting tools'
 __scripts__ = [
-    'bin/metrique-setup',
 ]
 __irequires__ = [
-    'metriqueu==%s' % __version__,
-    'plotrique==0.1',
+    'matplotlib==1.3',
     'pandas==0.12',
-    'requests==1.2.3',
 ]
 pip_src = 'https://pypi.python.org/packages/source'
 __deplinks__ = []
@@ -32,8 +25,8 @@ download_url = '%s/archive/master.zip' % github
 default_setup = dict(
     url=github,
     license='GPLv3',
-    author='Chris Ward',
-    author_email='cward@redhat.com',
+    author='Juraj Niznan',
+    author_email='jniznan@redhat.com',
     download_url=download_url,
     long_description=readme,
     data_files=[],

@@ -19,19 +19,12 @@ __scripts__ = [
     'bin/metriqued-setup',
     'bin/metriqued'
 ]
-__requires__ = [
-    'kerberos (>=1.1.1)',
-    'metriqueu (>=%s)' % __version__,
-    'passlib (>=1.6.1)',
-    'pymongo (>=2.6.1)',
-    'tornado (>=3.0)',
-]
 __irequires__ = [
-    'kerberos>=1.1.1',
-    'metriqueu>=%s' % __version__,
-    'passlib>=1.6.1',
-    'pymongo>=2.6.1',
-    'tornado>=3.0',
+    'metriqueu==%s' % __version__,
+    'kerberos==1.1.1',
+    'passlib==1.6.1',
+    'pymongo==2.6.3',
+    'tornado==3.1',
 ]
 pip_src = 'https://pypi.python.org/packages/source'
 __deplinks__ = []
@@ -56,7 +49,6 @@ default_setup = dict(
     name=__pkg__,
     packages=__pkgs__,
     provides=__provides__,
-    requires=__requires__,
     scripts=__scripts__,
     version=__nvr__,
 )

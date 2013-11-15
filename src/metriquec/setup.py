@@ -23,15 +23,10 @@ __provides__ = ['metriquec']
 __datafiles__ = []
 __desc__ = 'Metrique - Cubes'
 __scripts__ = []
-__requires__ = [
-    'metrique (>=%s)' % __version__,
-    'celery (>=3.0)',
-    'psycopg2 (>=2.5.1)',
-]
 __irequires__ = [
-    'metrique>=%s' % __version__,
-    'celery>=3.0',
-    'psycopg2>=2.5.1',
+    'metrique==%s' % __version__,
+    'celery==3.1',
+    'psycopg2==2.5.1',
 ]
 pip_src = 'https://pypi.python.org/packages/source'
 __deplinks__ = []
@@ -61,7 +56,6 @@ default_setup = dict(
     name=__pkg__,
     packages=__pkgs__,
     provides=__provides__,
-    requires=__requires__,
     scripts=__scripts__,
     version=__nvr__,
 )

@@ -45,13 +45,19 @@ The examples given below use yum and assume fedora rpm package names::
     # activate the virtual environment
     source ~/virtenv-metrique/bin/activate
 
-    # WITH IPYTHON:
+    # WITH IPYTHON
     # additional *os* prerequisites
-    sudo yum install libpng-devel freetype-devel 
-    ./deploy --ipython ~/virtenv-metrique
+    # sudo yum install libpng-devel freetype-devel 
+    # ./deploy --ipython ~/virtenv-metrique
 
+    # CLIENT + SITE CUBES ONLY
+    # ./deploy --ipython -P metrique -P metriquec ~/virtenv-metrique
+
+    # SERVER ONLY
+    # ./deploy --ipython -P metriqued ~/virtenv-metrique
 
 .. image:: https://d2weczhvl823v0.cloudfront.net/drpoovilleorg/metrique/trend.png
+
    :alt: Bitdeli badge
    :target: https://bitdeli.com/free
 

@@ -15,21 +15,13 @@ __pkgs__ = ['metriqueu']
 __provides__ = ['metriqueu']
 __desc__ = 'Metrique - Shared Utility Libraries'
 __scripts__ = []
-__requires__ = [
-    'decorator (>=3.4)',
-    'futures (>=2.1)',
-    'pql (>=0.3.2)',
-    'python_dateutil (>=2.1)',
-    'pytz',  # (>=2013b)
-    'simplejson (>=3.3)',
-]
 __irequires__ = [
-    'decorator>=3.4',
-    'futures>=2.1',
-    'pql>=0.3.2',
-    'python_dateutil>=2.1',
-    'pytz>=2013b',
-    'simplejson>=3.3',
+    'decorator==3.4',
+    'futures==2.1',
+    'pql==0.4',
+    'python_dateutil==2.2',
+    'pytz==2013.8',
+    'simplejson==3.3',
 ]
 pip_src = 'https://pypi.python.org/packages/source'
 __deplinks__ = []
@@ -54,7 +46,6 @@ default_setup = dict(
     name=__pkg__,
     packages=__pkgs__,
     provides=__provides__,
-    requires=__requires__,
     scripts=__scripts__,
     version=__nvr__,
 )
