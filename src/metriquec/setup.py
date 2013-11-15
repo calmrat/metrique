@@ -2,14 +2,11 @@
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 # Author: "Chris Ward <cward@redhat.com>
 
-import logging
-logging.basicConfig()
-logger = logging.getLogger(__name__)
 from setuptools import setup
 
 __pkg__ = 'metriquec'
 __version__ = '0.2.2'
-__release__ = "16a"
+__release__ = 19
 __nvr__ = '%s-%s' % (__version__, __release__)
 __pkgs__ = ['metriquec', 'metriquec.sql',
             'metriquec.cubes',
@@ -24,13 +21,13 @@ __datafiles__ = []
 __desc__ = 'Metrique - Cubes'
 __scripts__ = []
 __requires__ = [
-    'metrique (==%s)' % __version__,
-    'celery (==3.0)',
+    'metrique (>=%s)' % __version__,
+    'celery (==3.1.0)',
     'psycopg2 (==2.5.1)',
 ]
 __irequires__ = [
-    'metrique==%s' % __version__,
-    'celery==3.1',
+    'metrique>=%s' % __version__,
+    'celery==3.1.0',
     'psycopg2==2.5.1',
 ]
 pip_src = 'https://pypi.python.org/packages/source'

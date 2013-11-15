@@ -2,14 +2,11 @@
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 # Author: "Chris Ward <cward@redhat.com>
 
-import logging
-logging.basicConfig()
-logger = logging.getLogger(__name__)
 from setuptools import setup
 
 __pkg__ = 'metriqued'
 __version__ = '0.2.2'
-__release__ = "16a"
+__release__ = 19
 __nvr__ = '%s-%s' % (__version__, __release__)
 __pkgs__ = ['metriqued']
 __provides__ = ['metriqued']
@@ -20,18 +17,18 @@ __scripts__ = [
     'bin/metriqued'
 ]
 __requires__ = [
-    'metriqueu (==%s)' % __version__,
+    'metriqueu (>=%s)' % __version__,
     'kerberos (==1.1.1)',
     'passlib (==1.6.1)',
     'pymongo (==2.6.1)',
-    'tornado (==3.0)',
+    'tornado (==3.1.1)',
 ]
 __irequires__ = [
-    'metriqueu==%s' % __version__,
+    'metriqueu>=%s' % __version__,
     'kerberos==1.1.1',
     'passlib==1.6.1',
     'pymongo==2.6.3',
-    'tornado==3.1',
+    'tornado==3.1.1',
 ]
 pip_src = 'https://pypi.python.org/packages/source'
 __deplinks__ = []

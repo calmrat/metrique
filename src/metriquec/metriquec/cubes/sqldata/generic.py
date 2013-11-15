@@ -2,7 +2,10 @@
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 # Author: "Chris Ward <cward@redhat.com>
 
-from concurrent.futures import ThreadPoolExecutor, as_completed
+try:
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+except ImportError:
+    from futures import ThreadPoolExecutor, as_completed
 from collections import defaultdict
 from dateutil.parser import parse as dt_parse
 from functools import partial

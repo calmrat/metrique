@@ -12,7 +12,10 @@ Create/Drop cube indexes.
 '''
 
 import codecs
-from concurrent.futures import ThreadPoolExecutor, as_completed
+try:
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+except ImportError:
+    from futures import ThreadPoolExecutor, as_completed
 from copy import deepcopy
 from datetime import datetime
 import os

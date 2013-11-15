@@ -1,8 +1,12 @@
+#!/usr/bin/python
+# vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
+# Author: "Chris Ward <cward@redhat.com>
+
 from setuptools import setup
 
 __pkg__ = 'plotrique'
-__version__ = '0.1.0'
-__release__ = "7a"
+__version__ = '0.2.2'
+__release__ = 10
 __nvr__ = '%s-%s' % (__version__, __release__)
 __pkgs__ = ['plotrique']
 __provides__ = ['plotrique']

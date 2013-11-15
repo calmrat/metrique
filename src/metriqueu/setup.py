@@ -2,34 +2,31 @@
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 # Author: "Chris Ward <cward@redhat.com>
 
-import logging
-logging.basicConfig()
-logger = logging.getLogger(__name__)
 from setuptools import setup
 
 __pkg__ = 'metriqueu'
 __version__ = '0.2.2'
-__release__ = "16a"
+__release__ = 19
 __nvr__ = '%s-%s' % (__version__, __release__)
 __pkgs__ = ['metriqueu']
 __provides__ = ['metriqueu']
 __desc__ = 'Metrique - Shared Utility Libraries'
 __scripts__ = []
 __requires__ = [
-    'decorator (==3.4)',
-    'futures (==2.1)',
+    'decorator (==3.4.0)',
+    'futures (==2.1.3)',
     'pql (==0.4.1)',
-    'python_dateutil (==2.2)',
+    'python_dateutil (==2.2.0)',
     'pytz (==2013.8)'
-    'simplejson (==3.3)',
+    'simplejson (==3.3.1)',
 ]
 __irequires__ = [
-    'decorator==3.4',
-    'futures==2.1',
+    'decorator==3.4.0',
+    'futures==2.1.3',
     'pql==0.4.1',
-    'python_dateutil==2.2',
+    'python_dateutil==2.2.0',
     'pytz==2013.8',
-    'simplejson==3.3',
+    'simplejson==3.3.1',
 ]
 pip_src = 'https://pypi.python.org/packages/source'
 __deplinks__ = []

@@ -7,7 +7,10 @@ Basic Jenkins.build cube for extracting BUILD data from Jenkins
 '''
 
 from collections import defaultdict
-from concurrent.futures import ThreadPoolExecutor, as_completed
+try:
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+except ImportError:
+    from futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from dateutil.parser import parse as dt_parse
 from functools import partial

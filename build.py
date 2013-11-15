@@ -27,27 +27,14 @@ logger = logging.getLogger('metrique')
 __pkgs__ = ['metrique', 'metriqued', 'metriquec', 'metriqueu',
             'plotrique']
 __src__ = 'src/'
-__actions__ = ['build', 'sdist', 'install', 'develop', 'register']
+__actions__ = ['build', 'sdist', 'install', 'develop', 'register',
+               'bump', 'status']
 __bumps__ = ['x', 'y', 'z', 'r']
 #RE_RELEASE = re.compile(r"__release__ = [\"']?((\d+)a?)[\"']?")
 RE_VERSION_X = re.compile(r"__version__\s+=\s+[\"']((\d+).\d+.\d+)[\"']")
 RE_VERSION_Y = re.compile(r"__version__\s+=\s+[\"'](\d+.(\d+).\d+)[\"']")
 RE_VERSION_Z = re.compile(r"__version__\s+=\s+[\"'](\d+.\d+.(\d+))[\"']")
 RE_RELEASE = re.compile(r"__release__ = [\"']?((\d+)a?)[\"']?")
-
-'''
-** Options **
- --debug: Enabled/Disable debug output
- --packages: package to build
- --action: setup action
- --upload: Upload builds to pypi?
- --register: Register new package with pypi?
- --dry-run: flag to not actually do anything
- --bump: bump nvr
- --bump-kind: bump release by default
- --bump-only: bump nvr and quit
- --ga-release: don't append 'a' suffix to nvr
-'''
 
 # init cli argparser
 cli = argparse.ArgumentParser(
@@ -60,24 +47,18 @@ cli.add_argument('-d', '--debug',
 cli.add_argument('-P', '--packages',
                  choices=__pkgs__ + ['all'],
                  default='all')
-cli.add_argument('--user-mirrors',
+cli.add_argument('--no-mirrors',
                  action='store_true',
                  default=False)
 cli.add_argument('-u', '--upload',
                  action='store_true',
                  default=False)
-cli.add_argument('-n', '--dry-run',
-                 action='store_true',
-                 default=False)
-cli.add_argument('-b', '--bump',
-                 action='store_true',
-                 default=False)
-cli.add_argument('-bk', '--bump-kind',
+cli.add_argument('--bump-kind',
                  choices=__bumps__)
-cli.add_argument('-bo', '--bump-only',
+cli.add_argument('--ga',
                  action='store_true',
                  default=False)
-cli.add_argument('-ga', '--ga-release',
+cli.add_argument('--pypi',
                  action='store_true',
                  default=False)
 
@@ -198,62 +179,88 @@ def bump(path, kind=None, reset=False, ga=False):
     update_line(path, regex, bump_func)
 
 
-def build(path, action='sdist', upload=False, dry_run=False,
-          user_mirrors=False):
-    assert action in __actions__
+def call(cmd):
+    _cmd = cmd.strip().split(' ')
+    logger.info('(%s) %s' % (os.getcwd(), str(_cmd)))
+    try:
+        p = sp.Popen(cmd, shell=True, stdout=sp.PIPE, stderr=sp.PIPE)
+        print p.communicate()
+    except:
+        raise
+
+
+def install(path, args, develop=False):
     os.chdir(path)
 
-    if upload and dry_run:
-        raise RuntimeError("It doesn't make sense to dry-run upload...")
-    elif upload and action != 'sdist':
-        raise RuntimeError("It doesn't make sense to `%s upload`" % action)
+    virtenv = os.environ.get('VIRTUAL_ENV')
+    if virtenv:
+        activate = os.path.join(virtenv, 'bin', 'activate_this.py')
+        execfile(activate, dict(__file__=activate))
+
+    cmd = 'pip-accel install -U '
+
+    if args.pypi:
+        # install from pypi
+        if args.upload:
+            # build and upload the current version
+            build(path=path, args=args, sdist=True)
+        pkg = os.path.basename(path)
+        cmd += pkg
     else:
-        pass  # ok!
-
-    cmd = ['python', 'setup.py']
-    cmd.append('--dry-run') if args.dry_run else None
-    cmd.append('--user-mirrors') if user_mirrors else None
-    cmd.append(action)
-    cmd.append('upload') if upload else None
-    cmd_str = ' '.join(cmd)
-    logger.info('(%s) %s' % (os.getcwd(), cmd_str))
-    sp.call(cmd)
+        # install from local repo
+        cmd += '-e %s' % path
+    cmd += '' if args.no_mirrors else ' --use-mirrors'
+    call(cmd)
 
 
-def develop(path):
-    dir = os.path.dirname(path)
-    os.chdir(dir)
-    cmd = ['python', 'setup.py', 'develop']
-    cmd_str = ' '.join(cmd)
-    logger.info('(%s) %s' % (os.getcwd(), cmd_str))
-    sp.call(cmd)
+def build(path, args, sdist=False):
+    os.chdir(path)
+    action = 'sdist' if sdist else 'build'
+    cmd = './setup.py %s' % action
+    cmd += ' upload' if args.upload else ''
+    call(cmd)
 
 
 def register(path):
-    dir = os.path.dirname(path)
-    os.chdir(dir)
-    cmd = ['python', 'setup.py', 'register']
-    cmd_str = ' '.join(cmd)
-    logger.info('(%s) %s' % (os.getcwd(), cmd_str))
-    sp.call(cmd)
+    os.chdir(path)
+    cmd = './setup.py register'
+    call(cmd)
 
 
-if args.bump_kind:
-    # imply bump if the kind is set
-    args.bump = True
+def status(path):
+    pkg = os.path.basename(os.path.dirname(path))
+    p = call('pip show %s' % pkg)
+    print p.communicate()
 
-if args.action == 'develop':
-    [develop(path=path) for path in setup_paths]
-elif args.action == 'register':
-    [register(path=path) for path in setup_paths]
-elif args.action in ['build', 'sdist', 'install']:
-    if args.bump:
-        [bump(path=path,
-              kind=args.bump_kind,
-              ga=args.ga_release) for path in setup_paths]
-    if not args.bump_only:
-        [build(
-            path=path, action=args.action,
-            upload=args.upload, dry_run=args.dry_run) for path in pkg_paths]
-else:
-    raise ValueError("Unknown action: %s" % args.action)
+
+def fast_check():
+    # make sure we have pip-accel available
+    try:
+        call('pip-accel')
+    except OSError:
+        call('pip install pip-accel')
+
+
+if __name__ == '__main__':
+    if args.action == 'status':
+        [status(path=path) for path in setup_paths]
+    elif args.action == 'register':
+        [register(path=path) for path in setup_paths]
+    elif args.action == 'bump':
+        [bump(path=path, kind=args.bump_kind,
+              ga=args.ga) for path in setup_paths]
+    else:
+        if args.action == 'build':
+            [build(path=path, args=args, sdist=False) for path in pkg_paths]
+        elif args.action == 'sdist':
+            [build(path=path, args=args, sdist=True) for path in pkg_paths]
+        elif args.action == 'install':
+            fast_check()
+            [install(path=path, args=args,
+                     develop=False) for path in pkg_paths]
+        elif args.action == 'develop':
+            fast_check()
+            [install(path=path, args=args,
+                     develop=True) for path in pkg_paths]
+        else:
+            raise ValueError("Unknown action: %s" % args.action)
