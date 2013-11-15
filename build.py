@@ -46,7 +46,6 @@ RE_RELEASE = re.compile(r"__release__ = [\"']?((\d+)a?)[\"']?")
  --bump: bump nvr
  --bump-kind: bump release by default
  --bump-only: bump nvr and quit
- --bump-only: bump nvr and quit
  --ga-release: don't append 'a' suffix to nvr
 '''
 
@@ -74,8 +73,7 @@ cli.add_argument('-b', '--bump',
                  action='store_true',
                  default=False)
 cli.add_argument('-bk', '--bump-kind',
-                 choices=__bumps__,
-                 default='r')
+                 choices=__bumps__)
 cli.add_argument('-bo', '--bump-only',
                  action='store_true',
                  default=False)
@@ -173,7 +171,9 @@ def update_line(path, regex, bump_func):
         setup.write(content_str)
 
 
-def bump(path, kind='r', reset=False, ga=False):
+def bump(path, kind=None, reset=False, ga=False):
+    if kind is None:
+        kind = 'r'
     assert kind in __bumps__
     # pull current
     if kind == 'x':

@@ -9,7 +9,7 @@ from setuptools import setup
 
 __pkg__ = 'metriqued'
 __version__ = '0.2.2'
-__release__ = 12
+__release__ = "16a"
 __nvr__ = '%s-%s' % (__version__, __release__)
 __pkgs__ = ['metriqued']
 __provides__ = ['metriqued']
@@ -18,6 +18,13 @@ __desc__ = 'Python/MongoDB Information Platform - Server'
 __scripts__ = [
     'bin/metriqued-setup',
     'bin/metriqued'
+]
+__requires__ = [
+    'metriqueu (==%s)' % __version__,
+    'kerberos (==1.1.1)',
+    'passlib (==1.6.1)',
+    'pymongo (==2.6.1)',
+    'tornado (==3.0)',
 ]
 __irequires__ = [
     'metriqueu==%s' % __version__,
@@ -49,6 +56,7 @@ default_setup = dict(
     name=__pkg__,
     packages=__pkgs__,
     provides=__provides__,
+    requires=__requires__,
     scripts=__scripts__,
     version=__nvr__,
 )

@@ -28,7 +28,7 @@ os.environ['PIP_DOWNLOAD_CACHE'] = PIP_CACHE
 def extend_parser(parser):
     parser.add_option(
         '-a', '--action',
-        default='develop',
+        default='install',
         choices=['install', 'develop'],
         help='setup.py action to execute')
 
@@ -36,6 +36,7 @@ def extend_parser(parser):
         '-P', '--packages',
         action='append',
         choices=__pkgs__ + ['all'],
+        default=[],
         help='packages to install')
 
     parser.add_option(
@@ -93,8 +94,11 @@ def after_install(options, home_dir):
         call_subprocess(['git', 'clone', git_uri, install_dir],
                         show_stdout=True)
 
+    install_dir = os.path.abspath(install_dir)
+
+    os.chdir(install_dir)
+
     if not options.nopull and git_uri != '.':
-        os.chdir(install_dir)
         logger.notify('Pulling %s' % git_branch)
         call_subprocess(['git', 'checkout', git_branch], show_stdout=True)
         call_subprocess(['git', 'pull'], show_stdout=True)
@@ -119,23 +123,23 @@ def after_install(options, home_dir):
     call_subprocess(
         [pip, 'install', '-U', 'pip', 'distribute',
          'setuptools', 'argparse', 'virtualenv'],
-        cwd=os.path.abspath(install_dir),
+        cwd=install_dir,
         show_stdout=True)
     # this dependency is installed separately because virtenv
     # path resolution issues; fails due to being unable to find
     # the python headers in the virtenv for some reason.
-    if 'all' in pkgs or 'metrique' in pkgs:
+    if not pkgs == ['metriqued']:
         call_subprocess([pip, 'install', '-U', 'pandas'],
-                        cwd=os.path.abspath(install_dir),
+                        cwd=install_dir,
                         show_stdout=True)
     if options.ipython:
         call_subprocess([pip, 'install', '-U', 'ipython'],
-                        cwd=os.path.abspath(install_dir),
+                        cwd=install_dir,
                         show_stdout=True)
     if pkgs:
         pkgs = ['--packages'] + pkgs
     call_subprocess([py, 'build.py', action] + pkgs,
-                    cwd=os.path.abspath(install_dir),
+                    cwd=install_dir,
                     show_stdout=True)
 
     # make the user directory, where configs and logs, etc are stored
@@ -145,11 +149,10 @@ def after_install(options, home_dir):
     if options.test:
         call_subprocess(
             [pip, 'install', 'pytest'],
-            cwd=os.path.abspath(install_dir),
+            cwd=install_dir,
             show_stdout=True)
-        os.chdir(install_dir)
         call_subprocess([pytest],
-                        cwd=os.path.abspath(install_dir),
+                        cwd=install_dir,
                         show_stdout=True)
 
     # make sure the the default user python eggs directory

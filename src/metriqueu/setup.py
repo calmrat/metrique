@@ -9,16 +9,24 @@ from setuptools import setup
 
 __pkg__ = 'metriqueu'
 __version__ = '0.2.2'
-__release__ = 12
+__release__ = "16a"
 __nvr__ = '%s-%s' % (__version__, __release__)
 __pkgs__ = ['metriqueu']
 __provides__ = ['metriqueu']
 __desc__ = 'Metrique - Shared Utility Libraries'
 __scripts__ = []
+__requires__ = [
+    'decorator (==3.4)',
+    'futures (==2.1)',
+    'pql (==0.4.1)',
+    'python_dateutil (==2.2)',
+    'pytz (==2013.8)'
+    'simplejson (==3.3)',
+]
 __irequires__ = [
     'decorator==3.4',
     'futures==2.1',
-    'pql==0.4',
+    'pql==0.4.1',
     'python_dateutil==2.2',
     'pytz==2013.8',
     'simplejson==3.3',

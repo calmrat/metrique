@@ -9,7 +9,7 @@ from setuptools import setup
 
 __pkg__ = 'metriquec'
 __version__ = '0.2.2'
-__release__ = 12
+__release__ = "16a"
 __nvr__ = '%s-%s' % (__version__, __release__)
 __pkgs__ = ['metriquec', 'metriquec.sql',
             'metriquec.cubes',
@@ -23,6 +23,11 @@ __provides__ = ['metriquec']
 __datafiles__ = []
 __desc__ = 'Metrique - Cubes'
 __scripts__ = []
+__requires__ = [
+    'metrique (==%s)' % __version__,
+    'celery (==3.0)',
+    'psycopg2 (==2.5.1)',
+]
 __irequires__ = [
     'metrique==%s' % __version__,
     'celery==3.1',
@@ -56,6 +61,7 @@ default_setup = dict(
     name=__pkg__,
     packages=__pkgs__,
     provides=__provides__,
+    requires=__requires__,
     scripts=__scripts__,
     version=__nvr__,
 )
