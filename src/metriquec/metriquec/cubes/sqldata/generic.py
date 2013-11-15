@@ -146,7 +146,7 @@ class Generic(HTTPClient):
         oids = []
 
         if force is None:
-            force = self.get_property('force', None, False)
+            force = self.get_property('force', default=False)
 
         if force is True:
             # get a list of all known object ids
@@ -160,14 +160,14 @@ class Generic(HTTPClient):
 
         # [cward] FIXME: is 'delta' flag necessary? just look for
         # the individual delta flags, no?
-        if force is False and self.get_property('delta', None, True):
+        if force is False and self.get_property('delta', default=True):
             # include objects updated since last mtime too
             # apply delta sql clause's if we're not forcing a full run
-            if self.get_property('delta_mtime', None, False):
+            if self.get_property('delta_mtime', default=False):
                 mtime = self._fetch_mtime(last_update, parse_timestamp)
                 if mtime:
                     oids.extend(self.get_changed_oids(mtime))
-            if self.get_property('delta_new_ids', None, True):
+            if self.get_property('delta_new_ids', default=True):
                 oids.extend(self.get_new_oids())
 
         if isinstance(force, list):
@@ -232,7 +232,7 @@ class Generic(HTTPClient):
         if mtime:
             if parse_timestamp is None:
                 parse_timestamp = self.get_property('parse_timestamp',
-                                                    None, True)
+                                                    default=True)
             if parse_timestamp:
                 if not (hasattr(mtime, 'tzinfo') and mtime.tzinfo):
                     # We need the timezone, to readjust relative to the
@@ -341,7 +341,7 @@ class Generic(HTTPClient):
         If `delta_mtime` evaluates to False then this method is not expected
         to be used.
         '''
-        mtime_columns = self.get_property('delta_mtime', None, [])
+        mtime_columns = self.get_property('delta_mtime', default=list())
         if not (mtime_columns and mtime):
             return []
         if isinstance(mtime_columns, basestring):
@@ -503,14 +503,14 @@ class Generic(HTTPClient):
 
     def _sql_distinct(self, sql):
         # whether to query for distinct rows only or not; default, no
-        if self.get_property('distinct', None, False):
+        if self.get_property('distinct', default=False):
             return re.sub('^SELECT', 'SELECT DISTINCT', sql)
         else:
             return sql
 
     def _sql_sort(self, table):
         _id = self.get_property('column')
-        if self.get_property('sort', None, False):
+        if self.get_property('sort', default=False):
             return " ORDER BY %s.%s ASC" % (table, _id)
         else:
             return ""
