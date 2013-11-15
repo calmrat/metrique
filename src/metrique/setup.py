@@ -2,11 +2,7 @@
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 # Author: "Chris Ward <cward@redhat.com>
 
-import logging
 from setuptools import setup
-
-logging.basicConfig(format='')
-logger = logging.getLogger('metrique')
 
 __pkg__ = 'metrique'
 __version__ = '0.2.2'

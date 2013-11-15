@@ -10,6 +10,7 @@ metrique (https://pypi.python.org/pypi/metrique)
 metriquec (https://pypi.python.org/pypi/metriquec)
 metriqued (https://pypi.python.org/pypi/metriqued)
 metriqueu (https://pypi.python.org/pypi/metriqueu)
+plotrique (https://pypi.python.org/pypi/plotrique)
 '''
 
 import argparse
@@ -23,9 +24,10 @@ logging.basicConfig(format='')
 logger = logging.getLogger('metrique')
 
 # header definitions
-__pkgs__ = ['metrique', 'metriqued', 'metriquec', 'metriqueu']
+__pkgs__ = ['metrique', 'metriqued', 'metriquec', 'metriqueu',
+            'plotrique']
 __src__ = 'src/'
-__actions__ = ['build', 'sdist', 'install', 'develop']
+__actions__ = ['build', 'sdist', 'install', 'develop', 'register']
 __bumps__ = ['x', 'y', 'z', 'r']
 #RE_RELEASE = re.compile(r"__release__ = [\"']?((\d+)a?)[\"']?")
 RE_VERSION_X = re.compile(r"__version__\s+=\s+[\"']((\d+).\d+.\d+)[\"']")
@@ -39,6 +41,7 @@ RE_RELEASE = re.compile(r"__release__ = [\"']?((\d+)a?)[\"']?")
  --packages: package to build
  --action: setup action
  --upload: Upload builds to pypi?
+ --register: Register new package with pypi?
  --dry-run: flag to not actually do anything
  --bump: bump nvr
  --bump-kind: bump release by default
@@ -55,7 +58,7 @@ cli.add_argument('action',
 cli.add_argument('-d', '--debug',
                  action='store_true',
                  default=False)
-cli.add_argument('--packages',
+cli.add_argument('-P', '--packages',
                  choices=__pkgs__ + ['all'],
                  default='all')
 cli.add_argument('--user-mirrors',
@@ -226,12 +229,23 @@ def develop(path):
     sp.call(cmd)
 
 
+def register(path):
+    dir = os.path.dirname(path)
+    os.chdir(dir)
+    cmd = ['python', 'setup.py', 'register']
+    cmd_str = ' '.join(cmd)
+    logger.info('(%s) %s' % (os.getcwd(), cmd_str))
+    sp.call(cmd)
+
+
 if args.bump_kind:
     # imply bump if the kind is set
     args.bump = True
 
 if args.action == 'develop':
     [develop(path=path) for path in setup_paths]
+elif args.action == 'register':
+    [register(path=path) for path in setup_paths]
 elif args.action in ['build', 'sdist', 'install']:
     if args.bump:
         [bump(path=path,

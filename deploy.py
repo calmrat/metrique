@@ -14,7 +14,8 @@ import virtualenv
 logger = virtualenv.Logger([(0, sys.stdout)])
 call_subprocess = virtualenv.call_subprocess
 
-__pkgs__ = ['metrique', 'metriqued', 'metriquec', 'metriqueu']
+__pkgs__ = ['metrique', 'metriqued', 'metriquec', 'metriqueu',
+            'plotrique']
 
 SRC_DIR = 'src'
 USER_DIR = os.path.expanduser('~/.metrique')
