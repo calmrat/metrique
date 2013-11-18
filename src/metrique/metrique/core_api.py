@@ -80,6 +80,7 @@ class HTTPClient(object):
     user_passwd = passwd = user_api.update_passwd
     user_update_profile = user_api.update_profile
     user_register = user_api.register
+    user_remove = user_api.remove
     user_set_properties = user_api.update_properties
 
     cube_list_all = cube_api.list_all
@@ -92,6 +93,7 @@ class HTTPClient(object):
 
     cube_activity_import = cube_api.activity_import
     cube_save = cube_api.save
+    cube_rename = cube_api.rename
     cube_remove = cube_api.remove
     cube_index_list = cube_api.list_index
     cube_index = cube_api.ensure_index
@@ -293,6 +295,29 @@ class HTTPClient(object):
             _url = os.path.join(self.config.host_port, cmd)
         return _url
 
+    def cookiejar_clear(self):
+        path = '%s.%s' % (self.config.cookiejar, self.config.username)
+        if os.path.exists(path):
+            os.remove(path)
+
+    def cookiejar_load(self):
+        path = '%s.%s' % (self.config.cookiejar, self.config.username)
+        cfd = requests.utils.cookiejar_from_dict
+        if os.path.exists(path):
+            try:
+                with open(path) as cj:
+                    cookiejar = cfd(cPickle.load(cj))
+            except Exception:
+                pass
+            else:
+                self.session.cookies = cookiejar
+
+    def cookiejar_save(self):
+        path = '%s.%s' % (self.config.cookiejar, self.config.username)
+        dfc = requests.utils.dict_from_cookiejar
+        with open(path, 'w') as f:
+            cPickle.dump(dfc(self.session.cookies), f)
+
     @property
     def current_user(self):
         ' alias for whoami(); returns back username in config.username '
@@ -420,7 +445,6 @@ class HTTPClient(object):
                       allow_redirects=True, stream=False):
         ' wrapper for running a metrique api request; get/post/etc '
         _auto = self.config.auto_login
-        _attempted = self._auto_login_attempted
         try:
             _response = runner(_url, auth=(username, password),
                                cookies=self.session.cookies,
@@ -431,20 +455,19 @@ class HTTPClient(object):
             raise requests.exceptions.ConnectionError(
                 'Failed to connect (%s). Try http://? or https://?' % _url)
 
+        _attempted = self._auto_login_attempted
         if _response.status_code in [401, 403] and _auto and not _attempted:
             self._auto_login_attempted = True
             # try to login and rerun the request
-            self.logger.debug('HTTP 40*: going to try to auto re-log-in')
+            self.logger.debug('HTTP 40[13]: going to try to auto re-log-in')
             self.user_login(username, password)
             _response = self._get_response(runner, _url, username, password,
                                            allow_redirects, stream)
         try:
             _response.raise_for_status()
-            # reset autologin flag since we've logged in successfully
-            self._auto_login_attempted = False
         except Exception as e:
             m = getattr(e, 'message')
-            content = '%s\n%s' % (m, _response.content)
+            content = '%s\n%s\n%s' % (_url, m, _response.content)
             self.logger.error(content)
             raise
         return _response
@@ -464,17 +487,10 @@ class HTTPClient(object):
             self.config = Config(config_file=config_file)
             self._config_file = config_file
 
-    def _load_cookiejar(self):
-        cfd = requests.utils.cookiejar_from_dict
-        if os.path.exists(self.config.cookiejar):
-            with open(self.config.cookiejar) as cj:
-                cookiejar = cfd(cPickle.load(cj))
-            self.session.cookies = cookiejar
-
     def _load_session(self):
         ' load a fresh new requests session; mainly, reset cookies '
         self.session = requests.Session()
-        self._load_cookiejar()
+        self.cookiejar_load()
 
     def ping(self, auth=False):
         '''
@@ -507,8 +523,6 @@ class HTTPClient(object):
                                        username, password,
                                        allow_redirects,
                                        stream)
-        self._save_cookiejar()
-
         if full_response:
             return _response
         elif stream:
@@ -523,7 +537,7 @@ class HTTPClient(object):
                 return json.loads(_response.content)
             except Exception as e:
                 m = getattr(e, 'message')
-                content = '%s\n%s' % (m, _response.content)
+                content = '%s\n%s\n%s' % (_url, m, _response.content)
                 self.logger.error(content)
                 raise
 
@@ -534,11 +548,6 @@ class HTTPClient(object):
         ' requests GET of a "file stream" using current session '
         return self._run(self.session.get, stream=True, filename=filename,
                          *args, **kwargs)
-
-    def _save_cookiejar(self):
-        dfc = requests.utils.dict_from_cookiejar
-        with open(self.config.cookiejar, 'w') as f:
-            cPickle.dump(dfc(self.session.cookies), f)
 
     def whoami(self, auth=False):
         ' quick way of checking the username the instance is working as '

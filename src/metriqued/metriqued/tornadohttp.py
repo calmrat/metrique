@@ -26,7 +26,7 @@ PID_FILE = 'metriqued.pid'
 
 
 def user_cube(value):
-    user_cube = r'(\w+)/(\w+)'
+    user_cube = r'(\w+)/([-\w]+)'
     path = os.path.join(user_cube, str(value))
     return path
 
@@ -174,6 +174,7 @@ class TornadoHTTPServer(object):
 
             (r"/(\w+)/aboutme", user_api.AboutMeHdlr),
             (r"/(\w+)/passwd", user_api.UpdatePasswordHdlr),
+            (r"/(\w+)/remove", user_api.RemoveHdlr),
             (r"/(\w+)/update_profile", user_api.UpdateProfileHdlr),
             (r"/(\w+)/update_group", user_api.UpdateGroupHdlr),
             (r"/(\w+)/update_properties", user_api.UpdatePropertiesHdlr),
@@ -181,7 +182,7 @@ class TornadoHTTPServer(object):
             (api_v1(r""), core_api.ObsoleteAPIHdlr),
             (api_v2(r"ping"), core_api.PingHdlr),
 
-            (api_v2(r"(\w+)?/?(\w+)?"), cube_api.ListHdlr),
+            (api_v2(r"(\w+)?/?([-\w]+)?"), cube_api.ListHdlr),
         ]
 
         user_cube_handlers = [
@@ -195,6 +196,7 @@ class TornadoHTTPServer(object):
 
             (ucv2(r"index"), cube_api.IndexHdlr),
             (ucv2(r"save"), cube_api.SaveObjectsHdlr),
+            (ucv2(r"rename"), cube_api.RenameHdlr),
             (ucv2(r"remove"), cube_api.RemoveObjectsHdlr),
             (ucv2(r"export"), cube_api.ExportHdlr),
             (ucv2(r"update_role"), cube_api.UpdateRoleHdlr),

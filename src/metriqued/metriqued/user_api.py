@@ -116,6 +116,37 @@ class RegisterHdlr(MetriqueHdlr):
         return True
 
 
+class RemoveHdlr(MetriqueHdlr):
+    '''
+    RequestHandler for removing existing users to metrique
+    '''
+    def delete(self, username):
+        result = self.remove(username=username)
+        self.write(result)
+
+    def remove(self, username):
+        username = username.lower()
+        if not self.is_admin(username):
+            self._raise(403, 'admin privleges required!')
+        if not self.user_exists(username):
+            self._raise(409, "user does not exist")
+
+        # delete the user's profile
+        spec = {'_id': username}
+        self.user_profile(admin=True).remove(spec)
+
+        # remove the user's cubes
+        spec = {'owner': username}
+        cubes = [x for x in self.cube_profile().find(spec, {'_id': 1})]
+        for cube in cubes:
+            cube = cube.get('_id')
+            self.mongodb_config.db_timeline_admin[cube].drop()
+
+        # FIXME: # remove the user from cube acls?
+        self.logger.debug("user removed (%s)" % username)
+        return True
+
+
 class UpdatePasswordHdlr(MetriqueHdlr):
     '''
     RequestHandler for updating existing users password

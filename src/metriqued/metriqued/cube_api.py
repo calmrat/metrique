@@ -37,15 +37,14 @@ class DropHdlr(MetriqueHdlr):
         self.requires_owner_admin(owner, cube)
         if not self.cube_exists(owner, cube):
             self._raise(404, '%s.%s does not exist' % (owner, cube))
-        spec = {'_id': self.cjoin(owner, cube)}
         # drop the cube
-        self.timeline(owner, cube, admin=True).drop()
-        spec = {'_id': self.cjoin(owner, cube)}
+        _cube = self.cjoin(owner, cube)
+        self.mongodb_config.db_timeline_admin[_cube].drop()
         # drop the entire cube profile
+        spec = {'_id': _cube}
         self.cube_profile(admin=True).remove(spec)
         # pull the cube from the owner's profile
-        collection = self.cjoin(owner, cube)
-        self.update_user_profile(owner, 'pull', 'own', collection)
+        self.update_user_profile(owner, 'pull', 'own', _cube)
         return True
 
 
@@ -201,6 +200,54 @@ class ListHdlr(MetriqueHdlr):
         docs = self.sample_timeline(owner, cube, sample_size, query)
         cube_fields = list(set([k for d in docs for k in d.keys()]))
         return cube_fields
+
+
+class RenameHdlr(MetriqueHdlr):
+    '''
+    RequestHandler for registering new users to metrique
+    '''
+    def post(self, owner, cube):
+        new_name = self.get_argument('new_name')
+        result = self.rename(owner=owner, cube=cube, new_name=new_name)
+        self.write(result)
+
+    def rename(self, owner, cube, new_name):
+        '''
+        Client registration method
+
+        Default behaivor (not currently overridable) is to permit
+        cube registrations by all registered users.
+
+        Update the user__cube __meta__ doc with defaults
+
+        Bump the user's total cube count, by 1
+        '''
+        self.logger.debug("Renaming [%s] %s -> %s" % (owner, cube, new_name))
+        self.cube_exists(owner, cube)
+        if self.cube_exists(owner, new_name, raise_if_not=False):
+            self._raise(409, "cube already exists (%s)" % new_name)
+
+        _cube_profile = self.cube_profile(admin=True)
+
+        old = self.cjoin(owner, cube)
+        new = self.cjoin(owner, new_name)
+
+        # get the cube_profile doc
+        spec = {'_id': old}
+        doc = _cube_profile.find_one(spec)
+        # save the doc with new _id
+        doc.update({'_id': new})
+        _cube_profile.insert(doc)
+        # rename the collection
+
+        self.mongodb_config.db_timeline_admin[old].rename(new)
+        # push the collection into the list of ones user owns
+        self.update_user_profile(owner, 'addToSet', 'own', new)
+        # pull the old cube from user profile's 'own'
+        self.update_user_profile(owner, 'pull', 'own', old)
+        # remove the old doc
+        _cube_profile.remove(spec)
+        return True
 
 
 class RegisterHdlr(MetriqueHdlr):

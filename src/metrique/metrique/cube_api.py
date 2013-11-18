@@ -213,6 +213,21 @@ def save(self, objects, cube=None, owner=None, journal=None,
     return sorted(saved)
 
 
+def rename(self, new_name, cube=None, owner=None):
+    '''
+    Rename a cube
+
+    :param string new_name: new cube name
+    :param string cube: cube name
+    :param string owner: username of cube owner
+    '''
+    cmd = self.get_cmd(owner, cube, 'rename')
+    result = self._post(cmd, new_name=new_name)
+    if result:
+        self.name = new_name
+    return result
+
+
 def remove(self, query, cube=None, owner=None):
     '''
     Remove objects from cube timeline

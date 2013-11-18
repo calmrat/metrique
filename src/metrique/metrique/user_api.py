@@ -44,6 +44,18 @@ def register(self, username=None, password=None, logon_as=True):
         return result
 
 
+def remove(self, username=None):
+    '''
+    Register new user
+
+    :param String username: Name of the user you're managing
+    '''
+    username = set_default(username, self.config.username)
+    cmd = os.path.join(username, 'remove')
+    result = self._delete(cmd, username=username, api_url=False)
+    return result
+
+
 def login(self, username=None, password=None):
     '''
     Login a user
@@ -67,6 +79,7 @@ def login(self, username=None, password=None):
     if result:
         self.config['username'] = username
         self.config['password'] = password
+    self.cookiejar_save()
     return result
 
 
