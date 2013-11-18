@@ -40,6 +40,7 @@ from copy import copy
 import logging
 from functools import partial
 import os
+import cPickle
 import requests
 import simplejson as json
 import urllib
@@ -463,9 +464,17 @@ class HTTPClient(object):
             self.config = Config(config_file=config_file)
             self._config_file = config_file
 
+    def _load_cookiejar(self):
+        cfd = requests.utils.cookiejar_from_dict
+        if os.path.exists(self.config.cookiejar):
+            with open(self.config.cookiejar) as cj:
+                cookiejar = cfd(cPickle.load(cj))
+            self.session.cookies = cookiejar
+
     def _load_session(self):
         ' load a fresh new requests session; mainly, reset cookies '
         self.session = requests.Session()
+        self._load_cookiejar()
 
     def ping(self, auth=False):
         '''
@@ -498,6 +507,7 @@ class HTTPClient(object):
                                        username, password,
                                        allow_redirects,
                                        stream)
+        self._save_cookiejar()
 
         if full_response:
             return _response
@@ -524,6 +534,11 @@ class HTTPClient(object):
         ' requests GET of a "file stream" using current session '
         return self._run(self.session.get, stream=True, filename=filename,
                          *args, **kwargs)
+
+    def _save_cookiejar(self):
+        dfc = requests.utils.dict_from_cookiejar
+        with open(self.config.cookiejar, 'w') as f:
+            cPickle.dump(dfc(self.session.cookies), f)
 
     def whoami(self, auth=False):
         ' quick way of checking the username the instance is working as '

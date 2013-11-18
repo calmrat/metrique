@@ -4,7 +4,7 @@ python:
   - "2.7"
 # install metrique and dependencies to a virtenv
 install:
-  - "./build.py install"
+  - "./manage.py install"
 services: 
   - mongodb
 # NOTE: authentication will be enabled upon adding an 

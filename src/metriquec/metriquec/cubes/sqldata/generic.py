@@ -15,7 +15,7 @@ import time
 import traceback
 
 from metrique.core_api import HTTPClient
-from metriqueu.utils import batch_gen, ts2dt
+from metriqueu.utils import batch_gen, ts2dt, utcnow
 
 
 class Generic(HTTPClient):
@@ -39,10 +39,8 @@ class Generic(HTTPClient):
         self.retry_on_error = None
 
     def _build_rows(self, rows):
-        _rows = {}
-        if not rows:
-            return _rows
         self.logger.debug('Building dict_rows from sql_rows(%i)' % len(rows))
+        _rows = {}
         for row in rows:
             _rows.setdefault(row['_oid'], []).append(row)
         return _rows
@@ -53,8 +51,6 @@ class Generic(HTTPClient):
         Normalize null values to be type(None).
         '''
         objects = []
-        if not rows:
-            return objects
         self.logger.debug('Building objects from rows(%i)' % len(rows))
         for col_rows in rows.itervalues():
             if len(col_rows) > 1:
@@ -77,7 +73,7 @@ class Generic(HTTPClient):
             value = value
         return value
 
-    def _extract(self, id_delta, field_order):
+    def _extract(self, id_delta, field_order, start_time):
         retries = self.config.retries
         sql = self._gen_sql(id_delta, field_order)
         while 1:
@@ -94,15 +90,15 @@ class Generic(HTTPClient):
             else:
                 rows = self._build_rows(rows)
                 objects = self._build_objects(rows)
-                self.cube_save(objects)
+                self.cube_save(objects, start_time=start_time)
                 break
         return [o['_oid'] for o in objects]
 
-    def _extract_threaded(self, id_delta, field_order):
+    def _extract_threaded(self, id_delta, field_order, start_time):
+        batch_size = self.config.sql_batch_size
         with ThreadPoolExecutor(max_workers=self.config.max_workers) as ex:
-            futures = [ex.submit(self._extract, batch, field_order)
-                       for batch in batch_gen(id_delta,
-                                              self.config.sql_batch_size)]
+            futures = [ex.submit(self._extract, batch, field_order, start_time)
+                       for batch in batch_gen(id_delta, batch_size)]
         saved = []
         for future in as_completed(futures):
             try:
@@ -145,6 +141,8 @@ class Generic(HTTPClient):
         '''
         oids = []
 
+        start_time = utcnow()
+
         if force is None:
             force = self.get_property('force', default=False)
 
@@ -183,9 +181,9 @@ class Generic(HTTPClient):
             # respect the global batch size, even if sql batch
             # size is not set
             for batch in batch_gen(oids, self.config.batch_size):
-                return self._extract(batch, field_order)
+                return self._extract(batch, field_order, start_time)
         else:
-            return self._extract_threaded(oids, field_order)
+            return self._extract_threaded(oids, field_order, start_time)
 
     def _fetchall(self, sql, field_order):
         rows = self.proxy.fetchall(sql)

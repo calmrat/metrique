@@ -27,6 +27,7 @@ USER_DIR = os.path.expanduser('~/.metrique')
 CONFIG_DIR = os.path.join(USER_DIR, 'etc')
 LOG_DIR = os.path.join(USER_DIR, 'logs')
 JOURNAL_DIR = os.path.join(USER_DIR, 'journal')
+COOKIEJAR = os.path.join(USER_DIR, '.cookiejar')
 
 DEFAULT_CONFIG = os.path.join(CONFIG_DIR, 'metrique')
 
@@ -59,6 +60,7 @@ class Config(JSONConf):
             'async': True,
             'auto_login': True,
             'batch_size': 250,
+            'cookiejar': COOKIEJAR,
             'configdir': CONFIG_DIR,
             'debug': None,
             'host': '127.0.0.1',

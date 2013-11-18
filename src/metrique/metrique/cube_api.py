@@ -44,8 +44,6 @@ def sample_fields(self, cube=None, sample_size=None, query=None, owner=None):
     :param int sample_size: number of random documents to query
     :param list exclude_fields:
         List (or csv) of fields to exclude from the results
-    :param bool mtime:
-        Include mtime details
     :returns list: sorted list of fields
     '''
     cmd = self.get_cmd(owner, cube)
@@ -164,7 +162,8 @@ def drop_index(self, index_or_name, cube=None, owner=None):
 
 ######## SAVE/REMOVE ########
 
-def save(self, objects, cube=None, owner=None, journal=None):
+def save(self, objects, cube=None, owner=None, journal=None,
+         start_time=None):
     '''
     Save a list of objects the given metrique.cube.
     Returns back a list of object ids (_id|_oid) saved.
@@ -183,18 +182,14 @@ def save(self, objects, cube=None, owner=None, journal=None):
     else:
         self.logger.info("Saving %s objects" % len(objects))
 
-    # get 'now' utc timezone aware datetime object
-    # FIXME IMPORTANT timestamp should be really taken before extract
-    now = utcnow(tz_aware=True)
-
     cmd = self.get_cmd(owner, cube, 'save')
     if (batch_size <= 0) or (olen <= batch_size):
-        saved = self._post(cmd, objects=objects, mtime=now)
+        saved = self._post(cmd, objects=objects, start_time=start_time)
     else:
         saved = []
         k = 0
         for batch in batch_gen(objects, batch_size):
-            _saved = self._post(cmd, objects=batch, mtime=now)
+            _saved = self._post(cmd, objects=batch, start_time=start_time)
             saved.extend(_saved)
             k += len(batch)
             self.logger.info("... %i of %i posted" % (k, olen))
@@ -206,7 +201,7 @@ def save(self, objects, cube=None, owner=None, journal=None):
         journaldir = os.path.join(self.config.journaldir, cube)
         if not os.path.exists(journaldir):
             os.makedirs(os.path.expanduser(journaldir))
-        _path = '%s.json' % now.date().isoformat()
+        _path = '%s.json' % utcnow(True).date().isoformat()
         path = os.path.join(journaldir, _path)
         exists = os.path.exists(path)
         with codecs.open(path, 'a', 'utf-8') as journal:
