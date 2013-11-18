@@ -233,9 +233,12 @@ class HistoryHdlr(MetriqueHdlr):
         self.requires_owner_read(owner, cube)
 
         date_list = sorted(map(dt2ts, date_list))
-        spec = parse_pql_query(
-            '%s and _start < %s and (_end >= %s or _end == None)' % (
-                query, max(date_list), min(date_list)))
+        query = '%s and _start < %s and (_end >= %s or _end == None)' % (
+                query, max(date_list), min(date_list))
+        try:
+            spec = parse_pql_query(query)
+        except Exception as e:
+            self._raise(400, "Invalid Query (%s)" % str(e))
 
         _cube = self.timeline(owner, cube)
 
@@ -252,7 +255,7 @@ class HistoryHdlr(MetriqueHdlr):
         res = defaultdict(lambda: defaultdict(int))
         for group in data:
             starts = sorted(group['starts'])
-            ends = sorted([e for e in group['ends'] if e is not None])
+            ends = sorted([x for x in group['ends'] if x is not None])
             _id = group['_id']
             ind = 0
             # assuming date_list is sorted
@@ -305,7 +308,10 @@ class SampleHdlr(MetriqueHdlr):
         self.requires_owner_read(owner, cube)
         fields = self.get_fields(owner, cube, fields)
         query = query_add_date(query, date)
-        spec = parse_pql_query(query)
+        try:
+            spec = parse_pql_query(query)
+        except Exception as e:
+            self._raise(400, "Invalid Query (%s)" % str(e))
         _cube = self.timeline(owner, cube)
         _docs = _cube.find(spec, fields=fields)
         n = _docs.count()

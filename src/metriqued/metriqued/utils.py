@@ -98,10 +98,7 @@ def parse_pql_query(query):
     if not isinstance(query, basestring):
         raise TypeError("query expected as a string")
     pql_parser = pql.SchemaFreeParser()
-    try:
-        spec = pql_parser.parse(query)
-    except Exception as e:
-        raise ValueError("Invalid Query (%s):\n%s" % (query, str(e)))
+    spec = pql_parser.parse(query)
     return spec
 
 
