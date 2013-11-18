@@ -300,6 +300,8 @@ def deploy(args):
         sys.argv += ['-P'] + [args.packages]
     if args.test:
         sys.argv += ['--test']
+    if args.git_branch:
+        sys.argv += ['--git-branch', args.git_branch]
     virtualenv.main()
 
 
@@ -371,6 +373,8 @@ if __name__ == '__main__':
 
     _deploy = _sub.add_parser('deploy')
     _deploy.add_argument('--test', action='store_true')
+    _deploy.add_argument('--git-branch', action='store_true')
+    _deploy.add_option('-B', '--git-branch', default='master')
     _deploy.add_argument('args', nargs='*')
     _deploy.set_defaults(func=deploy)
 
