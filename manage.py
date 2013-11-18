@@ -131,7 +131,7 @@ def after_install(args, home_dir):
         call('git clone %s %s' % (git_uri, src_dir))
     os.chdir(src_dir)
 
-    if not args.nopull and git_uri != '.':
+    if not args.nopull:
         call('git checkout %s' % git_branch)
         call('git pull')
 
