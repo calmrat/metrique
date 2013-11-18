@@ -262,17 +262,17 @@ def activate(args):
         logger.notify('Virtual Env (%s): Activated' % args.virtenv)
 
 
-def setup(args, cmd):
+def setup(args, cmd, pip=False):
     global __pkgs__
     activate(args)
     if isinstance(cmd, basestring):
-        cmd = cmd.strip().split(' ')
+        cmd = cmd.strip()
     else:
-        cmd = [s.strip() for s in cmd]
+        cmd = ' '.join([s.strip() for s in cmd])
     pkgs = args.packages or __pkgs__
     cwd = os.getcwd()
 
-    if os.system('which pip-accel') != 0:
+    if pip and os.system('which pip-accel') != 0:
         os.system('pip install pip-accel')
 
     for path in pkgs:
@@ -280,11 +280,17 @@ def setup(args, cmd):
         os.chdir(abspath)
         path = os.path.join(abspath, 'setup.py')
         logger.notify('(%s) %s %s' % (abspath, path, str(cmd)))
-        try:
-            os.system('pip-accel %s -e %s' % (' '.join(cmd), abspath))
-        except:
-            # fall back to using pip if accel fail
-            os.system('pip %s -e %s' % (' '.join(cmd), abspath))
+        if pip:
+            try:
+                os.system('pip-accel %s -e %s' % (cmd, abspath))
+            except:
+                # fall back to using pip if accel fail
+                os.system('pip %s -e %s' % (cmd, abspath))
+        else:
+            setup_py = os.path.join(abspath, 'setup.py')
+            setup_py = re.sub('\s+', ' ', setup_py)
+            _cmd = ['python', setup_py] + cmd.split(' ')
+            call_subprocess(_cmd, show_stdout=True)
 
 
 def deploy(args):
@@ -297,25 +303,25 @@ def deploy(args):
     virtualenv.main()
 
 
-def bump(args, kind=None, reset=False, ga=False):
-    if kind is None:
-        kind = 'r'
+def bump(args, kind=None, reset=None):
+    kind = kind or args.bump_kind or 'r'
+    reset = reset or args.reset
     assert kind in __bumps__
     if kind == 'x':
         regex = RE_VERSION_X
-        bump(args=args, kind='y', reset=True, ga=ga)
-        bump_func = partial(bump_version_x, reset=reset, ga=ga)
+        bump(args=args, kind='y', reset=True)
+        bump_func = partial(bump_version_x, reset=reset)
     elif kind == 'y':
         regex = RE_VERSION_Y
-        bump(args=args, kind='z', reset=True, ga=ga)
-        bump_func = partial(bump_version_y, reset=reset, ga=ga)
+        bump(args=args, kind='z', reset=True)
+        bump_func = partial(bump_version_y, reset=reset)
     elif kind == 'z':
         regex = RE_VERSION_Z
-        bump(args=args, kind='r', reset=True, ga=ga)
-        bump_func = partial(bump_version_z, reset=reset, ga=ga)
+        bump(args=args, kind='r', reset=True)
+        bump_func = partial(bump_version_z, reset=reset)
     elif kind == 'r':
         regex = RE_RELEASE
-        bump_func = partial(bump_release, reset=reset, ga=ga)
+        bump_func = partial(bump_release, reset=reset, ga=args.ga)
     update_line(args, regex, bump_func)
 
 
@@ -332,7 +338,7 @@ def sdist(args):
 
 def install(args):
     cmd = 'install'
-    setup(args, cmd)
+    setup(args, cmd, pip=True)
 
 
 def develop(args):
@@ -369,12 +375,10 @@ if __name__ == '__main__':
     _deploy.set_defaults(func=deploy)
 
     _build = _sub.add_parser('build')
-    _build.add_argument('--ga', action='store_true')
     _build.set_defaults(func=build)
 
     _sdist = _sub.add_parser('sdist')
-    _sdist.add_argument('--ga', action='store_true')
-    _sdist.add_argument('--upload', action='store_true')
+    _sdist.add_argument('-u', '--upload', action='store_true')
     _sdist.set_defaults(func=sdist)
 
     _install = _sub.add_parser('install')
@@ -385,7 +389,9 @@ if __name__ == '__main__':
     _register.set_defaults(func=register)
 
     _bump = _sub.add_parser('bump')
-    _bump.add_argument('--bump-kind', choices=__bumps__)
+    _bump.add_argument('-k', '--bump-kind', choices=__bumps__)
+    _bump.add_argument('-r', '--reset', choices=__bumps__)
+    _bump.add_argument('-ga', action='store_true', dest='ga')
     _bump.set_defaults(func=bump)
 
     _status = _sub.add_parser('status')
