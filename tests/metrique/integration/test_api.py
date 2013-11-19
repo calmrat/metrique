@@ -9,6 +9,11 @@ other words, test the 'cube_api' functionality of metrique client
 and metrique server.
 '''
 
+try:
+    import pandas
+except ImportError:
+    pandas = None
+
 from . import testutils
 import os
 from metrique import pyclient
@@ -39,14 +44,16 @@ def test_api():
         result = _cube.extract()
         assert result
 
-        # we should get back some results
-        df = _cube.find(fields='~', date='~')
-        assert df
-        # default obj type returned should be metrique.result.Result
-        assert isinstance(df, Result)
+        # this will work only if pandas dependency is installed
+        if pandas:
+            # we should get back some results
+            df = _cube.find(fields='~', date='~')
+            assert df
+            # default obj type returned should be metrique.result.Result
+            assert isinstance(df, Result)
 
         # raw should return back a list of dicts
-        raw = _cube.find(raw=True)
+        raw = _cube.find(raw=True, fields='~', date='~')
         assert isinstance(raw, list)
         assert len(raw) > 0
         assert isinstance(raw[0], dict)

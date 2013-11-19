@@ -51,15 +51,6 @@ for _dir in [USER_DIR, PIP_CACHE, PIP_ACCEL, PIP_EGGS]:
 os.chmod(PIP_EGGS, 0700)
 
 
-def get_packages(args):
-    global __pkgs__
-    global SRC_DIR
-    if not args.packages or 'all' in args.packages:
-        return [os.path.join(SRC_DIR, pkg) for pkg in __pkgs__]
-    else:
-        return os.path.join(SRC_DIR, args.packages)
-
-
 def call(cmd, cwd=None):
     if not cwd:
         cwd = os.getcwd()
@@ -71,108 +62,9 @@ def call(cmd, cwd=None):
         raise
 
 
-def extend_parser(parser):
-    parser.add_option(
-        '-a', '--action',
-        default='install',
-        choices=['install', 'develop'],
-        help='setup.py action to execute')
-
-    parser.add_option(
-        '-P', '--packages',
-        action='append',
-        choices=__pkgs__ + ['all'],
-        default=[],
-        help='packages to install')
-
-    parser.add_option(
-        '-U', '--git-uri',
-        default='.',
-        help='git repository to use for the installation (DEFAULT: ".")')
-
-    parser.add_option(
-        '-B', '--git-branch',
-        default='master',
-        help='git branch to install (default: master)')
-
-    parser.add_option(
-        '--nopull',
-        action='store_true',
-        default=False,
-        help='do not update (pull) git branch before install')
-
-    parser.add_option(
-        '--test',
-        action='store_true',
-        default=False,
-        help='run tests after deployment completes')
-
-    parser.add_option(
-        '--ipython',
-        action='store_true',
-        default=False,
-        help='install ipython')
-virtualenv.extend_parser = extend_parser
-
-
 def adjust_options(options, args):
     options.no_site_packages = True
 virtualenv.adjust_options = adjust_options
-
-
-def after_install(args, home_dir):
-    git_uri = args.git_uri
-    git_branch = args.git_branch
-    pkgs = args.packages
-
-    src_dir = os.path.join(home_dir, 'metrique')
-    if not os.path.exists(src_dir):
-        logger.notify('Installing %s -> %s' % (git_uri, home_dir))
-        call('git clone %s %s' % (git_uri, src_dir))
-    os.chdir(src_dir)
-
-    if not args.nopull:
-        call('git checkout %s' % git_branch)
-        call('git pull')
-
-    call('git --no-pager status')
-    call('git --no-pager log -3')
-
-    pip = os.path.join(home_dir, 'bin', 'pip')
-    pipa = os.path.join(home_dir, 'bin', 'pip-accel')
-    activate = os.path.join(home_dir, 'bin', 'activate_this.py')
-    pytest = os.path.join(home_dir, 'bin', 'py.test')
-
-    # force override existing 'activated' virt envs, if there is one
-    os.environ['VIRTUAL_ENV'] = home_dir
-    # activate the virtenv so all actions will be made within it
-    execfile(activate, dict(__file__=activate))
-
-    # make sure we have the installer basics and their up2date
-    # argparse is needed for py2.6; pip-accel caches compiled binaries
-    # first run for a new virt-env will take forever...
-    # second run should be 90% faster!
-    call('%s install -U pip-accel virtualenv' % pip)
-    call('%s install -U pip distribute setuptools' % pipa)
-    call('%s install -U argparse' % pipa)
-
-    # this dependency is installed separately because virtenv
-    # path resolution issues; fails due to being unable to find
-    # the python headers in the virtenv for some reason.
-    # plus, pip-accel caches the binaries, which take forever to compile
-    if not pkgs == ['metriqued']:
-        call('%s install -U numpy pandas' % pipa)
-    # optional dependency, that's highly recommended!
-    if args.ipython:
-        call('%s install -U ipython' % pipa)
-
-    install(args)
-
-    # run py.test after install
-    if args.test:
-        call('%s install pytest' % pipa)
-        call(pytest, cwd=src_dir)
-virtualenv.after_install = after_install
 
 
 def clean(args):
@@ -230,6 +122,12 @@ def bump_release(line, reset=False, ga=False):
     return '__release__ = %s\n' % bumped
 
 
+def get_packages(args):
+    global __pkgs__
+    global SRC_DIR
+    return [os.path.join(SRC_DIR, pkg) for pkg in __pkgs__]
+
+
 def update_line(args, regex, bump_func):
     pkg_paths = get_packages(args)
     for path in pkg_paths:
@@ -264,50 +162,87 @@ def activate(args):
 
 def setup(args, cmd, pip=False):
     global __pkgs__
-    activate(args)
     if isinstance(cmd, basestring):
         cmd = cmd.strip()
     else:
         cmd = ' '.join([s.strip() for s in cmd])
-    pkgs = args.packages or __pkgs__
     cwd = os.getcwd()
 
-    if pip and os.system('which pip-accel') != 0:
-        os.system('pip install pip-accel')
-
-    for path in pkgs:
+    for path in __pkgs__:
         abspath = os.path.join(cwd, 'src', path)
-        os.chdir(abspath)
-        path = os.path.join(abspath, 'setup.py')
-        logger.notify('(%s) %s %s' % (abspath, path, str(cmd)))
-        if pip:
-            try:
-                os.system('pip-accel %s -e %s' % (cmd, abspath))
-            except:
-                # fall back to using pip if accel fail
-                os.system('pip %s -e %s' % (cmd, abspath))
+        if pip and args.slow:
+            logger.notify('pip %s -e %s' % (cmd, abspath))
+            os.system('pip %s -e %s' % (cmd, abspath))
+        elif pip:
+            logger.notify('pip-accel %s -e %s' % (cmd, abspath))
+            os.system('pip-accel %s -e %s' % (cmd, abspath))
         else:
             setup_py = os.path.join(abspath, 'setup.py')
             setup_py = re.sub('\s+', ' ', setup_py)
             _cmd = ['python', setup_py] + cmd.split(' ')
+            logger.notify(str(_cmd))
             call_subprocess(_cmd, show_stdout=True)
 
 
 def deploy(args):
-    # virtualenv.main; ignore argparser args
-    del sys.argv[1]  # pop off 'deploy' arg
-    if args.packages:
-        sys.argv += ['-P'] + [args.packages]
+    '''
+    Order of Operations
+    (NOT IN VIRTENV)
+    + clone repo/pull branch
+    + bump r
+    + sdist upload
+    (IN VIRTENV)
+    + install dep
+    + install metrique and friends
+    '''
+    virtenv = getattr(args, 'virtenv', None)
+    if virtenv:
+        # virtualenv.main; pass in only the virtenv path
+        sys.argv = sys.argv[0:1] + [virtenv]
+        # run the virtualenv script to install the virtenv
+        virtualenv.main()
+        # activate the newly installed virtenv
+        activate(args)
+
+    pip = 'pip' if args.slow else 'pip-accel'
+    # make sure we have the installer basics and their up2date
+    # argparse is needed for py2.6; pip-accel caches compiled binaries
+    # first run for a new virt-env will take forever...
+    # second run should be 90% faster!
+    call('pip install -U pip setuptools')
+    call('pip install -U %s virtualenv argparse' % pip)
+
+    # optional dependencies; highly recommended! but slow for testing
+    if args.pandas:
+        # this dependency is installed separately b/c virtenv
+        # path resolution issues; fails due to being unable to find
+        # the python headers in the virtenv for some reason.
+        call('%s install -U numpy pandas' % pip)
+    if args.matplotlib:
+        call('%s install -U matplotlib' % pip)
+    if args.ipython:
+        call('%s install -U ipython' % pip)
+
+    cmd = 'install'
+    no_pre = getattr(args, 'no_pre', False)
+    if not no_pre:
+        cmd += ' --pre'
+    setup(args, cmd, pip=True)
+
+    # run py.test after install
     if args.test:
-        sys.argv += ['--test']
-    if args.git_branch:
-        sys.argv += ['--git-branch', args.git_branch]
-    virtualenv.main()
+        call('%s install -U pytest' % pip)
+        for pkg in __pkgs__:
+            if pkg == 'plotrique' and not args.matplotlib:
+                continue
+            else:
+                call('py.test tests/%s' % pkg)
 
 
 def bump(args, kind=None, reset=None):
-    kind = kind or args.bump_kind or 'r'
-    reset = reset or args.reset
+    kind = kind or getattr(args, 'bump_kind', 'r')
+    reset = reset or getattr(args, 'reset', None)
+    ga = getattr(args, 'ga', None)
     assert kind in __bumps__
     if kind == 'x':
         regex = RE_VERSION_X
@@ -323,7 +258,7 @@ def bump(args, kind=None, reset=None):
         bump_func = partial(bump_version_z, reset=reset)
     elif kind == 'r':
         regex = RE_RELEASE
-        bump_func = partial(bump_release, reset=reset, ga=args.ga)
+        bump_func = partial(bump_release, reset=reset, ga=ga)
     update_line(args, regex, bump_func)
 
 
@@ -332,15 +267,11 @@ def build(args):
     setup(args, cmd)
 
 
-def sdist(args):
-    cmd = ['sdist']
-    cmd += ['upload'] if args.upload else []
+def sdist(args, upload=None):
+    upload = upload or args.upload
+    cmd = 'sdist'
+    cmd += ' upload' if upload else ''
     setup(args, cmd)
-
-
-def install(args):
-    cmd = 'install'
-    setup(args, cmd, pip=True)
 
 
 def develop(args):
@@ -365,16 +296,23 @@ if __name__ == '__main__':
 
     cli = argparse.ArgumentParser(description='Metrique Manage CLI')
 
-    cli.add_argument('--virtenv', type=str)
-    cli.add_argument('-P', '--packages', action='append',
-                     choices=__pkgs__ + ['all'], default=[])
-
     _sub = cli.add_subparsers(description='action')
 
     _deploy = _sub.add_parser('deploy')
-    _deploy.add_argument('--test', action='store_true')
-    _deploy.add_argument('-B', '--git-branch', default='master')
-    _deploy.add_argument('args', nargs='*')
+    _deploy.add_argument('virtenv', type=str, nargs='?')
+    _deploy.add_argument(
+        '--slow', action='store_true', help="don't use pip-accel")
+    _deploy.add_argument(
+        '--no-pre', action='store_true',
+        help='ignore pre-release versions')
+    _deploy.add_argument(
+        '--test', action='store_true', help='run tests after deployment')
+    _deploy.add_argument(
+        '--pandas', action='store_true', help='install pandas')
+    _deploy.add_argument(
+        '--ipython', action='store_true', help='install ipython')
+    _deploy.add_argument(
+        '--matplotlib', action='store_true', help='install matplotlib')
     _deploy.set_defaults(func=deploy)
 
     _build = _sub.add_parser('build')
@@ -384,10 +322,9 @@ if __name__ == '__main__':
     _sdist.add_argument('-u', '--upload', action='store_true')
     _sdist.set_defaults(func=sdist)
 
-    _install = _sub.add_parser('install')
-    _install.set_defaults(func=install)
     _develop = _sub.add_parser('develop')
     _develop.set_defaults(func=develop)
+
     _register = _sub.add_parser('register')
     _register.set_defaults(func=register)
 

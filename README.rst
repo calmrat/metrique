@@ -1,10 +1,17 @@
 .. image:: src/metriqued/metriqued/static/img/metrique_logo.png
+   :target: https://github.com/drpoovilleorg/metrique
 
 Metrique
 ========
 
 .. image:: https://travis-ci.org/drpoovilleorg/metrique.png
    :target: https://travis-ci.org/drpoovilleorg/metrique
+
+.. image:: https://badge.fury.io/py/metrique.png
+    :target: http://badge.fury.io/py/metrique
+
+.. image:: https://pypip.in/d/metrique/badge.png
+   :target: https://crate.io/packages/metrique
 
 Python/MongoDB Data Warehouse and Data Glue
 
