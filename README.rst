@@ -13,6 +13,8 @@ Metrique
 .. image:: https://pypip.in/d/metrique/badge.png
    :target: https://crate.io/packages/metrique
 
+.. image:: https://d2weczhvl823v0.cloudfront.net/drpoovilleorg/metrique/trend.png
+
 Python/MongoDB Data Warehouse and Data Glue
 
 *Metrique can help bring data into an intuitive, indexable 
@@ -37,34 +39,14 @@ The examples given below use yum and assume fedora rpm package names::
     sudo yum install python python-devel python-setuptools
     sudo yum install git gcc gcc-c++ gcc-gfortran
 
-    # prerequisite *py packages
-    easy_install -U pip
-    pip install -U distribute setuptools argparse virtualenv
-
     # get the sources
     git clone https://github.com/drpoovilleorg/metrique.git
     cd metrique
 
     # deploy metrique master branch into a virtual environment
     # including dependencies
-    ./deploy ~/virtenv-metrique
+    ./manage.py deploy ~/virtenv-metrique --pandas --matplotlib --ipython
 
     # activate the virtual environment
     source ~/virtenv-metrique/bin/activate
-
-    # WITH IPYTHON
-    # additional *os* prerequisites
-    # sudo yum install libpng-devel freetype-devel 
-    # ./deploy --ipython ~/virtenv-metrique
-
-    # CLIENT + SITE CUBES ONLY
-    # ./deploy --ipython -P metrique -P metriquec ~/virtenv-metrique
-
-    # SERVER ONLY
-    # ./deploy --ipython -P metriqued ~/virtenv-metrique
-
-.. image:: https://d2weczhvl823v0.cloudfront.net/drpoovilleorg/metrique/trend.png
-
-   :alt: Bitdeli badge
-   :target: https://bitdeli.com/free
 
