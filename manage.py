@@ -167,7 +167,6 @@ def setup(args, cmd, pip=False):
     else:
         cmd = ' '.join([s.strip() for s in cmd])
     cwd = os.getcwd()
-
     for path in __pkgs__:
         abspath = os.path.join(cwd, 'src', path)
         if pip and args.slow:
@@ -177,11 +176,11 @@ def setup(args, cmd, pip=False):
             logger.notify('pip-accel %s -e %s' % (cmd, abspath))
             os.system('pip-accel %s -e %s' % (cmd, abspath))
         else:
-            setup_py = os.path.join(abspath, 'setup.py')
-            setup_py = re.sub('\s+', ' ', setup_py)
-            _cmd = ['python', setup_py] + cmd.split(' ')
+            os.chdir(abspath)
+            _cmd = ['python', 'setup.py'] + cmd.split(' ')
             logger.notify(str(_cmd))
             call_subprocess(_cmd, show_stdout=True)
+    os.chdir(cwd)
 
 
 def deploy(args):
@@ -270,7 +269,9 @@ def build(args):
 def sdist(args, upload=None):
     upload = upload or args.upload
     cmd = 'sdist'
-    cmd += ' upload' if upload else ''
+    if upload:
+        bump(args)
+        cmd += ' upload'
     setup(args, cmd)
 
 
