@@ -39,34 +39,8 @@ class Repo(HTTPClient):
     '''
     name = 'gitdata_repo'
 
-    def get_repo(self, uri, pull=True, tmp_dir=None):
-        tmp_dir = tmp_dir or os.path.expanduser(TMP_DIR)
-        # FIXME: use gittle to clone repos; bare=True
-        tmp_dir = os.path.expanduser(tmp_dir)
-        # make the uri safe for filesystems
-        _uri = "".join(x for x in uri if x.isalnum())
-        repo_path = os.path.join(tmp_dir, _uri)
-        self.repo_path = repo_path = os.path.expanduser(repo_path)
-        self.logger.debug('GIT URI: %s' % uri)
-        if pull:
-            if not os.path.exists(repo_path):
-                self.logger.info('Cloning git repo to %s' % repo_path)
-                cmd = 'git clone %s %s' % (uri, repo_path)
-                rc = subprocess.call(cmd.split())
-                if rc != 0:
-                    raise IOError("Failed to clone repo")
-            else:
-                os.chdir(repo_path)
-                self.logger.info(' ... Fetching git repo (%s)' % repo_path)
-                cmd = 'git pull'
-                rc = subprocess.call(cmd.split())
-                if rc != 0:
-                    raise RuntimeError('Failed to pull repo')
-                self.logger.debug(' ... Fetch complete')
-        return Gittle(repo_path)
-
     def __init__(self, **kwargs):
-        super(Commit, self).__init__(**kwargs)
+        super(Repo, self).__init__(**kwargs)
         self.tmp_dir = os.path.expanduser(TMP_DIR)
 
     def get_repo(self, uri, pull=True, tmp_dir=None):

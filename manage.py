@@ -6,10 +6,12 @@
 CLI for deploying metrique
 '''
 
+import datetime
 from functools import partial
 import os
-import sys
 import re
+import shutil
+import sys
 
 try:
     import virtualenv
@@ -33,6 +35,7 @@ RE_RELEASE = re.compile(r"__release__ = [\"']?((\d+)a?)[\"']?")
 CWD = os.getcwd()
 SRC_DIR = os.path.join(CWD, __src__)
 USER_DIR = os.path.expanduser('~/.metrique')
+TRASH_DIR = os.path.expanduser('~/.metrique/trash')
 
 # set cache dir so pip doesn't have to keep downloading over and over
 PIP_CACHE = '~/.pip/download-cache'
@@ -42,7 +45,7 @@ os.environ['PIP_ACCEL_CACHE'] = PIP_ACCEL
 PIP_EGGS = os.path.join(USER_DIR, '.python-eggs')
 
 # create dirs we need, in advance
-for _dir in [USER_DIR, PIP_CACHE, PIP_ACCEL, PIP_EGGS]:
+for _dir in [USER_DIR, PIP_CACHE, PIP_ACCEL, PIP_EGGS, TRASH_DIR]:
     _dir = os.path.expanduser(_dir)
     if not os.path.exists(_dir):
         os.makedirs(_dir)
@@ -65,6 +68,39 @@ def call(cmd, cwd=None):
 def adjust_options(options, args):
     options.no_site_packages = True
 virtualenv.adjust_options = adjust_options
+
+
+def mongodb(args):
+    db_dir = os.path.expanduser(args.db_dir)
+    lock_file = os.path.join(db_dir, 'mongod.lock')
+
+    config_dir = os.path.expanduser(args.config_dir)
+    config_file = os.path.join(config_dir, args.config_file)
+
+    pid_dir = os.path.expanduser(args.pid_dir)
+    pid_file = os.path.join(pid_dir, 'mongodb.pid')
+
+    if args.command == 'start':
+        return call('mongod -f %s --fork' % config_file)
+    elif args.command == 'stop':
+        signal = args.signal
+        pid = int(''.join(open(pid_file).readlines()).strip())
+        code = os.kill(pid, signal)
+        args.command = 'clean'
+        mongodb(args)
+        return code
+    elif args.command == 'clean':
+        if os.path.exists(lock_file):
+            os.remove(lock_file)
+        if os.path.exists(pid_file):
+            os.remove(pid_file)
+    elif args.command == 'trash':
+        now = datetime.datetime.now().isoformat()
+        dest = os.path.join(TRASH_DIR, 'mongodb-%s' % now)
+        shutil.move(db_dir, dest)
+        os.makedirs(db_dir)
+    else:
+        raise ValueError("unknown command %s" % args.command)
 
 
 def clean(args):
@@ -286,10 +322,8 @@ def register(args):
 
 
 def status(path):
-    #[status(path=path) for path in setup_paths]
     pkg = os.path.basename(os.path.dirname(path))
-    p = setup('pip show %s' % pkg)
-    print p.communicate()
+    call('pip show %s' % pkg)
 
 
 if __name__ == '__main__':
@@ -340,6 +374,22 @@ if __name__ == '__main__':
 
     _clean = _sub.add_parser('clean')
     _clean.set_defaults(func=clean)
+
+    _mongodb = _sub.add_parser('mongodb')
+    _mongodb.add_argument('command',
+                          choices=['start', 'stop', 'clean', 'trash'])
+    _mongodb.add_argument('-c', '--config-file', type=str,
+                          default='mongodb.conf')
+    _mongodb.add_argument('-cd', '--config-dir', type=str,
+                          default='~/.metrique/etc')
+    _mongodb.add_argument('-dd', '--db-dir', type=str,
+                          default='~/.metrique/mongodb')
+    _mongodb.add_argument('-pd', '--pid-dir', type=str,
+                          default='~/.metrique/pids')
+    _mongodb.add_argument('-s', '--signal', type=int, default=15,
+                          choices=[2, 9, 15])
+    _mongodb.set_defaults(func=mongodb)
+
     # parse argv
     args = cli.parse_args()
     args.func(args)
