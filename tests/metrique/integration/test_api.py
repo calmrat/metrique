@@ -95,7 +95,6 @@ def test_user_api():
                  **config)
 
     assert m.config.gnupg_fingerprint == fingerprint
-    assert m.config.gnupg_pubkey
 
     assert m.user_register(username, password)
     # should except if trying to register again
@@ -116,6 +115,7 @@ def test_user_api():
     except ImportError:
         pass
     else:
+        assert m.config.gnupg_pubkey
         pubkey = m.config.gnupg_pubkey
         gnupg = {'pubkey': pubkey, 'fingerprint': fingerprint}
         result = m.user_update_profile(gnupg=gnupg)
