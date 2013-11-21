@@ -2,6 +2,7 @@
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 # Author: "Chris Ward <cward@redhat.com>
 
+from gnupg import GPG
 import os
 
 from metriqueu.jsonconf import JSONConf
@@ -10,6 +11,7 @@ from metriqued.basemongodb import BaseMongoDB
 USER_DIR = os.path.expanduser('~/.metrique')
 CONFIG_DIR = os.path.join(USER_DIR, 'etc')
 LOG_DIR = os.path.join(USER_DIR, 'logs')
+GNUPG_DIR = os.path.join(USER_DIR, 'gnupg')
 
 DEFAULT_CONFIG = os.path.join(CONFIG_DIR, 'metriqued')
 
@@ -34,6 +36,8 @@ class metriqued_config(JSONConf):
             'configdir':  CONFIG_DIR,
             'user_cube_quota': 3,
             'debug': None,
+            'gnupg_dir': GNUPG_DIR,
+            'gnupg_fingerprint': None,
             'gzip': True,
             'host': '127.0.0.1',
             'krb_auth': False,
@@ -55,6 +59,18 @@ class metriqued_config(JSONConf):
             'xsrf_cookies': False,
         }
         super(metriqued_config, self).__init__(config_file=config_file)
+
+    @property
+    def gnupg(self):
+        if hasattr(self, '_gnupg'):
+            gpg = self._gnupg
+        else:
+            gpg = GPG(homedir=os.path.expanduser(self['gnupg_dir']))
+        return gpg
+
+    @property
+    def gnupg_pubkey(self):
+        return self.gnupg.export_keys(self['gnupg_fingerprint'])
 
 
 class mongodb_config(JSONConf):

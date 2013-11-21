@@ -18,6 +18,7 @@ __scripts__ = [
 ]
 __requires__ = [
     'metriqueu (>=%s)' % __version__,
+    'gnupg (==1.2.3)',
     'kerberos (==1.1.1)',
     'passlib (==1.6.1)',
     'pymongo (==2.6.1)',
@@ -25,6 +26,7 @@ __requires__ = [
 ]
 __irequires__ = [
     'metriqueu>=%s' % __version__,
+    'gnupg==1.2.3',
     'kerberos==1.1.1',
     'passlib==1.6.1',
     'pymongo==2.6.3',

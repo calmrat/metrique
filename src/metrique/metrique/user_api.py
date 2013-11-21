@@ -126,12 +126,11 @@ def update_passwd(self, new_password, old_password=None,
 
 
 # FIXME: prefix api_url with _ to indicate it's a special kwarg
-def update_profile(self, username=None, backup=False, email=None):
-    username = set_default(username, self.config.username)
+def update_profile(self, username=None, gnupg=None):
+    username = username or self.config.username
     cmd = os.path.join(username, 'update_profile')
     result = self._post(cmd,
-                        backup=backup,
-                        email=email,
+                        gnupg=gnupg,
                         api_url=False)
     return result
 

@@ -133,6 +133,7 @@ class RemoveHdlr(MetriqueHdlr):
 
         # delete the user's profile
         spec = {'_id': username}
+        self.logger.debug(spec)
         self.user_profile(admin=True).remove(spec)
 
         # remove the user's cubes
@@ -219,40 +220,33 @@ class UpdateGroupHdlr(MetriqueHdlr):
 
 
 class UpdateProfileHdlr(MetriqueHdlr):
-    '''
-    '''
     @authenticated
     def post(self, username=None):
-        backup = self.get_argument('backup')
-        email = self.get_argument('email')
+        gnupg = self.get_argument('gnupg')
         result = self.update_profile(username=username,
-                                     backup=backup,
-                                     email=email)
-        if result:
-            self.write(True)
-        else:
-            self.write(False)
+                                     gnupg=gnupg)
+        self.write(result)
 
-    def update_profile(self, username, backup=False, email=None):
+    def update_profile(self, username, gnupg=None):
         '''
         update user profile
         '''
         self.user_exists(username)
         self.requires_owner_admin(username)
-        if backup:
-            backup = self.get_user_profile(username)
-
-        # FIXME: make update_user_profile (or new method) to accept
-        # a dict to apply not just a single key/value
-        spec = {'_id': self.current_user}
-        email = set_property({}, 'email', email, [basestring])
-
-        update = {'$set': email}
-        self.user_profile(admin=True).update(spec, update, safe=True)
-        if backup:
-            return backup
+        reqkeys = ('fingerprint', 'pubkey')
+        if not isinstance(gnupg, dict) and sorted(gnupg.keys()) != reqkeys:
+            self._raise(400,
+                        "gnupg must be a dict with keys pubkey/fingerprint")
         else:
-            return True
+            backup = self.get_user_profile(username)
+            self.logger.debug('GPG PubKey Import: %s' % gnupg)
+            self.gnupg_pubkey_import(gnupg['pubkey'])
+            self.update_user_profile(username, 'set', 'gnupg', gnupg)
+        current = self.get_user_profile(username)
+        return {'now': current, 'previous': backup}
+
+    def gnupg_pubkey_import(self, gnupg_key):
+        return self.metrique_config.gnupg.import_keys(gnupg_key)
 
 
 class UpdatePropertiesHdlr(MetriqueHdlr):

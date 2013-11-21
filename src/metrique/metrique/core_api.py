@@ -340,18 +340,13 @@ class HTTPClient(object):
         if level == 2:
             self._logger_name = None
             logger = logging.getLogger()
-        elif not self.name:
-            self._logger_name = __name__
-            logger = logging.getLogger(self._logger_name)
-            logger.propagate = 0
-        else:
-            self._logger_name = '%s.%s' % (__name__, self.name)
-            logger = logging.getLogger(self._logger_name)
-            logger.propagate = 0
+            logger = self._debug_set_level(logger, level)
 
-        # reset handlers
-        logger.handlers = []
+        self._logger_name = '%s.%s' % ('metrique', self.name)
+        logger = logging.getLogger(self._logger_name)
+        logger.propagate = 0
 
+        logger.handlers = []  # reset handlers
         if logstdout:
             hdlr = logging.StreamHandler()
             hdlr.setFormatter(basic_format)
@@ -362,13 +357,17 @@ class HTTPClient(object):
             hdlr.setFormatter(basic_format)
             logger.addHandler(hdlr)
 
+        logger = self._debug_set_level(logger, level)
+        self.logger = logger
+
+    def _debug_set_level(self, logger, level):
         if level in [-1, False]:
             logger.setLevel(logging.WARN)
         elif level in [0, None]:
             logger.setLevel(logging.INFO)
         elif level in [True, 1, 2]:
             logger.setLevel(logging.DEBUG)
-        self.logger = logger
+        return logger
 
     def _delete(self, *args, **kwargs):
         ' requests DELETE; using current session '

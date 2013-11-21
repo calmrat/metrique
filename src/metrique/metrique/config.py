@@ -12,11 +12,13 @@ or 'personal' environment. The defaults are not meant for
 production use.
 
 To customize local client configuration, add/update
-`~/.metrique/http_api.json` (default).
+`~/.metrique/metrique.json` (default).
 
 Paths are UNIX compatible only.
 '''
 
+# FIXME: requires psutil
+from gnupg import GPG
 import multiprocessing
 import os
 import re
@@ -27,8 +29,8 @@ USER_DIR = os.path.expanduser('~/.metrique')
 CONFIG_DIR = os.path.join(USER_DIR, 'etc')
 LOG_DIR = os.path.join(USER_DIR, 'logs')
 JOURNAL_DIR = os.path.join(USER_DIR, 'journal')
+GNUPG_DIR = os.path.expanduser('~/.gnupg')
 COOKIEJAR = os.path.join(USER_DIR, '.cookiejar')
-
 DEFAULT_CONFIG = os.path.join(CONFIG_DIR, 'metrique')
 
 for path in [USER_DIR, CONFIG_DIR, LOG_DIR, JOURNAL_DIR]:
@@ -63,6 +65,8 @@ class Config(JSONConf):
             'cookiejar': COOKIEJAR,
             'configdir': CONFIG_DIR,
             'debug': None,
+            'gnupg_dir': GNUPG_DIR,
+            'gnupg_fingerprint': None,
             'host': '127.0.0.1',
             'journal': True,
             'journaldir': JOURNAL_DIR,
@@ -84,6 +88,19 @@ class Config(JSONConf):
             'cube_paths': [],
         }
         super(Config, self).__init__(config_file=config_file, *args, **kwargs)
+
+    @property
+    def gnupg(self):
+        if hasattr(self, '_gnupg'):
+            gpg = self._gnupg
+        else:
+            gpg = GPG(homedir=os.path.expanduser(self['gnupg_dir']))
+            self._gnupg = gpg
+        return gpg
+
+    @property
+    def gnupg_pubkey(self):
+        return self.gnupg.export_keys(self['gnupg_fingerprint'])
 
     @property
     def api_url(self):

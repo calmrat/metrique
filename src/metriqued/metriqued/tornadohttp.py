@@ -20,7 +20,7 @@ from metriqued import core_api, cube_api, query_api, user_api
 logging.basicConfig()
 root_logger = logging.getLogger()
 [root_logger.removeHandler(hdlr) for hdlr in root_logger.handlers]
-BASIC_FORMAT = "%(name)s:%(message)s"
+BASIC_FORMAT = "%(name)s.%(process)s:%(levelname)s:%(message)s"
 
 PID_FILE = 'metriqued.pid'
 
@@ -106,7 +106,7 @@ class TornadoHTTPServer(object):
 
         if level == 2:
             self._logger_name = None
-            logger = logging.getLogger()
+            logger = logging.getLogger('metriqued')
         else:
             self._logger_name = 'metriqued.%s' % self.pid
             logger = logging.getLogger(self._logger_name)

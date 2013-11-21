@@ -247,12 +247,12 @@ def deploy(args):
     call('pip install -U pip setuptools')
     call('pip install -U %s virtualenv argparse' % pip)
 
+    # this required dep is installed separately b/c virtenv
+    # path resolution issues; fails due to being unable to find
+    # the python headers in the virtenv for some reason.
+    call('%s install -U numpy pandas' % pip)
+
     # optional dependencies; highly recommended! but slow for testing
-    if args.pandas:
-        # this dependency is installed separately b/c virtenv
-        # path resolution issues; fails due to being unable to find
-        # the python headers in the virtenv for some reason.
-        call('%s install -U numpy pandas' % pip)
     if args.matplotlib:
         call('%s install -U matplotlib' % pip)
     if args.ipython:
@@ -342,8 +342,6 @@ if __name__ == '__main__':
         help='ignore pre-release versions')
     _deploy.add_argument(
         '--test', action='store_true', help='run tests after deployment')
-    _deploy.add_argument(
-        '--pandas', action='store_true', help='install pandas')
     _deploy.add_argument(
         '--ipython', action='store_true', help='install ipython')
     _deploy.add_argument(

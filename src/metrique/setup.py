@@ -17,13 +17,15 @@ __scripts__ = [
 __requires__ = [
     'metriqueu (>=%s)' % __version__,
     'plotrique (>=%s)' % __version__,
-    #'pandas (==0.12.0)',
+    'gnupg (==1.2.3)',
+    'pandas (==0.12.0)',
     'requests (==1.2.3)',
 ]
 __irequires__ = [
     'metriqueu>=%s' % __version__,
+    'gnupg==1.2.3',
     'plotrique>=%s' % __version__,
-    #'pandas==0.12.0',
+    'pandas==0.12.0',
     'requests==1.2.3',
 ]
 pip_src = 'https://pypi.python.org/packages/source'

@@ -158,8 +158,7 @@ class MetriqueHdlr(RequestHandler):
                 return False
             else:
                 return {}
-        elif exists_only:
-            # return back only the count
+        elif exists_only:  # return back only the count
             return True if count else False
         else:
             # return back the profile doc
@@ -230,17 +229,18 @@ class MetriqueHdlr(RequestHandler):
         self.valid_action(action)
         collection = self.cjoin(owner, cube)
         _cube = self.cube_profile(admin=True)
-        return self.update_profile(_cube=_cube, _id=collection,
-                                   action=action, key=key, value=value)
+        return self._update_profile(_cube=_cube, _id=collection,
+                                    action=action, key=key, value=value)
 
     def update_user_profile(self, username, action, key, value):
         self.user_exists(username, raise_if_not=True)
         _cube = self.user_profile(admin=True)
-        return self.update_profile(_cube=_cube, _id=username,
-                                   action=action, key=key, value=value)
+        return self._update_profile(_cube=_cube, _id=username,
+                                    action=action, key=key, value=value)
 
-    def update_profile(self, _cube, _id, action, key, value):
+    def _update_profile(self, _cube, _id, action, key, value):
         # FIXME: add optional type check...
+        # and drop utils set_propery function
         self.valid_action(action)
         spec = {'_id': _id}
         update = {'$%s' % action: {key: value}}

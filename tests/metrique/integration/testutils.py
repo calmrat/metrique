@@ -11,11 +11,11 @@ from multiprocessing import Process
 import os
 import sys
 import time
-from requests import HTTPError
 
-from metrique import pyclient
 from metriqued.tornadohttp import TornadoHTTPServer
 from metriqued.utils import get_pids
+
+USER_DIR = os.path.expanduser('~/.metrique')
 
 
 def runner(func):
@@ -25,9 +25,9 @@ def runner(func):
         p.start()
         time.sleep(1)  # give a moment to startup
         try:
-            assert func()
+            func()
         finally:
-            for pid in get_pids('~/.metrique/'):
+            for pid in get_pids(USER_DIR):
                 try:
                     os.kill(pid, 15)
                 except:
@@ -42,11 +42,3 @@ def start_server():
         TornadoHTTPServer(debug=2).start()
     else:
         sys.exit()
-
-
-def user_register(username, password):
-    try:
-        m = pyclient(username=username, password=password)
-        m.user_register(username, password)
-    except HTTPError:
-        pass

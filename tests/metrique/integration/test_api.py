@@ -9,30 +9,29 @@ other words, test the 'cube_api' functionality of metrique client
 and metrique server.
 '''
 
-try:
-    import pandas
-except ImportError:
-    pandas = None
-
 from . import testutils
 import os
 from metrique import pyclient
 from metrique.result import Result
 
 cwd = os.path.dirname(os.path.abspath(__file__))
-tests_root = '/'.join(cwd.split('/')[0:-1])
+TESTS_ROOT = '/'.join(cwd.split('/')[0:-1])
+GNUPG_DIR = os.path.join(cwd, 'gnupg')
 
-paths = [tests_root]
+paths = [TESTS_ROOT]
 pkgs = ['testcubes']
 
 username = password = 'admin'
 
-m = pyclient(username=username, password=password)
+config = dict(username=username,
+              password=password,
+              debug=2)
 
 
 @testutils.runner
 def test_api():
-    testutils.user_register(username, password)
+    m = pyclient(**config)
+    assert m.user_register(username, password)
     cubes = ['csvcube_local', 'jsoncube_local']
     for cube in cubes:
         _cube = m.get_cube(cube=cube, pkgs=pkgs, cube_paths=paths, init=True)
@@ -44,13 +43,11 @@ def test_api():
         result = _cube.extract()
         assert result
 
-        # this will work only if pandas dependency is installed
-        if pandas:
-            # we should get back some results
-            df = _cube.find(fields='~', date='~')
-            assert df
-            # default obj type returned should be metrique.result.Result
-            assert isinstance(df, Result)
+        # we should get back some results
+        df = _cube.find(fields='~', date='~')
+        assert df
+        # default obj type returned should be metrique.result.Result
+        assert isinstance(df, Result)
 
         # raw should return back a list of dicts
         raw = _cube.find(raw=True, fields='~', date='~')
@@ -88,4 +85,34 @@ def test_api():
     name = '%s__%s' % (username, _cube.name)
     assert name not in _cube.cube_list_all()
 
-    return True
+
+@testutils.runner
+def test_user_api():
+    fingerprint = '894EE1CEEA61DC3D7D20327C4200AD1F2F22F46C'
+
+    m = pyclient(gnupg_dir=GNUPG_DIR,
+                 gnupg_fingerprint=fingerprint,
+                 **config)
+
+    assert m.config.gnupg_fingerprint == fingerprint
+    assert m.config.gnupg_pubkey
+
+    assert m.user_register(username, password)
+    # should except if trying to register again
+    try:
+        m.user_register(username, password)
+    except:
+        pass
+
+    aboutme = m.aboutme()
+    assert aboutme
+
+    pubkey = m.config.gnupg_pubkey
+    gnupg = {'pubkey': pubkey, 'fingerprint': fingerprint}
+    result = m.user_update_profile(gnupg=gnupg)
+    assert result['previous'] == aboutme
+    assert 'gnupg' in result['now']
+    assert result['now']['gnupg']['fingerprint'] == fingerprint
+    assert result['now']['gnupg']['pubkey'] == pubkey
+
+    assert m.user_remove()
