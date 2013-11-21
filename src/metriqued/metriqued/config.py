@@ -2,7 +2,6 @@
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 # Author: "Chris Ward <cward@redhat.com>
 
-from gnupg import GPG
 import os
 
 from metriqueu.jsonconf import JSONConf
@@ -65,12 +64,23 @@ class metriqued_config(JSONConf):
         if hasattr(self, '_gnupg'):
             gpg = self._gnupg
         else:
-            gpg = GPG(homedir=os.path.expanduser(self['gnupg_dir']))
+            # avoid exception in py2.6
+            # workaround until
+            # https://github.com/isislovecruft/python-gnupg/pull/36 is resolved
+            try:
+                from gnupg import GPG
+            except (ImportError, AttributeError):
+                gpg = None
+            else:
+                gpg = GPG(homedir=os.path.expanduser(self['gnupg_dir']))
         return gpg
 
     @property
     def gnupg_pubkey(self):
-        return self.gnupg.export_keys(self['gnupg_fingerprint'])
+        if self.gnupg:
+            return self.gnupg.export_keys(self['gnupg_fingerprint'])
+        else:
+            return ''
 
 
 class mongodb_config(JSONConf):

@@ -18,7 +18,6 @@ Paths are UNIX compatible only.
 '''
 
 # FIXME: requires psutil
-from gnupg import GPG
 import multiprocessing
 import os
 import re
@@ -94,13 +93,23 @@ class Config(JSONConf):
         if hasattr(self, '_gnupg'):
             gpg = self._gnupg
         else:
-            gpg = GPG(homedir=os.path.expanduser(self['gnupg_dir']))
-            self._gnupg = gpg
+            # avoid exception in py2.6
+            # workaround until
+            # https://github.com/isislovecruft/python-gnupg/pull/36 is resolved
+            try:
+                from gnupg import GPG
+            except (ImportError, AttributeError):
+                gpg = None
+            else:
+                gpg = GPG(homedir=os.path.expanduser(self['gnupg_dir']))
         return gpg
 
     @property
     def gnupg_pubkey(self):
-        return self.gnupg.export_keys(self['gnupg_fingerprint'])
+        if self.gnupg:
+            return self.gnupg.export_keys(self['gnupg_fingerprint'])
+        else:
+            return ''
 
     @property
     def api_url(self):

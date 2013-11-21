@@ -275,9 +275,10 @@ def deploy(args):
 
 
 def bump(args, kind=None, reset=None):
-    kind = kind or getattr(args, 'bump_kind', 'r')
+    kind = kind or getattr(args, 'bump_kind', None) or 'r'
     reset = reset or getattr(args, 'reset', None)
     ga = getattr(args, 'ga', None)
+    global __bumps__
     assert kind in __bumps__
     if kind == 'x':
         regex = RE_VERSION_X
