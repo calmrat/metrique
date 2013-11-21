@@ -4,7 +4,7 @@ python:
   - "2.7"
 # install metrique and dependencies to a virtenv
 install:
-    - "./manage.py deploy --matplotlib --pandas --slow"
+    - "./manage.py deploy --matplotlib --slow"
 services: 
   - mongodb
 # NOTE: authentication will be enabled upon adding an 
