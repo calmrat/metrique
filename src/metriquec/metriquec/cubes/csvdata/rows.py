@@ -26,12 +26,13 @@ class Rows(HTTPClient):
 
     name = 'csvdata_rows'
 
-    def extract(self, uri, _oid, _start=None, type_map=None, **kwargs):
+    def extract(self, uri, _oid='_oid', _start=None, type_map=None,
+                quotechar='"', delimiter=',', **kwargs):
         '''
         '''
-        self.logger.debug("Loading CSV: %s" % uri)
+        self.quotechar = quotechar
+        self.delimiter = delimiter
         objects = self.loaduri(uri)
-        # save the uri for reference too
         objects = self.set_column(objects, 'uri', uri)
         objects = self.set_column(objects, '_oid', _oid)
         objects = self.set_column(objects, '_start', _start)
@@ -57,17 +58,23 @@ class Rows(HTTPClient):
         etc. A common dialect is `Excel`.
         '''
         csvfile = cStringIO.StringIO(csv_str)
-        sample = csvfile.read(1024)
-        if not csv.Sniffer().has_header(sample):
-            raise ValueError("CSV requires header as field map")
-        dialect = csv.Sniffer().sniff(sample)
 
+        sample = csvfile.read(1024)
+        try:
+            dialect = csv.Sniffer().sniff(sample)
+            if not csv.Sniffer().has_header(sample):
+                self.logger.warn("CSV header NOT DETECTED!")
+        except Exception:
+            dialect = csv.excel
+            dialect.delimiter = self.delimiter
+            dialect.quotechar = self.quotechar
+            pass
         csvfile.seek(0)
+
         reader = csv.reader(csvfile, dialect)
         rows = list(reader)
         fields = rows.pop(0)
         fields = self.normalize_fields(fields)
-
         return rows, fields, dialect
 
     def loaduri(self, uri, mode='rU'):
@@ -78,6 +85,7 @@ class Rows(HTTPClient):
         :param string mode:
             file open mode. Default: 'rU' (read/universal newlines)
         '''
+        self.logger.debug("Loading CSV: %s" % uri)
         if re.match('https?://', uri):
             content = urlopen(uri).readlines()
         else:
@@ -96,6 +104,7 @@ class Rows(HTTPClient):
         rows, fields, dialect = self.header_fields_dialect(csv_str)
         objects = []
         for row in rows:
+            row = [s.strip() for s in row]
             obj = {}
             for i, field in enumerate(fields):
                 obj[field] = row[i]

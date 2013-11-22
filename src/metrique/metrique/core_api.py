@@ -35,12 +35,11 @@ and more.
 
 '''
 
-
 from copy import copy
-import logging
-from functools import partial
-import os
 import cPickle
+from functools import partial
+import logging
+import os
 import requests
 import simplejson as json
 import urllib
@@ -57,7 +56,140 @@ root_logger = logging.getLogger()
 BASIC_FORMAT = "%(name)s:%(message)s"
 
 
-class HTTPClient(object):
+class BaseClient(object):
+    '''
+    Essentially, a cube is a list of dictionaries.
+    '''
+    name = None
+    ' defaults is frequently overrided in subclasses as a property '
+    defaults = {}
+    ' fields is frequently overrided in subclasses as a property too '
+    fields = {}
+
+    def __new__(cls, *args, **kwargs):
+        '''
+        Return the specific cube class, if specified. Its
+        expected the cube will be available in sys.path.
+
+        If the cube fails to import, just move on.
+
+            >>> import pyclient
+            >>> c = pyclient(cube='git_commit')
+                <type HTTPClient(...)>
+        '''
+        if 'cube' in kwargs and kwargs['cube']:
+            cls = get_cube(cube=kwargs['cube'], init=False)
+        else:
+            cls = cls
+        return object.__new__(cls)
+
+    def __init__(self, config_file=None, name=None, **kwargs):
+        self._config_file = config_file
+        # all defaults are loaded, unless specified in
+        # metrique_config.json
+        self.load_config()
+
+        # update config object with any additional kwargs
+        for k, v in kwargs.items():
+            if v is not None:
+                self.config[k] = v
+
+        # potententially override the cube name
+        self.name = name or self.name
+
+        self.config.logdir = os.path.expanduser(self.config.logdir)
+        if not os.path.exists(self.config.logdir):
+            os.makedirs(self.config.logdir)
+        self.config.logfile = os.path.join(self.config.logdir,
+                                           self.config.logfile)
+
+        # keep logging local to the cube so multiple
+        # cubes can independently log without interferring
+        # with each others logging.
+        self.debug_set()
+
+        self._cache = {}
+        self.objects = []
+
+    def debug_set(self, level=None, logstdout=None, logfile=None):
+        '''
+        if we get a level of 2, we want to apply the
+        debug level to all loggers
+        '''
+        if level is None:
+            level = self.config.debug
+        if logstdout is None:
+            logstdout = self.config.logstdout
+        if logfile is None:
+            logfile = self.config.logfile
+
+        basic_format = logging.Formatter(BASIC_FORMAT)
+
+        if level == 2:
+            self._logger_name = None
+            logger = logging.getLogger()
+            logger = self._debug_set_level(logger, level)
+
+        self._logger_name = '%s.%s' % ('metrique', self.name)
+        logger = logging.getLogger(self._logger_name)
+        logger.propagate = 0
+
+        logger.handlers = []  # reset handlers
+        if logstdout:
+            hdlr = logging.StreamHandler()
+            hdlr.setFormatter(basic_format)
+            logger.addHandler(hdlr)
+
+        if self.config.log2file and logfile:
+            hdlr = logging.FileHandler(logfile)
+            hdlr.setFormatter(basic_format)
+            logger.addHandler(hdlr)
+
+        logger = self._debug_set_level(logger, level)
+        self.logger = logger
+
+    def _debug_set_level(self, logger, level):
+        if level in [-1, False]:
+            logger.setLevel(logging.WARN)
+        elif level in [0, None]:
+            logger.setLevel(logging.INFO)
+        elif level in [True, 1, 2]:
+            logger.setLevel(logging.DEBUG)
+        return logger
+
+    def get_cube(self, cube, init=True, **kwargs):
+        ' wrapper for utils.get_cube(); try to load a cube, pyclient '
+        config = copy(self.config)
+        # don't apply the name to the current obj, but to the object
+        # we get back from get_cube
+        name = kwargs.get('name')
+        if name:
+            del kwargs['name']
+        return get_cube(cube=cube, init=init, config=config,
+                        name=name, **kwargs)
+
+    def load_config(self, config=None):
+        ' try to load a config file and handle when its not available '
+        if type(config) is type(Config):
+            self._config_file = config.config_file
+        else:
+            config_file = config or self._config_file
+            self.config = Config(config_file=config_file)
+            self._config_file = config_file
+
+    @property
+    def objectsi(self):
+        return iter(self.objects)
+
+    def save_uri(self, uri, saveas):
+        return urllib.urlretrieve(uri, saveas)
+
+    def whoami(self, auth=False):
+        ' quick way of checking the username the instance is working as '
+        return self.config['username']
+
+
+class HTTPClient(BaseClient):
     '''
     This is the main client bindings for metrique http
     rest api.
@@ -67,12 +199,6 @@ class HTTPClient(object):
 
 
     '''
-    name = None
-    ' defaults is frequently overrided in subclasses as a property '
-    defaults = {}
-    ' fields is frequently overrided in subclasses as a property too '
-    fields = {}
-
     # frequently 'typed' commands have shorter aliases too
     user_aboutme = aboutme = user_api.aboutme
     user_login = login = user_api.login
@@ -107,57 +233,15 @@ class HTTPClient(object):
     query_sample = sample = query_api.sample
     query_aggregate = aggregate = query_api.aggregate
 
-    def __new__(cls, *args, **kwargs):
-        '''
-        Return the specific cube class, if specified. Its
-        expected the cube will be available in sys.path.
-
-        If the cube fails to import, just move on.
-
-            >>> import pyclient
-            >>> c = pyclient(cube='git_commit')
-                <type HTTPClient(...)>
-        '''
-        if 'cube' in kwargs and kwargs['cube']:
-            cls = get_cube(cube=kwargs['cube'], init=False)
-        else:
-            cls = cls
-        return object.__new__(cls)
-
-    def __init__(self, cube=None, config_file=None, owner=None,
-                 name=None, **kwargs):
-        self._config_file = config_file
-        # all defaults are loaded, unless specified in
-        # metrique_config.json
-        self.load_config()
-
-        # update config object with any additional kwargs
-        for k, v in kwargs.items():
-            if v is not None:
-                self.config[k] = v
-
+    def __init__(self, cube=None, owner=None, **kwargs):
+        super(HTTPClient, self).__init__(**kwargs)
         self.owner = owner or self.config.username
-
-        if name:
-            # override the cube name
-            self.name = name
-
-        self.config.logdir = os.path.expanduser(self.config.logdir)
-        if not os.path.exists(self.config.logdir):
-            os.makedirs(self.config.logdir)
-        self.config.logfile = os.path.join(self.config.logdir,
-                                           self.config.logfile)
-
-        # keep logging local to the cube so multiple
-        # cubes can independently log without interferring
-        # with each others logging.
-        self.debug_set()
-
         # load a new requests session; for the cookies.
         self._load_session()
         self._auto_login_attempted = False
         self._cache = {}
 
+#################### special cube object handlers #######################
     def __getitem__(self, name):
         if isinstance(name, slice):
             op = 'in'
@@ -177,25 +261,13 @@ class HTTPClient(object):
                 result = {}
         return result
 
-    def __setitem__(self, name, value):
-        raise NotImplementedError
-
-    def __delitem__(self, name):
-        raise NotImplementedError
-
     def __len__(self):
         return self.count()
 
     def __iter__(self):
         return self
 
-    def insert(self, objs):
-        self.save(objs)
-
-    def extend(self, objs):
-        self.save(objs)
-
-    def next(self):
+    def __next__(self):
         count = self._cache.get('counter', None)
         if count is None:
             k = self._cache['count'] = self.count()
@@ -218,6 +290,9 @@ class HTTPClient(object):
             del self._cache['sort']
             raise StopIteration
 
+    def next(self):
+        return self.__next__()
+
     def __getslice__(self, i, j):
         return self.find(sort=[('_oid', self.config.sort)],
                          raw=True, fields='__all__',
@@ -226,7 +301,7 @@ class HTTPClient(object):
     def __contains__(self, item):
         return bool(self.count('_oid == %s' % item))
 
-    def keys(self):
+    def oids(self):
         i = 0
         size = self.config.batch_size
         for j in xrange(size, self.count(), size):
@@ -239,7 +314,6 @@ class HTTPClient(object):
             for o in objs:
                 yield o['_oid']
 
-    def values(self):
         i = 0
         size = self.config.batch_size
         for j in xrange(size, self.count(), size):
@@ -252,7 +326,6 @@ class HTTPClient(object):
             for o in objs:
                 yield o
 
-    def items(self):
         i = 0
         size = self.config.batch_size
         for j in xrange(size, self.count(), size):
@@ -265,6 +338,7 @@ class HTTPClient(object):
             for o in objs:
                 yield o['_oid'], o
 
+#################### HTTP specific API methods/overrides ###############
     def activity_get(self, ids=None):
         '''
         Returns a dictionary of `id: [(when, field, removed, added)]` kv pairs
@@ -318,57 +392,6 @@ class HTTPClient(object):
         with open(path, 'w') as f:
             cPickle.dump(dfc(self.session.cookies), f)
 
-    @property
-    def current_user(self):
-        ' alias for whoami(); returns back username in config.username '
-        return self.whoami()
-
-    def debug_set(self, level=None, logstdout=None, logfile=None):
-        '''
-        if we get a level of 2, we want to apply the
-        debug level to all loggers
-        '''
-        if level is None:
-            level = self.config.debug
-        if logstdout is None:
-            logstdout = self.config.logstdout
-        if logfile is None:
-            logfile = self.config.logfile
-
-        basic_format = logging.Formatter(BASIC_FORMAT)
-
-        if level == 2:
-            self._logger_name = None
-            logger = logging.getLogger()
-            logger = self._debug_set_level(logger, level)
-
-        self._logger_name = '%s.%s' % ('metrique', self.name)
-        logger = logging.getLogger(self._logger_name)
-        logger.propagate = 0
-
-        logger.handlers = []  # reset handlers
-        if logstdout:
-            hdlr = logging.StreamHandler()
-            hdlr.setFormatter(basic_format)
-            logger.addHandler(hdlr)
-
-        if self.config.log2file and logfile:
-            hdlr = logging.FileHandler(logfile)
-            hdlr.setFormatter(basic_format)
-            logger.addHandler(hdlr)
-
-        logger = self._debug_set_level(logger, level)
-        self.logger = logger
-
-    def _debug_set_level(self, logger, level):
-        if level in [-1, False]:
-            logger.setLevel(logging.WARN)
-        elif level in [0, None]:
-            logger.setLevel(logging.INFO)
-        elif level in [True, 1, 2]:
-            logger.setLevel(logging.DEBUG)
-        return logger
-
     def _delete(self, *args, **kwargs):
         ' requests DELETE; using current session '
         return self._run(self.session.delete, *args, **kwargs)
@@ -394,17 +417,6 @@ class HTTPClient(object):
             return os.path.join(owner, cube, api_name)
         else:
             return os.path.join(owner, cube)
-
-    def get_cube(self, cube, init=True, **kwargs):
-        ' wrapper for utils.get_cube(); try to load a cube, pyclient '
-        config = copy(self.config)
-        # don't apply the name to the current obj, but to the object
-        # we get back from get_cube
-        name = kwargs.get('name')
-        if name:
-            del kwargs['name']
-        return get_cube(cube=cube, init=init, config=config,
-                        name=name, **kwargs)
 
     def get_last_field(self, field):
         '''
@@ -477,15 +489,6 @@ class HTTPClient(object):
                       json.dumps(v, default=json_encode, ensure_ascii=False))
                     for k, v in kwargs.items()])
 
-    def load_config(self, config=None):
-        ' try to load a config file and handle when its not available '
-        if type(config) is type(Config):
-            self._config_file = config.config_file
-        else:
-            config_file = config or self._config_file
-            self.config = Config(config_file=config_file)
-            self._config_file = config_file
-
     def _load_session(self):
         ' load a fresh new requests session; mainly, reset cookies '
         self.session = requests.Session()
@@ -540,9 +543,6 @@ class HTTPClient(object):
                 self.logger.error(content)
                 raise
 
-    def save_uri(self, uri, saveas):
-        return urllib.urlretrieve(uri, saveas)
-
     def _save(self, filename, *args, **kwargs):
         ' requests GET of a "file stream" using current session '
         return self._run(self.session.get, stream=True, filename=filename,
@@ -553,7 +553,7 @@ class HTTPClient(object):
         if auth:
             self.user_login()
         else:
-            return self.config['username']
+            super(HTTPClient, self).whoami()
 
 
 # import alias

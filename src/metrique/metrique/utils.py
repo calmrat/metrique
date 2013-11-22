@@ -111,7 +111,7 @@ def get_cube(cube, init=False, config=None, pkgs=None, cube_paths=None,
         raise RuntimeError('"%s" not found! %s; %s \n%s)' % (
             cube, pkgs, cube_paths, sys.path))
 
-    if init or config:
+    if init:
         _cube = _cube(**config)
     return _cube
 
