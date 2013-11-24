@@ -9,13 +9,12 @@ Utility functions for testing metrique and metriqued (etc) integration
 from functools import wraps
 from multiprocessing import Process
 import os
-import sys
 import time
 
 from metriqued.tornadohttp import TornadoHTTPServer
 from metriqued.utils import get_pids
 
-USER_DIR = os.path.expanduser('~/.metrique')
+pid_dir = os.path.expanduser('~/.metrique/pids')
 
 
 def runner(func):
@@ -27,11 +26,8 @@ def runner(func):
         try:
             func()
         finally:
-            for pid in get_pids(USER_DIR):
-                try:
-                    os.kill(pid, 15)
-                except:
-                    pass
+            for pid in get_pids(pid_dir):
+                os.kill(pid, 15)
             p.join()
     return _runner
 
@@ -40,5 +36,3 @@ def start_server():
     pid = os.fork()
     if pid == 0:
         TornadoHTTPServer(debug=2).start()
-    else:
-        sys.exit()

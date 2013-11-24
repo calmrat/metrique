@@ -4,7 +4,6 @@
 
 from copy import copy
 import os
-import pytest
 import time
 
 from metriqued.tornadohttp import TornadoHTTPServer
@@ -16,6 +15,7 @@ here = os.path.dirname(os.path.abspath(__file__))
 metriqued_config = JSONConf()
 mongodb_config = JSONConf()
 
+pid_dir = '~/.metrique/pids'
 pid_file = '~/.metrique/server.pid'
 cert = os.path.join(here, 'cert.pem')
 pkey = os.path.join(here, 'pkey.pem')
@@ -26,21 +26,16 @@ kwargs = {'debug': True,
 
 def start(**kw):
     m = TornadoHTTPServer(metriqued_config, **kw)
-    try:
-        pid = m.start(fork=True)
-    except SystemExit:
-        return True
+    pid = m.start(fork=True)
+    if pid == 0:
+        pass
     else:
         time.sleep(1)
-        pids = get_pids('~/.metrique')
-        open('/tmp/out', 'w').write(str(pids))
+        pids = get_pids(pid_dir)
         try:
             assert pid in pids
         finally:
-            try:
-                os.kill(pid, 9)
-            except OSError:
-                pass
+            os.kill(pid, 9)  # insta-kill
 
 
 def test_default_start():

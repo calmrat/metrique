@@ -63,6 +63,7 @@ def get_pids(pid_dir):
 
 
 def clear_stale_pids(pids, pid_dir):
+    'check for and remove any pids which have no corresponding process'
     procs = os.listdir('/proc')
     running = [pid for pid in pids if pid in procs]
     for pid in pids:
@@ -124,19 +125,6 @@ def parse_oids(oids, delimeter=','):
     if type(oids) is not list:
         raise TypeError("ids expected to be a list")
     return oids
-
-
-def remove_pid_file(pid_file, quiet=True):
-    if not pid_file:
-        return
-    try:
-        os.remove(pid_file)
-        print 'pid file removed.'
-    except OSError:
-        if quiet:
-            pass
-        else:
-            raise
 
 
 def set_property(dct, key, value, _types):

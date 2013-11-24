@@ -6,7 +6,6 @@ import logging
 from functools import partial
 import os
 import signal
-import sys
 import time
 from tornado.httpserver import HTTPServer
 from tornado.ioloop import IOLoop
@@ -292,7 +291,6 @@ class TornadoHTTPServer(object):
         else:
             self.stop(delay=delay)
         self.remove_pid(quiet=True)
-        sys.exit()
 
     def _inst_terminate_handler(self, sig, frame):
         self.logger.debug("[INST] (%s) recieved TERM signal" % self.pid)
