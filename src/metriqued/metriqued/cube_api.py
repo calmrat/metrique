@@ -13,12 +13,8 @@ import tempfile
 from tornado.web import authenticated
 
 from metriqued.core_api import MetriqueHdlr
-from metriqued.utils import query_add_date, parse_pql_query
-from metriqued.utils import insert_bulk, jsonhash
-
-from metriqueu.utils import dt2ts, utcnow
-
-mongoexport = 'mongoexport'
+from metriqued.utils import query_add_date, parse_pql_query, jsonhash
+from metriqueu.utils import dt2ts, utcnow, batch_gen
 
 
 class DropHdlr(MetriqueHdlr):
@@ -360,6 +356,17 @@ class SaveObjectsHdlr(MetriqueHdlr):
     '''
     RequestHandler for saving a given object to a metrique server cube
     '''
+    def insert_bulk(self, _cube, docs, size=-1):
+        # little reason to batch insert...
+        # http://stackoverflow.com/questions/16753366
+        # and after testing, it seems splitting things
+        # up more slows things down.
+        if size <= 0:
+            _cube.insert(docs, manipulate=False)
+        else:
+            for batch in batch_gen(docs, size):
+                _cube.insert(batch, manipulate=False)
+
     @authenticated
     def post(self, owner, cube):
         objects = self.get_argument('objects')
@@ -486,7 +493,7 @@ class SaveObjectsHdlr(MetriqueHdlr):
                 self.logger.debug('[%s.%s] Updated %s OLD versions' %
                                   (owner, cube, snapped))
             # Insert all new versions:
-            insert_bulk(_cube, objects)
+            self.insert_bulk(_cube, objects)
             self.logger.debug('[%s.%s] Saved %s NEW versions' % (owner, cube,
                                                                  len(objects)))
             # return object ids saved

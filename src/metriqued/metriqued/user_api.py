@@ -7,7 +7,6 @@ import re
 from tornado.web import authenticated
 
 from metriqued.core_api import MetriqueHdlr
-from metriqued.utils import set_property
 
 from metriqueu.utils import utcnow
 
@@ -274,8 +273,7 @@ class UpdatePropertiesHdlr(MetriqueHdlr):
             backup = self.get_user_profile(username)
 
         spec = {'_id': username}
-        cuba_quota = set_property({}, '_cube_quota', cube_quota,
-                                  [int, float])
+        cuba_quota = {'_cube_quote': cube_quota}
 
         # FIXME: make update_user_profile (or new method) to accept
         # a dict to apply not just a single key/value

@@ -8,7 +8,7 @@ import random
 from tornado.web import authenticated
 from collections import defaultdict
 
-from metriqued.utils import parse_pql_query, parse_oids
+from metriqued.utils import parse_pql_query
 from metriqued.utils import date_pql_string, query_add_date
 from metriqued.core_api import MetriqueHdlr
 
@@ -83,7 +83,8 @@ class DeptreeHdlr(MetriqueHdlr):
         self.requires_owner_read(owner, cube)
         if level and level <= 0:
             self._raise(400, 'level must be >= 1')
-        oids = parse_oids(oids)
+        if isinstance(oids, basestring):
+            oids = [s.strip() for s in oids.split(',')]
         checked = set(oids)
         fringe = oids
         loop_k = 0

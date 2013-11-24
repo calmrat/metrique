@@ -2,13 +2,12 @@
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 # Author: "Chris Ward <cward@redhat.com>
 
-from bson.son import SON
 import os
 import pql
 import re
 from hashlib import sha1
 
-from metriqueu.utils import batch_gen, dt2ts
+from metriqueu.utils import dt2ts
 
 OBJECTS_MAX_BYTES = 16777216
 EXISTS_SPEC = {'$exists': 1}
@@ -50,15 +49,16 @@ def query_add_date(query, date):
     return query or date_pql
 
 
-def get_pids(pid_dir):
+def get_pids(pid_dir, clear_stale=True):
     pid_dir = os.path.expanduser(pid_dir)
-    # eg, server.pid.22325, server.pid.23526
+    # eg, server.22325.pid, server.23526.pid
     pids = []
     for f in os.listdir(pid_dir):
         pid_re = re.search(r'metriqued.(\d+).pid', f)
         if pid_re:
             pids.append(pid_re.groups()[0])
-    pids = clear_stale_pids(pids, pid_dir)
+    if clear_stale:
+        pids = clear_stale_pids(pids, pid_dir)
     return map(int, pids)
 
 
@@ -72,18 +72,6 @@ def clear_stale_pids(pids, pid_dir):
             path = os.path.join(pid_dir, pid_file)
             os.remove(path)
     return running
-
-
-def insert_bulk(_cube, docs, size=-1):
-    # little reason to batch insert...
-    # http://stackoverflow.com/questions/16753366
-    # and after testing, it seems splitting things
-    # up more slows things down.
-    if size <= 0:
-        _cube.insert(docs, manipulate=False)
-    else:
-        for batch in batch_gen(docs, size):
-            _cube.insert(batch, manipulate=False)
 
 
 def jsonhash(obj, root=True):
@@ -100,15 +88,6 @@ def jsonhash(obj, root=True):
     return sha1(repr(result)).hexdigest() if root else result
 
 
-def make_index_spec(_start=EXISTS_SPEC, _end=EXISTS_SPEC,
-                    _oid=EXISTS_SPEC, _hash=EXISTS_SPEC):
-    spec = SON([('_start', _start),
-                ('_end', _end),
-                ('_oid', _oid),
-                ('_hash', _hash)])
-    return spec
-
-
 def parse_pql_query(query):
     if not query:
         return {}
@@ -117,26 +96,3 @@ def parse_pql_query(query):
     pql_parser = pql.SchemaFreeParser()
     spec = pql_parser.parse(query)
     return spec
-
-
-def parse_oids(oids, delimeter=','):
-    if isinstance(oids, basestring):
-        oids = [s.strip() for s in oids.split(delimeter)]
-    if type(oids) is not list:
-        raise TypeError("ids expected to be a list")
-    return oids
-
-
-def set_property(dct, key, value, _types):
-    # expecting iterable
-    assert isinstance(_types, (list, tuple))
-    if value is None:
-        return dct
-    elif not isinstance(value, tuple(_types)):
-        # isinstance expects arg 2 as tuple
-        raise TypeError(
-            "Invalid type for %s; "
-            "got (%s), expected %s" % (key, type(value), _types))
-    else:
-        dct[key] = value
-    return dct
