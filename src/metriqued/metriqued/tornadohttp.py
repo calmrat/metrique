@@ -22,8 +22,6 @@ root_logger = logging.getLogger()
 [root_logger.removeHandler(hdlr) for hdlr in root_logger.handlers]
 BASIC_FORMAT = "%(name)s.%(process)s:%(levelname)s:%(message)s"
 
-PID_FILE = 'metriqued.pid'
-
 
 def user_cube(value):
     user_cube = r'(\w+)/([-\w]+)'
@@ -140,9 +138,9 @@ class TornadoHTTPServer(object):
 
     @property
     def pid_file(self):
-        pid_file = os.path.join(self.mconf['userdir'], PID_FILE)
-        f = '%s.%s' % (pid_file, str(self.pid))
-        return os.path.expanduser(f)
+        pid_file = 'metriqued.%s.pid' % str(self.pid)
+        path = os.path.join(self.mconf['piddir'], pid_file)
+        return os.path.expanduser(path)
 
     def set_pid(self):
         if os.path.exists(self.pid_file):

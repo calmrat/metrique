@@ -53,8 +53,24 @@ def query_add_date(query, date):
 def get_pids(pid_dir):
     pid_dir = os.path.expanduser(pid_dir)
     # eg, server.pid.22325, server.pid.23526
-    pid_files = [f for f in os.listdir(pid_dir) if re.search('\.pid', f)]
-    return map(int, [f.split('.')[-1] for f in pid_files])
+    pids = []
+    for f in os.listdir(pid_dir):
+        pid_re = re.search(r'metriqued.(\d+).pid', f)
+        if pid_re:
+            pids.append(pid_re.groups()[0])
+    pids = clear_stale_pids(pids, pid_dir)
+    return map(int, pids)
+
+
+def clear_stale_pids(pids, pid_dir):
+    procs = os.listdir('/proc')
+    running = [pid for pid in pids if pid in procs]
+    for pid in pids:
+        if pid not in running:
+            pid_file = 'metriqued.%s.pid' % pid
+            path = os.path.join(pid_dir, pid_file)
+            os.remove(path)
+    return running
 
 
 def insert_bulk(_cube, docs, size=-1):

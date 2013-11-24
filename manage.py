@@ -72,12 +72,18 @@ virtualenv.adjust_options = adjust_options
 
 def mongodb(args):
     db_dir = os.path.expanduser(args.db_dir)
+    if not os.path.exists(db_dir):
+        os.makedirs(db_dir)
     lock_file = os.path.join(db_dir, 'mongod.lock')
 
     config_dir = os.path.expanduser(args.config_dir)
+    if not os.path.exists(config_dir):
+        os.makedirs(config_dir)
     config_file = os.path.join(config_dir, args.config_file)
 
     pid_dir = os.path.expanduser(args.pid_dir)
+    if not os.path.exists(pid_dir):
+        os.makedirs(pid_dir)
     pid_file = os.path.join(pid_dir, 'mongodb.pid')
 
     if args.command == 'start':
@@ -89,6 +95,10 @@ def mongodb(args):
         args.command = 'clean'
         mongodb(args)
         return code
+    elif args.command == 'restart':
+        for cmd in ('stop', 'start'):
+            args.command = cmd
+            mongodb(args)
     elif args.command == 'clean':
         if os.path.exists(lock_file):
             os.remove(lock_file)
@@ -376,7 +386,8 @@ if __name__ == '__main__':
 
     _mongodb = _sub.add_parser('mongodb')
     _mongodb.add_argument('command',
-                          choices=['start', 'stop', 'clean', 'trash'])
+                          choices=['start', 'stop', 'restart',
+                                   'clean', 'trash'])
     _mongodb.add_argument('-c', '--config-file', type=str,
                           default='mongodb.conf')
     _mongodb.add_argument('-cd', '--config-dir', type=str,

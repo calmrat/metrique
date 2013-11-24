@@ -9,12 +9,13 @@ from metriqued.basemongodb import BaseMongoDB
 
 USER_DIR = os.path.expanduser('~/.metrique')
 CONFIG_DIR = os.path.join(USER_DIR, 'etc')
+PID_DIR = os.path.join(USER_DIR, 'pids')
 LOG_DIR = os.path.join(USER_DIR, 'logs')
 GNUPG_DIR = os.path.join(USER_DIR, 'gnupg')
 
 DEFAULT_CONFIG = os.path.join(CONFIG_DIR, 'metriqued')
 
-for path in [USER_DIR, CONFIG_DIR, LOG_DIR]:
+for path in [USER_DIR, CONFIG_DIR, LOG_DIR, PID_DIR]:
     if not os.path.exists(path):
         os.makedirs(path)
 
@@ -47,6 +48,7 @@ class metriqued_config(JSONConf):
             'login_url': '/login',
             'max_processes': 0,
             'mongodb_config': None,
+            'piddir': PID_DIR,
             'port': 5420,
             'realm': 'metrique',
             'ssl': False,

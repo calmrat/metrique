@@ -18,89 +18,48 @@ metrique-server.py contains a CLI for metrique server.
 
 import os
 import sys
-import time
-import traceback
 
 from metriqued.config import metriqued_config
 from metriqued.tornadohttp import TornadoHTTPServer
 from metriqued.utils import get_pids
 
 
-def stop(pid, sig=None):
-    if not sig:
-        sig = 15  # ie, SIGTERM
-    code = 1  # not OK
-    if pid and not status(pid):
-        print "WARNING: pid file and pid found (%s)" % pid
-        print "... but no process with that id is running"
-    elif pid <= 0:
-        print 'WARNING: invalid pid (%s)' % pid
+def stop(args):
+    for pid in args.pids:
+        print "Sending signal (%s) to (%s)" % (args.signal, pid)
+        os.kill(pid, args.signal)
+
+
+def start(args):
+    if not args.instances:
+        args.instances = 1
+    if args.instances > 1 and args.nofork:
+        raise RuntimeError("Starting >1 instances; must fork!")
+    elif args.nofork:
+        # run in the foreground
+        _start(args)
     else:
-        try:
-            print "Sending signal (%s) to (%s)" % (sig, pid)
-            os.kill(pid, sig)
-            code = 0  # OK!
-        except OSError as e:
-            print 'STOP ERROR: %s' % e
-            raise
-    return code
+        # A) there are no instances currently running
+        # B) there are instances running; add additional
+        args.port = args.port + running_k
+        pids = []
+        for k in range(args.instances):
+            pid = os.fork()
+            if pid == 0:
+                _start(args)
+            else:
+                pids.append(pid)
+            args.port += 1
+        print 'Started: %s' % ', '.join(map(str, pids))
 
 
-def start(**kwargs):
-    pid = kwargs.get('pid')
-    if pid and status(pid):
-        raise SystemExit("process already running... (%s)" % pid)
-
-    metriqued = TornadoHTTPServer(**kwargs)
-    try:
-        metriqued.start()
-    except RuntimeError as e:
-        # already started...
-        print 'START ERROR: metriqued already started; %s' % e
-        print traceback.format_exc(e)
-        # a pid file was possibly created; clean up
-        stop(pid)
-    except Exception as e:
-        # a pid file was possibly created; clean up
-        print 'START ERROR: %s' % e
-        print traceback.format_exc(e)
-        stop(pid)
-    # after we've started, there's nothing left to do!
+def _start(args):
+    host = args.host
+    port = args.port
+    debug = args.debug
+    metriqued = TornadoHTTPServer(host=host, port=port, debug=debug)
+    metriqued.start()
     sys.exit()
-
-
-def restart(pid, signal=None, timeout=None, **kwargs):
-    if timeout is None:
-        timeout = -1
-    if status(pid):
-        stop(pid=pid, sig=sig)
-    print "Waiting for process to stop..."
-    while status(pid=pid):
-        time.sleep(1)
-        timeout -= 1
-        if timeout == 0:
-            print ('RESTART ERROR: timed out waiting for running '
-                   'process to stop')
-            break
-    else:
-        return start(**kwargs)
-
-
-def status(pid, quiet=True):
-    _pid = str(pid)
-    pids = [p for p in os.listdir('/proc') if p.isdigit()]
-    if pid and _pid in pids:
-        if not quiet:
-            print '[%s] Running' % pid
-        return 1
-    else:
-        if not quiet:
-            print '[%s] Not Running' % pid
-        return 0
-
-
-def pid_loop(pids, func, *args, **kwargs):
-    return [func(pid=pid, *args, **kwargs) for pid in pids]
 
 
 if __name__ == '__main__':
@@ -110,18 +69,17 @@ if __name__ == '__main__':
 
     __cmds__ = ['start', 'stop', 'restart', 'status']
     _args.add_argument('command', type=str, choices=__cmds__)
-
-    _args.add_argument('-d', '--debug',
-                       type=int, default=True)
-    _args.add_argument('--nofork', action='store_true')
+    _args.add_argument('-d', '--debug', type=int, default=True)
+    _args.add_argument('-F', '--nofork', action='store_true')
     _args.add_argument('-c', '--server-config-file', type=str)
     _args.add_argument('-H', '--host', type=str)
-    _args.add_argument('-P', '--port', type=str)
-    _args.add_argument('-i', '--instances', type=int, default=1)
-    _args.add_argument('-p', '--pid-dir', type=str, default='~/.metrique')
+    _args.add_argument('-P', '--port', type=int)
+    _args.add_argument('-i', '--instances', type=int)
+    _args.add_argument('-p', '--pid-dir', type=str)
     _args.add_argument('-ps', '--pids', nargs='+', type=int)
     # 2 = SIGINT; 15 = SIGTERM
-    _args.add_argument('-s', '--signal', type=int, choices=[2, 9])
+    _args.add_argument('-s', '--signal', type=int, choices=[2, 9, 15],
+                       default=2)
 
     # parse sys.argv
     args = _args.parse_args()
@@ -131,39 +89,28 @@ if __name__ == '__main__':
 
     # shorten varnames
     cmd = args.command
-    debug = args.debug
 
-    host = args.host or mconf.host
-    port = args.port or mconf.port
-    nofork = args.nofork
-    sig = args.signal
+    args.debug = args.debug
+    args.host = args.host or mconf.host
+    args.port = args.port or mconf.port
+    args.pid_dir = args.pid_dir or mconf.piddir
+    args.pid_dir = os.path.expanduser(args.pid_dir)
 
-    kwargs = dict(host=host, port=port, debug=debug)
+    running = get_pids(args.pid_dir)
+    running_k = len(running)
 
-    pid_dir = os.path.expanduser(args.pid_dir)
-    pids = args.pids or get_pids(pid_dir)
-
-    if (len(pids) > 1 or args.instances > 1) and nofork:
-        raise ValueError("must... fork!")
+    args.pids = args.pids or running
 
     if cmd == 'start':
-        if nofork:
-            start(**kwargs)
-        else:
-            pids = []
-            for k in range(args.instances):
-                pid = os.fork()
-                if pid == 0:
-                    start(**kwargs)
-                else:
-                    pids.append(pid)
-                kwargs['port'] += 1
-            print 'Started: %s' % ', '.join(map(str, pids))
+        start(args)
     elif cmd == 'stop':
-        pid_loop(pids, stop, sig=sig)
+        stop(args)
     elif cmd == 'restart':
-        pid_loop(pids, restart, sig=sig, **kwargs)
+        stop(args)
+        args.cmd = 'start'
+        args.instances = args.instances or running_k
+        start(args)
     elif cmd == 'status':
-        pid_loop(pids, status, quiet=False)
+        print 'RUNNING: %s' % ', '.join(map(str, get_pids(args.pid_dir)))
     else:
         raise SystemExit('bad command "%s"... Try --help' % cmd)
