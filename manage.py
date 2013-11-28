@@ -93,8 +93,7 @@ def metriqued(args):
     '''
     START, STOP, RESTART, RELOAD,
     '''
-    call('metriqued --help')
-    return
+    call('metriqued %s' % args.command)
 
 
 def nginx(args):
@@ -458,17 +457,13 @@ def main():
     _nginx.set_defaults(func=nginx)
 
     _metriqued = _sub.add_parser('metriqued')
-    _metriqued.add_argument('command',
-                            choices=['start', 'stop', 'reload',
-                                     'restart', 'test'])
-    _metriqued.add_argument('-c', '--config-file', type=str)
+    _metriqued.add_argument('command', type=str)
     _metriqued.set_defaults(func=metriqued)
 
     _celeryd = _sub.add_parser('celeryd')
     _celeryd.add_argument('command',
-                            choices=['start', 'stop', 'reload',
-                                     'restart', 'test'])
-    _celeryd.add_argument('-c', '--config-file', type=str)
+                          choices=['start', 'stop', 'restart'])
+    _celeryd.add_argument('cwd', type=str)
     _celeryd.set_defaults(func=celeryd)
 
     # parse argv

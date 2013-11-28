@@ -33,24 +33,18 @@ def stop(args):
 def start(args):
     if not args.instances:
         args.instances = 1
-    if args.instances > 1 and args.nofork:
-        raise RuntimeError("Starting >1 instances; must fork!")
-    elif args.nofork:
-        # run in the foreground
-        _start(args)
-    else:
-        # A) there are no instances currently running
-        # B) there are instances running; add additional
-        args.port = args.port + running_k
-        pids = []
-        for k in range(args.instances):
-            pid = os.fork()
-            if pid == 0:
-                _start(args)
-            else:
-                pids.append(pid)
-            args.port += 1
-        print 'Started: %s' % ', '.join(map(str, pids))
+    # A) there are no instances currently running
+    # B) there are instances running; add additional
+    args.port = args.port + running_k
+    pids = []
+    for k in range(args.instances):
+        pid = os.fork()
+        if pid == 0:
+            _start(args)
+        else:
+            pids.append(pid)
+        args.port += 1
+    print 'Started: %s' % ', '.join(map(str, pids))
 
 
 def _start(args):
@@ -64,13 +58,11 @@ def _start(args):
 
 if __name__ == '__main__':
     import argparse
-
     _args = argparse.ArgumentParser(description='metrique server CLI')
 
     __cmds__ = ['start', 'stop', 'restart', 'status']
     _args.add_argument('command', type=str, choices=__cmds__)
     _args.add_argument('-d', '--debug', type=int, default=True)
-    _args.add_argument('-F', '--nofork', action='store_true')
     _args.add_argument('-c', '--server-config-file', type=str)
     _args.add_argument('-H', '--host', type=str)
     _args.add_argument('-P', '--port', type=int)
