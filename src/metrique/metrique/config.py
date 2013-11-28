@@ -54,8 +54,9 @@ class Config(JSONConf):
         ssl: Connect with SSL (https)
         ssl_verify: ...
     '''
+    default_config = DEFAULT_CONFIG
+
     def __init__(self, config_file=None, *args, **kwargs):
-        self.default_config = DEFAULT_CONFIG
         self.defaults = {
             'api_version': 'v2',
             'api_rel_path': 'api/v2',

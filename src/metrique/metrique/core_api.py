@@ -84,7 +84,8 @@ class BaseClient(object):
         return object.__new__(cls)
 
     def __init__(self, config_file=None, name=None, **kwargs):
-        self._config_file = config_file
+        self._config_file = config_file or Config.default_config
+
         # all defaults are loaded, unless specified in
         # metrique_config.json
         self.load_config()
