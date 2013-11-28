@@ -457,9 +457,12 @@ class HTTPClient(BaseClient):
                       allow_redirects=True, stream=False):
         ' wrapper for running a metrique api request; get/post/etc '
         _auto = self.config.auto_login
+        # avoids bug in requests-2.0.1 - pass a dict no RequestsCookieJar
+        # eg, see: https://github.com/kennethreitz/requests/issues/1744
+        dfc = requests.utils.dict_from_cookiejar
         try:
             _response = runner(_url, auth=(username, password),
-                               cookies=self.session.cookies,
+                               cookies=dfc(self.session.cookies),
                                verify=self.config.ssl_verify,
                                allow_redirects=allow_redirects,
                                stream=stream)

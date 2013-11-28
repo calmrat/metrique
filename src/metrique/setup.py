@@ -19,7 +19,7 @@ __requires__ = [
     'plotrique (>=%s)' % __version__,
     'gnupg (==1.2.3)',
     'pandas (==0.12.0)',
-    'requests (==1.2.3)',
+    'requests (==2.0.1)',
 ]
 __irequires__ = [
     'metriqueu>=%s' % __version__,
