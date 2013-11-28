@@ -10,6 +10,7 @@ import datetime
 from functools import partial
 import os
 import re
+import shlex
 import shutil
 import sys
 
@@ -44,20 +45,30 @@ os.environ['PIP_DOWNLOAD_CACHE'] = PIP_CACHE
 os.environ['PIP_ACCEL_CACHE'] = PIP_ACCEL
 PIP_EGGS = os.path.join(USER_DIR, '.python-eggs')
 
-# create dirs we need, in advance
-for _dir in [USER_DIR, PIP_CACHE, PIP_ACCEL, PIP_EGGS, TRASH_DIR]:
-    _dir = os.path.expanduser(_dir)
-    if not os.path.exists(_dir):
-        os.makedirs(_dir)
 
-# make sure the the default user python eggs dir is secure
-os.chmod(PIP_EGGS, 0700)
+def get_pid(pid_file):
+    try:
+        return int(''.join(open(pid_file).readlines()).strip())
+    except IOError:
+        return 0
+
+
+def makedirs(path, mode=0700):
+    path = os.path.expanduser(path)
+    if not os.path.exists(path):
+        os.makedirs(path, mode)
+    return path
+
+
+def remove(path):
+    if os.path.exists(path):
+        os.remove(path)
 
 
 def call(cmd, cwd=None):
     if not cwd:
         cwd = os.getcwd()
-    cmd = cmd.strip().split(' ')
+    cmd = shlex.split(cmd.strip())
     try:
         call_subprocess(cmd, cwd=cwd, show_stdout=True)
     except:
@@ -70,27 +81,63 @@ def adjust_options(options, args):
 virtualenv.adjust_options = adjust_options
 
 
+def celeryd(args):
+    '''
+    START, STOP, RESTART, RELOAD,
+    '''
+    call('celery --help')
+    return
+
+
+def metriqued(args):
+    '''
+    START, STOP, RESTART, RELOAD,
+    '''
+    call('metriqued --help')
+    return
+
+
+def nginx(args):
+    if os.getuid() != 0:
+        raise RuntimeError("must be run as root")
+    if not args.config_file:
+        logger.warn("nginx config is broken")
+        raise ImportError("nginx config is broken")
+    else:
+        config_file = os.path.expanduser(args.config_file)
+
+    cmd = 'nginx -c %s' % config_file
+    if args.command == 'test':
+        return call('%s -t' % cmd)
+    elif args.command == 'start':
+        return call(cmd)
+    elif args.command == 'stop':
+        return call('%s -s stop' % cmd)
+    elif args.command == 'restart':
+        for cmd in ('stop', 'start'):
+            args.command = cmd
+            nginx(args)
+    elif args.command == 'reload':
+        return call('%s -s reload' % cmd)
+    else:
+        raise ValueError("unknown command %s" % args.command)
+
+
 def mongodb(args):
-    db_dir = os.path.expanduser(args.db_dir)
-    if not os.path.exists(db_dir):
-        os.makedirs(db_dir)
+    db_dir = makedirs(args.db_dir)
     lock_file = os.path.join(db_dir, 'mongod.lock')
 
-    config_dir = os.path.expanduser(args.config_dir)
-    if not os.path.exists(config_dir):
-        os.makedirs(config_dir)
+    config_dir = makedirs(args.config_dir)
     config_file = os.path.join(config_dir, args.config_file)
 
-    pid_dir = os.path.expanduser(args.pid_dir)
-    if not os.path.exists(pid_dir):
-        os.makedirs(pid_dir)
+    pid_dir = makedirs(args.pid_dir)
     pid_file = os.path.join(pid_dir, 'mongodb.pid')
 
     if args.command == 'start':
         return call('mongod -f %s --fork' % config_file)
     elif args.command == 'stop':
-        signal = args.signal
-        pid = int(''.join(open(pid_file).readlines()).strip())
+        signal = 15
+        pid = get_pid(pid_file)
         code = os.kill(pid, signal)
         args.command = 'clean'
         mongodb(args)
@@ -100,15 +147,13 @@ def mongodb(args):
             args.command = cmd
             mongodb(args)
     elif args.command == 'clean':
-        if os.path.exists(lock_file):
-            os.remove(lock_file)
-        if os.path.exists(pid_file):
-            os.remove(pid_file)
+        remove(lock_file)
+        remove(pid_file)
     elif args.command == 'trash':
         now = datetime.datetime.now().isoformat()
         dest = os.path.join(TRASH_DIR, 'mongodb-%s' % now)
         shutil.move(db_dir, dest)
-        os.makedirs(db_dir)
+        makedirs(db_dir)
     else:
         raise ValueError("unknown command %s" % args.command)
 
@@ -337,8 +382,15 @@ def status(path):
     call('pip show %s' % pkg)
 
 
-if __name__ == '__main__':
+def main():
     import argparse
+
+    # create default dirs in advance
+    [makedirs(p) for p in (USER_DIR, PIP_CACHE, PIP_ACCEL,
+                           PIP_EGGS, TRASH_DIR)]
+
+    # make sure the the default user python eggs dir is secure
+    os.chmod(PIP_EGGS, 0700)
 
     cli = argparse.ArgumentParser(description='Metrique Manage CLI')
 
@@ -396,10 +448,33 @@ if __name__ == '__main__':
                           default='~/.metrique/mongodb')
     _mongodb.add_argument('-pd', '--pid-dir', type=str,
                           default='~/.metrique/pids')
-    _mongodb.add_argument('-s', '--signal', type=int, default=15,
-                          choices=[2, 9, 15])
     _mongodb.set_defaults(func=mongodb)
+
+    _nginx = _sub.add_parser('nginx')
+    _nginx.add_argument('command',
+                        choices=['start', 'stop', 'reload',
+                                 'restart', 'test'])
+    _nginx.add_argument('-c', '--config-file', type=str)
+    _nginx.set_defaults(func=nginx)
+
+    _metriqued = _sub.add_parser('metriqued')
+    _metriqued.add_argument('command',
+                            choices=['start', 'stop', 'reload',
+                                     'restart', 'test'])
+    _metriqued.add_argument('-c', '--config-file', type=str)
+    _metriqued.set_defaults(func=metriqued)
+
+    _celeryd = _sub.add_parser('celeryd')
+    _celeryd.add_argument('command',
+                            choices=['start', 'stop', 'reload',
+                                     'restart', 'test'])
+    _celeryd.add_argument('-c', '--config-file', type=str)
+    _celeryd.set_defaults(func=celeryd)
 
     # parse argv
     args = cli.parse_args()
     args.func(args)
+
+
+if __name__ == '__main__':
+    main()
