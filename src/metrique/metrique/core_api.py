@@ -34,9 +34,6 @@ and more.
     valid date format: '%Y-%m-%d %H:%M:%S,%f', '%Y-%m-%d %H:%M:%S', '%Y-%m-%d'
 
 '''
-# FIXME: setup.py - requires hdf5-devel
-
-
 from copy import copy
 import cPickle
 from functools import partial
@@ -614,21 +611,23 @@ class PandasClient(BaseClient):
     def __getattr__(self, name):
         return getattr(self.objects, name)
 
+    @property
+    def df(self):
+        # FIXME: hash/cache?
+        return pd.DataFrame(self.objects)
+
 #################### pandas specific API methods/overrides ###############
-    def load(self, dataset, filetype=None, **kwargs):
-        # FIXME:
-        # override 'mutable list' methods to work with the object as a
-        # h5py store
+    def load(self, path, filetype=None, **kwargs):
         '''
-        dataset is a PATH  # FIXME - accept array of (nested) dicts, csv file
+        cache to hd5 on disk (journal to hd5?)
         '''
         # kwargs are for passing ftype load options (csv.delimiter, etc)
         # expect the use of globs; eg, file* might result in fileN (file1,
         # file2, file3), etc
-        datasets = glob.glob(os.path.expanduser(dataset))
+        datasets = glob.glob(os.path.expanduser(path))
         for ds in datasets:
             if os.path.exists(ds):
-                filetype = dataset.split('.')[-1]
+                filetype = path.split('.')[-1]
                 # buid up a single dataframe by concatting
                 # all globbed files together
                 self.objects = pd.concat(
@@ -637,20 +636,23 @@ class PandasClient(BaseClient):
                 self.objects = pd.DataFrame()
         return self.objects
 
-    def _load(self, dataset, filetype, **kwargs):
+    def _load(self, path, filetype, **kwargs):
         if filetype == 'json':
-            objects = pd.read_json(dataset, **kwargs)
+            objects = pd.read_json(path, **kwargs)
         elif filetype in ('csv', 'txt'):
             # load the file into hdf5, according to filetype
-            objects = pd.read_csv(dataset, **kwargs)
+            objects = pd.read_csv(path, **kwargs)
         elif filetype == 'xls':
             # load the file into hdf5, according to filetype
-            exfile = pd.ExcelFile(dataset, **kwargs)
+            exfile = pd.ExcelFile(path, **kwargs)
             objects = dict([(s, exfile.parse(s)) for s in exfile.sheet_names])
         else:
             raise TypeError("Invalid filetype: %s" % filetype)
         return objects
 
+    def save(self, path):
+        self.hdfstore = pd.HDFStore(path)
+        self.hdfstore['objects'] = self.df
 
 # import alias
 # ATTENTION: this is the main interface for clients!

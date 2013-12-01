@@ -3,4 +3,4 @@
 # Author: "Chris Ward" <cward@redhat.com>
 
 # ATTENTION: this is the main interface for clients!
-from metrique.core_api import pyclient
+from metrique.core_api import PandasClient as pyclient

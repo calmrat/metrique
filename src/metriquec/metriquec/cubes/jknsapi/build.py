@@ -18,7 +18,7 @@ import requests
 import re
 import simplejson as json
 
-from metrique.core_api import HTTPClient
+from metrique import pyclient
 from metriqueu.utils import dt2ts
 
 DEFAULT_CONFIG = {
@@ -64,7 +64,7 @@ def id_when(id):
         return dt_parse(when)
 
 
-class Build(HTTPClient):
+class Build(pyclient):
     """
     Object used for communication with Jenkins Build (job detail) interface
     """

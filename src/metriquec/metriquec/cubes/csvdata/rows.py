@@ -8,13 +8,13 @@ import os
 import re
 from urllib2 import urlopen
 
-from metrique.core_api import HTTPClient
+from metrique import pyclient
 
 mongo_re = re.compile('[\.$]*')
 space_re = re.compile(' ')
 
 
-class Rows(HTTPClient):
+class Rows(pyclient):
     """
     Object used for extracting data from CSV files
 

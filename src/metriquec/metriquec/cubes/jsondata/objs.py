@@ -7,10 +7,10 @@ try:
 except ImportError:
     import json
 
-from metrique.core_api import HTTPClient
+from metrique import pyclient
 
 
-class Objs(HTTPClient):
+class Objs(pyclient):
     """
     Object used for extracting data in JSON format
     """

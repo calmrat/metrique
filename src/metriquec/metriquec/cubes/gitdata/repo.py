@@ -18,7 +18,7 @@ import re
 import subprocess
 from gittle.utils.git import commit_info
 
-from metrique.core_api import HTTPClient
+from metrique import pyclient
 
 related_re = re.compile('Related: (.+)$', re.I)
 resolves_re = re.compile('Resolves: (.+)$', re.I)
@@ -29,7 +29,7 @@ hash_re = re.compile('[0-9a-f]{40}', re.I)
 TMP_DIR = '~/.metrique/gitrepos'
 
 
-class Repo(HTTPClient):
+class Repo(pyclient):
     '''
     Basic gitrepo cube for extracting git object data from git repos
 

@@ -5,13 +5,13 @@
 from dateutil.parser import parse as dt_parse
 from itertools import chain
 
-from metrique.core_api import HTTPClient
+from metrique import pyclient
 from metriqueu.utils import dt2ts
 
 DEFAULT_REPO = 'drpoovilleorg/metrique'
 
 
-class Issue(HTTPClient):
+class Issue(pyclient):
     """
     Object used for extracting issue data from github.com API
     """
@@ -47,13 +47,13 @@ class Issue(HTTPClient):
         for i in chain(_open, _closed):
             obj = {
                 '_oid': i.id,
-                'assignee': getattr(i, 'assignee.name', None),
+                'assignee': getattr(i.assignee, 'login', None),
                 'body': i.body,
                 'closed_at': dt2ts(i.closed_at),
-                'closed_by': i.closed_by,
+                'closed_by': getattr(i.closed_by, 'login', None),
                 'created_at': dt2ts(i.created_at),
                 'labels': [l.name for l in i.labels],
-                'milestone': getattr(i, 'milestone.title', None),
+                'milestone': getattr(i.milestone, 'title', None),
                 'name': repo_fullname,
                 'number': i.number,
                 'repo': i.repository.url,
@@ -64,6 +64,7 @@ class Issue(HTTPClient):
                 'user': i.user.name,
             }
             self.objects.append(obj)
+            break
         return self.objects
 
     def extract(self, repo_fullname=None, since=None, save=True, **kwargs):
