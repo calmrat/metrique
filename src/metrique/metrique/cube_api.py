@@ -195,7 +195,10 @@ def save(self, objects, cube=None, owner=None, journal=None,
             self.logger.info("... %i of %i posted" % (k, olen))
 
     journal = journal or self.config.journal
+    # to speed up the 'in' membership test below
+    saved = set(saved)
     if saved and self.config.journal:
+        self.logger.info("Saving object save journal")
         objects = [o for o in objects if o['_oid'] in saved]
         cube = '%s__%s' % (self.owner, self.name)
         journaldir = os.path.join(self.config.journaldir, cube)
@@ -208,7 +211,7 @@ def save(self, objects, cube=None, owner=None, journal=None,
             if exists:
                 journal.write('\n')
             json.dump(objects, journal, default=json_encode,
-                      ensure_ascii=False, indent=2)
+                      ensure_ascii=False)
     self.logger.info("... Saved %s NEW docs" % len(saved))
     return sorted(saved)
 

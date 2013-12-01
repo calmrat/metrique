@@ -34,12 +34,16 @@ and more.
     valid date format: '%Y-%m-%d %H:%M:%S,%f', '%Y-%m-%d %H:%M:%S', '%Y-%m-%d'
 
 '''
+# FIXME: setup.py - requires hdf5-devel
+
 
 from copy import copy
 import cPickle
 from functools import partial
+import glob
 import logging
 import os
+import pandas as pd
 import requests
 import simplejson as json
 import urllib
@@ -54,8 +58,13 @@ logging.basicConfig()
 root_logger = logging.getLogger()
 [root_logger.removeHandler(hdlr) for hdlr in root_logger.handlers]
 BASIC_FORMAT = "%(name)s:%(message)s"
+FILETYPES = {'csv': pd.read_csv,
+             'json': pd.read_json}
 
 
+# BaseClient should have a base-extract (default: in-memory)
+# which HTTPClient (etc) should call if the client's config
+# indicates 'class_client': 'HTTP' or 'H5' or 'Base'
 class BaseClient(object):
     '''
     Essentially, a cube is a list of dictionaries.
@@ -65,6 +74,8 @@ class BaseClient(object):
     defaults = {}
     ' fields is frequently overrided in subclasses as a property too '
     fields = {}
+    ' filename of the data when saved to disk '
+    saveas = ''
 
     def __new__(cls, *args, **kwargs):
         '''
@@ -112,6 +123,38 @@ class BaseClient(object):
         self._cache = {}
         self.objects = []
 
+#################### special cube object handlers #######################
+    def __getitem__(self, name):
+        return self.objects[name]
+
+    def __len__(self):
+        return len(self.objects)
+
+    def __iter__(self):
+        return iter(self.objects)
+
+    def __next__(self):
+        yield next(self)
+
+    def next(self):
+        return self.__next__()
+
+    def __getslice__(self, i, j):
+        return self.objects[i:j]
+
+    def __contains__(self, item):
+        return item in self.objects
+
+    def oids(self):
+        raise NotImplementedError
+
+    def keys(self):
+        return self.objects.keys()
+
+    def items(self):
+        return self.objects.items()
+
+#################### misc #######################
     def debug_set(self, level=None, logstdout=None, logfile=None):
         '''
         if we get a level of 2, we want to apply the
@@ -558,6 +601,55 @@ class HTTPClient(BaseClient):
             self.user_login()
         else:
             super(HTTPClient, self).whoami()
+
+
+####################### pandas python interface; client side ################
+class PandasClient(BaseClient):
+    _type = 'pandas'
+
+    def __init__(self, **kwargs):
+        super(PandasClient, self).__init__(**kwargs)
+
+#################### special cube object handlers #######################
+    def __getattr__(self, name):
+        return getattr(self.objects, name)
+
+#################### pandas specific API methods/overrides ###############
+    def load(self, dataset, filetype=None, **kwargs):
+        # FIXME:
+        # override 'mutable list' methods to work with the object as a
+        # h5py store
+        '''
+        dataset is a PATH  # FIXME - accept array of (nested) dicts, csv file
+        '''
+        # kwargs are for passing ftype load options (csv.delimiter, etc)
+        # expect the use of globs; eg, file* might result in fileN (file1,
+        # file2, file3), etc
+        datasets = glob.glob(os.path.expanduser(dataset))
+        for ds in datasets:
+            if os.path.exists(ds):
+                filetype = dataset.split('.')[-1]
+                # buid up a single dataframe by concatting
+                # all globbed files together
+                self.objects = pd.concat(
+                    [self._load(ds, filetype, **kwargs) for ds in datasets])
+            else:
+                self.objects = pd.DataFrame()
+        return self.objects
+
+    def _load(self, dataset, filetype, **kwargs):
+        if filetype == 'json':
+            objects = pd.read_json(dataset, **kwargs)
+        elif filetype in ('csv', 'txt'):
+            # load the file into hdf5, according to filetype
+            objects = pd.read_csv(dataset, **kwargs)
+        elif filetype == 'xls':
+            # load the file into hdf5, according to filetype
+            exfile = pd.ExcelFile(dataset, **kwargs)
+            objects = dict([(s, exfile.parse(s)) for s in exfile.sheet_names])
+        else:
+            raise TypeError("Invalid filetype: %s" % filetype)
+        return objects
 
 
 # import alias

@@ -23,13 +23,10 @@ class Rows(HTTPClient):
     The field names are defined by the column headers,
     therefore column heders are required in the csv.
     """
-
     name = 'csvdata_rows'
 
-    def extract(self, uri, _oid='_oid', _start=None, type_map=None,
-                quotechar='"', delimiter=',', **kwargs):
-        '''
-        '''
+    def get_objects(self, uri, _oid=None, _start=None, type_map=None,
+                    quotechar='"', delimiter=',',):
         self.quotechar = quotechar
         self.delimiter = delimiter
         objects = self.loaduri(uri)
@@ -38,6 +35,13 @@ class Rows(HTTPClient):
         objects = self.set_column(objects, '_start', _start)
         objects = self.normalize_types(objects, type_map)
         objects = self.normalize_nones(objects)
+        return objects
+
+    def extract(self, *args, **kwargs):
+        '''
+        kwargs are same as get_objects(**kwargs)
+        '''
+        objects = self.get_objects(*args, **kwargs)
         return self.cube_save(objects)
 
     def header_fields_dialect(self, csv_str):
@@ -165,12 +169,19 @@ class Rows(HTTPClient):
             # init/exec
             [o.update({key: value(o)}) for o in objects]
         elif key == '_oid':
-            try:
-                [o.update({key: o[value]}) for o in objects]
-            except KeyError:
-                raise KeyError(
-                    "Invalid key object (%s). Available: %s" % (
-                        value, o.keys()))
+            if value is None:
+                # _oid maps to the item's index in the object list
+                # which shouldn't change if the same file is being opened
+                # more than once (appended to, overtime, forexample)
+                [o.update({key: str(i)})
+                 for i, o in enumerate(objects)]
+            else:
+                try:
+                    [o.update({key: o[value]}) for o in objects]
+                except KeyError:
+                    raise KeyError(
+                        "Invalid key object (%s). Available: %s" % (
+                            value, o.keys()))
         else:
             [o.update({key: value}) for o in objects]
         return objects
