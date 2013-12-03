@@ -4,8 +4,6 @@
 
 ''' "Metrique User Management" related funtions '''
 
-import logging
-logger = logging.getLogger(__name__)
 import os
 
 from metriqueu.utils import set_default
