@@ -6,7 +6,7 @@ from setuptools import setup
 
 __pkg__ = 'metrique'
 __version__ = '0.2.5'
-__release__ = "1a"
+__release__ = "2a"
 __nvr__ = '%s-%s' % (__version__, __release__)
 __pkgs__ = ['metrique']
 __provides__ = ['metrique']
@@ -15,22 +15,24 @@ __scripts__ = [
     'bin/metrique-setup',
 ]
 __requires__ = [
-    'metriqueu (>=%s)' % __version__,
-    'plotrique (>=%s)' % __version__,
     'gnupg (==1.2.3)',
+    'metriqueu (>=%s)' % __version__,
+    'numexpr (==2.2.2)',
     'pandas (==0.12.0)',
+    'plotrique (>=%s)' % __version__,
+    'pyhdf (==0.8.3)',
     'requests (==2.0.1)',
     'tables (==3.0.0)',
-    'pyhdf (==0.8.3)',
 ]
 __irequires__ = [
-    'metriqueu>=%s' % __version__,
     'gnupg==1.2.3',
-    'plotrique>=%s' % __version__,
+    'metriqueu>=%s' % __version__,
+    'numexpr==2.2.2',
     'pandas==0.12.0',
+    'plotrique>=%s' % __version__,
+    'pyhdf==0.8.3',
     'requests==1.2.3',
     'tables==3.0.0',
-    'pyhdf==0.8.3',
 ]
 pip_src = 'https://pypi.python.org/packages/source'
 __deplinks__ = []

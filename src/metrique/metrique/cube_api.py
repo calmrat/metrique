@@ -118,7 +118,6 @@ def update_role(self, username, cube=None, action='addToSet',
 
 
 ######### INDEX #########
-
 def list_index(self, cube=None, owner=None):
     '''
     List indexes for either timeline or warehouse.
