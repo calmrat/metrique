@@ -4,7 +4,8 @@ python:
   - "2.7"
 # install metrique and dependencies to a virtenv
 install:
-    - "./manage.py deploy --matplotlib --slow"
+  - "sudo apt-get install libhdf5-serial-dev"
+  - "./manage.py deploy --matplotlib --slow"
 services: 
   - mongodb
 # NOTE: authentication will be enabled upon adding an 
