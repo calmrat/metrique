@@ -20,6 +20,8 @@ __requires__ = [
     'gnupg (==1.2.3)',
     'pandas (==0.12.0)',
     'requests (==2.0.1)',
+    'tables (==3.0.0)',
+    'pyhdf (==0.8.3)',
 ]
 __irequires__ = [
     'metriqueu>=%s' % __version__,
@@ -27,6 +29,8 @@ __irequires__ = [
     'plotrique>=%s' % __version__,
     'pandas==0.12.0',
     'requests==1.2.3',
+    'tables==3.0.0',
+    'pyhdf==0.8.3',
 ]
 pip_src = 'https://pypi.python.org/packages/source'
 __deplinks__ = []
