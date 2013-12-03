@@ -31,6 +31,7 @@ config = dict(username=username,
 @testutils.runner
 def test_api():
     m = pyclient(**config)
+    m.user_remove(username, quiet=True)  # to be sure it doesn't exist already
     assert m.user_register(username, password)
     cubes = ['csvcube_local', 'jsoncube_local']
     for cube in cubes:
@@ -64,7 +65,7 @@ def test_api():
         assert k == _cube.count(date='~')
 
         # journal should have been created
-        journal_path = '~/.metrique/journal/%s__%s' % (username, _cube.name)
+        journal_path = '~/.metrique/hdf5/%s__%s.hd5' % (username, _cube.name)
         assert os.path.exists(os.path.expanduser(journal_path))
 
         # rename cube
@@ -75,15 +76,20 @@ def test_api():
         ## count should remain the same in renamed cube
         assert k == _cube.count(date='~')
         assert _cube.cube_rename(new_name=name)
-
+        # drop the cube
         assert _cube.cube_drop()
 
     # with the last cube, do a few more things...
-    # re-register and then drop the user
+    # re-register
+    _cube = m.get_cube(cube=cubes[0], pkgs=pkgs, cube_paths=paths, init=True)
     assert _cube.cube_register()
-    assert _cube.user_remove()
     name = '%s__%s' % (username, _cube.name)
+    assert name in _cube.cube_list_all()
+    # drop the cube
+    assert _cube.cube_drop()
     assert name not in _cube.cube_list_all()
+    # then drop the user
+    assert _cube.user_remove()
 
 
 @testutils.runner

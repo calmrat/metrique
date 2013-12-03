@@ -129,7 +129,6 @@ class RemoveHdlr(MetriqueHdlr):
             self._raise(403, 'admin privleges required!')
         if not self.user_exists(username):
             self._raise(409, "user does not exist")
-
         # delete the user's profile
         spec = {'_id': username}
         self.logger.debug(spec)

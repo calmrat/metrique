@@ -44,7 +44,7 @@ def register(self, username=None, password=None, logon_as=True):
         return result
 
 
-def remove(self, username=None):
+def remove(self, username=None, quiet=False):
     '''
     Register new user
 
@@ -52,7 +52,13 @@ def remove(self, username=None):
     '''
     username = set_default(username, self.config.username)
     cmd = os.path.join(username, 'remove')
-    result = self._delete(cmd, username=username, api_url=False)
+    try:
+        result = self._delete(cmd, username=username, api_url=False)
+    except Exception:
+        if quiet:
+            result = None
+        else:
+            raise
     return result
 
 

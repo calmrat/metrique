@@ -66,13 +66,15 @@ class BaseClient(object):
     '''
     Essentially, a cube is a list of dictionaries.
     '''
-    name = None
+    name = 'NO_NAME'
     ' defaults is frequently overrided in subclasses as a property '
-    defaults = {}
+    defaults = None
     ' fields is frequently overrided in subclasses as a property too '
-    fields = {}
+    fields = None
     ' filename of the data when saved to disk '
     saveas = ''
+    ' a place to put stuff, temporarily... '
+    _cache = None
 
     def __new__(cls, *args, **kwargs):
         '''
@@ -91,7 +93,16 @@ class BaseClient(object):
             cls = cls
         return object.__new__(cls)
 
-    def __init__(self, config_file=None, name=None, **kwargs):
+    def __init__(self, config_file=None, name=None, objects=None, **kwargs):
+        # don't assign to {} in class def, define here to avoid
+        # multiple pyclient objects linking to a shared dict
+        if self.defaults is None:
+            self.defaults = {}
+        if self.fields is None:
+            self.fields = {}
+        if self._cache is None:
+            self._cache = {}
+
         self._config_file = config_file or Config.default_config
 
         # all defaults are loaded, unless specified in
@@ -103,8 +114,15 @@ class BaseClient(object):
             if v is not None:
                 self.config[k] = v
 
-        # potententially override the cube name
-        self.name = name or self.name
+        # set name if passed in, but don't overwrite default if not
+        if name is not None:
+            self.name = name
+        if not self.name:
+            raise RuntimeError("cube requires a name")
+
+        if objects:
+            # set objects if passed in, but don't overwrite default if not
+            self.objects = objects
 
         self.config.logdir = os.path.expanduser(self.config.logdir)
         if not os.path.exists(self.config.logdir):
@@ -116,9 +134,6 @@ class BaseClient(object):
         # cubes can independently log without interferring
         # with each others logging.
         self.debug_set()
-
-        self._cache = {}
-        self.objects = []
 
 #################### special cube object handlers #######################
     def __getitem__(self, name):
@@ -150,6 +165,76 @@ class BaseClient(object):
 
     def items(self):
         return self.objects.items()
+
+    def __str__(self):
+        return str(self.objects)
+
+    def __repr__(self):
+        return repr(self.objects)
+
+####################### pandas/hd5 python interface ################
+    @property
+    def df(self):
+        if isinstance(self.objects, pd.DataFrame):
+            return self.objects
+        elif isinstance(self.objects, pd.HDFStore):
+            # always expected under the 'objects' hdfs5 group
+            return self.objects['objects']
+        else:
+            return pd.DataFrame(self.objects)
+
+    def load_hdf5(self, path, filetype=None, **kwargs):
+        '''
+        cache to hd5 on disk
+        '''
+        # kwargs are for passing ftype load options (csv.delimiter, etc)
+        # expect the use of globs; eg, file* might result in fileN (file1,
+        # file2, file3), etc
+        datasets = glob.glob(os.path.expanduser(path))
+        for ds in datasets:
+            if os.path.exists(ds):
+                filetype = path.split('.')[-1]
+                # buid up a single dataframe by concatting
+                # all globbed files together
+                self.objects = pd.concat(
+                    [self._load_hdf5(ds, filetype, **kwargs)
+                     for ds in datasets])
+            else:
+                self.objects = pd.DataFrame()
+        return self.objects
+
+    def _load_hdf5(self, path, filetype, **kwargs):
+        if filetype == 'json':
+            objects = pd.read_json(path, **kwargs)
+        elif filetype in ('csv', 'txt'):
+            # load the file into hdf5, according to filetype
+            objects = pd.read_csv(path, **kwargs)
+        elif filetype == 'xls':
+            # load the file into hdf5, according to filetype
+            exfile = pd.ExcelFile(path, **kwargs)
+            objects = dict([(s, exfile.parse(s)) for s in exfile.sheet_names])
+        else:
+            raise TypeError("Invalid filetype: %s" % filetype)
+        return objects
+
+    @property
+    def hdf5(self):
+        store = self._cache.get('hdf5_store', pd.HDFStore(self.hdf5_path))
+        objects = getattr(store, 'objects', pd.DataFrame())
+        build = getattr(self, '_build', True)
+        if objects and build:
+            df = pd.concat((objects, self.df))
+            store['objects'] = df
+            self._build = False
+        else:
+            store['objects'] = self.df
+        self._cache['hdf5_store'] = store
+        return store
+
+    @property
+    def hdf5_path(self):
+        filename = '__'.join((self.owner, self.name)) + '.hd5'
+        return os.path.join(self.config.hdf5_dir, filename)
 
 #################### misc #######################
     def debug_set(self, level=None, logstdout=None, logfile=None):
@@ -198,14 +283,11 @@ class BaseClient(object):
             logger.setLevel(logging.DEBUG)
         return logger
 
-    def get_cube(self, cube, init=True, **kwargs):
+    def get_cube(self, cube, init=True, name=None, **kwargs):
         ' wrapper for utils.get_cube(); try to load a cube, pyclient '
         config = copy(self.config)
         # don't apply the name to the current obj, but to the object
         # we get back from get_cube
-        name = kwargs.get('name')
-        if name:
-            del kwargs['name']
         return get_cube(cube=cube, init=init, config=config,
                         name=name, **kwargs)
 
@@ -217,6 +299,35 @@ class BaseClient(object):
             config_file = config or self._config_file
             self.config = Config(config_file=config_file)
             self._config_file = config_file
+
+    #############################################################
+    # FIXME: objects should be a HDFStore! not an in memory dict
+    @property
+    def objects(self):
+        ''' always return a list of dicts '''
+        objs = self._cache.get('objects', {})
+        if not objs:
+            return {}
+        if isinstance(objs, pd.HDFStore):
+            objs = objs['objects']
+        if isinstance(objs, pd.DataFrame):
+            df = objs
+            objs = df.T.to_dict().values()
+        return objs
+
+    @objects.setter
+    def objects(self, value):
+        if isinstance(value, pd.HDFStore):
+            value = value['objects']
+        if isinstance(value, pd.DataFrame):
+            df = value
+        else:
+            df = pd.DataFrame(value)
+        objects = df.T.to_dict().values()
+        self._cache['objects'] = objects
+        # dependencies of objects should refresh
+        self._build = True
+        return objects
 
     @property
     def objectsi(self):
@@ -280,104 +391,6 @@ class HTTPClient(BaseClient):
         # load a new requests session; for the cookies.
         self._load_session()
         self._auto_login_attempted = False
-        self._cache = {}
-
-#################### special cube object handlers #######################
-    def __getitem__(self, name):
-        if isinstance(name, slice):
-            op = 'in'
-            one = False
-        else:
-            op = '=='
-            one = True
-
-        name_json = json.dumps(name, default=json_encode, ensure_ascii=False)
-        result = self.find('_oid %s %s' % (op, name_json),
-                           fields='__all__',
-                           raw=True, one=one)
-        if not result:
-            if op == 'in':
-                result = []
-            else:
-                result = {}
-        return result
-
-    def __len__(self):
-        return self.count()
-
-    def __iter__(self):
-        return self
-
-    def __next__(self):
-        count = self._cache.get('counter', None)
-        if count is None:
-            k = self._cache['count'] = self.count()
-            count = self._cache['counter'] = 0
-            self._cache['sort'] = self.config.sort
-        else:
-            k = self._cache['count']
-        if count < k:
-            docs = self.find(sort=[('_oid', self._cache['sort'])],
-                             skip=count,
-                             limit=self.config.batch_size,
-                             raw=True,
-                             fields='__all__')
-            self._cache['counter'] += len(docs)
-            # FIXME: return back a generator rather than tuple?
-            return docs
-        else:
-            del self._cache['counter']
-            del self._cache['count']
-            del self._cache['sort']
-            raise StopIteration
-
-    def next(self):
-        return self.__next__()
-
-    def __getslice__(self, i, j):
-        return self.find(sort=[('_oid', self.config.sort)],
-                         raw=True, fields='__all__',
-                         skip=i, limit=j)
-
-    def __contains__(self, item):
-        return bool(self.count('_oid == %s' % item))
-
-    def oids(self):
-        i = 0
-        size = self.config.batch_size
-        for j in xrange(size, self.count(), size):
-            objs = self[i:j]
-            for o in objs:
-                yield o['_oid']
-                i = j
-        else:
-            objs = self[i:self.count()]
-            for o in objs:
-                yield o['_oid']
-
-        i = 0
-        size = self.config.batch_size
-        for j in xrange(size, self.count(), size):
-            objs = self[i:j]
-            for o in objs:
-                yield o
-                i = j
-        else:
-            objs = self[i:self.count()]
-            for o in objs:
-                yield o
-
-        i = 0
-        size = self.config.batch_size
-        for j in xrange(size, self.count(), size):
-            objs = self[i:j]
-            for o in objs:
-                yield o['_oid'], o
-                i = j
-        else:
-            objs = self[i:self.count()]
-            for o in objs:
-                yield o['_oid'], o
 
 #################### HTTP specific API methods/overrides ###############
     def activity_get(self, ids=None):
@@ -599,60 +612,6 @@ class HTTPClient(BaseClient):
         else:
             super(HTTPClient, self).whoami()
 
-
-####################### pandas python interface; client side ################
-class PandasClient(BaseClient):
-    _type = 'pandas'
-
-    def __init__(self, **kwargs):
-        super(PandasClient, self).__init__(**kwargs)
-
-#################### special cube object handlers #######################
-    def __getattr__(self, name):
-        return getattr(self.objects, name)
-
-    @property
-    def df(self):
-        # FIXME: hash/cache?
-        return pd.DataFrame(self.objects)
-
-#################### pandas specific API methods/overrides ###############
-    def load(self, path, filetype=None, **kwargs):
-        '''
-        cache to hd5 on disk (journal to hd5?)
-        '''
-        # kwargs are for passing ftype load options (csv.delimiter, etc)
-        # expect the use of globs; eg, file* might result in fileN (file1,
-        # file2, file3), etc
-        datasets = glob.glob(os.path.expanduser(path))
-        for ds in datasets:
-            if os.path.exists(ds):
-                filetype = path.split('.')[-1]
-                # buid up a single dataframe by concatting
-                # all globbed files together
-                self.objects = pd.concat(
-                    [self._load(ds, filetype, **kwargs) for ds in datasets])
-            else:
-                self.objects = pd.DataFrame()
-        return self.objects
-
-    def _load(self, path, filetype, **kwargs):
-        if filetype == 'json':
-            objects = pd.read_json(path, **kwargs)
-        elif filetype in ('csv', 'txt'):
-            # load the file into hdf5, according to filetype
-            objects = pd.read_csv(path, **kwargs)
-        elif filetype == 'xls':
-            # load the file into hdf5, according to filetype
-            exfile = pd.ExcelFile(path, **kwargs)
-            objects = dict([(s, exfile.parse(s)) for s in exfile.sheet_names])
-        else:
-            raise TypeError("Invalid filetype: %s" % filetype)
-        return objects
-
-    def save(self, path):
-        self.hdfstore = pd.HDFStore(path)
-        self.hdfstore['objects'] = self.df
 
 # import alias
 # ATTENTION: this is the main interface for clients!

@@ -11,19 +11,16 @@ Save/Remove cube objects.
 Create/Drop cube indexes.
 '''
 
-import codecs
 try:
     from concurrent.futures import ThreadPoolExecutor, as_completed
 except ImportError:
     from futures import ThreadPoolExecutor, as_completed
 from copy import deepcopy
 from datetime import datetime
-import os
 import simplejson as json
 import traceback
 
-from metrique.utils import json_encode
-from metriqueu.utils import batch_gen, ts2dt, dt2ts, utcnow
+from metriqueu.utils import batch_gen, ts2dt, dt2ts
 
 
 def list_all(self, startswith=None):
@@ -89,7 +86,7 @@ def drop(self, quiet=False, cube=None, owner=None):
             raise
 
 
-def register(self, cube=None, owner=None):
+def register(self, cube=None, owner=None, quiet=False):
     '''
     Register a new user cube
 
@@ -97,7 +94,14 @@ def register(self, cube=None, owner=None):
     :param string owner: username of cube owner
     '''
     cmd = self.get_cmd(owner, cube, 'register')
-    return self._post(cmd)
+    try:
+        result = self._post(cmd)
+    except Exception:
+        if quiet:
+            result = None
+        else:
+            raise
+    return result
 
 
 def update_role(self, username, cube=None, action='addToSet',
@@ -161,28 +165,10 @@ def drop_index(self, index_or_name, cube=None, owner=None):
 
 
 ######## SAVE/REMOVE ########
-
-def save(self, objects, cube=None, owner=None, journal=None,
-         start_time=None):
-    '''
-    Save a list of objects the given metrique.cube.
-    Returns back a list of object ids (_id|_oid) saved.
-
-    :param list objects: list of dictionary-like objects to be stored
-    :param string cube: cube name
-    :param string owner: username of cube owner
-    :rtype: list - list of object ids saved
-    '''
+def _save_default(self, objects, start_time, owner, cube):
     batch_size = self.config.batch_size
-
-    olen = len(objects) if objects else None
-    if not olen:
-        self.logger.info("... No objects to save")
-        return []
-    else:
-        self.logger.info("Saving %s objects" % len(objects))
-
     cmd = self.get_cmd(owner, cube, 'save')
+    olen = len(objects) if objects else None
     if (batch_size <= 0) or (olen <= batch_size):
         saved = self._post(cmd, objects=objects, start_time=start_time)
     else:
@@ -194,24 +180,39 @@ def save(self, objects, cube=None, owner=None, journal=None,
             k += len(batch)
             self.logger.info("... %i of %i posted" % (k, olen))
 
-    journal = journal or self.config.journal
-    # to speed up the 'in' membership test below
-    saved = set(saved)
-    if saved and self.config.journal:
-        self.logger.info("Saving object save journal")
-        objects = [o for o in objects if o['_oid'] in saved]
-        cube = '%s__%s' % (self.owner, self.name)
-        journaldir = os.path.join(self.config.journaldir, cube)
-        if not os.path.exists(journaldir):
-            os.makedirs(os.path.expanduser(journaldir))
-        _path = '%s.json' % utcnow(True).date().isoformat()
-        path = os.path.join(journaldir, _path)
-        exists = os.path.exists(path)
-        with codecs.open(path, 'a', 'utf-8') as journal:
-            if exists:
-                journal.write('\n')
-            json.dump(objects, journal, default=json_encode,
-                      ensure_ascii=False)
+    if self.config.journal:
+        self.hdf5  # touch/sync with the hdf5 mapped file
+    return saved
+
+
+def _save_hdf5(self, hdf5, start_time, owner, cube):
+    # convert the hdf5 form to list of dicts
+    # thanks goyo
+    objects = hdf5['objects'].T.to_dict().values()
+    self.logger.debug("... expanded to %s objects" % len(objects))
+    return _save_default(self, objects, start_time, owner, cube)
+
+
+def save(self, objects=None, cube=None, owner=None, start_time=None):
+    '''
+    Save a list of objects the given metrique.cube.
+    Returns back a list of object ids (_id|_oid) saved.
+
+    :param list objects: list of dictionary-like objects to be stored
+    :param string cube: cube name
+    :param string owner: username of cube owner
+    :rtype: list - list of object ids saved
+    '''
+    if objects is None:
+        objects = self.objects
+    olen = len(objects) if objects else None
+    if not olen:
+        self.logger.info("... No objects to save")
+        return []
+    else:
+        self.logger.info("Saving %s objects" % len(objects))
+    # support only list of dicts
+    saved = _save_default(self, objects, start_time, owner, cube)
     self.logger.info("... Saved %s NEW docs" % len(saved))
     return sorted(saved)
 
