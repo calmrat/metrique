@@ -20,7 +20,6 @@ __requires__ = [
     'numexpr (==2.2.2)',
     'pandas (==0.12.0)',
     'plotrique (>=%s)' % __version__,
-    'pyhdf (==0.8.3)',
     'requests (==2.0.1)',
     'tables (==3.0.0)',
 ]
@@ -30,7 +29,6 @@ __irequires__ = [
     'numexpr==2.2.2',
     'pandas==0.12.0',
     'plotrique>=%s' % __version__,
-    'pyhdf==0.8.3',
     'requests==1.2.3',
     'tables==3.0.0',
 ]
