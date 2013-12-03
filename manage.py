@@ -305,6 +305,7 @@ def deploy(args):
     # path resolution issues; fails due to being unable to find
     # the python headers in the virtenv for some reason.
     call('%s install -U numpy pandas' % pip)
+    call('%s install -U numexpr cython' % pip)
 
     # optional dependencies; highly recommended! but slow for testing
     if args.matplotlib:

@@ -15,6 +15,7 @@ __scripts__ = [
     'bin/metrique-setup',
 ]
 __requires__ = [
+    'cython (==0.19.2)',
     'gnupg (==1.2.3)',
     'metriqueu (>=%s)' % __version__,
     'numexpr (==2.2.2)',
@@ -24,6 +25,7 @@ __requires__ = [
     'tables (==3.0.0)',
 ]
 __irequires__ = [
+    'cython==0.19.2',
     'gnupg==1.2.3',
     'metriqueu>=%s' % __version__,
     'numexpr==2.2.2',
