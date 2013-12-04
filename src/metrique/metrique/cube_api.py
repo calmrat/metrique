@@ -178,9 +178,6 @@ def _save_default(self, objects, start_time, owner, cube):
             saved.extend(_saved)
             k += len(batch)
             self.logger.info("... %i of %i posted" % (k, olen))
-
-    if self.config.journal:
-        self.hdf5  # touch/sync with the hdf5 mapped file
     return saved
 
 

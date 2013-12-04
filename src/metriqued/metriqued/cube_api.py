@@ -13,8 +13,8 @@ import tempfile
 from tornado.web import authenticated
 
 from metriqued.core_api import MetriqueHdlr
-from metriqued.utils import query_add_date, parse_pql_query, jsonhash
-from metriqueu.utils import dt2ts, utcnow, batch_gen
+from metriqued.utils import query_add_date, parse_pql_query
+from metriqueu.utils import dt2ts, utcnow, batch_gen, jsonhash
 
 
 class DropHdlr(MetriqueHdlr):
@@ -389,6 +389,7 @@ class SaveObjectsHdlr(MetriqueHdlr):
             else:
                 _start = start_time
             _end = obj.pop('_end') if '_end' in obj else None
+            _hash = obj.pop('_hash') if '_hash' in obj else None
 
             if _end is not None and _start is None:
                 self._raise(400, "objects with _end must have _start")
@@ -400,8 +401,6 @@ class SaveObjectsHdlr(MetriqueHdlr):
 
             if '_id' in obj:
                 self._raise(400, "_id field CAN NOT be defined: %s" % obj)
-            if '_hash' in obj:
-                self._raise(400, "_hash field CAN NOT be defined: %s" % obj)
             if '_oid' not in obj:
                 self._raise(400, "_oid field MUST be defined: %s" % obj)
 

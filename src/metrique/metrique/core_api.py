@@ -48,6 +48,7 @@ import urllib
 from metrique import query_api, user_api, cube_api
 from metrique.config import Config
 from metrique.utils import json_encode, get_cube
+from metriqueu.utils import jsonhash, utcnow
 
 # setup default root logger, but remove default StreamHandler (stderr)
 # Handlers will be added upon __init__()
@@ -120,6 +121,7 @@ class BaseClient(object):
         if not self.name:
             raise RuntimeError("cube requires a name")
 
+        # a path to 'journal' file, hdf5 or a dataframe or list of dicts
         if objects:
             # set objects if passed in, but don't overwrite default if not
             self.objects = objects
@@ -175,15 +177,9 @@ class BaseClient(object):
 ####################### pandas/hd5 python interface ################
     @property
     def df(self):
-        if isinstance(self.objects, pd.DataFrame):
-            return self.objects
-        elif isinstance(self.objects, pd.HDFStore):
-            # always expected under the 'objects' hdfs5 group
-            return self.objects['objects']
-        else:
-            return pd.DataFrame(self.objects)
+        return pd.DataFrame(self.objects)
 
-    def load_hdf5(self, path, filetype=None, **kwargs):
+    def load_files(self, path, filetype=None, **kwargs):
         '''
         cache to hd5 on disk
         '''
@@ -197,43 +193,49 @@ class BaseClient(object):
                 # buid up a single dataframe by concatting
                 # all globbed files together
                 self.objects = pd.concat(
-                    [self._load_hdf5(ds, filetype, **kwargs)
+                    [self._load_file(ds, filetype, **kwargs)
                      for ds in datasets])
             else:
                 self.objects = pd.DataFrame()
         return self.objects
 
-    def _load_hdf5(self, path, filetype, **kwargs):
-        if filetype == 'json':
-            objects = pd.read_json(path, **kwargs)
-        elif filetype in ('csv', 'txt'):
-            # load the file into hdf5, according to filetype
-            objects = pd.read_csv(path, **kwargs)
-        elif filetype == 'xls':
-            # load the file into hdf5, according to filetype
-            exfile = pd.ExcelFile(path, **kwargs)
-            objects = dict([(s, exfile.parse(s)) for s in exfile.sheet_names])
+    def _load_file(self, path, filetype, **kwargs):
+        if filetype in ['csv', 'txt']:
+            return self._load_csv(path, **kwargs)
+        elif filetype in ['json']:
+            return self._load_json(path, **kwargs)
         else:
             raise TypeError("Invalid filetype: %s" % filetype)
-        return objects
+
+    def _load_csv(self, path, **kwargs):
+        # load the file into hdf5, according to filetype
+        return pd.read_csv(path, **kwargs)
+
+    def _load_json(self, path, **kwargs):
+        return pd.read_json(path, **kwargs)
 
     @property
     def hdf5(self):
-        store = self._cache.get('hdf5_store', pd.HDFStore(self.hdf5_path))
-        objects = getattr(store, 'objects', pd.DataFrame())
-        build = getattr(self, '_build', True)
-        if objects and build:
-            df = pd.concat((objects, self.df))
-            store['objects'] = df
-            self._build = False
+        if not self.objects:
+            return None
+        elif self._cache.get('sync_required', True):
+            # FIXME: use hd5py created group (self.name)
+            # FIXME: use hd5py to create_dataset()
+            path = self.hdf5_path + '.hd5'
+            store = pd.HDFStore(path)
+            # objects group is pandas dataframe
+            fmt = '%a%b%d%H%m%S'
+            utcnow_str = utcnow(as_datetime=True).strftime(fmt)
+            store['objects/%s' % utcnow_str] = self.df
+            self._cache['hdf5_store'] = store
+            self._cache['sync_required'] = False
         else:
-            store['objects'] = self.df
-        self._cache['hdf5_store'] = store
+            store = self._cache.get('hdf5_store')
         return store
 
     @property
     def hdf5_path(self):
-        filename = '__'.join((self.owner, self.name)) + '.hd5'
+        filename = self.name
         return os.path.join(self.config.hdf5_dir, filename)
 
 #################### misc #######################
@@ -300,34 +302,72 @@ class BaseClient(object):
             self.config = Config(config_file=config_file)
             self._config_file = config_file
 
-    #############################################################
-    # FIXME: objects should be a HDFStore! not an in memory dict
+    def _obj_hash(self, obj):
+        o = copy(obj)
+        if '_hash' in obj:
+            del o['_hash']
+        if '_start' in obj:
+            del o['_start']
+        if '_end' in obj:
+            del o['_end']
+        if '_id' in obj:
+            del o['_id']
+        obj['_hash'] = jsonhash(o)
+        return obj
+
+    def _obj_end(self, obj, end=None):
+        end = end if end else obj.get('_end')
+        obj['_end'] = end
+        return obj
+
+    def _obj_start(self, obj, start=None):
+        start = start if start else obj.get('_start', utcnow())
+        obj['_start'] = start
+        return obj
+
+    def _obj_id(self, obj):
+        obj['_id'] = jsonhash(obj)
+        return obj
+
+    def _obj_apply(self, objects, func, **kwargs):
+        func = partial(func, **kwargs)
+        return map(func, objects)
+
     @property
     def objects(self):
         ''' always return a list of dicts '''
-        objs = self._cache.get('objects', {})
-        if not objs:
-            return {}
-        if isinstance(objs, pd.HDFStore):
-            objs = objs['objects']
-        if isinstance(objs, pd.DataFrame):
-            df = objs
-            objs = df.T.to_dict().values()
-        return objs
+        return self._cache.get('objects', [])
 
     @objects.setter
     def objects(self, value):
+        self._cache.setdefault('objects', [])
         if isinstance(value, pd.HDFStore):
             value = value['objects']
         if isinstance(value, pd.DataFrame):
             df = value
         else:
             df = pd.DataFrame(value)
+        start = utcnow()
+        # transpose dataframe's axies before converting to dict
         objects = df.T.to_dict().values()
-        self._cache['objects'] = objects
+
+        objects = self._obj_apply(objects, self._obj_end)
+        objects = self._obj_apply(objects, self._obj_start, start=start)
+        objects = self._obj_apply(objects, self._obj_hash)
+        objects = self._obj_apply(objects, self._obj_id)
+        try:
+            hashes = set([o['_hash'] for o in self.objects
+                          if o['_end'] is None])
+        except Exception as e:
+            self.logger.error('EXCEPTION: %s' % str(e))
+            hashes = set()
+        for o in objects:
+            if o['_hash'] not in hashes:
+                self._cache['objects'].append(o)
         # dependencies of objects should refresh
-        self._build = True
-        return objects
+        self._cache['sync_required'] = True
+        #self.hdf5  # sync the hdf5 file
+        return self._cache['objects']
 
     @property
     def objectsi(self):
@@ -453,6 +493,10 @@ class HTTPClient(BaseClient):
     def _get(self, *args, **kwargs):
         ' requests GET; using current session '
         return self._run(self.session.get, *args, **kwargs)
+
+    def extract(self, **kwargs):
+        self.get_objects(**kwargs)
+        return self.cube_save(self.objects)
 
     def get_cmd(self, owner, cube, api_name=None):
         '''

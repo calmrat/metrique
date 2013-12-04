@@ -73,12 +73,14 @@ class Generic(HTTPClient):
             value = value
         return value
 
-    def _extract(self, id_delta, field_order, start_time):
+    def _extract(self, id_delta, field_order):
+        objects = []
         retries = self.config.retries
         sql = self._gen_sql(id_delta, field_order)
         while 1:
             try:
                 rows = self._fetchall(sql, field_order)
+                self.logger.info('Fetch OK')
             except self.retry_on_error:
                 tb = traceback.format_exc()
                 self.logger.error('Fetch Failed: %s' % tb)
@@ -90,16 +92,16 @@ class Generic(HTTPClient):
             else:
                 rows = self._build_rows(rows)
                 objects = self._build_objects(rows)
-                self.cube_save(objects, start_time=start_time)
+                self.objects += objects
                 break
-        return [o['_oid'] for o in objects]
+        return objects
 
-    def _extract_threaded(self, id_delta, field_order, start_time):
+    def _extract_threaded(self, id_delta, field_order):
         batch_size = self.config.sql_batch_size
         with ThreadPoolExecutor(max_workers=self.config.max_workers) as ex:
-            futures = [ex.submit(self._extract, batch, field_order, start_time)
+            futures = [ex.submit(self._extract, batch, field_order)
                        for batch in batch_gen(id_delta, batch_size)]
-        saved = []
+        objs = []
         for future in as_completed(futures):
             try:
                 result = future.result()
@@ -108,14 +110,8 @@ class Generic(HTTPClient):
                 self.logger.error('Extract Error: %s\n%s' % (e, tb))
                 del tb
             else:
-                saved.extend(result)
-                self.logger.info(
-                    '%i of %i extracted' % (len(saved),
-                                            len(id_delta)))
-        failed = set(id_delta) - set(saved)
-        result = {'saved': sorted(saved), 'failed': sorted(failed)}
-        self.logger.debug(result)
-        return result
+                objs.extend(result)
+        return objs
 
     def _extract_row_ids(self, rows):
         if rows:
@@ -123,8 +119,8 @@ class Generic(HTTPClient):
         else:
             return []
 
-    def extract(self, force=None, last_update=None, parse_timestamp=None,
-                **kwargs):
+    def get_objects(self, force=None, last_update=None, parse_timestamp=None,
+                    **kwargs):
         '''
         Extract routine for SQL based cubes.
 
@@ -140,8 +136,8 @@ class Generic(HTTPClient):
         Accept, but ignore unknown kwargs.
         '''
         oids = []
-
-        start_time = utcnow()
+        objects = []
+        start = utcnow()
 
         if force is None:
             force = self.get_property('force', default=False)
@@ -181,9 +177,12 @@ class Generic(HTTPClient):
             # respect the global batch size, even if sql batch
             # size is not set
             for batch in batch_gen(oids, self.config.batch_size):
-                return self._extract(batch, field_order, start_time)
+                objects.extend(self._extract(batch, field_order))
         else:
-            return self._extract_threaded(oids, field_order, start_time)
+            objects.extend(self._extract_threaded(oids, field_order))
+        # self.objects gets updated within self._extract
+        objects = self._obj_apply(objects, self._obj_start, start=start)
+        return objects
 
     def _fetchall(self, sql, field_order):
         rows = self.proxy.fetchall(sql)

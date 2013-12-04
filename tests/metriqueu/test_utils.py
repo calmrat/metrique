@@ -3,6 +3,7 @@
 # Author: "Chris Ward" <cward@redhat.com>
 
 import calendar
+from copy import copy
 from datetime import datetime as dt
 from pytz import utc
 from time import time
@@ -50,6 +51,31 @@ def test_dt2ts():
     assert dt2ts(now_date_iso) == now_time
 
 
+def test_jsonhash():
+    from metriqued.utils import jsonhash
+
+    dct = {'a': [3, 2, 1], 'z': ['a', 'c', 'b', 1], 'b': {1: [], 3: {}}}
+
+    dct_sorted_z = copy(dct)
+    dct_sorted_z['z'] = sorted(dct_sorted_z['z'])
+
+    dct_diff = copy(dct)
+    del dct_diff['z']
+
+    DCT = '541d0fa961265d976d9a27e8632787875dc58406'
+    DCT_SORTED_Z = 'ca4631674276933bd251bd4bc86372138a841a4b'
+    DCT_DIFF = '07d6c518867fb6b6c77c0ec1d835fb800419fc24'
+
+    assert dct != dct_sorted_z
+
+    assert jsonhash(dct) == DCT
+    assert jsonhash(dct_sorted_z) == DCT_SORTED_Z
+    assert jsonhash(dct_diff) == DCT_DIFF
+
+    ' list sort order is an identifier of a unique object '
+    assert jsonhash(dct) != jsonhash(dct_sorted_z)
+
+
 def test_set_default():
     ''' args: key, default, null_ok=False, err_msg=None '''
     from metriqueu.utils import set_default
@@ -82,6 +108,22 @@ def test_set_default():
         set_default(k, d, n, e)
     except RuntimeError as e:
         assert e == 'oops'
+
+
+def test_strip_split():
+    ' args: item '
+    from metriqueu.utils import strip_split
+
+    a_lst = ['a', 'b', 'c', 'd', 'e']
+    a_str = 'a, b,     c,    d , e'
+    assert strip_split(a_str) == a_lst
+    assert strip_split(None) == []
+    assert strip_split(a_lst) == a_lst
+
+    try:
+        strip_split({})
+    except TypeError:
+        pass
 
 
 def test_ts2dt():
@@ -127,19 +169,3 @@ def test_utcnow():
     assert utcnow(drop_micro=True) == now_time(now_date)
     assert utcnow(as_datetime=True, drop_micro=True) == now_date
     assert utcnow(tz_aware=True, drop_micro=True) == now_date_utc
-
-
-def test_strip_split():
-    ' args: item '
-    from metriqueu.utils import strip_split
-
-    a_lst = ['a', 'b', 'c', 'd', 'e']
-    a_str = 'a, b,     c,    d , e'
-    assert strip_split(a_str) == a_lst
-    assert strip_split(None) == []
-    assert strip_split(a_lst) == a_lst
-
-    try:
-        strip_split({})
-    except TypeError:
-        pass

@@ -5,7 +5,6 @@
 import os
 import pql
 import re
-from hashlib import sha1
 
 from metriqueu.utils import dt2ts
 
@@ -72,20 +71,6 @@ def clear_stale_pids(pids, pid_dir):
             path = os.path.join(pid_dir, pid_file)
             os.remove(path)
     return running
-
-
-def jsonhash(obj, root=True):
-    '''
-    calculate the objects hash based on all field values
-    '''
-    if isinstance(obj, dict):
-        result = frozenset(
-            (k, jsonhash(v, False)) for k, v in obj.items())
-    elif isinstance(obj, list):
-        result = tuple(jsonhash(e, False) for e in obj)
-    else:
-        result = obj
-    return sha1(repr(result)).hexdigest() if root else result
 
 
 def parse_pql_query(query):
