@@ -53,18 +53,13 @@ def _load_cube_pkg(pkg, cube):
         mcubes = __import__(pkg, fromlist=[cube])
         return getattr(mcubes, cube)
     except AttributeError:
-        try:
-            # if that fails, try to guess the cube module
-            # based on cube 'standard naming convention'
-            # ie, group_cube -> from group.cube import CubeClass
-            _pkg, _mod, _cls = cube_pkg_mod_cls(cube)
-            mcubes = __import__('%s.%s.%s' % (pkg, _pkg, _mod),
-                                fromlist=[_cls])
-            return getattr(mcubes, _cls)
-        except ImportError:
-            pass
-    except ImportError:
-        pass
+        # if that fails, try to guess the cube module
+        # based on cube 'standard naming convention'
+        # ie, group_cube -> from group.cube import CubeClass
+        _pkg, _mod, _cls = cube_pkg_mod_cls(cube)
+        mcubes = __import__('%s.%s.%s' % (pkg, _pkg, _mod),
+                            fromlist=[_cls])
+        return getattr(mcubes, _cls)
 
 
 def get_cube(cube, init=False, config=None, pkgs=None, cube_paths=None,
@@ -103,11 +98,16 @@ def get_cube(cube, init=False, config=None, pkgs=None, cube_paths=None,
             sys.path.append(path)
 
     pkgs = pkgs + ['metriquec.cubes']
+    err = False
     for pkg in pkgs:
-        _cube = _load_cube_pkg(pkg, cube)
+        try:
+            _cube = _load_cube_pkg(pkg, cube)
+        except ImportError as err:
+            _cube = None
         if _cube:
             break
     else:
+        sys.stderr.write('WARNING: %s\n' % err)
         raise RuntimeError('"%s" not found! %s; %s \n%s)' % (
             cube, pkgs, cube_paths, sys.path))
 

@@ -119,35 +119,17 @@ class Repo(pyclient):
         # pull objects out of indexed dict and into an array
         return commits
 
-    def _extract(self, uri, fetch, delta_shas, force, **kwargs):
-        if delta_shas is None:
-            delta_shas = []
+    def get_objects(self, uri, fetch=True, **kwargs):
         self.logger.debug("Extracting GIT repo: %s" % uri)
         self.repo = self.get_repo(uri, fetch)
-        known_shas = set()
-        if not (force or delta_shas):
-            known_shas = self.find('repo_uri == "%s"' % uri,
-                                   fields='sha', raw=True)
-            known_shas = set([e['sha'] for e in known_shas])
-            self.logger.debug("Known Commits: %s" % len(known_shas))
-        #repo_shas = set(self.repo.commits())
         cmd = 'git rev-list --all'
         p = subprocess.Popen(cmd.split(), stdout=subprocess.PIPE)
         p = p.communicate()[0]
         repo_shas = set(x for x in p.split('\n') if x)
         self.logger.debug("Total Commits: %s" % len(repo_shas))
-        delta_shas = repo_shas - known_shas
-        commits = self._build_commits(delta_shas, uri)
-        return self.cube_save(commits)
-
-    def extract_commits(self, uri, fetch=True, shas=None, force=False,
-                        **kwargs):
-        if not isinstance(uri, (list, tuple)):
-            uri = [uri]
-        commits = dict([(_uri,
-                         self._extract(_uri, fetch,
-                                       shas, force)) for _uri in uri])
-        return commits
+        objects = self._build_commits(repo_shas, uri)
+        self.objects = objects
+        return objects
 
 
 if __name__ == '__main__':

@@ -216,13 +216,13 @@ class BaseClient(object):
 
     @property
     def hdf5(self):
+        path = self.hdf5_path + '.hd5'
+        store = pd.HDFStore(path)
         if not self.objects:
-            return None
+            pass
         elif self._cache.get('sync_required', True):
             # FIXME: use hd5py created group (self.name)
             # FIXME: use hd5py to create_dataset()
-            path = self.hdf5_path + '.hd5'
-            store = pd.HDFStore(path)
             # objects group is pandas dataframe
             fmt = '%a%b%d%H%m%S'
             utcnow_str = utcnow(as_datetime=True).strftime(fmt)
@@ -285,6 +285,9 @@ class BaseClient(object):
             logger.setLevel(logging.DEBUG)
         return logger
 
+    def flush(self):
+        del self.objects
+
     def get_cube(self, cube, init=True, name=None, **kwargs):
         ' wrapper for utils.get_cube(); try to load a cube, pyclient '
         config = copy(self.config)
@@ -338,6 +341,11 @@ class BaseClient(object):
         ''' always return a list of dicts '''
         return self._cache.get('objects', [])
 
+    @objects.deleter
+    def objects(self, value):
+        self.hdf5  # sync the hdf5 file (to disk)
+        del self._cache['objects']
+
     @objects.setter
     def objects(self, value):
         self._cache.setdefault('objects', [])
@@ -350,7 +358,6 @@ class BaseClient(object):
         start = utcnow()
         # transpose dataframe's axies before converting to dict
         objects = df.T.to_dict().values()
-
         objects = self._obj_apply(objects, self._obj_end)
         objects = self._obj_apply(objects, self._obj_start, start=start)
         objects = self._obj_apply(objects, self._obj_hash)
@@ -366,7 +373,7 @@ class BaseClient(object):
                 self._cache['objects'].append(o)
         # dependencies of objects should refresh
         self._cache['sync_required'] = True
-        #self.hdf5  # sync the hdf5 file
+        self.hdf5  # sync the hdf5 file
         return self._cache['objects']
 
     @property

@@ -35,14 +35,8 @@ class Rows(pyclient):
         objects = self.set_column(objects, '_start', _start)
         objects = self.normalize_types(objects, type_map)
         objects = self.normalize_nones(objects)
+        self.objects = objects
         return objects
-
-    def extract(self, *args, **kwargs):
-        '''
-        kwargs are same as get_objects(**kwargs)
-        '''
-        objects = self.get_objects(*args, **kwargs)
-        return self.cube_save(objects)
 
     def header_fields_dialect(self, csv_str):
         '''

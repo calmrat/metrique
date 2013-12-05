@@ -73,7 +73,7 @@ class Generic(HTTPClient):
             value = value
         return value
 
-    def _extract(self, id_delta, field_order):
+    def _extract(self, id_delta, field_order, start):
         objects = []
         retries = self.config.retries
         sql = self._gen_sql(id_delta, field_order)
@@ -92,14 +92,17 @@ class Generic(HTTPClient):
             else:
                 rows = self._build_rows(rows)
                 objects = self._build_objects(rows)
-                self.objects += objects
+                # apply the start time to _start
+                objects = self._obj_apply(objects,
+                                          self._obj_start, start=start)
+                self.objects = objects
                 break
         return objects
 
-    def _extract_threaded(self, id_delta, field_order):
+    def _extract_threaded(self, id_delta, field_order, start):
         batch_size = self.config.sql_batch_size
         with ThreadPoolExecutor(max_workers=self.config.max_workers) as ex:
-            futures = [ex.submit(self._extract, batch, field_order)
+            futures = [ex.submit(self._extract, batch, field_order, start)
                        for batch in batch_gen(id_delta, batch_size)]
         objs = []
         for future in as_completed(futures):
@@ -118,71 +121,6 @@ class Generic(HTTPClient):
             return sorted([x[0] for x in rows])
         else:
             return []
-
-    def get_objects(self, force=None, last_update=None, parse_timestamp=None,
-                    **kwargs):
-        '''
-        Extract routine for SQL based cubes.
-
-        ... docs coming soon ...
-
-        :param force:
-            If None (use: default False), then it will try to extract
-            only the objects that have changed since the last extract.
-            If True, then it will try to extract all the objects.
-            If it is a list of oids, then it will try to extract only those
-            objects with oids from the list.
-
-        Accept, but ignore unknown kwargs.
-        '''
-        oids = []
-        objects = []
-        start = utcnow()
-
-        if force is None:
-            force = self.get_property('force', default=False)
-
-        if force is True:
-            # get a list of all known object ids
-            table = self.get_property('table')
-            db = self.get_property('db')
-            _id = self.get_property('column')
-            sql = 'SELECT DISTINCT %s.%s FROM %s.%s' % (table, _id, db,
-                                                        table)
-            rows = self.proxy.fetchall(sql)
-            oids = self._extract_row_ids(rows)
-
-        # [cward] FIXME: is 'delta' flag necessary? just look for
-        # the individual delta flags, no?
-        if force is False and self.get_property('delta', default=True):
-            # include objects updated since last mtime too
-            # apply delta sql clause's if we're not forcing a full run
-            if self.get_property('delta_mtime', default=False):
-                mtime = self._fetch_mtime(last_update, parse_timestamp)
-                if mtime:
-                    oids.extend(self.get_changed_oids(mtime))
-            if self.get_property('delta_new_ids', default=True):
-                oids.extend(self.get_new_oids())
-
-        if isinstance(force, list):
-            oids = force
-
-        oids = sorted(set(oids))
-
-        # this is to set the 'index' of sql columns so we can extract
-        # out the sql rows and know which column : field
-        field_order = tuple(self.fields)
-
-        if self.config.sql_batch_size <= 0:
-            # respect the global batch size, even if sql batch
-            # size is not set
-            for batch in batch_gen(oids, self.config.batch_size):
-                objects.extend(self._extract(batch, field_order))
-        else:
-            objects.extend(self._extract_threaded(oids, field_order))
-        # self.objects gets updated within self._extract
-        objects = self._obj_apply(objects, self._obj_start, start=start)
-        return objects
 
     def _fetchall(self, sql, field_order):
         rows = self.proxy.fetchall(sql)
@@ -296,33 +234,6 @@ class Generic(HTTPClient):
         else:
             return []
 
-    def get_new_oids(self):
-        '''
-        Returns a list of new oids that have not been extracted yet.
-        '''
-        table = self.get_property('table')
-        db = self.get_property('db')
-        _id = self.get_property('column')
-        last_id = self.get_last_field('_oid')
-        if last_id:
-            # if we delta_new_ids is on, but there is no 'last_id',
-            # then we need to do a FULL run...
-            try:  # try to convert to integer... if not, assume unicode value
-                last_id = int(last_id)
-            except (TypeError, ValueError):
-                pass
-            if type(last_id) in [int, float]:
-                where = "%s.%s > %s" % (table, _id, last_id)
-            else:
-                where = "%s.%s > '%s'" % (table, _id, last_id)
-            sql = 'SELECT DISTINCT %s.%s FROM %s.%s WHERE %s' % (
-                table, _id, db, table, where)
-            rows = self.proxy.fetchall(sql)
-            ids = self._extract_row_ids(rows)
-        else:
-            ids = []
-        return ids
-
     def get_changed_oids(self, mtime):
         '''
         Returns a list of object ids of those objects that have changed since
@@ -358,6 +269,98 @@ class Generic(HTTPClient):
                               ' OR '.join(filters))
         rows = self.proxy.fetchall(sql) or []
         return [x[0] for x in rows]
+
+    def get_objects(self, force=None, last_update=None, parse_timestamp=None,
+                    **kwargs):
+        '''
+        Extract routine for SQL based cubes.
+
+        ... docs coming soon ...
+
+        :param force:
+            If None (use: default False), then it will try to extract
+            only the objects that have changed since the last extract.
+            If True, then it will try to extract all the objects.
+            If it is a list of oids, then it will try to extract only those
+            objects with oids from the list.
+
+        Accept, but ignore unknown kwargs.
+        '''
+        oids = []
+        objects = []
+        start = utcnow()
+
+        if force is None:
+            force = self.get_property('force', default=False)
+
+        if force is True:
+            # get a list of all known object ids
+            table = self.get_property('table')
+            db = self.get_property('db')
+            _id = self.get_property('column')
+            sql = 'SELECT DISTINCT %s.%s FROM %s.%s' % (table, _id, db,
+                                                        table)
+            rows = self.proxy.fetchall(sql)
+            oids = self._extract_row_ids(rows)
+
+        # [cward] FIXME: is 'delta' flag necessary? just look for
+        # the individual delta flags, no?
+        if force is False and self.get_property('delta', default=True):
+            # include objects updated since last mtime too
+            # apply delta sql clause's if we're not forcing a full run
+            if self.get_property('delta_mtime', default=False):
+                mtime = self._fetch_mtime(last_update, parse_timestamp)
+                if mtime:
+                    oids.extend(self.get_changed_oids(mtime))
+            if self.get_property('delta_new_ids', default=True):
+                oids.extend(self.get_new_oids())
+
+        if isinstance(force, list):
+            oids = force
+
+        oids = sorted(set(oids))
+
+        # this is to set the 'index' of sql columns so we can extract
+        # out the sql rows and know which column : field
+        field_order = tuple(self.fields)
+
+        if self.config.sql_batch_size <= 0:
+            # respect the global batch size, even if sql batch
+            # size is not set
+            for batch in batch_gen(oids, self.config.batch_size):
+                objects.extend(self._extract(batch, field_order, start))
+        else:
+            objects.extend(self._extract_threaded(oids, field_order, start))
+        #self.objects is set continuously during each call to _extract()
+        #self.objects = objects
+        return objects
+
+    def get_new_oids(self):
+        '''
+        Returns a list of new oids that have not been extracted yet.
+        '''
+        table = self.get_property('table')
+        db = self.get_property('db')
+        _id = self.get_property('column')
+        last_id = self.get_last_field('_oid')
+        if last_id:
+            # if we delta_new_ids is on, but there is no 'last_id',
+            # then we need to do a FULL run...
+            try:  # try to convert to integer... if not, assume unicode value
+                last_id = int(last_id)
+            except (TypeError, ValueError):
+                pass
+            if type(last_id) in [int, float]:
+                where = "%s.%s > %s" % (table, _id, last_id)
+            else:
+                where = "%s.%s > '%s'" % (table, _id, last_id)
+            sql = 'SELECT DISTINCT %s.%s FROM %s.%s WHERE %s' % (
+                table, _id, db, table, where)
+            rows = self.proxy.fetchall(sql)
+            ids = self._extract_row_ids(rows)
+        else:
+            ids = []
+        return ids
 
     def _get_sql_clause(self, clause, default=None):
         '''

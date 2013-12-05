@@ -6,7 +6,6 @@
 Basic Jenkins.build cube for extracting BUILD data from Jenkins
 '''
 
-from collections import defaultdict
 try:
     from concurrent.futures import ThreadPoolExecutor, as_completed
 except ImportError:
@@ -21,14 +20,7 @@ import simplejson as json
 from metrique import pyclient
 from metriqueu.utils import dt2ts
 
-DEFAULT_CONFIG = {
-    'uri': ['http://builds.apache.org'],
-    'port': '80',
-    'api_path': 'api/json',
-}
-
 MAX_WORKERS = 25
-
 SSL_VERIFY = True
 
 rget = partial(requests.get, verify=SSL_VERIFY)
@@ -70,45 +62,25 @@ class Build(pyclient):
     """
     name = 'jknsapi_build'
 
-    def extract(self, uri=None, port=None, api_path=None,
-                force=False, async=None, workers=None, **kwargs):
-        if async is None:
-            async = self.config.async
-        if workers is None:
-            workers = MAX_WORKERS
-
-        if not uri:
-            uri = DEFAULT_CONFIG['uri']
-        if not isinstance(uri, list):
-            uri = [uri]
-
-        if not port:
-            port = DEFAULT_CONFIG['port']
-        self.port = port
-
-        if not api_path:
-            api_path = DEFAULT_CONFIG['api_path']
+    def get_objects(self, uri, api_path='api/json', force=False, **kwargs):
         self.api_path = api_path
+        args = 'tree=jobs[name,builds[number]]'
+        _uri_jobs = '%s/%s?%s' % (uri, self.api_path, args)
+        self.logger.info("Getting Jenkins Job details (%s)" % _uri_jobs)
+        # get all known jobs
+        content = rget(_uri_jobs).content
+        content = json.loads(content, strict=False)
+        jobs = content['jobs']
+        self.logger.info("... %i jobs found." % len(jobs))
 
-        results = {}
-        for _uri in uri:
-            args = 'tree=jobs[name,builds[number]]'
-            _uri_jobs = '%s:%s/%s?%s' % (_uri, self.port, self.api_path, args)
-            self.logger.info("Getting Jenkins Job details (%s)" % _uri_jobs)
-            # get all known jobs
-            content = rget(_uri_jobs).content
-            content = json.loads(content, strict=False)
-            jobs = content['jobs']
-            self.logger.info("... %i jobs found." % len(jobs))
+        if self.config.max_workers > 1:
+            objects = self._extract_async(uri, jobs, force)
+        else:
+            objects = self._extract(uri, jobs, force)
+        self.objects = objects
+        return objects
 
-            if async:
-                results[_uri] = self._extract_async(_uri, jobs, force, workers)
-            else:
-                results[_uri] = self._extract(_uri, jobs, force)
-        return results
-
-    def _extract(self, uri, jobs, force):
-        results = defaultdict(list)
+    def _extract(self, uri, jobs):
         for k, job in enumerate(jobs, 1):
             job_name = job['name']
             self.logger.debug(
@@ -116,17 +88,12 @@ class Build(pyclient):
                                                  len(jobs),
                                                  len(job['builds'])))
             nums = [b['number'] for b in job['builds']]
-            builds = [self.get_build(uri, job_name, n, force) for n in nums]
-            try:
-                results[job_name] += self.cube_save(builds)
-            except Exception as e:
-                self.logger.error(
-                    '(%s) Failed to save: %s:%s' % (e, job_name, builds))
-        return results
+            builds = [self.get_build(uri, job_name, n) for n in nums]
+        return builds
 
-    def _extract_async(self, uri, jobs, force, workers):
-        with ThreadPoolExecutor(workers) as executor:
-            results = defaultdict(list)
+    def _extract_async(self, uri, jobs, force):
+        with ThreadPoolExecutor(self.config.max_workers) as executor:
+            builds = []
             for k, job in enumerate(jobs, 1):
                 job_name = job['name']
                 self.logger.debug(
@@ -137,36 +104,26 @@ class Build(pyclient):
                 nums = [b['number'] for b in job['builds']]
                 for n in nums:
                     future_builds.append(
-                        executor.submit(self.get_build, uri, job_name,
-                                        n, force))
+                        executor.submit(self.get_build, uri, job_name, n))
 
                 for future in as_completed(future_builds):
                     try:
-                        build = future.result()
-                        if build:
-                            results[job_name] += self.cube_save([build])
+                        builds.append(future.result())
                     except Exception as e:
                         self.logger.error(
                             '(%s) Failed to save: %s' % (e, job_name))
-        return results
+        return builds
 
-    def get_build(self, uri, job_name, build_number, force=False):
+    def get_build(self, uri, job_name, build_number):
         _oid = '%s #%s' % (job_name, build_number)
-
-        ## Check if we the job_build was already done building
-        ## if it was, skip the import all together
-        query = '_oid == "%s" and building != True' % _oid
-        if not force and self.count(query) > 0:
-            self.logger.debug('(CACHED) BUILD: %s' % _oid)
-            return None
 
         _build = {}
         #_args = 'tree=%s' % ','.join(self.fields)
         _args = 'depth=1'
         _job_path = '/job/%s/%s' % (job_name, build_number)
 
-        job_uri = '%s:%s%s/%s?%s' % (uri, self.port, _job_path,
-                                     self.api_path, _args)
+        job_uri = '%s%s/%s?%s' % (uri, _job_path,
+                                  self.api_path, _args)
         self.logger.debug('Loading (%s)' % job_uri)
         try:
             _page = rget(job_uri).content
@@ -183,9 +140,9 @@ class Build(pyclient):
         _build['number'] = build_number
         _build.update(build_content)
 
-        report_uri = '%s:%s%s/testReport/%s?%s' % (uri, self.port,
-                                                   _job_path, self.api_path,
-                                                   _args)
+        report_uri = '%s%s/testReport/%s?%s' % (uri,
+                                                _job_path, self.api_path,
+                                                _args)
         self.logger.debug('Loading (%s)' % report_uri)
         try:
             _page = rget(report_uri).content
@@ -198,7 +155,6 @@ class Build(pyclient):
 
         _build['report_uri'] = report_uri
         _build['report'] = report_content
-
         return _build
 
 
