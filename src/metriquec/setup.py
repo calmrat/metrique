@@ -6,7 +6,7 @@ from setuptools import setup
 
 __pkg__ = 'metriquec'
 __version__ = '0.2.5'
-__release__ = "2a"
+__release__ = "3a"
 __nvr__ = '%s-%s' % (__version__, __release__)
 __pkgs__ = ['metriquec', 'metriquec.sql',
             'metriquec.cubes',
