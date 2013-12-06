@@ -380,7 +380,7 @@ class SaveObjectsHdlr(MetriqueHdlr):
         Do some basic object validatation and add an _start timestamp value
         '''
         new_obj_hashes = []
-        for obj in objects:
+        for i, obj in enumerate(objects):
             # we don't want these in the jsonhash
             _start = obj.pop('_start') if '_start' in obj else None
             _end = obj.pop('_end') if '_end' in obj else None
@@ -394,7 +394,7 @@ class SaveObjectsHdlr(MetriqueHdlr):
             if not obj.get('_oid'):
                 self._raise(400, "_oid field MUST be defined: %s" % obj)
             if not obj.get('_hash'):
-                # hash the object (minus _start/_end)
+                # hash the object (minus _start/_end/_id)
                 obj['_hash'] = jsonhash(obj)
             if _end is None:
                 new_obj_hashes.append(obj['_hash'])
@@ -403,6 +403,7 @@ class SaveObjectsHdlr(MetriqueHdlr):
             obj['_start'] = _start
             obj['_end'] = _end
             obj['_id'] = _id if _id else jsonhash(obj)
+            objects[i] = obj
 
         # Filter out objects whose most recent version did not change
         docs = _cube.find({'_hash': {'$in': new_obj_hashes},

@@ -93,8 +93,7 @@ class Generic(HTTPClient):
                 rows = self._build_rows(rows)
                 objects = self._build_objects(rows)
                 # apply the start time to _start
-                objects = self._obj_apply(objects,
-                                          self._obj_start, start=start)
+                objects = [self._obj_start(o, start) for o in objects]
                 self.objects = objects
                 break
         return objects
@@ -324,16 +323,23 @@ class Generic(HTTPClient):
         # out the sql rows and know which column : field
         field_order = tuple(self.fields)
 
-        if self.config.sql_batch_size <= 0:
+        max_workers = self.config.max_workers
+        if max_workers > 1:
+            objects.extend(self._extract_threaded(oids, field_order, start))
+        else:
             # respect the global batch size, even if sql batch
             # size is not set
             for batch in batch_gen(oids, self.config.batch_size):
                 objects.extend(self._extract(batch, field_order, start))
-        else:
-            objects.extend(self._extract_threaded(oids, field_order, start))
-        #self.objects is set continuously during each call to _extract()
-        #self.objects = objects
+        self.objects = objects
         return objects
+
+    def sql_get_oids(self):
+        table = self.get_property('table')
+        _id = self.get_property('column')
+        db = self.get_property('db')
+        sql = 'SELECT DISTINCT %s.%s FROM %s.%s' % (table, _id, db, table)
+        return [r[0] for r in self.proxy.fetchall(sql)]
 
     def get_new_oids(self):
         '''

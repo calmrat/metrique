@@ -45,11 +45,14 @@ def dt2ts(dt, drop_micro=False):
         return float(ts)
 
 
-def jsonhash(obj, root=True):
+def jsonhash(obj, root=True, exclude=None):
     '''
     calculate the objects hash based on all field values
     '''
     if isinstance(obj, dict):
+	obj = obj.copy()  # don't affect the ref'd obj passed in
+        if root and exclude:
+            [obj.__delitem__(f) for f in exclude]
         result = frozenset(
             (k, jsonhash(v, False)) for k, v in obj.items())
     elif isinstance(obj, list):

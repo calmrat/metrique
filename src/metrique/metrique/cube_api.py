@@ -20,7 +20,7 @@ from datetime import datetime
 import simplejson as json
 import traceback
 
-from metriqueu.utils import batch_gen, ts2dt, dt2ts
+from metriqueu.utils import batch_gen, ts2dt, dt2ts, jsonhash
 
 
 def list_all(self, startswith=None):
@@ -254,8 +254,7 @@ def export(self, filename, cube=None, owner=None):
 
 
 ######## ACTIVITY IMPORT ########
-def activity_import(self, oids=None, cube=None, owner=None,
-                    parallel=True):
+def activity_import(self, oids=None, cube=None, owner=None):
     '''
     WARNING: Do NOT run extract while activity import is running,
              it might result in data corruption.
@@ -271,13 +270,13 @@ def activity_import(self, oids=None, cube=None, owner=None,
         - list of ids: import for ids in the list
     '''
     if oids is None:
-        oids = self.distinct('_oid', cube=cube, owner=owner)
+        oids = self.sql_get_oids()
 
     max_workers = self.config.max_workers
     batch_size = self.config.batch_size
 
     saved = []
-    if parallel:
+    if max_workers > 1 and batch_size > 1:
         with ThreadPoolExecutor(max_workers=max_workers) as ex:
             futures = [ex.submit(_activity_import, self, oids=batch,
                                  cube=cube, owner=owner)
@@ -306,36 +305,16 @@ def activity_import(self, oids=None, cube=None, owner=None,
 
 
 def _activity_import(self, oids, cube, owner):
-    # get time docs cursor
-    time_docs = self.find('_oid in %s' % oids, fields='~', date='~',
-                          raw=True, merge_versions=False,
-                          cube=cube, owner=owner)
-    docs = {}
-    for doc in time_docs:
-        oid = doc['_oid']
-        # we want to update only the oldest version of the object
-        if oid not in docs or docs[oid]['_start'] > doc['_start']:
-            docs[oid] = doc
-
+    docs = self.get_objects(force=oids)
     # dict, has format: oid: [(when, field, removed, added)]
     activities = self.activity_get(oids)
-
-    remove_ids = []
-    save_objects = []
     self.logger.debug('Processing activity history')
-
-    for time_doc in docs.values():
-        _oid = time_doc['_oid']
-        _id = time_doc.pop('_id')
-        time_doc.pop('_hash')
+    for doc in docs:
+        _oid = doc['_oid']
         acts = activities.setdefault(_oid, [])
-        updates = _activity_import_doc(self, time_doc, acts)
+        updates = _activity_import_doc(self, doc, acts)
         if updates:
-            save_objects += updates
-            remove_ids.append(_id)
-
-    self.cube_remove('_id in %s' % remove_ids)
-    self.cube_save(save_objects)
+	    self.cube_save(updates)
     return oids
 
 
@@ -363,23 +342,26 @@ def _activity_import_doc(self, time_doc, activities):
             last_doc = batch_updates.pop()
         else:
             new_doc = deepcopy(last_doc)
-            new_doc.pop('_id') if '_id' in new_doc else None
             new_doc['_start'] = when
             new_doc['_end'] = when
             last_doc['_start'] = when
         last_val = last_doc[field]
         new_val, inconsistent = _activity_backwards(new_doc[field],
                                                     removed, added)
+        # new id and hash!
         new_doc[field] = new_val
+        new_doc['_id'] = jsonhash(new_doc)
+	new_doc['_hash'] = jsonhash(new_doc, exclude=['_start', '_end', '_id'])
+
         # Check if the object has the correct field value.
         if inconsistent:
             incon = {'oid': last_doc['_oid'],
                      'field': field,
-                     'removed': removed,
+                     'removed': str(removed),
                      'removed_type': str(type(removed)),
-                     'added': added,
+                     'added': str(added),
                      'added_type': str(type(added)),
-                     'last_val': last_val,
+                     'last_val': str(last_val),
                      'last_val_type': str(type(last_val)),
                      'when': str(when)}
             if self.config.get('incon_log_type') == 'pretty':
@@ -393,8 +375,7 @@ def _activity_import_doc(self, time_doc, activities):
                 new_doc['_corrupted'] = {}
             new_doc['_corrupted'][field] = added
         # Add the objects to the batch
-        batch_updates.append(last_doc)
-        batch_updates.append(new_doc)
+        batch_updates.extend([last_doc, new_doc])
     # try to set the _start of the first version to the creation time
     try:
         # set start to creation time if available
