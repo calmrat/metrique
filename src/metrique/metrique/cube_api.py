@@ -310,13 +310,15 @@ def _activity_import(self, oids, cube, owner):
     # dict, has format: oid: [(when, field, removed, added)]
     activities = self.activity_get(oids)
     self.logger.debug('Processing activity history')
+    updates = []
     for doc in docs:
         _oid = doc['_oid']
         acts = activities.setdefault(_oid, [])
-        updates = _activity_import_doc(self, doc, acts)
         if updates:
-	    self.cube_save(updates)
-    return oids
+            updates.extend(_activity_import_doc(self, doc, acts))
+    # save in batches
+    self.cube_save(updates)
+    return updates
 
 
 def _activity_import_doc(self, time_doc, activities):
@@ -352,7 +354,7 @@ def _activity_import_doc(self, time_doc, activities):
         # new id and hash!
         new_doc[field] = new_val
         new_doc['_id'] = jsonhash(new_doc)
-	new_doc['_hash'] = jsonhash(new_doc, exclude=['_start', '_end', '_id'])
+        new_doc['_hash'] = jsonhash(new_doc, exclude=['_start', '_end', '_id'])
 
         # Check if the object has the correct field value.
         if inconsistent:
