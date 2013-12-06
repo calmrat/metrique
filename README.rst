@@ -14,6 +14,10 @@ Metrique
    :target: https://crate.io/packages/metrique
 
 .. image:: https://d2weczhvl823v0.cloudfront.net/drpoovilleorg/metrique/trend.png
+   :target: https://d2weczhvl823v0.cloudfront.net/drpoovilleorg/metrique
+
+.. image:: https://coveralls.io/repos/drpoovilleorg/metrique/badge.png 
+   :target: https://coveralls.io/r/drpoovilleorg/metrique
 
 Python/MongoDB Data Warehouse and Data Glue
 
