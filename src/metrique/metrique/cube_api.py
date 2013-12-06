@@ -253,6 +253,7 @@ def export(self, filename, cube=None, owner=None):
     return self._save(cmd=cmd, filename=filename)
 
 
+# FIXME: MOVE THIS TO SQL cube... it's sql specific
 ######## ACTIVITY IMPORT ########
 def activity_import(self, oids=None, cube=None, owner=None):
     '''
@@ -273,14 +274,14 @@ def activity_import(self, oids=None, cube=None, owner=None):
         oids = self.sql_get_oids()
 
     max_workers = self.config.max_workers
-    batch_size = self.config.batch_size
+    sql_batch_size = self.config.sql_batch_size
 
     saved = []
-    if max_workers > 1 and batch_size > 1:
+    if max_workers > 1 and sql_batch_size > 1:
         with ThreadPoolExecutor(max_workers=max_workers) as ex:
             futures = [ex.submit(_activity_import, self, oids=batch,
                                  cube=cube, owner=owner)
-                       for batch in batch_gen(oids, batch_size)]
+                       for batch in batch_gen(oids, sql_batch_size)]
 
         for future in as_completed(futures):
             try:
@@ -295,7 +296,7 @@ def activity_import(self, oids=None, cube=None, owner=None):
                     '%i of %i extracted' % (len(saved),
                                             len(oids)))
     else:
-        for batch in batch_gen(oids, batch_size):
+        for batch in batch_gen(oids, sql_batch_size):
             result = _activity_import(self, oids=batch, cube=cube, owner=owner)
             saved.extend(result)
 
