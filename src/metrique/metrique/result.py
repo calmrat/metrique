@@ -52,8 +52,12 @@ class Result(DataFrame):
         # The converts are here so that None is converted to NaT
         self.to_datetime('_start')
         self.to_datetime('_end')
-        self._lbound = self._rbound = None
-        self.set_date_bounds(date)
+        if isinstance(data, Result):
+            self._lbound = data._lbound
+            self._rbound = data._rbound
+        else:
+            self._lbound = self._rbound = None
+            self.set_date_bounds(date)
 
     def to_datetime(self, column):
         '''
