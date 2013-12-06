@@ -2,7 +2,6 @@
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 # Author: "Chris Ward <cward@redhat.com>
 
-from bson.objectid import ObjectId
 from datetime import datetime
 import gzip
 import os
@@ -14,7 +13,7 @@ from tornado.web import authenticated
 
 from metriqued.core_api import MetriqueHdlr
 from metriqued.utils import query_add_date, parse_pql_query
-from metriqueu.utils import dt2ts, utcnow, batch_gen, jsonhash
+from metriqueu.utils import utcnow, batch_gen, jsonhash
 
 
 class DropHdlr(MetriqueHdlr):
@@ -370,58 +369,40 @@ class SaveObjectsHdlr(MetriqueHdlr):
     @authenticated
     def post(self, owner, cube):
         objects = self.get_argument('objects')
-        start_time = self.get_argument('start_time')
         result = self.save_objects(owner=owner, cube=cube,
-                                   objects=objects, start_time=start_time)
+                                   objects=objects)
         self.write(result)
 
-    def prepare_objects(self, _cube, objects, start_time):
+    def prepare_objects(self, _cube, objects):
         '''
         :param dict obj: dictionary that will be converted to mongodb doc
-        :param int start_time: timestamp to apply as _start for objects
 
         Do some basic object validatation and add an _start timestamp value
         '''
         new_obj_hashes = []
         for obj in objects:
-            if '_start' in obj and obj['_start'] is not None:
-                _start = _start = obj.pop('_start')
-            else:
-                _start = start_time
+            # we don't want these in the jsonhash
+            _start = obj.pop('_start') if '_start' in obj else None
             _end = obj.pop('_end') if '_end' in obj else None
-            _hash = obj.pop('_hash') if '_hash' in obj else None
-
-            if _end is not None and _start is None:
-                self._raise(400, "objects with _end must have _start")
+            _id = obj.pop('_id') if '_id' in obj else None
             if not isinstance(_start, (int, float)):
-                self._raise(400,
-                            "_start must be float/int; got %s" % type(_start))
-            if not isinstance(_end, (int, float)) and _end is not None:
-                self._raise(400, "_end must be float/int/None")
-
-            if '_id' in obj:
-                self._raise(400, "_id field CAN NOT be defined: %s" % obj)
-            if '_oid' not in obj:
+                _t = type(_start)
+                self._raise(400, "_start must be float; got %s" % _t)
+            if not isinstance(_end, (int, float, type(None))):
+                _t = type(_end)
+                self._raise(400, "_end must be float/None; got %s" % _t)
+            if not obj.get('_oid'):
                 self._raise(400, "_oid field MUST be defined: %s" % obj)
-
-            # hash the object (minus _start/_end)
-            _hash = jsonhash(obj)
-            obj['_hash'] = _hash
+            if not obj.get('_hash'):
+                # hash the object (minus _start/_end)
+                obj['_hash'] = jsonhash(obj)
             if _end is None:
-                new_obj_hashes.append(_hash)
+                new_obj_hashes.append(obj['_hash'])
 
             # add back _start and _end properties
             obj['_start'] = _start
             obj['_end'] = _end
-
-            # we want to avoid serializing in and out later
-            obj['_id'] = str(ObjectId())
-
-        # FIXME: refactor this so we split the _hashes
-        # mongodb lookups iterate across 16M max
-        # spec docs...
-        # get the estimate size, as follows
-        #est_size_hashes = estimate_obj_size(_hashes)
+            obj['_id'] = _id if _id else jsonhash(obj)
 
         # Filter out objects whose most recent version did not change
         docs = _cube.find({'_hash': {'$in': new_obj_hashes},
@@ -432,37 +413,25 @@ class SaveObjectsHdlr(MetriqueHdlr):
         objects = filter(None, objects)
         return objects
 
-    def save_objects(self, owner, cube, objects, start_time=None):
+    def save_objects(self, owner, cube, objects):
         '''
         :param str owner: target owner's cube
         :param str cube: target cube (collection) to save objects to
         :param list objects: list of dictionary-like objects to be stored
-        :param datetime start_time: datetime to apply as start_time for objects
         :rtype: list - list of object ids saved
 
         Get a list of dictionary objects from client and insert
         or save them to the timeline.
-
-        Apply the given start_time to all objects or apply utcnow(). _mtime
-        is used to support timebased 'delta' updates.
         '''
         self.cube_exists(owner, cube)
         self.requires_owner_write(owner, cube)
-        start_time = dt2ts(start_time) if start_time else utcnow()
-        current_mtime = self.get_cube_last_start(owner, cube)
-        if current_mtime and start_time and current_mtime > start_time:
-            # don't fail, but make sure the issue is logged!
-            # likely, a ntp time sync is required
-            self.logger.warn(
-                "object start_time is < server start_time; %s < %s; " % (
-                    start_time, current_mtime))
         _cube = self.timeline(owner, cube, admin=True)
 
         olen_r = len(objects)
         self.logger.debug(
             '[%s.%s] Recieved %s objects' % (owner, cube, olen_r))
 
-        objects = self.prepare_objects(_cube, objects, start_time)
+        objects = self.prepare_objects(_cube, objects)
 
         self.logger.debug(
             '[%s.%s] %s objects match their current version in db' % (

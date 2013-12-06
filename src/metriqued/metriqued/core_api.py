@@ -117,8 +117,6 @@ class MetriqueHdlr(RequestHandler):
 
     def get_user_profile(self, username, keys=None, raise_if_not=False,
                          exists_only=False, mask=None, null_value=None):
-        if not username:
-            self._raise(400, "username required")
         return self.get_profile(self.mongodb_config.c_user_profile_data,
                                 _id=username, keys=keys,
                                 raise_if_not=raise_if_not,

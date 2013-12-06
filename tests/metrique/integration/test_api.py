@@ -29,6 +29,14 @@ config = dict(username=username,
 
 
 @testutils.runner
+def test_admin():
+    m = pyclient(**config)
+    m.user_remove(username, quiet=True)  # to be sure it doesn't exist already
+    assert m.user_register(username, password)
+    m.user_remove(username, quiet=True)  # to be sure it doesn't exist already
+
+
+@testutils.runner
 def test_api():
     m = pyclient(**config)
     m.user_remove(username, quiet=True)  # to be sure it doesn't exist already
@@ -43,6 +51,11 @@ def test_api():
 
         result = _cube.extract()
         assert result
+
+        assert _cube.save_hdf5()
+        # journal should have been created
+        #journal_path = '~/.metrique/hdf5/%s__%s.hd5' % (username, _cube.name)
+        #assert os.path.exists(os.path.expanduser(journal_path))
 
         # we should get back some results
         df = _cube.find(fields='~', date='~')
@@ -63,10 +76,6 @@ def test_api():
         # new objects being saved
         result = _cube.extract()
         assert k == _cube.count(date='~')
-
-        # journal should have been created
-        journal_path = '~/.metrique/hdf5/%s__%s.hd5' % (username, _cube.name)
-        assert os.path.exists(os.path.expanduser(journal_path))
 
         # rename cube
         name = _cube.name[:]
@@ -96,7 +105,8 @@ def test_api():
 def test_user_api():
     fingerprint = '894EE1CEEA61DC3D7D20327C4200AD1F2F22F46C'
 
-    m = pyclient(gnupg_dir=GNUPG_DIR,
+    m = pyclient(name='test_user',
+                 gnupg_dir=GNUPG_DIR,
                  gnupg_fingerprint=fingerprint,
                  **config)
 

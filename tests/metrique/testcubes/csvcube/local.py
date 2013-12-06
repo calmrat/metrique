@@ -19,8 +19,8 @@ class Local(csvdata_rows):
     """
     name = 'tests_csvdata'
 
-    def extract(self, uri=DEFAULT_URI, _oid=DEFAULT_ID, **kwargs):
-        return super(Local, self).extract(uri=uri, _oid=_oid, **kwargs)
+    def get_objects(self, uri=DEFAULT_URI, _oid=DEFAULT_ID, **kwargs):
+        return super(Local, self).get_objects(uri=uri, _oid=_oid, **kwargs)
 
 
 if __name__ == '__main__':

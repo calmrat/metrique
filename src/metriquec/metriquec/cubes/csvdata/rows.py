@@ -10,9 +10,6 @@ from urllib2 import urlopen
 
 from metrique import pyclient
 
-mongo_re = re.compile('[\.$]*')
-space_re = re.compile(' ')
-
 
 class Rows(pyclient):
     """
@@ -29,12 +26,11 @@ class Rows(pyclient):
                     quotechar='"', delimiter=',',):
         self.quotechar = quotechar
         self.delimiter = delimiter
+        # FIXME: replace with cache + pd.read_csv
         objects = self.loaduri(uri)
         objects = self.set_column(objects, 'uri', uri)
         objects = self.set_column(objects, '_oid', _oid)
         objects = self.set_column(objects, '_start', _start)
-        objects = self.normalize_types(objects, type_map)
-        objects = self.normalize_nones(objects)
         self.objects = objects
         return objects
 
@@ -72,7 +68,6 @@ class Rows(pyclient):
         reader = csv.reader(csvfile, dialect)
         rows = list(reader)
         fields = rows.pop(0)
-        fields = self.normalize_fields(fields)
         return rows, fields, dialect
 
     def loaduri(self, uri, mode='rU'):
@@ -119,41 +114,6 @@ class Rows(pyclient):
 
     # FIXME: REFACTOR to split out header_fields and dialect
     # into two separate methods?
-    def normalize_fields(self, fields):
-        ''' periods and dollar signs are not allowed! '''
-        fields = [mongo_re.sub('', f) for f in fields]
-        fields = [space_re.sub('_', f) for f in fields]
-        fields = [f.lower() for f in fields]
-        return fields
-
-    def normalize_nones(self, objects):
-        for i, o in enumerate(objects):
-            for k, v in o.items():
-                if objects[i][k] == '':
-                    objects[i][k] = None
-        return objects
-
-    def normalize_types(self, objects, type_map=None):
-        'type_map should be a dict with key:field value:type mapping'
-        _type = None
-        for i, o in enumerate(objects):
-            for field, value in o.items():
-                if type_map:
-                    _type = type_map.get(field)
-                if _type:
-                    # apply the field's type if specified
-                    # don't try to catch exceptions here; errors
-                    # here are problems in the type map which need to be fixed
-                    objects[i][field] = _type(objects[i][field])
-                else:
-                    try:
-                        # attempt to convert to float, fall back
-                        # to original string value otherwise
-                        objects[i][field] = float(objects[i][field])
-                    except (TypeError, ValueError):
-                        pass
-        return objects
-
     def set_column(self, objects, key, value):
         '''
         Save an additional column/field to all objects in memory

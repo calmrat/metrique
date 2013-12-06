@@ -16,6 +16,11 @@ class Objs(pyclient):
     """
     name = 'jsondata_objs'
 
+    def get_objects(self, uri, **kwargs):
+        objs = self.load(uri)
+        self.objects = objs
+        return objs
+
     def load(self, path, strict=False):
         '''
         Given a string of valid JSON, load it into memory.

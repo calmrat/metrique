@@ -52,7 +52,7 @@ def test_dt2ts():
 
 
 def test_jsonhash():
-    from metriqued.utils import jsonhash
+    from metriqueu.utils import jsonhash
 
     dct = {'a': [3, 2, 1], 'z': ['a', 'c', 'b', 1], 'b': {1: [], 3: {}}}
 

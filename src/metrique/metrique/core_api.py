@@ -34,6 +34,7 @@ and more.
     valid date format: '%Y-%m-%d %H:%M:%S,%f', '%Y-%m-%d %H:%M:%S', '%Y-%m-%d'
 
 '''
+from collections import MutableSequence
 from copy import copy
 import cPickle
 from functools import partial
@@ -41,6 +42,7 @@ import glob
 import logging
 import os
 import pandas as pd
+import re
 import requests
 import simplejson as json
 import urllib
@@ -58,16 +60,203 @@ root_logger = logging.getLogger()
 BASIC_FORMAT = "%(name)s:%(message)s"
 FILETYPES = {'csv': pd.read_csv,
              'json': pd.read_json}
+mongo_re = re.compile('[\.$]')
+space_re = re.compile('\s')
 
 
-# BaseClient should have a base-extract (default: in-memory)
-# which HTTPClient (etc) should call if the client's config
-# indicates 'class_client': 'HTTP' or 'H5' or 'Base'
-class BaseClient(object):
+class BaseCube(MutableSequence):
+    '''
+    list of dicts; default 'cube' container model
+    '''
+    _objects = []
+
+    def __init__(self, name, objects=None):
+        if name:
+            self.name = name
+        if objects:
+            self.objects = objects
+
+    def __delitem__(self, name):
+        del self.objects[name]
+
+    def __getitem__(self, name):
+        return self.objects[name]
+
+    def __setitem__(self, name, obj):
+        self.objects[name] = obj
+
+    def insert(self, name, obj):
+        self.objects.insert(name, obj)
+
+    def __len__(self):
+        return len(self.objects)
+
+    def __iter__(self):
+        return iter(self.objects)
+
+    def __next__(self):
+        yield next(self)
+
+    def next(self):
+        return self.__next__()
+
+    def __getslice__(self, i, j):
+        return self.objects[i:j]
+
+    def __contains__(self, item):
+        return item in self.objects
+
+    def __str__(self):
+        return str(self.objects)
+
+    def __repr__(self):
+        return repr(self.objects)
+
+####################################################################
+    @property
+    def objects(self):
+        return self._objects
+
+    @objects.setter
+    def objects(self, objects):
+        if objects is None:
+            objects = []
+        elif not isinstance(objects, (BaseCube, list, tuple)):
+            _t = type(objects)
+            raise TypeError("container value must be a list; got %s" % _t)
+        elif not all([type(o) is dict for o in objects]):
+            raise TypeError("object values must be dict")
+        elif isinstance(objects, pd.DataFrame):
+            objects = objects.T.to_dict().values()
+
+        if isinstance(objects, BaseCube):
+            objects = objects.objects
+
+        if objects:
+            objects = self._normalize(objects)
+        self._objects = objects
+
+    @objects.deleter
+    def objects(self):
+        del self._objects
+        self._objects = []
+
+    @property
+    def oids(self):
+        return self.df['_oid'].tolist()
+
+    @property
+    def ids(self):
+        return self.df['_id'].tolist()
+
+    @property
+    def hashes(self):
+        return self.df['_hash'].tolist()
+
+    @property
+    def starts(self):
+        return self.df['_start'].tolist()
+
+    @property
+    def ends(self):
+        return self.df['_ends'].tolist()
+
+####################################################################
+    @property
+    def df(self):
+        if self.objects:
+            return pd.DataFrame(self.objects)
+        else:
+            return pd.DataFrame()
+
+###################### normalization keys/values #################
+    def _normalize(self, objects):
+        '''
+        give all these objects the same _start value (if they
+        don't already have one), and more...
+        '''
+        start = utcnow()
+        # transpose dataframe's axies before converting to dict
+        objs = []
+        for o in objects:
+            if '_oid' not in o:
+                raise ValueError("_oid not defined for obj(%s)" % o)
+            # these add special meta field default values
+            o = self._obj_hash(o)
+            o = self._obj_end(o)
+            o = self._obj_start(o, start)
+            o = self._obj_id(o)
+            # these modify the keys or values directly
+            o = self._obj_fields(o)
+            o = self._obj_nones(o)
+            o = self._obj_types(o)
+            objs.append(o)
+        return objs
+
+    def _obj_hash(self, obj):
+        o = copy(obj)
+        if '_hash' in obj:
+            del o['_hash']
+        if '_start' in obj:
+            del o['_start']
+        if '_end' in obj:
+            del o['_end']
+        if '_id' in obj:
+            del o['_id']
+        obj['_hash'] = jsonhash(o)
+        return obj
+
+    def _obj_end(self, obj, end=None):
+        end = end or obj.get('_end')
+        obj['_end'] = end
+        return obj
+
+    def _obj_start(self, obj, start=None):
+        start = start or obj.get('_start', start) or utcnow()
+        obj['_start'] = start
+        return obj
+
+    def _obj_id(self, obj):
+        obj['_id'] = jsonhash(obj)
+        return obj
+
+    def _obj_fields(self, obj):
+        ''' periods and dollar signs are not allowed! '''
+        # replace spaces, lowercase keys, remove $ and . chars
+        # WARNING: only lowers the top level though, at this time!
+        return dict((mongo_re.sub('', space_re.sub('_', k.lower())),
+                     v) for k, v in obj.iteritems())
+
+    def _obj_nones(self, obj):
+        return dict([(k, None) if v == '' else (k, v) for k, v in obj.items()])
+
+    def _obj_types(self, obj, type_map=None):
+        'type_map should be a dict with key:field value:type mapping'
+        _type = None
+        for f, v in obj.items():
+            if type_map:
+                _type = type_map.get(f)
+            if _type:
+                # apply the f's type if specified
+                # don't try to catch exceptions here; errors
+                # here are problems in the type map which need to be fixed
+                obj[f] = _type(v)
+            else:
+                try:
+                    # attempt to convert to float, fall back
+                    # to original string value otherwise
+                    obj[f] = float(v)
+                except (TypeError, ValueError):
+                    # leave as is
+                    pass
+        return obj
+
+
+class BaseClient(BaseCube):
     '''
     Essentially, a cube is a list of dictionaries.
     '''
-    name = 'NO_NAME'
+    name = None
     ' defaults is frequently overrided in subclasses as a property '
     defaults = None
     ' fields is frequently overrided in subclasses as a property too '
@@ -115,16 +304,15 @@ class BaseClient(object):
             if v is not None:
                 self.config[k] = v
 
+        utc_str = utcnow(as_datetime=True).strftime('%a%b%d%H%m%S')
         # set name if passed in, but don't overwrite default if not
-        if name is not None:
-            self.name = name
-        if not self.name:
-            raise RuntimeError("cube requires a name")
+        self.name = name or self.name or utc_str
+
+        self.hdf5_path = os.path.join(self.config.hdf5_dir, self.name + '.hd5')
 
         # a path to 'journal' file, hdf5 or a dataframe or list of dicts
-        if objects:
-            # set objects if passed in, but don't overwrite default if not
-            self.objects = objects
+        # set objects if passed in, but don't overwrite default if not
+        self.objects = BaseCube(name=self.name, objects=objects)
 
         self.config.logdir = os.path.expanduser(self.config.logdir)
         if not os.path.exists(self.config.logdir):
@@ -175,10 +363,6 @@ class BaseClient(object):
         return repr(self.objects)
 
 ####################### pandas/hd5 python interface ################
-    @property
-    def df(self):
-        return pd.DataFrame(self.objects)
-
     def load_files(self, path, filetype=None, **kwargs):
         '''
         cache to hd5 on disk
@@ -188,55 +372,53 @@ class BaseClient(object):
         # file2, file3), etc
         datasets = glob.glob(os.path.expanduser(path))
         for ds in datasets:
-            if os.path.exists(ds):
-                filetype = path.split('.')[-1]
-                # buid up a single dataframe by concatting
-                # all globbed files together
-                self.objects = pd.concat(
-                    [self._load_file(ds, filetype, **kwargs)
-                     for ds in datasets])
-            else:
-                self.objects = pd.DataFrame()
+            filetype = path.split('.')[-1]
+            # buid up a single dataframe by concatting
+            # all globbed files together
+            self.objects = pd.concat(
+                [self.load_file(ds, filetype, **kwargs)
+                    for ds in datasets]).T.as_dict().values()
         return self.objects
 
-    def _load_file(self, path, filetype, **kwargs):
+    def load_file(self, path, filetype, **kwargs):
         if filetype in ['csv', 'txt']:
-            return self._load_csv(path, **kwargs)
+            return self.load_csv(path, **kwargs)
         elif filetype in ['json']:
-            return self._load_json(path, **kwargs)
+            return self.load_json(path, **kwargs)
+        elif filetype in ['hd5']:
+            return self.load_hdf5(path, **kwargs)
         else:
             raise TypeError("Invalid filetype: %s" % filetype)
 
-    def _load_csv(self, path, **kwargs):
+    def load_csv(self, path, **kwargs):
         # load the file into hdf5, according to filetype
         return pd.read_csv(path, **kwargs)
 
-    def _load_json(self, path, **kwargs):
+    def load_json(self, path, **kwargs):
         return pd.read_json(path, **kwargs)
 
-    @property
-    def hdf5(self):
-        path = self.hdf5_path + '.hd5'
-        store = pd.HDFStore(path)
-        if not self.objects:
-            pass
-        elif self._cache.get('sync_required', True):
-            # FIXME: use hd5py created group (self.name)
-            # FIXME: use hd5py to create_dataset()
-            # objects group is pandas dataframe
-            fmt = '%a%b%d%H%m%S'
-            utcnow_str = utcnow(as_datetime=True).strftime(fmt)
-            store['objects/%s' % utcnow_str] = self.df
-            self._cache['hdf5_store'] = store
-            self._cache['sync_required'] = False
-        else:
-            store = self._cache.get('hdf5_store')
-        return store
+    def load_hdf5(self, path=None, **kwargs):
+        if not path:
+            path = os.path.expanduser('~/.metrique/hdf5')
+            path = os.path.join(path, self.name + '.hd5')
+        return pd.read_hdf(path, 'objects', **kwargs)
 
-    @property
-    def hdf5_path(self):
-        filename = self.name
-        return os.path.join(self.config.hdf5_dir, filename)
+    def save_hdf5(self, append=True):
+        store = None
+        try:
+            store = pd.HDFStore(self.hdf5_path, complevel=9)
+            if store and append:
+                assert isinstance(store['objects'], pd.DataFrame)
+                # append the self.df to what's in store and save
+                store.put('objects', pd.concat((store['objects'], self.df)))
+            else:
+                # WARNING: Overwrites data previous in the hdf5
+                store.put('objects', self.df)
+        finally:
+            if store:
+                store.flush()
+                store.close()
+        return True
 
 #################### misc #######################
     def debug_set(self, level=None, logstdout=None, logfile=None):
@@ -285,9 +467,6 @@ class BaseClient(object):
             logger.setLevel(logging.DEBUG)
         return logger
 
-    def flush(self):
-        del self.objects
-
     def get_cube(self, cube, init=True, name=None, **kwargs):
         ' wrapper for utils.get_cube(); try to load a cube, pyclient '
         config = copy(self.config)
@@ -304,81 +483,6 @@ class BaseClient(object):
             config_file = config or self._config_file
             self.config = Config(config_file=config_file)
             self._config_file = config_file
-
-    def _obj_hash(self, obj):
-        o = copy(obj)
-        if '_hash' in obj:
-            del o['_hash']
-        if '_start' in obj:
-            del o['_start']
-        if '_end' in obj:
-            del o['_end']
-        if '_id' in obj:
-            del o['_id']
-        obj['_hash'] = jsonhash(o)
-        return obj
-
-    def _obj_end(self, obj, end=None):
-        end = end if end else obj.get('_end')
-        obj['_end'] = end
-        return obj
-
-    def _obj_start(self, obj, start=None):
-        start = start if start else obj.get('_start', utcnow())
-        obj['_start'] = start
-        return obj
-
-    def _obj_id(self, obj):
-        obj['_id'] = jsonhash(obj)
-        return obj
-
-    def _obj_apply(self, objects, func, **kwargs):
-        func = partial(func, **kwargs)
-        return map(func, objects)
-
-    @property
-    def objects(self):
-        ''' always return a list of dicts '''
-        return self._cache.get('objects', [])
-
-    @objects.deleter
-    def objects(self, value):
-        self.hdf5  # sync the hdf5 file (to disk)
-        del self._cache['objects']
-
-    @objects.setter
-    def objects(self, value):
-        self._cache.setdefault('objects', [])
-        if isinstance(value, pd.HDFStore):
-            value = value['objects']
-        if isinstance(value, pd.DataFrame):
-            df = value
-        else:
-            df = pd.DataFrame(value)
-        start = utcnow()
-        # transpose dataframe's axies before converting to dict
-        objects = df.T.to_dict().values()
-        objects = self._obj_apply(objects, self._obj_end)
-        objects = self._obj_apply(objects, self._obj_start, start=start)
-        objects = self._obj_apply(objects, self._obj_hash)
-        objects = self._obj_apply(objects, self._obj_id)
-        try:
-            hashes = set([o['_hash'] for o in self.objects
-                          if o['_end'] is None])
-        except Exception as e:
-            self.logger.error('EXCEPTION: %s' % str(e))
-            hashes = set()
-        for o in objects:
-            if o['_hash'] not in hashes:
-                self._cache['objects'].append(o)
-        # dependencies of objects should refresh
-        self._cache['sync_required'] = True
-        self.hdf5  # sync the hdf5 file
-        return self._cache['objects']
-
-    @property
-    def objectsi(self):
-        return iter(self.objects)
 
     def save_uri(self, uri, saveas):
         return urllib.urlretrieve(uri, saveas)
@@ -439,7 +543,6 @@ class HTTPClient(BaseClient):
         self._load_session()
         self._auto_login_attempted = False
 
-#################### HTTP specific API methods/overrides ###############
     def activity_get(self, ids=None):
         '''
         Returns a dictionary of `id: [(when, field, removed, added)]` kv pairs
@@ -501,9 +604,12 @@ class HTTPClient(BaseClient):
         ' requests GET; using current session '
         return self._run(self.session.get, *args, **kwargs)
 
+    def get_objects(**kwargs):
+        raise NotImplementedError
+
     def extract(self, **kwargs):
-        self.get_objects(**kwargs)
-        return self.cube_save(self.objects)
+        objs = self.get_objects(**kwargs)
+        return self.cube_save(objs)
 
     def get_cmd(self, owner, cube, api_name=None):
         '''

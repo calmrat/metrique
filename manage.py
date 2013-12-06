@@ -307,8 +307,9 @@ def deploy(args):
     call('%s install -U numpy pandas' % pip)
     call('%s install -U numexpr cython' % pip)
 
-    # optional dependencies; highly recommended! but slow for testing
-    if args.matplotlib:
+    # optional dependencies; highly recommended! but slow to
+    # install if we're not testing
+    if args.matplotlib or args.test:
         call('%s install -U matplotlib' % pip)
     if args.ipython:
         call('%s install -U ipython' % pip)
@@ -358,11 +359,13 @@ def build(args):
     setup(args, cmd)
 
 
-def sdist(args, upload=None):
+def sdist(args, upload=None, bump_r=None):
     upload = upload or args.upload
+    bump_r = bump_r or args.bump_r
     cmd = 'sdist'
     if upload:
-        bump(args)
+        if bump_r:
+            bump(args)
         cmd += ' upload'
     setup(args, cmd)
 
@@ -416,6 +419,7 @@ def main():
 
     _sdist = _sub.add_parser('sdist')
     _sdist.add_argument('-u', '--upload', action='store_true')
+    _sdist.add_argument('-b', '--bump-r', action='store_true')
     _sdist.set_defaults(func=sdist)
 
     _develop = _sub.add_parser('develop')
