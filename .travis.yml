@@ -17,7 +17,7 @@ script:
   # run tests
   #- "py.test tests"
   # test coverage badge
-  - "coverage run --source=metrique,metriqued,metriqueu,metriquec py.test tests"
+  - "coverage run --source=metrique,metriqued,metriqueu,metriquec -m py.test tests"
 # test coverage badge
 after_success:
   coveralls
