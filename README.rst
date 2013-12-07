@@ -42,6 +42,8 @@ The examples given below use yum and assume fedora rpm package names::
     # prerequisite *os* packages
     sudo yum install python python-devel python-setuptools
     sudo yum install git gcc gcc-c++ gcc-gfortran
+    sudo yum install hdf5-devel # apt-get: libhdf5-serial-dev
+
 
     # get the sources
     git clone https://github.com/drpoovilleorg/metrique.git

@@ -114,27 +114,34 @@ class BaseCube(MutableSequence):
 
 ####################################################################
     @property
+    def df(self):
+        if self.objects:
+            return pd.DataFrame(self.objects)
+        else:
+            return pd.DataFrame()
+
+    @property
     def objects(self):
         return self._objects
 
     @objects.setter
     def objects(self, objects):
+        # convert from other forms to basic list of dicts
         if objects is None:
             objects = []
-        elif not isinstance(objects, (BaseCube, list, tuple)):
-            _t = type(objects)
-            raise TypeError("container value must be a list; got %s" % _t)
-        elif not all([type(o) is dict for o in objects]):
-            raise TypeError("object values must be dict")
         elif isinstance(objects, pd.DataFrame):
             objects = objects.T.to_dict().values()
-
-        if isinstance(objects, BaseCube):
+        elif isinstance(objects, BaseCube):
             objects = objects.objects
-
-        if objects:
-            objects = self._normalize(objects)
-        self._objects = objects
+        # model check
+        if not isinstance(objects, (BaseCube, list, tuple)):
+            _t = type(objects)
+            raise TypeError("container value must be a list; got %s" % _t)
+        if not all([type(o) is dict for o in objects]):
+            raise TypeError("object values must be dict")
+        if not all([o.get('_oid') is not None for o in objects]):
+            raise ValueError("_oid must be defined for all objs")
+        self._objects = self._normalize(objects)
 
     @objects.deleter
     def objects(self):
@@ -143,31 +150,15 @@ class BaseCube(MutableSequence):
 
     @property
     def oids(self):
-        return self.df['_oid'].tolist()
+        return [o['_oid'] for o in self._objects]
 
     @property
     def ids(self):
-        return self.df['_id'].tolist()
+        return [o['_id'] for o in self._objects]
 
     @property
     def hashes(self):
-        return self.df['_hash'].tolist()
-
-    @property
-    def starts(self):
-        return self.df['_start'].tolist()
-
-    @property
-    def ends(self):
-        return self.df['_ends'].tolist()
-
-####################################################################
-    @property
-    def df(self):
-        if self.objects:
-            return pd.DataFrame(self.objects)
-        else:
-            return pd.DataFrame()
+        return [o['_hash'] for o in self._objects]
 
 ###################### normalization keys/values #################
     def _normalize(self, objects):
@@ -176,48 +167,43 @@ class BaseCube(MutableSequence):
         don't already have one), and more...
         '''
         start = utcnow()
-        # transpose dataframe's axies before converting to dict
-        objs = []
-        for o in objects:
-            if '_oid' not in o:
-                raise ValueError("_oid not defined for obj(%s)" % o)
-            # these add special meta field default values
-            o = self._obj_hash(o)
+        for i, o in enumerate(objects):
+            # normalize fields (no [$.\s] characters, lowercase, etc)
+            o = self._obj_fields(o)
+            # convert empty strings to None (null)
+            o = self._obj_nones(o)
+            # type conversion; if it looks like a float... it is, etc
+            o = self._obj_types(o)
+            # add special meta field default values
+            # the id reflects exactly the contents as passed in
+            # (after the above default field/value normalization)
+            o = self._obj_hash(o, key='_id')
             o = self._obj_end(o)
             o = self._obj_start(o, start)
-            o = self._obj_id(o)
-            # these modify the keys or values directly
-            o = self._obj_fields(o)
-            o = self._obj_nones(o)
-            o = self._obj_types(o)
-            objs.append(o)
-        return objs
+            if o['_start'] and o['_end']:
+                # obj's _start might change later, even if the
+                # obj's actual field/values don't; the obj
+                # hash shouldn't be affected
+                exclude = ['_hash', '_id']
+            else:
+                exclude = ['_hash', '_id', '_start', '_end']
+            o = self._obj_hash(o, key='_hash', exclude=exclude)
+            objects[i] = o
+        return objects
 
-    def _obj_hash(self, obj):
+    def _obj_hash(self, obj, key, exclude=None):
         o = copy(obj)
-        if '_hash' in obj:
-            del o['_hash']
-        if '_start' in obj:
-            del o['_start']
-        if '_end' in obj:
-            del o['_end']
-        if '_id' in obj:
-            del o['_id']
-        obj['_hash'] = jsonhash(o)
+        if exclude:
+            [o.pop(k) for k in exclude if k in obj]
+        obj[key] = jsonhash(o)
         return obj
 
     def _obj_end(self, obj, end=None):
-        end = end or obj.get('_end')
-        obj['_end'] = end
+        obj['_end'] = end or obj.get('_end')
         return obj
 
     def _obj_start(self, obj, start=None):
-        start = start or obj.get('_start', start) or utcnow()
-        obj['_start'] = start
-        return obj
-
-    def _obj_id(self, obj):
-        obj['_id'] = jsonhash(obj)
+        obj['_start'] = start or obj.get('_start') or utcnow()
         return obj
 
     def _obj_fields(self, obj):
@@ -231,7 +217,10 @@ class BaseCube(MutableSequence):
         return dict([(k, None) if v == '' else (k, v) for k, v in obj.items()])
 
     def _obj_types(self, obj, type_map=None):
-        'type_map should be a dict with key:field value:type mapping'
+        '''
+        type_map should be a dict with key:field value:type mapping
+        if not provided, run basic "auto-type" assignment
+        '''
         _type = None
         for f, v in obj.items():
             if type_map:
