@@ -293,8 +293,8 @@ def activity_import(self, oids=None, cube=None, owner=None):
             else:
                 saved.extend(result)
                 self.logger.info(
-                    '%i of %i extracted' % (len(saved),
-                                            len(oids)))
+                    '%i objs for %i oids extracted' % (len(saved),
+                                                       len(oids)))
     else:
         for batch in batch_gen(oids, sql_batch_size):
             result = _activity_import(self, oids=batch, cube=cube, owner=owner)

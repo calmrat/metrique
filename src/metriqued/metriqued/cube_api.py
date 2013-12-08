@@ -392,8 +392,8 @@ class SaveObjectsHdlr(MetriqueHdlr):
                 self._raise(400, "_end must be float/None")
 
         hashes = [o['_hash'] for o in objects]
-        # Filter out objects whose most recent version did not change
-        docs = _cube.find({'_hash': {'$in': hashes}, '_end': None},
+        # Filter out object versions we already have
+        docs = _cube.find({'_hash': {'$in': hashes}},
                           fields={'_hash': 1, '_id': -1})
         dup_hashes = set([doc['_hash'] for doc in docs])
         objects = [o for o in objects if o['_hash'] not in dup_hashes]
