@@ -101,7 +101,7 @@ class Generic(HTTPClient):
     def _extract_threaded(self, id_delta, field_order, start, delay=None):
         batch_size = self.config.sql_batch_size
         if delay is None:
-            delay = 0.5  # stagger the calls a bit
+            delay = 0.2  # stagger the threaded calls a bit
         with ThreadPoolExecutor(max_workers=self.config.max_workers) as ex:
             futures = []
             for batch in batch_gen(id_delta, batch_size):
@@ -275,7 +275,7 @@ class Generic(HTTPClient):
         return [x[0] for x in rows]
 
     def get_objects(self, force=None, last_update=None, parse_timestamp=None,
-                    **kwargs):
+                    delay=None, **kwargs):
         '''
         Extract routine for SQL based cubes.
 
@@ -330,7 +330,6 @@ class Generic(HTTPClient):
 
         max_workers = self.config.max_workers
         if max_workers > 1:
-            delay = kwargs.get('delay')
             objects.extend(self._extract_threaded(oids, field_order,
                            start, delay))
         else:

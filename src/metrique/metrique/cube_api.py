@@ -18,6 +18,7 @@ except ImportError:
 from copy import deepcopy
 from datetime import datetime
 import simplejson as json
+import time
 import traceback
 
 from metriqueu.utils import batch_gen, ts2dt, dt2ts, jsonhash
@@ -255,7 +256,7 @@ def export(self, filename, cube=None, owner=None):
 
 # FIXME: MOVE THIS TO SQL cube... it's sql specific
 ######## ACTIVITY IMPORT ########
-def activity_import(self, oids=None, cube=None, owner=None):
+def activity_import(self, oids=None, cube=None, owner=None, delay=None):
     '''
     WARNING: Do NOT run extract while activity import is running,
              it might result in data corruption.
@@ -279,9 +280,13 @@ def activity_import(self, oids=None, cube=None, owner=None):
     saved = []
     if max_workers > 1 and sql_batch_size > 1:
         with ThreadPoolExecutor(max_workers=max_workers) as ex:
-            futures = [ex.submit(_activity_import, self, oids=batch,
-                                 cube=cube, owner=owner)
-                       for batch in batch_gen(oids, sql_batch_size)]
+            futures = []
+            delay = 0.2  # stagger the threaded calls a bit
+            for batch in batch_gen(oids, sql_batch_size):
+                f = ex.submit(_activity_import, self, oids=batch,
+                              cube=cube, owner=owner)
+                futures.append(f)
+                time.sleep(delay)
 
         for future in as_completed(futures):
             try:
