@@ -314,8 +314,7 @@ def _activity_import(self, oids, cube, owner):
     for doc in docs:
         _oid = doc['_oid']
         acts = activities.setdefault(_oid, [])
-        if updates:
-            updates.extend(_activity_import_doc(self, doc, acts))
+        updates.extend(_activity_import_doc(self, doc, acts))
     # save in batches
     self.cube_save(updates)
     return updates
