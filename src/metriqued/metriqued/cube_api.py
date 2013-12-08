@@ -13,7 +13,9 @@ from tornado.web import authenticated
 
 from metriqued.core_api import MetriqueHdlr
 from metriqued.utils import query_add_date, parse_pql_query
-from metriqueu.utils import utcnow, batch_gen, jsonhash
+from metriqueu.utils import utcnow, batch_gen
+
+OBJ_KEYS = set(['_id', '_hash', '_oid', '_start', '_end'])
 
 
 class DropHdlr(MetriqueHdlr):
@@ -379,38 +381,22 @@ class SaveObjectsHdlr(MetriqueHdlr):
 
         Do some basic object validatation and add an _start timestamp value
         '''
-        new_obj_hashes = []
-        for i, obj in enumerate(objects):
-            # we don't want these in the jsonhash
-            _start = obj.pop('_start') if '_start' in obj else None
-            _end = obj.pop('_end') if '_end' in obj else None
-            _id = obj.pop('_id') if '_id' in obj else None
-            if not isinstance(_start, (int, float)):
-                _t = type(_start)
-                self._raise(400, "_start must be float; got %s" % _t)
-            if not isinstance(_end, (int, float, type(None))):
-                _t = type(_end)
-                self._raise(400, "_end must be float/None; got %s" % _t)
-            if not obj.get('_oid'):
-                self._raise(400, "_oid field MUST be defined: %s" % obj)
-            if not obj.get('_hash'):
-                # hash the object (minus _start/_end/_id)
-                obj['_hash'] = jsonhash(obj)
-            if _end is None:
-                new_obj_hashes.append(obj['_hash'])
+        for obj in objects:
+            keys = set(obj.keys())
+            if not OBJ_KEYS.issubset(keys):
+                self._raise(400,
+                            "objects must have %s; got %s" % (OBJ_KEYS, keys))
+            if not isinstance(obj['_start'], (int, float)):
+                self._raise(400, "_start must be float")
+            if not isinstance(obj['_end'], (int, float, type(None))):
+                self._raise(400, "_end must be float/None")
 
-            # add back _start and _end properties
-            obj['_start'] = _start
-            obj['_end'] = _end
-            obj['_id'] = _id if _id else jsonhash(obj)
-            objects[i] = obj
-
+        hashes = [o['_hash'] for o in objects]
         # Filter out objects whose most recent version did not change
-        docs = _cube.find({'_hash': {'$in': new_obj_hashes},
-                           '_end': None},
+        docs = _cube.find({'_hash': {'$in': hashes}, '_end': None},
                           fields={'_hash': 1, '_id': -1})
-        _dup_hashes = set([doc['_hash'] for doc in docs])
-        objects = [obj for obj in objects if obj['_hash'] not in _dup_hashes]
+        dup_hashes = set([doc['_hash'] for doc in docs])
+        objects = [o for o in objects if o['_hash'] not in dup_hashes]
         objects = filter(None, objects)
         return objects
 
