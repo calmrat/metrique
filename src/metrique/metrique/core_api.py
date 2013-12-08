@@ -314,43 +314,6 @@ class BaseClient(BaseCube):
         # with each others logging.
         self.debug_set()
 
-#################### special cube object handlers #######################
-    def __getitem__(self, name):
-        return self.objects[name]
-
-    def __len__(self):
-        return len(self.objects)
-
-    def __iter__(self):
-        return iter(self.objects)
-
-    def __next__(self):
-        yield next(self)
-
-    def next(self):
-        return self.__next__()
-
-    def __getslice__(self, i, j):
-        return self.objects[i:j]
-
-    def __contains__(self, item):
-        return item in self.objects
-
-    def oids(self):
-        raise NotImplementedError
-
-    def keys(self):
-        return self.objects.keys()
-
-    def items(self):
-        return self.objects.items()
-
-    def __str__(self):
-        return str(self.objects)
-
-    def __repr__(self):
-        return repr(self.objects)
-
 ####################### pandas/hd5 python interface ################
     def load_files(self, path, filetype=None, **kwargs):
         '''
@@ -473,7 +436,7 @@ class BaseClient(BaseCube):
             self.config = Config(config_file=config_file)
             self._config_file = config_file
 
-    def save_uri(self, uri, saveas):
+    def urlretrieve(self, uri, saveas):
         return urllib.urlretrieve(uri, saveas)
 
     def whoami(self, auth=False):
