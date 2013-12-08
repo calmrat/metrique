@@ -299,10 +299,7 @@ def activity_import(self, oids=None, cube=None, owner=None):
         for batch in batch_gen(oids, sql_batch_size):
             result = _activity_import(self, oids=batch, cube=cube, owner=owner)
             saved.extend(result)
-
-    failed = set(oids) - set(saved)
-    result = {'saved': sorted(saved), 'failed': sorted(failed)}
-    return result
+    return saved
 
 
 def _activity_import(self, oids, cube, owner):
