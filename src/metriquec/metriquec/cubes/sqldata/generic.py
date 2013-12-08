@@ -98,11 +98,16 @@ class Generic(HTTPClient):
                 break
         return objects
 
-    def _extract_threaded(self, id_delta, field_order, start):
+    def _extract_threaded(self, id_delta, field_order, start, delay=None):
         batch_size = self.config.sql_batch_size
+        if delay is None:
+            delay = 0.5  # stagger the calls a bit
         with ThreadPoolExecutor(max_workers=self.config.max_workers) as ex:
-            futures = [ex.submit(self._extract, batch, field_order, start)
-                       for batch in batch_gen(id_delta, batch_size)]
+            futures = []
+            for batch in batch_gen(id_delta, batch_size):
+                f = ex.submit(self._extract, batch, field_order, start)
+                futures.append(f)
+                time.sleep(delay)
         objs = []
         for future in as_completed(futures):
             try:
@@ -325,7 +330,9 @@ class Generic(HTTPClient):
 
         max_workers = self.config.max_workers
         if max_workers > 1:
-            objects.extend(self._extract_threaded(oids, field_order, start))
+            delay = kwargs.get('delay')
+            objects.extend(self._extract_threaded(oids, field_order,
+                           start, delay))
         else:
             # respect the global batch size, even if sql batch
             # size is not set
@@ -333,13 +340,6 @@ class Generic(HTTPClient):
                 objects.extend(self._extract(batch, field_order, start))
         self.objects = objects
         return objects
-
-    def sql_get_oids(self):
-        table = self.get_property('table')
-        _id = self.get_property('column')
-        db = self.get_property('db')
-        sql = 'SELECT DISTINCT %s.%s FROM %s.%s' % (table, _id, db, table)
-        return [r[0] for r in self.proxy.fetchall(sql)]
 
     def get_new_oids(self):
         '''
@@ -506,6 +506,13 @@ class Generic(HTTPClient):
                 # _oid field doesn't require normalization
                 if field != '_oid':
                     yield field, tokens
+
+    def sql_get_oids(self):
+        table = self.get_property('table')
+        _id = self.get_property('column')
+        db = self.get_property('db')
+        sql = 'SELECT DISTINCT %s.%s FROM %s.%s' % (table, _id, db, table)
+        return sorted([r[0] for r in self.proxy.fetchall(sql)])
 
     def _sql_distinct(self, sql):
         # whether to query for distinct rows only or not; default, no
