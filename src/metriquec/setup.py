@@ -22,12 +22,12 @@ __desc__ = 'Metrique - Cubes'
 __scripts__ = []
 __requires__ = [
     'metrique (>=%s)' % __version__,
-    'celery (==3.1.0)',
+    'celery (==3.1.6)',
     'psycopg2 (==2.5.1)',
 ]
 __irequires__ = [
     'metrique>=%s' % __version__,
-    'celery==3.1.0',
+    'celery==3.1.6',
     'psycopg2==2.5.1',
 ]
 pip_src = 'https://pypi.python.org/packages/source'

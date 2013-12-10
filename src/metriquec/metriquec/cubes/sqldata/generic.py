@@ -2,20 +2,23 @@
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 # Author: "Chris Ward <cward@redhat.com>
 
+from copy import deepcopy
 try:
     from concurrent.futures import ThreadPoolExecutor, as_completed
 except ImportError:
     from futures import ThreadPoolExecutor, as_completed
 from collections import defaultdict
 from dateutil.parser import parse as dt_parse
+from datetime import datetime
 from functools import partial
 import pytz
 import re
+import simplejson as json
 import time
 import traceback
 
 from metrique.core_api import HTTPClient
-from metriqueu.utils import batch_gen, ts2dt, utcnow
+from metriqueu.utils import batch_gen, ts2dt, dt2ts, utcnow
 
 
 class Generic(HTTPClient):
@@ -37,6 +40,168 @@ class Generic(HTTPClient):
         if sql_port:
             self.config['sql_port'] = sql_port
         self.retry_on_error = None
+
+    def activity_get(self, ids=None):
+        '''
+        Returns a dictionary of `id: [(when, field, removed, added)]` kv pairs
+        that represent the activity history for the particular ids.
+        '''
+        raise NotImplementedError(
+            'The activity_get method is not implemented in this cube.')
+
+    def activity_import(self, force=None, cube=None, owner=None, delay=None):
+        '''
+        WARNING: Do NOT run extract while activity import is running,
+                it might result in data corruption.
+        Run the activity import for a given cube, if the cube supports it.
+
+        Essentially, recreate object histories from
+        a cubes 'activity history' table row data,
+        and dump those pre-calcultated historical
+        state object copies into the timeline.
+
+        :param object ids:
+            - None: import for all ids
+            - list of ids: import for ids in the list
+        '''
+        oids = force or self.sql_get_oids()
+
+        max_workers = self.config.max_workers
+        sql_batch_size = self.config.sql_batch_size
+
+        saved = []
+        if max_workers > 1 and sql_batch_size > 1:
+            with ThreadPoolExecutor(max_workers=max_workers) as ex:
+                futures = []
+                delay = 0.2  # stagger the threaded calls a bit
+                for batch in batch_gen(oids, sql_batch_size):
+                    f = ex.submit(self._activity_import, oids=batch,
+                                  cube=cube, owner=owner)
+                    futures.append(f)
+                    time.sleep(delay)
+
+            for future in as_completed(futures):
+                try:
+                    result = future.result()
+                except Exception as e:
+                    tb = traceback.format_exc()
+                    self.logger.error(
+                        'Activity Import Error: %s\n%s' % (e, tb))
+                    del tb
+                else:
+                    saved.extend(result)
+                    self.logger.info(
+                        '%i objs for %i oids extracted' % (len(saved),
+                                                           len(oids)))
+        else:
+            for batch in batch_gen(oids, sql_batch_size):
+                result = self._activity_import(oids=batch, cube=cube,
+                                               owner=owner)
+                saved.extend(result)
+        return saved
+
+    def _activity_import(self, oids, cube, owner):
+        self.logger.debug('Getting Objects + Activity History')
+        docs = self.get_objects(force=oids)
+        # dict, has format: oid: [(when, field, removed, added)]
+        activities = self.activity_get(oids)
+        self.logger.debug('... processing activity history')
+        updates = []
+        for doc in docs:
+            _oid = doc['_oid']
+            acts = activities.setdefault(_oid, [])
+            updates.extend(self._activity_import_doc(doc, acts))
+        self.cube_save(updates)
+        return updates
+
+    def _activity_import_doc(self, time_doc, activities):
+        '''
+        Import activities for a single document into timeline.
+        '''
+        batch_updates = [time_doc]
+        # We want to consider only activities that happend before time_doc
+        # do not move this, because time_doc._start changes
+        # time_doc['_start'] is a timestamp, whereas act[0] is a datetime
+        td_start = ts2dt(time_doc['_start'], tz_aware=True)
+        activities = filter(lambda act: (act[0] < td_start and
+                                         act[1] in time_doc), activities)
+        # make sure that activities are sorted by when descending
+        activities.sort(reverse=True)
+        for when, field, removed, added in activities:
+            when = dt2ts(when)
+            removed = dt2ts(removed) if isinstance(removed,
+                                                   datetime) else removed
+            added = dt2ts(added) if isinstance(added, datetime) else added
+            last_doc = batch_updates.pop()
+            # check if this activity happened at the same time as the last one,
+            # if it did then we need to group them together
+            if last_doc['_end'] == when:
+                new_doc = last_doc
+                last_doc = batch_updates.pop()
+            else:
+                new_doc = deepcopy(last_doc)
+                new_doc['_start'] = when
+                new_doc['_end'] = when
+                last_doc['_start'] = when
+            last_val = last_doc[field]
+            # FIXME: pass in field and call _type() within _activity_backwards?
+            # for added/removed?
+            new_val, inconsistent = self._activity_backwards(new_doc[field],
+                                                             removed, added)
+            new_doc[field] = new_val
+
+            # Check if the object has the correct field value.
+            if inconsistent:
+                incon = {'oid': last_doc['_oid'],
+                         'field': field,
+                         'removed': str(removed),
+                         'removed_type': str(type(removed)),
+                         'added': str(added),
+                         'added_type': str(type(added)),
+                         'last_val': str(last_val),
+                         'last_val_type': str(type(last_val)),
+                         'when': ts2dt(when)}
+                if self.config.get('incon_log_type') == 'pretty':
+                    m = '{oid} {field}: {removed}-> {added} has {last_val}; '
+                    m += '({removed_type}-> {added_type} has {last_val_type})'
+                    m += ' ... on {when}'
+                    self.logger.error(m.format(**incon))
+                else:
+                    self.logger.error(json.dumps(incon, ensure_ascii=False))
+                new_doc.setdefault('_corrupted', {})
+                new_doc['_corrupted'][field] = added
+            # Add the objects to the batch
+            batch_updates.extend([last_doc, new_doc])
+        # try to set the _start of the first version to the creation time
+        try:
+            # set start to creation time if available
+            last_doc = batch_updates[-1]
+            creation_field = self.get_property('cfield')
+            if creation_field:
+                creation_ts = dt2ts(last_doc[creation_field])
+                if creation_ts < last_doc['_start']:
+                    last_doc['_start'] = creation_ts
+                elif len(batch_updates) == 1:
+                    # we have only one version, that we did not change
+                    return []
+        except Exception as e:
+            self.logger.error('Error updating creation time; %s' % e)
+        return batch_updates
+
+    def _activity_backwards(self, val, removed, added):
+        if isinstance(added, list) and isinstance(removed, list):
+            val = [] if val is None else val
+            inconsistent = False
+            for ad in added:
+                if ad in val:
+                    val.remove(ad)
+                else:
+                    inconsistent = True
+            val.extend(removed)
+        else:
+            inconsistent = val != added
+            val = removed
+        return val, inconsistent
 
     def _build_rows(self, rows):
         self.logger.debug('Building dict_rows from sql_rows(%i)' % len(rows))
@@ -94,7 +259,6 @@ class Generic(HTTPClient):
                 objects = self._build_objects(rows)
                 # apply the start time to _start
                 objects = [self._obj_start(o, start) for o in objects]
-                self.objects = objects
                 break
         return objects
 
@@ -269,8 +433,8 @@ class Generic(HTTPClient):
         _id = self.get_property('column')
 
         sql = """SELECT DISTINCT %s.%s FROM %s.%s
-               WHERE %s""" % (table, _id, db, table,
-                              ' OR '.join(filters))
+            WHERE %s""" % (table, _id, db, table,
+                           ' OR '.join(filters))
         rows = self.proxy.fetchall(sql) or []
         return [x[0] for x in rows]
 
@@ -488,11 +652,9 @@ class Generic(HTTPClient):
         obj = {'_oid': row.pop(0)}
         for k, column in enumerate(row, 0):
             field = field_order[k]
-
             column = self._normalize_container(column, field)
             column = self._convert(column, field)
             column = self._type(column, field)
-
             if not column:
                 obj.update({field: None})
             else:

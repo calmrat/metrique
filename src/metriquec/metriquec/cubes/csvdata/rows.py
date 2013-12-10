@@ -2,10 +2,11 @@
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 # Author: "Chris Ward <cward@redhat.com>
 
-import csv
-import cStringIO
+import itertools
 import os
+import pandas as pd
 import re
+import tempfile
 from urllib2 import urlopen
 
 from metrique import pyclient
@@ -22,120 +23,57 @@ class Rows(pyclient):
     """
     name = 'csvdata_rows'
 
-    def get_objects(self, uri, _oid=None, _start=None, type_map=None,
-                    quotechar='"', delimiter=',',):
-        self.quotechar = quotechar
-        self.delimiter = delimiter
-        # FIXME: replace with cache + pd.read_csv
-        objects = self.loaduri(uri)
+    def get_objects(self, uri, _oid=None, _start=None, **kwargs):
+        path = self.save_uri(uri)
+        objects = pd.read_csv(path, **kwargs)
+        # convert to list of dicts
+        objects = objects.T.to_dict().values()
+
+        # set uri property for all objects
         objects = self.set_column(objects, 'uri', uri)
-        objects = self.set_column(objects, '_oid', _oid)
-        objects = self.set_column(objects, '_start', _start)
+
+        if _start:
+            # set _start based on column values if specified
+            objects = self.set_column(objects, '_start', _start)
+
+        if not _oid:
+            # map to row index count by default
+            k = itertools.count(1)
+            [o.update({'_oid': k.next()}) for o in objects]
+        else:
+            objects = self.set_column(objects, '_oid', _oid)
+
         self.objects = objects
         return objects
 
-    def header_fields_dialect(self, csv_str):
+    def save_uri(self, uri):
         '''
-        Given a newline separated string of csv, load it
-        as a file like object.
-
-        Then, try to sniff out the header to get the field
-        names to be used in the objects extracted. If
-        there is no header, raise `ValueError`, since
-        otherwise we would have no way to know how to
-        name the fields.
-
-        While we have the csv file handy, sniff it to
-        figure out the dialect of the csv. Dialect refers
-        to properties of the csv itself, like which
-        type of quotes are used, what separator character,
-        etc. A common dialect is `Excel`.
-        '''
-        csvfile = cStringIO.StringIO(csv_str)
-
-        sample = csvfile.read(1024)
-        try:
-            dialect = csv.Sniffer().sniff(sample)
-            if not csv.Sniffer().has_header(sample):
-                self.logger.warn("CSV header NOT DETECTED!")
-        except Exception:
-            dialect = csv.excel
-            dialect.delimiter = self.delimiter
-            dialect.quotechar = self.quotechar
-            pass
-        csvfile.seek(0)
-
-        reader = csv.reader(csvfile, dialect)
-        rows = list(reader)
-        fields = rows.pop(0)
-        return rows, fields, dialect
-
-    def loaduri(self, uri, mode='rU'):
-        '''
-        Load csv from a given uri.
+        Load csv from a given uri and save it to a temp file
+        or load the csv file directly, if already on disk.
         Supports: http(s) or from file
 
-        :param string mode:
-            file open mode. Default: 'rU' (read/universal newlines)
+        :param string uri:
+            uri path to load csv contents from
         '''
         self.logger.debug("Loading CSV: %s" % uri)
         if re.match('https?://', uri):
-            content = urlopen(uri).readlines()
+            content = ''.join(urlopen(uri).readlines())
+            with tempfile.NamedTemporaryFile(delete=False) as tmp:
+                path = tmp.name
+                self.logger.debug(" ... saving to: %s" % path)
+                tmp.write(content)
         else:
-            uri = re.sub('^file://', '', uri)
-            uri = os.path.expanduser(uri)
-            with open(uri, mode=mode) as f:
-                content = f.readlines()
-        return self.loadi(content)
+            path = re.sub('^file://', '', uri)
+            path = os.path.expanduser(path)
+        return path
 
-    def loads(self, csv_str):
-        '''
-        Given a string of newline spaced csv, try
-        to sniff out the header to aquire the field
-        names, and also guess the *csv dialect*.
-        '''
-        rows, fields, dialect = self.header_fields_dialect(csv_str)
-        objects = []
-        for row in rows:
-            row = [s.strip() for s in row]
-            obj = {}
-            for i, field in enumerate(fields):
-                obj[field] = row[i]
-            objects.append(obj)
-        return objects
-
-    def loadi(self, csv_iter):
-        '''
-        Given an iterator, strip and join all results
-        into a newline separated string to load
-        the csv as a string and return it.
-        '''
-        return self.loads('\n'.join([s.strip('[\n\r]*$') for s in csv_iter]))
-
-    # FIXME: REFACTOR to split out header_fields and dialect
-    # into two separate methods?
     def set_column(self, objects, key, value):
         '''
         Save an additional column/field to all objects in memory
         '''
         if type(value) is type or hasattr(value, '__call__'):
-            # we have class or function; use the resulting object after
-            # init/exec
+            # class or function; use the resulting object after init/exec
             [o.update({key: value(o)}) for o in objects]
-        elif key == '_oid':
-            if value is None:
-                # _oid maps to the item's index in the object list
-                # which shouldn't change if the same file is being opened
-                # more than once (appended to, overtime, forexample)
-                [o.update({key: str(i)})
-                 for i, o in enumerate(objects)]
-            else:
-                try:
-                    [o.update({key: o[value]}) for o in objects]
-                except KeyError:
-                    raise KeyError(
-                        "Invalid key object (%s). Available: %s" % (
-                            value, o.keys()))
         else:
             [o.update({key: value}) for o in objects]
         return objects

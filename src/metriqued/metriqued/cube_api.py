@@ -2,6 +2,7 @@
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 # Author: "Chris Ward <cward@redhat.com>
 
+from copy import copy
 from datetime import datetime
 import gzip
 import os
@@ -9,11 +10,12 @@ import re
 import shlex
 import subprocess
 import tempfile
+from types import NoneType
 from tornado.web import authenticated
 
 from metriqued.core_api import MetriqueHdlr
 from metriqued.utils import query_add_date, parse_pql_query
-from metriqueu.utils import utcnow, batch_gen
+from metriqueu.utils import utcnow, batch_gen, jsonhash
 
 OBJ_KEYS = set(['_id', '_hash', '_oid', '_start', '_end'])
 
@@ -381,23 +383,41 @@ class SaveObjectsHdlr(MetriqueHdlr):
 
         Do some basic object validatation and add an _start timestamp value
         '''
-        for obj in objects:
-            keys = set(obj.keys())
-            if not OBJ_KEYS.issubset(keys):
-                self._raise(400,
-                            "objects must have %s; got %s" % (OBJ_KEYS, keys))
-            if not isinstance(obj['_start'], (int, float)):
-                self._raise(400, "_start must be float")
-            if not isinstance(obj['_end'], (int, float, type(None))):
-                self._raise(400, "_end must be float/None")
+        hashes = []
+        ids = []
+        start = utcnow()
+        exclude = ['_hash', '_id', '_start', '_end']
+        for o in objects:
+            keys = set(o.keys())
+            o = o if '_start' in keys else self._obj_start(o, start)
+            o = o if '_end' in keys else self._obj_end(o)
+            o = o if '_hash' in keys else self._obj_hash(o, key='_hash',
+                                                         exclude=exclude)
+            # give it a unique _id based on all contents
+            o = o if '_id' in keys else self._obj_hash(o, key='_id')
 
-        hashes = [o['_hash'] for o in objects]
-        # Filter out object versions we already have
-        docs = _cube.find({'_hash': {'$in': hashes}},
+            if not isinstance(o['_start'], (float, int)):
+                self._raise(400, "_start must be float/int")
+            if not isinstance(o['_end'], (NoneType, float, int)):
+                self._raise(400, "_end must be float/int/None")
+
+            if o['_end'] is not None:
+                ids.append(o['_id'])
+            hashes.append(o['_hash'])
+
+        # Filter out object 'current' versions already set
+        docs = _cube.find({'_hash': {'$in': hashes}, '_end': None},
                           fields={'_hash': 1, '_id': -1})
-        dup_hashes = set([doc['_hash'] for doc in docs])
-        objects = [o for o in objects if o['_hash'] not in dup_hashes]
-        objects = filter(None, objects)
+        dups = set([doc['_hash'] for doc in docs])
+        objects = [o for o in objects if o['_hash'] not in dups]
+
+        if ids:
+            # objects with _end are considered 'complete' and should remain
+            # constant, forever and are expected to always map to the same _id
+            # check for any which already exist and don't save them again
+            docs = _cube.find({'_id': {'$in': ids}})
+            dups = set([doc['_id'] for doc in docs])
+            objects = [o for o in objects if o['_id'] not in dups]
         return objects
 
     def save_objects(self, owner, cube, objects):
@@ -453,6 +473,22 @@ class SaveObjectsHdlr(MetriqueHdlr):
                                                                  len(objects)))
             # return object ids saved
             return [o['_oid'] for o in objects]
+
+    def _obj_end(self, obj, default=None):
+        obj['_end'] = obj.get('_end', default)
+        return obj
+
+    def _obj_hash(self, obj, key, exclude=None):
+        o = copy(obj)
+        if exclude:
+            [o.pop(k) for k in exclude if k in obj]
+        obj[key] = jsonhash(o)
+        return obj
+
+    def _obj_start(self, obj, default=None):
+        _start = obj.get('_start', default)
+        obj['_start'] = _start or utcnow()
+        return obj
 
 
 class StatsHdlr(MetriqueHdlr):

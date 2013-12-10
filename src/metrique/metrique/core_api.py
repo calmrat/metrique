@@ -50,7 +50,7 @@ import urllib
 from metrique import query_api, user_api, cube_api
 from metrique.config import Config
 from metrique.utils import json_encode, get_cube
-from metriqueu.utils import jsonhash, utcnow
+from metriqueu.utils import utcnow
 
 # setup default root logger, but remove default StreamHandler (stderr)
 # Handlers will be added upon __init__()
@@ -60,8 +60,9 @@ root_logger = logging.getLogger()
 BASIC_FORMAT = "%(name)s:%(message)s"
 FILETYPES = {'csv': pd.read_csv,
              'json': pd.read_json}
-mongo_re = re.compile('[\.$]')
-space_re = re.compile('\s')
+fields_re = re.compile('[\W]+')
+space_re = re.compile('\s+')
+unda_re = re.compile('_')
 
 
 class BaseCube(MutableSequence):
@@ -152,14 +153,6 @@ class BaseCube(MutableSequence):
     def oids(self):
         return [o['_oid'] for o in self._objects]
 
-    @property
-    def ids(self):
-        return [o['_id'] for o in self._objects]
-
-    @property
-    def hashes(self):
-        return [o['_hash'] for o in self._objects]
-
 ###################### normalization keys/values #################
     def _normalize(self, objects):
         '''
@@ -168,50 +161,30 @@ class BaseCube(MutableSequence):
         '''
         start = utcnow()
         for i, o in enumerate(objects):
-            # normalize fields (no [$.\s] characters, lowercase, etc)
+            # normalize fields (alphanumeric characters only, lowercase)
             o = self._obj_fields(o)
             # convert empty strings to None (null)
             o = self._obj_nones(o)
             # type conversion; if it looks like a float... it is, etc
             o = self._obj_types(o)
-            # add special meta field default values
-            # the id reflects exactly the contents as passed in
-            # (after the above default field/value normalization)
-            o = self._obj_hash(o, key='_id')
+            # add object meta data the metriqued requires be set per object
             o = self._obj_end(o)
             o = self._obj_start(o, start)
-            if o['_start'] and o['_end']:
-                # obj's _start might change later, even if the
-                # obj's actual field/values don't; the obj
-                # hash shouldn't be affected
-                exclude = ['_hash', '_id']
-            else:
-                exclude = ['_hash', '_id', '_start', '_end']
-            o = self._obj_hash(o, key='_hash', exclude=exclude)
             objects[i] = o
         return objects
 
-    def _obj_hash(self, obj, key, exclude=None):
-        o = copy(obj)
-        if exclude:
-            [o.pop(k) for k in exclude if k in obj]
-        obj[key] = jsonhash(o)
-        return obj
-
-    def _obj_end(self, obj, end=None):
-        obj['_end'] = end or obj.get('_end')
-        return obj
-
-    def _obj_start(self, obj, start=None):
-        obj['_start'] = start or obj.get('_start') or utcnow()
-        return obj
+    def _normalize_fields(self, k):
+        k = k.lower()
+        k = space_re.sub('_', k)
+        k = fields_re.sub('',  k)
+        k = unda_re.sub('_',  k)
+        return k
 
     def _obj_fields(self, obj):
         ''' periods and dollar signs are not allowed! '''
-        # replace spaces, lowercase keys, remove $ and . chars
+        # replace spaces, lowercase keys, remove non-alphanumeric
         # WARNING: only lowers the top level though, at this time!
-        return dict((mongo_re.sub('', space_re.sub('_', k.lower())),
-                     v) for k, v in obj.iteritems())
+        return dict((self._normalize_fields(k), v) for k, v in obj.iteritems())
 
     def _obj_nones(self, obj):
         return dict([(k, None) if v == '' else (k, v) for k, v in obj.items()])
@@ -238,6 +211,15 @@ class BaseCube(MutableSequence):
                 except (TypeError, ValueError):
                     # leave as is
                     pass
+        return obj
+
+    def _obj_end(self, obj, default=None):
+        obj['_end'] = obj.get('_end', default)
+        return obj
+
+    def _obj_start(self, obj, default=None):
+        _start = obj.get('_start', default)
+        obj['_start'] = _start or utcnow()
         return obj
 
 
@@ -472,7 +454,6 @@ class HTTPClient(BaseClient):
     cube_register = cube_api.register
     cube_update_role = cube_api.update_role
 
-    cube_activity_import = cube_api.activity_import
     cube_save = cube_api.save
     cube_rename = cube_api.rename
     cube_remove = cube_api.remove
@@ -494,14 +475,6 @@ class HTTPClient(BaseClient):
         # load a new requests session; for the cookies.
         self._load_session()
         self._auto_login_attempted = False
-
-    def activity_get(self, ids=None):
-        '''
-        Returns a dictionary of `id: [(when, field, removed, added)]` kv pairs
-        that represent the activity history for the particular ids.
-        '''
-        raise NotImplementedError(
-            'The activity_get method is not implemented in this cube.')
 
     def _build_runner(self, kind, kwargs):
         ''' generic caller for HTTP
@@ -559,9 +532,9 @@ class HTTPClient(BaseClient):
     def get_objects(**kwargs):
         raise NotImplementedError
 
-    def extract(self, **kwargs):
-        objs = self.get_objects(**kwargs)
-        return self.cube_save(objs)
+    def extract(self, *args, **kwargs):
+        self.get_objects(*args, **kwargs)  # default: stores into self.objects
+        return self.cube_save()  # default: saves from self.objects
 
     def get_cmd(self, owner, cube, api_name=None):
         '''
