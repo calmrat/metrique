@@ -17,9 +17,8 @@ class Objs(pyclient):
     name = 'jsondata_objs'
 
     def get_objects(self, uri, **kwargs):
-        objs = self.load(uri)
-        self.objects = objs
-        return objs
+        self.objects = self.load(uri)
+        return self.objects
 
     def load(self, path, strict=False):
         '''
