@@ -37,6 +37,8 @@ and more.
 from collections import MutableSequence
 from copy import copy
 import cPickle
+from datetime import datetime
+from dateutil.parser import parse as dt_parse
 from functools import partial
 import glob
 import logging
@@ -165,8 +167,6 @@ class BaseCube(MutableSequence):
             o = self._obj_fields(o)
             # convert empty strings to None (null)
             o = self._obj_nones(o)
-            # type conversion; if it looks like a float... it is, etc
-            o = self._obj_types(o)
             # add object meta data the metriqued requires be set per object
             o = self._obj_end(o)
             o = self._obj_start(o, start)
@@ -188,30 +188,6 @@ class BaseCube(MutableSequence):
 
     def _obj_nones(self, obj):
         return dict([(k, None) if v == '' else (k, v) for k, v in obj.items()])
-
-    def _obj_types(self, obj, type_map=None):
-        '''
-        type_map should be a dict with key:field value:type mapping
-        if not provided, run basic "auto-type" assignment
-        '''
-        _type = None
-        for f, v in obj.items():
-            if type_map:
-                _type = type_map.get(f)
-            if _type:
-                # apply the f's type if specified
-                # don't try to catch exceptions here; errors
-                # here are problems in the type map which need to be fixed
-                obj[f] = _type(v)
-            else:
-                try:
-                    # attempt to convert to float, fall back
-                    # to original string value otherwise
-                    obj[f] = float(v)
-                except (TypeError, ValueError):
-                    # leave as is
-                    pass
-        return obj
 
     def _obj_end(self, obj, default=None):
         obj['_end'] = obj.get('_end', default)
