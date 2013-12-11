@@ -157,15 +157,12 @@ class UpdatePasswordHdlr(MetriqueHdlr):
         result = self.update_passwd(username=username,
                                     old_password=old_password,
                                     new_password=new_password)
-        if self.self_in_group('admin'):
-            self.write(result)
+        if result:
+            self.clear_cookie("user")
+        if self.metrique_config.login_url:
+            self.redirect(self.metrique_config.login_url)
         else:
-            if result:
-                self.clear_cookie("user")
-            if self.metrique_config.login_url:
-                self.redirect(self.metrique_config.login_url)
-            else:
-                self.write(result)
+            self.write(result)
 
     def update_passwd(self, username, new_password, old_password=None):
         ''' Change a logged in user's password '''
