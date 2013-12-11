@@ -713,9 +713,9 @@ class Generic(HTTPClient):
                 else:
                     item = _type(item)
 
-                # normalize strings to utf8
+                # normalize strings
                 if isinstance(item, basestring):
-                    item = item.decode('utf8')
+                    item = unicode(item)
 
                 items.append(item)
             if sort == 1:
@@ -727,7 +727,7 @@ class Generic(HTTPClient):
         else:
             # apply type to the single value
             if isinstance(value, basestring):
-                value = value.decode('utf8')
+                value = unicode(value)
             elif value is None or isinstance(value, _type):
                 pass
             else:
