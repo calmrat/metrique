@@ -37,6 +37,8 @@ CWD = os.getcwd()
 SRC_DIR = os.path.join(CWD, __src__)
 USER_DIR = os.path.expanduser('~/.metrique')
 TRASH_DIR = os.path.expanduser('~/.metrique/trash')
+LOGS_DIR = os.path.expanduser('~/.metrique/logs')
+ETC_DIR = os.path.expanduser('~/.metrique/etc')
 
 # set cache dir so pip doesn't have to keep downloading over and over
 PIP_CACHE = '~/.pip/download-cache'
@@ -390,7 +392,8 @@ def main():
 
     # create default dirs in advance
     [makedirs(p) for p in (USER_DIR, PIP_CACHE, PIP_ACCEL,
-                           PIP_EGGS, TRASH_DIR)]
+                           PIP_EGGS, TRASH_DIR, LOGS_DIR,
+                           ETC_DIR)]
 
     # make sure the the default user python eggs dir is secure
     os.chmod(PIP_EGGS, 0700)

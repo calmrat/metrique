@@ -154,13 +154,13 @@ class Generic(HTTPClient):
             if inconsistent:
                 incon = {'oid': last_doc['_oid'],
                          'field': field,
-                         'removed': str(removed),
+                         'removed': removed,
                          'removed_type': str(type(removed)),
-                         'added': str(added),
+                         'added': added,
                          'added_type': str(type(added)),
-                         'last_val': str(last_val),
+                         'last_val': last_val,
                          'last_val_type': str(type(last_val)),
-                         'when': ts2dt(when)}
+                         'when': str(ts2dt(when))}
                 if self.config.get('incon_log_type') == 'pretty':
                     m = '{oid} {field}: {removed}-> {added} has {last_val}; '
                     m += '({removed_type}-> {added_type} has {last_val_type})'
@@ -295,6 +295,8 @@ class Generic(HTTPClient):
         if not rows:
             return []
 
+        # FIXME: This unicode stuff is fragile and likely to fail
+
         # unwrap aggregated values
         for k, row in enumerate(rows):
             _row = []
@@ -302,11 +304,15 @@ class Generic(HTTPClient):
                 if type(column) is buffer:
                     # unwrap/convert the aggregated string 'buffer'
                     # objects to string
-                    column = str(column).replace('"', '').strip()
+                    column = unicode(str(column), 'latin-1')
+                    column = column.replace('"', '').strip()
                     if not column:
                         column = None
                     else:
                         column = column.split('\n')
+                else:
+                    if isinstance(column, basestring):
+                        column = unicode(column.decode('latin-1'))
                 _row.append(column)
             rows[k] = _row
 
