@@ -37,8 +37,6 @@ and more.
 from collections import MutableSequence
 from copy import copy
 import cPickle
-from datetime import datetime
-from dateutil.parser import parse as dt_parse
 from functools import partial
 import glob
 import logging
@@ -592,8 +590,7 @@ class HTTPClient(BaseClient):
         try:
             _response.raise_for_status()
         except Exception as e:
-            m = getattr(e, 'message')
-            content = '%s\n%s\n%s' % (_url, m, _response.content)
+            content = '%s\n%s\n%s' % (_url, str(e), _response.content)
             self.logger.error(content)
             raise
         return _response
