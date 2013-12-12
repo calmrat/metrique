@@ -121,6 +121,9 @@ class BaseCube(MutableSequence):
         else:
             return pd.DataFrame()
 
+    def flush(self):
+        self.objects = []
+
     @property
     def objects(self):
         return self._objects
@@ -138,11 +141,14 @@ class BaseCube(MutableSequence):
         if not isinstance(objects, (BaseCube, list, tuple)):
             _t = type(objects)
             raise TypeError("container value must be a list; got %s" % _t)
-        if not all([type(o) is dict for o in objects]):
-            raise TypeError("object values must be dict")
-        if not all([o.get('_oid') is not None for o in objects]):
-            raise ValueError("_oid must be defined for all objs")
-        self._objects = self._normalize(objects)
+        if objects:
+            if not all([type(o) is dict for o in objects]):
+                raise TypeError("object values must be dict")
+            if not all([o.get('_oid') is not None for o in objects]):
+                raise ValueError("_oid must be defined for all objs")
+            self._objects = self._normalize(objects)
+        else:
+            self._objects = objects
 
     @objects.deleter
     def objects(self):

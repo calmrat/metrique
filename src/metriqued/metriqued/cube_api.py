@@ -453,17 +453,21 @@ class SaveObjectsHdlr(MetriqueHdlr):
             # End the most recent versions in the db of those objects that
             # have newer versionsi (newest version must have _end == None,
             # activity import saves objects for which this might not be true):
-            to_snap = dict([(o['_oid'], o['_start']) for o in objects
-                            if o['_end'] is None])
-            if to_snap:
-                db_versions = _cube.find({'_oid': {'$in': to_snap.keys()},
-                                          '_end': None},
-                                         fields={'_id': 1, '_oid': 1})
+            to_snap_start = dict([(o['_oid'], o['_start']) for o in objects
+                                 if o['_end'] is None])
+            if to_snap_start:
+                # update all the current versions such that the _end becomes
+                # the new versions _start
+                # then insert all the new objects as-are
+                db_versions = _cube.find(
+                    {'_oid': {'$in': to_snap_start.keys()}, '_end': None},
+                    fields={'_id': 1, '_oid': 1})
                 snapped = 0
                 for doc in db_versions:
-                    _cube.update({'_id': doc['_id']},
-                                 {'$set': {'_end': to_snap[doc['_oid']]}},
-                                 multi=False)
+                    _cube.update(
+                        {'_id': doc['_id']},
+                        {'$set': {'_end': to_snap_start[doc['_oid']]}},
+                        multi=False)
                     snapped += 1
                 self.logger.debug('[%s.%s] Updated %s OLD versions' %
                                   (owner, cube, snapped))
