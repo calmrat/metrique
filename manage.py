@@ -8,6 +8,7 @@ CLI for deploying metrique
 
 import datetime
 from functools import partial
+import importlib
 import os
 import re
 import shlex
@@ -83,12 +84,25 @@ def adjust_options(options, args):
 virtualenv.adjust_options = adjust_options
 
 
+def _celeryd_loop(args):
+    call('celery worker -B --app %s' % args.tasks_mod)
+
+
+def _celeryd_run(args):
+    tasks = importlib.import_module(args.tasks_mod)
+    task = getattr(tasks, args.task)
+    return task.run()
+
+
 def celeryd(args):
     '''
-    START, STOP, RESTART, RELOAD,
     '''
-    call('celery --help')
-    return
+    activate(args)
+    if args.loop:
+        result = _celeryd_loop(args)
+    else: 
+        result = _celeryd_run(args)
+    return result
 
 
 def metriqued(args):
@@ -471,7 +485,10 @@ def main():
     _celeryd = _sub.add_parser('celeryd')
     _celeryd.add_argument('command',
                           choices=['start', 'stop', 'restart'])
-    _celeryd.add_argument('cwd', type=str)
+    _celeryd.add_argument('virtenv', type=str, nargs='?')
+    _celeryd.add_argument('tasks_mod', type=str, nargs='?')
+    _celeryd.add_argument('task', type=str, nargs='?')
+    _celeryd.add_argument('-l', '--loop', action='store_true')
     _celeryd.set_defaults(func=celeryd)
 
     # parse argv
