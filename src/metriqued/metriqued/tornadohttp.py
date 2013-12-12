@@ -104,6 +104,7 @@ class TornadoHTTPServer(object):
         if level == 2:
             self._logger_name = None
             logger = logging.getLogger('metriqued')
+            logger.propagate = 0
         else:
             self._logger_name = 'metriqued.%s' % self.pid
             logger = logging.getLogger(self._logger_name)
