@@ -475,7 +475,7 @@ def main():
     _nginx.add_argument('command',
                         choices=['start', 'stop', 'reload',
                                  'restart', 'test'])
-    _nginx.add_argument('config-file', type=str)
+    _nginx.add_argument('config_file', type=str)
     _nginx.set_defaults(func=nginx)
 
     _metriqued = _sub.add_parser('metriqued')
