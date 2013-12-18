@@ -119,10 +119,12 @@ class Generic(HTTPClient):
         Import activities for a single document into timeline.
         '''
         batch_updates = [time_doc]
+        # compare tz aware/naive depending if acts 'when' is tz_aware or not
+        tz_aware = True if activities and activities[0][0].tzinfo else False
         # We want to consider only activities that happend before time_doc
         # do not move this, because time_doc._start changes
         # time_doc['_start'] is a timestamp, whereas act[0] is a datetime
-        td_start = ts2dt(time_doc['_start'], tz_aware=True)
+        td_start = ts2dt(time_doc['_start'], tz_aware=tz_aware)
         activities = filter(lambda act: (act[0] < td_start and
                                          act[1] in time_doc), activities)
         # make sure that activities are sorted by when descending

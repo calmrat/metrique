@@ -441,7 +441,7 @@ class SaveObjectsHdlr(MetriqueHdlr):
         objects = self.prepare_objects(_cube, objects)
 
         self.logger.debug(
-            '[%s.%s] %s objects match their current version in db' % (
+            '[%s.%s] SKIPPED %s objs matching their current version in db' % (
             owner, cube, olen_r - len(objects)))
 
         if not objects:
