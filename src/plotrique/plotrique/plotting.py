@@ -22,7 +22,7 @@ CNAMES = {'blue': 0, 'b': 0,
           'brown': 5,
           'pink': 6,
           'grey': 7,
-          'khaki': 8,
+          'khaki': 8, 'y': 8,
           'cyan': 9}
 
 
@@ -250,3 +250,64 @@ class DiffPlotter(Plotter):
 
     def legend(self, **kwargs):
         self.ax1.legend(**kwargs)
+
+
+class BarPlot(object):
+    def __init__(self, title='', figsize=(10, 5)):
+        self.counter = 0
+        self.fig, self.ax1 = plt.subplots(figsize=figsize)
+        self.ax2 = self.ax1.twinx()
+        plt.title(title)
+        self.bar_lim((0, 100))
+
+    def get_color(self, color):
+        '''
+        Returns a color to use.
+
+        :param integer/string color:
+            Color for the plot. Can be an index for the color from COLORS
+            or a key(string) from CNAMES.
+        '''
+        if color is None:
+            color = self.counter
+        if isinstance(color, str):
+            color = CNAMES[color]
+        self.counter = color + 1
+        color %= len(COLORS)
+        return color
+
+    def plot(self, series, label='', linewidth=3, marker='o', color=None):
+        color = self.get_color(color)
+        xticks = range(len(series))
+        self.ax1.plot(xticks,  series.values, label=label,
+                      linewidth=linewidth, marker=marker, color=COLORS[color])
+
+    def plot_label(self, label):
+        self.ax1.set_ylabel(label)
+
+    def plot_lim(self, (ymin, ymax)):
+        self.ax1.set_ylim((ymin, ymax))
+
+    def bar(self, series, label='', alpha=0.2, color=None):
+        color = self.get_color(color)
+        xticks = map(lambda v: v - 0.4, range(len(series)))
+        self.ax2.bar(xticks, series.values, label=label,
+                     alpha=alpha, color=COLORS[color])
+
+    def bar_label(self, label):
+        self.ax2.set_ylabel(label)
+
+    def bar_lim(self, (ymin, ymax)):
+        self.ax2.set_ylim((ymin, ymax))
+
+    def xticks(self, names):
+        self.ax1.set_xticks(range(len(names)))
+        self.ax1.set_xticklabels(names)
+        
+    def xlabel(self, label):
+        self.ax1.set_xlabel(label)
+
+    def legend(self, **kwargs):
+        lines, labels = self.ax1.get_legend_handles_labels()
+        lines2, labels2 = self.ax2.get_legend_handles_labels()
+        self.ax1.legend(lines + lines2, labels + labels2, **kwargs)
