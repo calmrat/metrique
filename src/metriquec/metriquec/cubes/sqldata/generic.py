@@ -728,10 +728,9 @@ class Generic(HTTPClient):
                 value = items
         else:
             # apply type to the single value
+            if not (_type is None or value is None or
+                    isinstance(value, _type)):
+                value = _type(value)
             if isinstance(value, basestring):
                 value = unicode(value)
-            elif value is None or isinstance(value, _type):
-                pass
-            else:
-                value = _type(value)
         return value
