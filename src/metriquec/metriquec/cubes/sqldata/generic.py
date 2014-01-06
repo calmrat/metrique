@@ -9,7 +9,6 @@ except ImportError:
     from futures import ThreadPoolExecutor, as_completed
 from collections import defaultdict
 from dateutil.parser import parse as dt_parse
-from datetime import datetime
 from functools import partial
 import pytz
 import re
@@ -131,9 +130,10 @@ class Generic(HTTPClient):
         activities.sort(reverse=True)
         for when, field, removed, added in activities:
             when = dt2ts(when)
-            removed = dt2ts(removed) if isinstance(removed,
-                                                   datetime) else removed
-            added = dt2ts(added) if isinstance(added, datetime) else added
+            # this doesn't apply anymore in the new version of activity import
+            #removed = dt2ts(removed) if isinstance(removed,
+            #                                       datetime) else removed
+            #added = dt2ts(added) if isinstance(added, datetime) else added
             last_doc = batch_updates.pop()
             # check if this activity happened at the same time as the last one,
             # if it did then we need to group them together
