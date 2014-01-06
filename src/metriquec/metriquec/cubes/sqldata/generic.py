@@ -19,6 +19,8 @@ import traceback
 from metrique.core_api import HTTPClient
 from metriqueu.utils import batch_gen, ts2dt, dt2ts, utcnow
 
+DEFAULT_ENCODING = 'latin-1'
+
 
 class Generic(HTTPClient):
     '''
@@ -164,9 +166,9 @@ class Generic(HTTPClient):
                          'last_val_type': str(type(last_val)),
                          'when': str(ts2dt(when))}
                 if self.config.get('incon_log_type') == 'pretty':
-                    m = '{oid} {field}: {removed}-> {added} has {last_val}; '
-                    m += '({removed_type}-> {added_type} has {last_val_type})'
-                    m += ' ... on {when}'
+                    m = u'{oid} {field}: {removed}-> {added} has {last_val}; '
+                    m += u'({removed_type}-> {added_type} has {last_val_type})'
+                    m += u' ... on {when}'
                     self.logger.error(m.format(**incon))
                 else:
                     self.logger.error(json.dumps(incon, ensure_ascii=False))
@@ -303,10 +305,12 @@ class Generic(HTTPClient):
         for k, row in enumerate(rows):
             _row = []
             for column in row:
+                encoding = self.get_property('encoding',
+                                             default=DEFAULT_ENCODING)
                 if type(column) is buffer:
                     # unwrap/convert the aggregated string 'buffer'
                     # objects to string
-                    column = unicode(str(column), 'latin-1')
+                    column = unicode(str(column), encoding)
                     column = column.replace('"', '').strip()
                     if not column:
                         column = None
@@ -314,7 +318,7 @@ class Generic(HTTPClient):
                         column = column.split('\n')
                 else:
                     if isinstance(column, basestring):
-                        column = unicode(column.decode('latin-1'))
+                        column = unicode(column.decode(encoding))
                 _row.append(column)
             rows[k] = _row
 
