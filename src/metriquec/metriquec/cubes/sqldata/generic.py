@@ -663,10 +663,7 @@ class Generic(HTTPClient):
             column = self._normalize_container(column, field)
             column = self._convert(column, field)
             column = self._type(column, field)
-            if not column:
-                obj.update({field: None})
-            else:
-                obj.update({field: column})
+            obj.update({field: column})
         return obj
 
     def __row_iter(self, rows):
