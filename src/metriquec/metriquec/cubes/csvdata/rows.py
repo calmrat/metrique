@@ -30,11 +30,11 @@ class Rows(pyclient):
         objects = objects.T.to_dict().values()
 
         # set uri property for all objects
-        objects = self.set_column(objects, 'uri', uri)
+        objects = self.set_column(objects, 'uri', uri, static=True)
 
         if _start:
             # set _start based on column values if specified
-            objects = self.set_column(objects, '_start', _start)
+            objects = self.set_column(objects, '_start', _start, static=True)
 
         if not _oid:
             # map to row index count by default
@@ -67,15 +67,17 @@ class Rows(pyclient):
             path = os.path.expanduser(path)
         return path
 
-    def set_column(self, objects, key, value):
+    def set_column(self, objects, key, value, static=False):
         '''
         Save an additional column/field to all objects in memory
         '''
         if type(value) is type or hasattr(value, '__call__'):
             # class or function; use the resulting object after init/exec
             [o.update({key: value(o)}) for o in objects]
-        else:
+        elif static:
             [o.update({key: value}) for o in objects]
+        else:
+            [o.update({key: o[value]}) for o in objects]
         return objects
 
 
