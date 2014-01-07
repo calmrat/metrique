@@ -26,7 +26,7 @@ __irequires__ = [
     'metriqueu>=%s' % __version__,
     'pandas==0.12.0',
     'plotrique>=%s' % __version__,
-    'requests==1.2.3',
+    'requests==2.0.1',
 ]
 pip_src = 'https://pypi.python.org/packages/source'
 __deplinks__ = []
