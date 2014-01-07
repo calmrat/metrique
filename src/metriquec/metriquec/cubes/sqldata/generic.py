@@ -165,13 +165,13 @@ class Generic(HTTPClient):
                          'last_val': last_val,
                          'last_val_type': str(type(last_val)),
                          'when': str(ts2dt(when))}
-                if self.config.get('incon_log_type') == 'pretty':
+                if self.config.get('incon_log_type') == 'json':
+                    self.logger.error(json.dumps(incon, ensure_ascii=False))
+                else:
                     m = u'{oid} {field}: {removed}-> {added} has {last_val}; '
                     m += u'({removed_type}-> {added_type} has {last_val_type})'
                     m += u' ... on {when}'
                     self.logger.error(m.format(**incon))
-                else:
-                    self.logger.error(json.dumps(incon, ensure_ascii=False))
                 new_doc.setdefault('_corrupted', {})
                 new_doc['_corrupted'][field] = added
             # Add the objects to the batch
