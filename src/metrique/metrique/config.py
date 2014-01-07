@@ -74,7 +74,7 @@ class Config(JSONConf):
             'logfile': 'metrique.log',
             'log2file': True,
             'logstdout': True,
-            'max_workers': multiprocessing.cpu_count() * 3,
+            'max_workers': multiprocessing.cpu_count(),
             'password': None,
             'port': 5420,
             'retries': 1,
