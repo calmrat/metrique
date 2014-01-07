@@ -52,11 +52,6 @@ def test_api():
         result = _cube.extract()
         assert result
 
-        assert _cube.save_hdf5()
-        # journal should have been created
-        #journal_path = '~/.metrique/hdf5/%s__%s.hd5' % (username, _cube.name)
-        #assert os.path.exists(os.path.expanduser(journal_path))
-
         # we should get back some results
         df = _cube.find(fields='~', date='~')
         assert df

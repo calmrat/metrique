@@ -15,24 +15,18 @@ __scripts__ = [
     'bin/metrique-setup',
 ]
 __requires__ = [
-    'cython (==0.19.2)',
     'gnupg (==1.2.3)',
     'metriqueu (>=%s)' % __version__,
-    'numexpr (==2.2.2)',
     'pandas (==0.12.0)',
     'plotrique (>=%s)' % __version__,
     'requests (==2.0.1)',
-    'tables (==3.0.0)',
 ]
 __irequires__ = [
-    'cython==0.19.2',
     'gnupg==1.2.3',
     'metriqueu>=%s' % __version__,
-    'numexpr==2.2.2',
     'pandas==0.12.0',
     'plotrique>=%s' % __version__,
     'requests==1.2.3',
-    'tables==3.0.0',
 ]
 pip_src = 'https://pypi.python.org/packages/source'
 __deplinks__ = []

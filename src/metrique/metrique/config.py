@@ -29,11 +29,10 @@ CONFIG_DIR = os.path.join(USER_DIR, 'etc')
 LOG_DIR = os.path.join(USER_DIR, 'logs')
 TMP_DIR = os.path.join(USER_DIR, 'tmp')
 GNUPG_DIR = os.path.expanduser('~/.gnupg')
-HDF5_DIR = os.path.join(USER_DIR, 'hdf5')
 COOKIEJAR = os.path.join(USER_DIR, '.cookiejar')
 DEFAULT_CONFIG = os.path.join(CONFIG_DIR, 'metrique')
 
-for path in [USER_DIR, CONFIG_DIR, LOG_DIR, TMP_DIR, HDF5_DIR]:
+for path in [USER_DIR, CONFIG_DIR, LOG_DIR, TMP_DIR]:
     if not os.path.exists(path):
         os.makedirs(path)
 
@@ -71,7 +70,6 @@ class Config(JSONConf):
             'gnupg_dir': GNUPG_DIR,
             'gnupg_fingerprint': None,
             'host': '127.0.0.1',
-            'hdf5_dir': HDF5_DIR,
             'logdir': LOG_DIR,
             'logfile': 'metrique.log',
             'log2file': True,

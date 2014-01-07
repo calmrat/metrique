@@ -40,10 +40,11 @@ Quick Install (auto-deploy -> virtenv)
 The examples given below use yum and assume fedora rpm package names::
 
     # prerequisite *os* packages
-    sudo yum install python python-devel python-setuptools
+    sudo yum install python python-devel python-setuptools python-pip
     sudo yum install git gcc gcc-c++ gcc-gfortran
-    sudo yum install hdf5-devel # apt-get: libhdf5-serial-dev
+    sudo yum install freetype-devel  # matplotlib dep
 
+    sudo pip install virtualenv
 
     # get the sources
     git clone https://github.com/drpoovilleorg/metrique.git

@@ -13,11 +13,6 @@ Install
 
 **Make sure you have read the `General Install Guide <https://github.com/drpoovilleorg/metrique/tree/master/README.rst>`_.**
 
-Install hdf5 *OS* dependencies::
-
-    sudo yum install hdf5-devel  # Fedora
-    # sudo apt-get install libhdf5-serial-dev  # Ubuntu
-
 Install metrique::
 
     pip install metrique

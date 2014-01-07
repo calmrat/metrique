@@ -171,14 +171,6 @@ def _save_default(self, objects, start_time, owner, cube):
     return saved
 
 
-def _save_hdf5(self, hdf5, start_time, owner, cube):
-    # convert the hdf5 form to list of dicts
-    # thanks goyo
-    objects = hdf5['objects'].T.to_dict().values()
-    self.logger.debug("... expanded to %s objects" % len(objects))
-    return _save_default(self, objects, start_time, owner, cube)
-
-
 def save(self, objects=None, cube=None, owner=None, start_time=None):
     '''
     Save a list of objects the given metrique.cube.

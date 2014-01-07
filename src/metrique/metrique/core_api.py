@@ -259,10 +259,6 @@ class BaseClient(BaseCube):
         # set name if passed in, but don't overwrite default if not
         self.name = name or self.name or utc_str
 
-        self.hdf5_path = os.path.join(self.config.hdf5_dir, self.name + '.hd5')
-
-        # a path to 'journal' file, hdf5 or a dataframe or list of dicts
-        # set objects if passed in, but don't overwrite default if not
         self.objects = BaseCube(name=self.name, objects=objects)
 
         self.config.logdir = os.path.expanduser(self.config.logdir)
@@ -299,40 +295,15 @@ class BaseClient(BaseCube):
             return self.load_csv(path, **kwargs)
         elif filetype in ['json']:
             return self.load_json(path, **kwargs)
-        elif filetype in ['hd5']:
-            return self.load_hdf5(path, **kwargs)
         else:
             raise TypeError("Invalid filetype: %s" % filetype)
 
     def load_csv(self, path, **kwargs):
-        # load the file into hdf5, according to filetype
+        # load the file according to filetype
         return pd.read_csv(path, **kwargs)
 
     def load_json(self, path, **kwargs):
         return pd.read_json(path, **kwargs)
-
-    def load_hdf5(self, path=None, **kwargs):
-        if not path:
-            path = os.path.expanduser('~/.metrique/hdf5')
-            path = os.path.join(path, self.name + '.hd5')
-        return pd.read_hdf(path, 'objects', **kwargs)
-
-    def save_hdf5(self, append=True):
-        store = None
-        try:
-            store = pd.HDFStore(self.hdf5_path, complevel=9)
-            if store and append:
-                assert isinstance(store['objects'], pd.DataFrame)
-                # append the self.df to what's in store and save
-                store.put('objects', pd.concat((store['objects'], self.df)))
-            else:
-                # WARNING: Overwrites data previous in the hdf5
-                store.put('objects', self.df)
-        finally:
-            if store:
-                store.flush()
-                store.close()
-        return True
 
 #################### misc #######################
     def debug_set(self, level=None, logstdout=None, logfile=None):
