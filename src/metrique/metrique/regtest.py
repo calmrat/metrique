@@ -22,12 +22,12 @@ class RegTest(object):
             return
         mobjs = fetch_objects(self._client, oids)
         # build dictionary of the test objects by oid
-        d_objs = {oid: [] for oid in oids}
+        d_objs = dict([(oid, []) for oid in oids])
         for obj in objs:
             d_objs[obj['_oid']].append(obj)
             d_objs[obj['_oid']].sort(key=lambda o: o['_start'])
         # build dictionary of the metrique objects by oid
-        d_mobjs = {oid: [] for oid in oids}
+        d_mobjs = dict([(oid, []) for oid in oids])
         for obj in mobjs:
             d_mobjs[obj['_oid']].append(obj)
             d_mobjs[obj['_oid']].sort(key=lambda o: o['_start'])
