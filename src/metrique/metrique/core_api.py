@@ -48,6 +48,7 @@ import simplejson as json
 import urllib
 
 from metrique import query_api, user_api, cube_api
+from metrique import regtest as regression_test
 from metrique.config import Config
 from metrique.utils import json_encode, get_cube
 from metriqueu.utils import utcnow
@@ -419,6 +420,11 @@ class HTTPClient(BaseClient):
     query_distinct = distinct = query_api.distinct
     query_sample = sample = query_api.sample
     query_aggregate = aggregate = query_api.aggregate
+
+    regtest = regression_test.regtest
+    regtest_create = regression_test.regtest_create
+    regtest_remove = regression_test.regtest_remove
+    regtest_list = regression_test.regtest_list
 
     def __init__(self, cube=None, owner=None, **kwargs):
         super(HTTPClient, self).__init__(**kwargs)

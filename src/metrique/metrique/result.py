@@ -11,9 +11,6 @@ Object = specified by its _oid, one object can have multiple versions in the
     result object.
 '''
 
-import logging
-logger = logging.getLogger(__name__)
-
 from decorator import decorator
 from datetime import datetime, timedelta
 
