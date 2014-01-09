@@ -491,7 +491,8 @@ class HTTPClient(BaseClient):
 
     def extract(self, *args, **kwargs):
         self.get_objects(*args, **kwargs)  # default: stores into self.objects
-        return self.cube_save()  # default: saves from self.objects
+        self.cube_save()  # default: saves from self.objects
+        return
 
     def get_cmd(self, owner, cube, api_name=None):
         '''

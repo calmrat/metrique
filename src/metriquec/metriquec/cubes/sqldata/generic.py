@@ -99,7 +99,8 @@ class Generic(HTTPClient):
                 result = self._activity_import(oids=batch, cube=cube,
                                                owner=owner)
                 saved.extend(result)
-        return saved
+        self.result = saved
+        return
 
     def _activity_import(self, oids, cube, owner):
         self.logger.debug('Getting Objects + Activity History')

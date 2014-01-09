@@ -192,7 +192,8 @@ def save(self, objects=None, cube=None, owner=None, start_time=None):
     # support only list of dicts
     saved = _save_default(self, objects, start_time, owner, cube)
     self.logger.info("... Saved %s NEW docs" % len(saved))
-    return sorted(saved)
+    self.result = saved
+    return
 
 
 def rename(self, new_name, cube=None, owner=None):
