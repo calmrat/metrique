@@ -98,9 +98,12 @@ class mongodb_config(JSONConf):
             'db_timeline': 'timeline',
             'collection_cube_profile': 'cube_profile',
             'collection_user_profile': 'user_profile',
+            'fsync': False,
             'host': '127.0.0.1',
+            'journal': True,
             'port': 27017,
             'mongoexport': '/usr/bin/mongoexport',
+            'tz_aware': True,
             'ssl': False,
             'ssl_certificate': SSL_CERT_FILE,
             'ssl_certificate_key': SSL_KEY_FILE,
@@ -117,7 +120,7 @@ class mongodb_config(JSONConf):
                            ssl=self.ssl,
                            ssl_certfile=self.ssl_certificate,
                            ssl_keyfile=self.ssl_certificate_key,
-                           write_concern=self.write_concern)
+                           tz_aware=self.tz_aware)
 
     @property
     def db_metrique_admin(self):
@@ -128,7 +131,10 @@ class mongodb_config(JSONConf):
                            ssl=self.ssl,
                            ssl_certfile=self.ssl_certificate,
                            ssl_keyfile=self.ssl_certificate_key,
-                           write_concern=self.write_concern)
+                           write_concern=self.write_concern,
+                           fsync=self.fsync,
+                           journal=self.journal,
+                           tz_aware=self.tz_aware)
 
     @property
     def db_timeline_admin(self):
@@ -139,7 +145,10 @@ class mongodb_config(JSONConf):
                            ssl=self.ssl,
                            ssl_certfile=self.ssl_certificate,
                            ssl_keyfile=self.ssl_certificate_key,
-                           write_concern=self.write_concern)
+                           write_concern=self.write_concern,
+                           fsync=self.fsync,
+                           journal=self.journal,
+                           tz_aware=self.tz_aware)
 
     @property
     def db_timeline_data(self):
@@ -150,7 +159,7 @@ class mongodb_config(JSONConf):
                            ssl=self.ssl,
                            ssl_certfile=self.ssl_certificate,
                            ssl_keyfile=self.ssl_certificate_key,
-                           write_concern=self.write_concern)
+                           tz_aware=self.tz_aware)
 
     @property
     def c_user_profile_data(self):

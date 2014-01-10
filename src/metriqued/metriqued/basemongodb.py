@@ -14,8 +14,9 @@ from pymongo.errors import ConnectionFailure
 
 class BaseMongoDB(object):
     def __init__(self, db, host, user=None, password=None, auth=False,
-                 port=None, ssl=None, ssl_keyfile=None,
-                 ssl_certfile=None, write_concern=0):
+                 port=None, ssl=None, ssl_keyfile=None, tz_aware=True,
+                 ssl_certfile=None, write_concern=1, journal=False,
+                 fsync=False):
 
         self.auth = auth
         self.host = host
@@ -28,6 +29,9 @@ class BaseMongoDB(object):
         self.ssl_certfile = os.path.expanduser(ssl_certfile)
         self.port = port
         self.write_concern = write_concern
+        self.fsync = fsync
+        self.journal = journal
+        self.tz_aware = tz_aware
 
     def _auth_db(self):
         '''
@@ -58,17 +62,20 @@ class BaseMongoDB(object):
 
     def _load_mongo_client(self, **kwargs):
         self._proxy = MongoClient(self.host, self.port,
-                                  tz_aware=True,
+                                  tz_aware=self.tz_aware,
                                   w=self.write_concern,
+                                  j=self.journal,
+                                  fsync=self.fsync,
                                   **kwargs)
 
     def _load_mongo_connection(self, **kwargs):
-            self._proxy = Connection(self.host, self.port,
-                                     ssl=self.ssl,
+            self._proxy = Connection(self.host, self.port, ssl=self.ssl,
                                      ssl_keyfile=self.ssl_keyfile,
                                      ssl_certfile=self.ssl_certfile,
-                                     tz_aware=True,
+                                     tz_aware=self.tz_aware,
                                      w=self.write_concern,
+                                     j=self.journal,
+                                     fsync=self.fsync,
                                      **kwargs)
 
     def _load_db_proxy(self):
