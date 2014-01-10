@@ -40,6 +40,7 @@ USER_DIR = os.path.expanduser('~/.metrique')
 TRASH_DIR = os.path.expanduser('~/.metrique/trash')
 LOGS_DIR = os.path.expanduser('~/.metrique/logs')
 ETC_DIR = os.path.expanduser('~/.metrique/etc')
+BACKUP_DIR = os.path.expanduser('~/.metrique/backup')
 
 # set cache dir so pip doesn't have to keep downloading over and over
 PIP_CACHE = '~/.pip/download-cache'
@@ -47,6 +48,8 @@ PIP_ACCEL = '~/.pip-accel'
 os.environ['PIP_DOWNLOAD_CACHE'] = PIP_CACHE
 os.environ['PIP_ACCEL_CACHE'] = PIP_ACCEL
 PIP_EGGS = os.path.join(USER_DIR, '.python-eggs')
+
+NOW = datetime.datetime.utcnow().strftime('%FT%H:%M:%S')
 
 
 def get_pid(pid_file):
@@ -68,15 +71,17 @@ def remove(path):
         os.remove(path)
 
 
-def call(cmd, cwd=None):
+def call(cmd, cwd=None, stdout=True):
     if not cwd:
         cwd = os.getcwd()
     cmd = shlex.split(cmd.strip())
+    logger.info("[%s] Running `%s` ..." % (cwd, cmd))
     try:
-        call_subprocess(cmd, cwd=cwd, show_stdout=True)
+        call_subprocess(cmd, cwd=cwd, show_stdout=stdout)
     except:
         sys.stderr.write(str(cmd))
         raise
+    logger.info(" ... Done!")
 
 
 def adjust_options(options, args):
@@ -100,7 +105,7 @@ def celeryd(args):
     activate(args)
     if args.loop:
         result = _celeryd_loop(args)
-    else: 
+    else:
         result = _celeryd_run(args)
     return result
 
@@ -165,12 +170,44 @@ def mongodb(args):
         remove(lock_file)
         remove(pid_file)
     elif args.command == 'trash':
-        now = datetime.datetime.now().isoformat()
-        dest = os.path.join(TRASH_DIR, 'mongodb-%s' % now)
+        dest = os.path.join(TRASH_DIR, 'mongodb-%s' % NOW)
         shutil.move(db_dir, dest)
         makedirs(db_dir)
     else:
         raise ValueError("unknown command %s" % args.command)
+
+
+def mongodb_backup(args):
+    from metriqued.config import mongodb_config
+    import socket
+
+    config = mongodb_config(args.config_file)
+
+    out_dir = args.out_dir or BACKUP_DIR
+    out_dir = os.path.expanduser(out_dir)
+    makedirs(out_dir)
+
+    hostname = socket.gethostname()
+    saveas = "%s__%s" % (hostname, NOW)
+    out = os.path.join(out_dir, saveas)
+
+    host = config.host
+    port = config.port
+    p = config.admin_password
+    password = '--password %s' % p if p else ''
+    username = '--username %s' % config.admin_user if password else ''
+    authdb = '--authenticationDatabase admin' if password else ''
+    ssl = '--ssl' if config.ssl else ''
+
+    cmd = ('mongodump', '--host %s' % host, '--port %s' % port,
+           ssl, username, password, '--out %s' % out, authdb)
+    cmd = ' '.join(cmd).replace('  ', ' ')
+    call(cmd)
+
+    if args.compress:
+        tgz_file = out + '.tar.gz'
+        call('tar cvfz %s %s' % (tgz_file, out), stdout=False)
+        shutil.rmtree(out)
 
 
 def clean(args):
@@ -407,7 +444,7 @@ def main():
     # create default dirs in advance
     [makedirs(p) for p in (USER_DIR, PIP_CACHE, PIP_ACCEL,
                            PIP_EGGS, TRASH_DIR, LOGS_DIR,
-                           ETC_DIR)]
+                           ETC_DIR, BACKUP_DIR)]
 
     # make sure the the default user python eggs dir is secure
     os.chmod(PIP_EGGS, 0700)
@@ -416,6 +453,7 @@ def main():
 
     _sub = cli.add_subparsers(description='action')
 
+    # Automated metrique deployment
     _deploy = _sub.add_parser('deploy')
     _deploy.add_argument('virtenv', type=str, nargs='?')
     _deploy.add_argument(
@@ -431,32 +469,40 @@ def main():
         '--matplotlib', action='store_true', help='install matplotlib')
     _deploy.set_defaults(func=deploy)
 
+    # PIP standard build
     _build = _sub.add_parser('build')
     _build.set_defaults(func=build)
 
+    # PIP sdist build
     _sdist = _sub.add_parser('sdist')
     _sdist.add_argument('-u', '--upload', action='store_true')
     _sdist.add_argument('-b', '--bump-r', action='store_true')
     _sdist.set_defaults(func=sdist)
 
+    # PIP `develop` deployment
     _develop = _sub.add_parser('develop')
     _develop.set_defaults(func=develop)
 
+    # PIP pkg register
     _register = _sub.add_parser('register')
     _register.set_defaults(func=register)
 
+    # Bump metrique setup.py version/release
     _bump = _sub.add_parser('bump')
     _bump.add_argument('-k', '--bump-kind', choices=__bumps__)
     _bump.add_argument('-r', '--reset', choices=__bumps__)
     _bump.add_argument('-ga', action='store_true', dest='ga')
     _bump.set_defaults(func=bump)
 
+    # PIP status
     _status = _sub.add_parser('status')
     _status.set_defaults(func=status)
 
+    # Clean-up routines
     _clean = _sub.add_parser('clean')
     _clean.set_defaults(func=clean)
 
+    # MongoDB Server
     _mongodb = _sub.add_parser('mongodb')
     _mongodb.add_argument('command',
                           choices=['start', 'stop', 'restart',
@@ -471,6 +517,14 @@ def main():
                           default='~/.metrique/pids')
     _mongodb.set_defaults(func=mongodb)
 
+    # MongoDB Backup
+    _mongodb_backup = _sub.add_parser('mongodb_backup')
+    _mongodb_backup.add_argument('-c', '--config-file', type=str)
+    _mongodb_backup.add_argument('-o', '--out-dir', type=str)
+    _mongodb_backup.add_argument('-z', '--compress', action='store_true')
+    _mongodb_backup.set_defaults(func=mongodb_backup)
+
+    # nginx Server
     _nginx = _sub.add_parser('nginx')
     _nginx.add_argument('command',
                         choices=['start', 'stop', 'reload',
@@ -478,10 +532,12 @@ def main():
     _nginx.add_argument('config_file', type=str)
     _nginx.set_defaults(func=nginx)
 
+    # metriqued Server
     _metriqued = _sub.add_parser('metriqued')
     _metriqued.add_argument('command', type=str)
     _metriqued.set_defaults(func=metriqued)
 
+    # celery Server
     _celeryd = _sub.add_parser('celeryd')
     _celeryd.add_argument('command',
                           choices=['start', 'stop', 'restart'])
