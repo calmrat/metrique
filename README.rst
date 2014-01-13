@@ -44,16 +44,37 @@ The examples given below use yum and assume fedora rpm package names::
     sudo yum install git gcc gcc-c++ gcc-gfortran
     sudo yum install freetype-devel  # matplotlib dep
 
-    sudo pip install virtualenv
+    # metriqued - mongodb expected to be running
+    sudo yum install mongodb krb5-devel
 
-    # get the sources
+    # metriqued - nginx is optional
+    sudo yum install nginx 
+
+    # additional python global dependencies, from pip
+    sudo pip install pip-accel  # faster cached pip installed
+
+    # make sure our core package managers are up2date
+    sudo pip-accel install -U distribute setuptools
+
+    # our installation directory is always a python virtualenv
+    sudo pip-accel install virtualenv
+
+
+    # get the metrique sources
     git clone https://github.com/drpoovilleorg/metrique.git
     cd metrique
 
     # deploy metrique master branch into a virtual environment
-    # including dependencies
+    # including dependencies. WARNING: This takes 10-15 minutes!
     ./manage.py deploy ~/virtenv-metrique --pandas --matplotlib --ipython
+
 
     # activate the virtual environment
     source ~/virtenv-metrique/bin/activate
 
+
+    # optionally, start the metriqued server
+    ./manage.py metriqued start
+
+
+    # launch ipython, connect to a metriqued instance and start mining!
