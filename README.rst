@@ -44,8 +44,8 @@ The examples given below use yum and assume fedora rpm package names::
     sudo yum install git gcc gcc-c++ gcc-gfortran
     sudo yum install freetype-devel libpng-devel # matplotlib deps
 
-    # metriqued - mongodb expected to be running
-    sudo yum install mongodb krb5-devel
+    # metriqued - mongodb expected to be running; kerberos is optional
+    sudo yum install mongodb mongodb-server krb5-devel
 
     # metriqued - nginx is optional
     sudo yum install nginx 
