@@ -113,11 +113,10 @@ DEFAULT_MONGODB_JSON = '''
     "admin_password": "",
     "data_password": "",
     "host": "127.0.0.1",
-    "journal": True,
+    "journal": true,
     "port": 27017,
     "ssl": true,
     "ssl_certificate": "%s",
-    "ssl_certificate_key": "",
     "write_concern": 1
 }
 ''' % SSL_PEM
@@ -476,7 +475,6 @@ def deploy(args):
     # path resolution issues; fails due to being unable to find
     # the python headers in the virtenv for some reason.
     call('%s install -U numpy pandas' % pip)
-    call('%s install -U numexpr cython' % pip)
 
     # optional dependencies; highly recommended! but slow to
     # install if we're not testing
@@ -484,6 +482,8 @@ def deploy(args):
         call('%s install -U matplotlib' % pip)
     if args.ipython:
         call('%s install -U ipython' % pip)
+    if args.extras:
+        call('%s install -U numexpr cython' % pip)
 
     cmd = 'install'
     no_pre = getattr(args, 'no_pre', False)
@@ -619,6 +619,8 @@ def main():
         '--test', action='store_true', help='run tests after deployment')
     _deploy.add_argument(
         '--ipython', action='store_true', help='install ipython')
+    _deploy.add_argument(
+        '--extras', action='store_true', help='install numexpr, cython, ...')
     _deploy.add_argument(
         '--matplotlib', action='store_true', help='install matplotlib')
     _deploy.set_defaults(func=deploy)
