@@ -152,35 +152,6 @@ class JSONConf(MutableMapping):
     def setdefault(self, key, value):
         self.defaults[key] = value
 
-    def setup_basic(self, option, prompter):
-        '''
-            Helper-Method for getting user input with prompt text
-            and saving the result
-        '''
-        x_opt = self.config.get(option)
-        print '\n(Press ENTER to use current: %s)' % x_opt
-        n_opt = prompter()
-        if n_opt:
-            self.config[option] = n_opt
-        return n_opt
-
     def values(self):
         return self.config.values()
 
-    @staticmethod
-    def yes_no_prompt(question, default='yes'):
-        ''' Helper-Function for getting Y/N response from user '''
-        # FIXME: make this as regex...
-        valid_yes = ["Y", "y", "Yes", "yes", "YES", "ye", "Ye", "YE"]
-        valid_no = ["N", "n", "No", "no", "NO"]
-        if default == 'yes':
-            valid_yes.append('')
-        else:
-            valid_no.append('')
-        valid = valid_yes + valid_no
-        prompt = '[Y/n]' if (default == 'yes') else '[y/N]'
-        ans = raw_input('%s %s ' % (question, prompt))
-        while ans not in valid:
-            print 'Invalid selection.'
-            ans = raw_input("%s " % prompt)
-        return ans in valid_yes

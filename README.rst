@@ -1,11 +1,11 @@
 .. image:: src/metriqued/metriqued/static/img/metrique_logo.png
-   :target: https://github.com/drpoovilleorg/metrique
+   :target: https://github.com/kejbaly2/metrique
 
 Metrique
 ========
 
-.. image:: https://travis-ci.org/drpoovilleorg/metrique.png
-   :target: https://travis-ci.org/drpoovilleorg/metrique
+.. image:: https://travis-ci.org/kejbaly2/metrique.png
+   :target: https://travis-ci.org/kejbaly2/metrique
 
 .. image:: https://badge.fury.io/py/metrique.png
     :target: http://badge.fury.io/py/metrique
@@ -13,11 +13,11 @@ Metrique
 .. image:: https://pypip.in/d/metrique/badge.png
    :target: https://crate.io/packages/metrique
 
-.. image:: https://d2weczhvl823v0.cloudfront.net/drpoovilleorg/metrique/trend.png
-   :target: https://d2weczhvl823v0.cloudfront.net/drpoovilleorg/metrique
+.. image:: https://d2weczhvl823v0.cloudfront.net/kejbaly2/metrique/trend.png
+   :target: https://d2weczhvl823v0.cloudfront.net/kejbaly2/metrique
 
-.. image:: https://coveralls.io/repos/drpoovilleorg/metrique/badge.png 
-   :target: https://coveralls.io/r/drpoovilleorg/metrique
+.. image:: https://coveralls.io/repos/kejbaly2/metrique/badge.png 
+   :target: https://coveralls.io/r/kejbaly2/metrique
 
 Python/MongoDB Data Warehouse and Data Glue
 
@@ -31,7 +31,7 @@ with the scientific python computing stack.
 
 **Author:** "Chris Ward" <cward@redhat.com>
 
-**Sources:** https://github.com/drpoovilleorg/metrique
+**Sources:** https://github.com/kejbaly2/metrique
 
 
 Quick Install (auto-deploy -> virtenv)
@@ -61,7 +61,7 @@ The examples given below use yum and assume fedora rpm package names::
 
 
     # get the metrique sources
-    git clone https://github.com/drpoovilleorg/metrique.git
+    git clone https://github.com/kejbaly2/metrique.git
     cd metrique
 
     # deploy metrique master branch into a virtual environment

@@ -13,7 +13,6 @@ __provides__ = ['metriqued']
 __datafiles__ = []
 __desc__ = 'Python/MongoDB Information Platform - Server'
 __scripts__ = [
-    'bin/metriqued-setup',
     'bin/metriqued'
 ]
 __requires__ = [

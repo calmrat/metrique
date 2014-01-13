@@ -74,7 +74,6 @@ class TornadoHTTPServer(object):
         self.logger.debug('======= metrique =======')
         self.logger.debug(' Host: %s' % self.uri)
         self.logger.debug('  SSL: %s' % ssl)
-        self.logger.debug('Async: %s' % self.mconf['async'])
         self.logger.debug(' Conf: %s' % self.mconf.config_file)
         self.logger.debug('======= mongodb ========')
         self.logger.debug(' Host: %s' % self.dbconf.host)

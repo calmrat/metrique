@@ -8,19 +8,20 @@ from metriqueu.jsonconf import JSONConf
 from metriqued.basemongodb import BaseMongoDB
 
 USER_DIR = os.path.expanduser('~/.metrique')
-CONFIG_DIR = os.path.join(USER_DIR, 'etc')
+ETC_DIR = os.path.join(USER_DIR, 'etc')
 PID_DIR = os.path.join(USER_DIR, 'pids')
 LOG_DIR = os.path.join(USER_DIR, 'logs')
 GNUPG_DIR = os.path.join(USER_DIR, 'gnupg')
 
-DEFAULT_CONFIG = os.path.join(CONFIG_DIR, 'metriqued')
+DEFAULT_CONFIG = os.path.join(ETC_DIR, 'metriqued')
 
-for path in [USER_DIR, CONFIG_DIR, LOG_DIR, PID_DIR]:
+for path in [USER_DIR, ETC_DIR, LOG_DIR, PID_DIR]:
     if not os.path.exists(path):
         os.makedirs(path)
 
-SSL_CERT_FILE = os.path.join(CONFIG_DIR, 'cert.pem')
-SSL_KEY_FILE = os.path.join(CONFIG_DIR, 'pkey.pem')
+SSL_CERT = os.path.join(ETC_DIR, 'metrique.cert')
+SSL_KEY = os.path.join(ETC_DIR, 'metrique.key')
+SSL_PEM = os.path.join(ETC_DIR, 'metrique.pem')
 
 here = os.path.dirname(os.path.abspath(__file__))
 STATIC_PATH = os.path.join(here, 'static/')
@@ -30,10 +31,9 @@ class metriqued_config(JSONConf):
     def __init__(self, config_file=None):
         self.default_config = DEFAULT_CONFIG
         self.defaults = {
-            'async': True,
             'autoreload': False,
             'cookie_secret': '____UPDATE_COOKIE_SECRET_CONFIG____',
-            'configdir':  CONFIG_DIR,
+            'configdir':  ETC_DIR,
             'user_cube_quota': 3,
             'debug': None,
             'gnupg_dir': GNUPG_DIR,
@@ -46,16 +46,15 @@ class metriqued_config(JSONConf):
             'log2file': True,
             'logstdout': False,
             'login_url': '/login',
-            'max_processes': 0,
             'mongodb_config': None,
             'piddir': PID_DIR,
             'port': 5420,
             'realm': 'metrique',
             'ssl': False,
-            'ssl_certificate': SSL_CERT_FILE,
-            'ssl_certificate_key': SSL_KEY_FILE,
+            'ssl_certificate': SSL_CERT,
+            'ssl_certificate_key': SSL_KEY,
             'static_path': STATIC_PATH,
-            'superusers': ['admin'],
+            'superusers': [],
             'userdir': USER_DIR,
             'xsrf_cookies': False,
         }
@@ -87,7 +86,7 @@ class metriqued_config(JSONConf):
 
 class mongodb_config(JSONConf):
     def __init__(self, config_file=None):
-        self.default_config = os.path.join(CONFIG_DIR, 'mongodb')
+        self.default_config = os.path.join(ETC_DIR, 'mongodb')
         self.defaults = {
             'auth': False,
             'admin_password': None,
@@ -104,9 +103,9 @@ class mongodb_config(JSONConf):
             'port': 27017,
             'mongoexport': '/usr/bin/mongoexport',
             'tz_aware': True,
-            'ssl': False,
-            'ssl_certificate': SSL_CERT_FILE,
-            'ssl_certificate_key': SSL_KEY_FILE,
+            'ssl': True,
+            'ssl_certificate': SSL_PEM,
+            'ssl_certificate_key': None,
             'write_concern': 1,
         }
         super(mongodb_config, self).__init__(config_file=config_file)

@@ -11,9 +11,7 @@ __nvr__ = '%s-%s' % (__version__, __release__)
 __pkgs__ = ['metrique']
 __provides__ = ['metrique']
 __desc__ = 'Metrique - Client Libraries'
-__scripts__ = [
-    'bin/metrique-setup',
-]
+__scripts__ = []
 __requires__ = [
     'gnupg (==1.2.3)',
     'metriqueu (>=%s)' % __version__,

@@ -8,6 +8,7 @@ CLI for deploying metrique
 
 import datetime
 from functools import partial
+import getpass
 import glob
 import importlib
 import os
@@ -36,13 +37,31 @@ RE_VERSION_Y = re.compile(r"__version__\s+=\s+[\"'](\d+.(\d+).\d+)[\"']")
 RE_VERSION_Z = re.compile(r"__version__\s+=\s+[\"'](\d+.\d+.(\d+))[\"']")
 RE_RELEASE = re.compile(r"__release__ = [\"']?((\d+)a?)[\"']?")
 
+HOSTNAME = socket.gethostname()
+
 CWD = os.getcwd()
 SRC_DIR = os.path.join(CWD, __src__)
 USER_DIR = os.path.expanduser('~/.metrique')
-TRASH_DIR = os.path.expanduser('~/.metrique/trash')
-LOGS_DIR = os.path.expanduser('~/.metrique/logs')
-ETC_DIR = os.path.expanduser('~/.metrique/etc')
-BACKUP_DIR = os.path.expanduser('~/.metrique/backup')
+TRASH_DIR = os.path.join(USER_DIR, 'trash')
+LOGS_DIR = os.path.join(USER_DIR, 'logs')
+ETC_DIR = os.path.join(USER_DIR, 'etc')
+PID_DIR = os.path.join(USER_DIR, 'pids')
+BACKUP_DIR = os.path.join(USER_DIR, 'backup')
+MONGODB_DIR = os.path.join(USER_DIR, 'mongodb')
+
+FIRSTBOOT_PATH = os.path.join(USER_DIR, '.firstboot')
+
+SSL_CERT = os.path.join(ETC_DIR, 'metrique.crt')
+SSL_KEY = os.path.join(ETC_DIR, 'metrique.key')
+SSL_PEM = os.path.join(ETC_DIR, 'metrique.pem')
+
+METRIQUE_JSON = os.path.join(ETC_DIR, 'metrique.json')
+METRIQUED_JSON = os.path.join(ETC_DIR, 'metriqued.json')
+MONGODB_JSON = os.path.join(ETC_DIR, 'mongodb.json')
+
+MONGODB_CONF = os.path.join(ETC_DIR, 'mongodb.conf')
+MONGODB_PID = os.path.join(PID_DIR, 'mongodb.pid')
+MONGODB_LOG = os.path.join(LOGS_DIR, 'mongodb.log')
 
 # set cache dir so pip doesn't have to keep downloading over and over
 PIP_CACHE = '~/.pip/download-cache'
@@ -51,7 +70,72 @@ os.environ['PIP_DOWNLOAD_CACHE'] = PIP_CACHE
 os.environ['PIP_ACCEL_CACHE'] = PIP_ACCEL
 PIP_EGGS = os.path.join(USER_DIR, '.python-eggs')
 
+USER = getpass.getuser()
 NOW = datetime.datetime.utcnow().strftime('%FT%H:%M:%S')
+
+DEFAULT_METRIQUE_JSON = '''
+{
+    "batch_size": 5000,
+    "debug": true,
+    "host": "127.0.0.1",
+    "log2file": true,
+    "logstdout": false,
+    "password": "__UPDATE_PASSWORD",
+    "port": 5420,
+    "sql_batch_size": 1000,
+    "ssl": true,
+    "ssl_verify": false
+}
+'''
+DEFAULT_METRIQUE_JSON = DEFAULT_METRIQUE_JSON.strip()
+
+DEFAULT_METRIQUED_JSON = '''
+{
+    "cookie_secret": "____UPDATE_COOKIE_SECRET____",
+    "debug": true,
+    "host": "127.0.0.1",
+    "krb_auth": false,
+    "log2file": true,
+    "logstdout": false,
+    "port": 5420,
+    "realm": "metrique",
+    "ssl": true,
+    "ssl_certificate": "%s",
+    "ssl_certificate_key": "%s",
+    "superusers": ["%s"]
+}
+''' % (SSL_CERT, SSL_KEY, USER)
+DEFAULT_METRIQUED_JSON = DEFAULT_METRIQUED_JSON.strip()
+
+DEFAULT_MONGODB_JSON = '''
+{
+    "auth": false,
+    "admin_password": "",
+    "data_password": "",
+    "host": "127.0.0.1",
+    "journal": True,
+    "port": 27017,
+    "ssl": true,
+    "ssl_certificate": %s,
+    "ssl_certificate_key": "",
+    "write_concern": 1
+}
+''' % SSL_PEM
+DEFAULT_MONGODB_JSON = DEFAULT_MONGODB_JSON.strip()
+
+DEFAULT_MONGODB_CONF = '''
+#auth = true
+bind_ip = 127.0.0.1
+fork = true
+dbpath = %s
+pidfilepath = %s
+logpath = %s
+noauth = true
+nohttpinterface = true
+sslOnNormalPorts = true
+sslPEMKeyFile = %s
+''' % (MONGODB_DIR, MONGODB_PID, MONGODB_LOG, SSL_PEM)
+DEFAULT_MONGODB_CONF = DEFAULT_MONGODB_CONF.strip()
 
 
 def activate(args):
@@ -208,8 +292,7 @@ def mongodb_backup(args):
     makedirs(out_dir)
 
     prefix = 'mongodb'
-    hostname = socket.gethostname()
-    saveas = '__'.join((prefix, hostname, NOW))
+    saveas = '__'.join((prefix, HOSTNAME, NOW))
     out = os.path.join(out_dir, saveas)
 
     host = config.host
@@ -474,16 +557,52 @@ def status(path):
     call('pip show %s' % pkg)
 
 
-def main():
-    import argparse
+def ssl(args=None):
+    logger.info("Generating self-signed SSL certificate + key + combined pem")
+    call('openssl req -new -x509 -days 365 -nodes '
+         '-out %s -keyout %s -batch' % (SSL_CERT, SSL_KEY))
+    with open(SSL_PEM, 'w') as pem:
+        with open(SSL_CERT) as cert:
+            pem.write(''.join(cert.readlines()))
+        with open(SSL_KEY) as key:
+            pem.write(''.join(key.readlines()))
+
+
+def default_conf(path, template):
+    if os.path.exists(path):
+        path = '.'.join([path, 'default'])
+    with open(path, 'w') as f:
+        f.write(template)
+
+
+def firstboot(args=None):
+    if os.path.exists(FIRSTBOOT_PATH):
+        # skip if we have already run this before
+        return
 
     # create default dirs in advance
     [makedirs(p) for p in (USER_DIR, PIP_CACHE, PIP_ACCEL,
                            PIP_EGGS, TRASH_DIR, LOGS_DIR,
-                           ETC_DIR, BACKUP_DIR)]
+                           ETC_DIR, BACKUP_DIR, MONGODB_DIR)]
 
     # make sure the the default user python eggs dir is secure
     os.chmod(PIP_EGGS, 0700)
+
+    # generate self-signed ssl certs
+    ssl()
+
+    # install default configuration files
+    default_conf(METRIQUE_JSON, DEFAULT_METRIQUE_JSON)
+    default_conf(METRIQUED_JSON, DEFAULT_METRIQUED_JSON)
+    default_conf(MONGODB_JSON, DEFAULT_MONGODB_JSON)
+    default_conf(MONGODB_CONF, DEFAULT_MONGODB_CONF)
+
+    with open(FIRSTBOOT_PATH, 'w') as f:
+        f.write(NOW)
+
+
+def main():
+    import argparse
 
     cli = argparse.ArgumentParser(description='Metrique Manage CLI')
 
@@ -544,13 +663,13 @@ def main():
                           choices=['start', 'stop', 'restart',
                                    'clean', 'trash'])
     _mongodb.add_argument('-c', '--config-file', type=str,
-                          default='mongodb.conf')
+                          default=MONGODB_CONF)
     _mongodb.add_argument('-cd', '--config-dir', type=str,
-                          default='~/.metrique/etc')
+                          default=ETC_DIR)
     _mongodb.add_argument('-dd', '--db-dir', type=str,
-                          default='~/.metrique/mongodb')
+                          default=MONGODB_DIR)
     _mongodb.add_argument('-pd', '--pid-dir', type=str,
-                          default='~/.metrique/pids')
+                          default=PID_DIR)
     _mongodb.set_defaults(func=mongodb)
 
     # MongoDB Backup
@@ -588,8 +707,22 @@ def main():
     _celeryd.add_argument('-l', '--loop', action='store_true')
     _celeryd.set_defaults(func=celeryd)
 
+    # SSL creation
+    _ssl = _sub.add_parser('ssl')
+    _ssl.set_defaults(func=ssl)
+
+    # SSL creation
+    _firstboot = _sub.add_parser('firstboot')
+    _firstboot.set_defaults(func=firstboot)
+
     # parse argv
     args = cli.parse_args()
+
+    # make sure we have some basic defaults configured in the environment
+    if args.func is not firstboot:
+        firstboot(args)
+
+    # run command
     args.func(args)
 
 
