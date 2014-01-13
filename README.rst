@@ -42,7 +42,7 @@ The examples given below use yum and assume fedora rpm package names::
     # prerequisite *os* packages
     sudo yum install python python-devel python-setuptools python-pip
     sudo yum install git gcc gcc-c++ gcc-gfortran
-    sudo yum install freetype-devel  # matplotlib dep
+    sudo yum install freetype-devel libpng-devel # matplotlib deps
 
     # metriqued - mongodb expected to be running
     sudo yum install mongodb krb5-devel
