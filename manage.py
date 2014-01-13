@@ -225,15 +225,23 @@ def mongodb_backup(args):
     cmd = ' '.join(cmd).replace('  ', ' ')
     call(cmd)
 
-    if args.compress:
+    if args.compress or args.scp_export:
+        # compress if asked to or if we're going to export
         out_tgz = out + '.tar.gz'
         call('tar cvfz %s %s' % (out_tgz, out), stdout=False)
         shutil.rmtree(out)
 
-    mongodb_rotate(args, out_dir)
+    mongodb_clean(args, out_dir)
+
+    if args.scp_export:
+        user = args.scp_user
+        host = args.scp_host
+        out_dir = args.scp_out_dir
+        cmd = 'scp %s %s@%s:%s' % (out_tgz, user, host, out_dir)
+        call(cmd)
 
 
-def mongodb_rotate(args, path, prefix='mongodb'):
+def mongodb_clean(args, path, prefix='mongodb'):
     keep = args.keep if args.keep != 0 else 3
     if args.compress:
         path = os.path.join(path, '%s*.tar.gz' % prefix)
@@ -547,10 +555,14 @@ def main():
 
     # MongoDB Backup
     _mongodb_backup = _sub.add_parser('mongodb_backup')
-    _mongodb_backup.add_argument('-c', '--config-file', type=str)
-    _mongodb_backup.add_argument('-o', '--out-dir', type=str)
+    _mongodb_backup.add_argument('-c', '--config-file')
+    _mongodb_backup.add_argument('-o', '--out-dir')
     _mongodb_backup.add_argument('-z', '--compress', action='store_true')
     _mongodb_backup.add_argument('-k', '--keep', type=int, default=3)
+    _mongodb_backup.add_argument('-x', '--scp-export', action='store_true')
+    _mongodb_backup.add_argument('-H', '--scp-host')
+    _mongodb_backup.add_argument('-u', '--scp-user', default='backup')
+    _mongodb_backup.add_argument('-O', '--scp-out-dir', default='~/')
     _mongodb_backup.set_defaults(func=mongodb_backup)
 
     # nginx Server
