@@ -18,6 +18,11 @@ class BaseMongoDB(object):
                  ssl_certfile=None, write_concern=1, journal=False,
                  fsync=False):
 
+        if ssl_keyfile:
+            ssl_keyfile = os.path.expanduser(ssl_keyfile)
+        if ssl_certfile:
+            ssl_certfile = os.path.expanduser(ssl_certfile)
+
         self.auth = auth
         self.host = host
         self.user = user
@@ -25,8 +30,8 @@ class BaseMongoDB(object):
         self._db = db
 
         self.ssl = ssl
-        self.ssl_keyfile = os.path.expanduser(ssl_keyfile)
-        self.ssl_certfile = os.path.expanduser(ssl_certfile)
+        self.ssl_keyfile = ssl_keyfile
+        self.ssl_certfile = ssl_certfile
         self.port = port
         self.write_concern = write_concern
         self.fsync = fsync
@@ -69,9 +74,7 @@ class BaseMongoDB(object):
                                   **kwargs)
 
     def _load_mongo_connection(self, **kwargs):
-            self._proxy = Connection(self.host, self.port, ssl=self.ssl,
-                                     ssl_keyfile=self.ssl_keyfile,
-                                     ssl_certfile=self.ssl_certfile,
+            self._proxy = Connection(self.host, self.port,
                                      tz_aware=self.tz_aware,
                                      w=self.write_concern,
                                      j=self.journal,
@@ -82,9 +85,13 @@ class BaseMongoDB(object):
         if not hasattr(self, '_db_proxy'):
             kwargs = {}
             if self.ssl:
+                if self.ssl_keyfile:
+                    # include ssl keyfile only if its defined
+                    # otherwise, certfile must be crt+key pem combined
+                    kwargs.update({'ssl_keyfile': self.ssl_keyfile})
+
                 # include ssl options only if it's enabled
                 kwargs.update(dict(ssl=self.ssl,
-                                   ssl_keyfile=self.ssl_keyfile,
                                    ssl_certfile=self.ssl_certfile))
             try:
                 if mongo_client_support:
