@@ -116,7 +116,7 @@ DEFAULT_MONGODB_JSON = '''
     "journal": True,
     "port": 27017,
     "ssl": true,
-    "ssl_certificate": %s,
+    "ssl_certificate": "%s",
     "ssl_certificate_key": "",
     "write_concern": 1
 }
@@ -252,8 +252,7 @@ def mongodb(args):
     db_dir = makedirs(args.db_dir)
     lock_file = os.path.join(db_dir, 'mongod.lock')
 
-    config_dir = makedirs(args.config_dir)
-    config_file = os.path.join(config_dir, args.config_file)
+    config_file = os.path.expanduser(args.config_file)
 
     pid_dir = makedirs(args.pid_dir)
     pid_file = os.path.join(pid_dir, 'mongodb.pid')
@@ -664,8 +663,6 @@ def main():
                                    'clean', 'trash'])
     _mongodb.add_argument('-c', '--config-file', type=str,
                           default=MONGODB_CONF)
-    _mongodb.add_argument('-cd', '--config-dir', type=str,
-                          default=ETC_DIR)
     _mongodb.add_argument('-dd', '--db-dir', type=str,
                           default=MONGODB_DIR)
     _mongodb.add_argument('-pd', '--pid-dir', type=str,
