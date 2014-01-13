@@ -8,11 +8,13 @@ CLI for deploying metrique
 
 import datetime
 from functools import partial
+import glob
 import importlib
 import os
 import re
 import shlex
 import shutil
+import socket
 import sys
 
 try:
@@ -52,6 +54,25 @@ PIP_EGGS = os.path.join(USER_DIR, '.python-eggs')
 NOW = datetime.datetime.utcnow().strftime('%FT%H:%M:%S')
 
 
+def activate(args):
+    if (hasattr(args, 'virtenv') and args.virtenv):
+        virtenv = args.virtenv
+    elif isinstance(args, basestring):
+        # virtenv path is passed in direct as a string
+        virtenv = args
+    activate_this = os.path.join(virtenv, 'bin', 'activate_this.py')
+    assert os.path.exists(activate_this)
+    execfile(activate_this, dict(__file__=activate_this))
+    logger.info('Virtual Env (%s): Activated' % virtenv)
+
+
+# Activate the virtual environment in this python session if
+# parent env has one set
+virtenv = os.environ.get('VIRTUAL_ENV')
+if virtenv:
+    activate(virtenv)
+
+
 def get_pid(pid_file):
     try:
         return int(''.join(open(pid_file).readlines()).strip())
@@ -75,7 +96,7 @@ def call(cmd, cwd=None, stdout=True):
     if not cwd:
         cwd = os.getcwd()
     cmd = shlex.split(cmd.strip())
-    logger.info("[%s] Running `%s` ..." % (cwd, cmd))
+    logger.info("[%s] Running `%s` ..." % (cwd, ' '.join(cmd)))
     try:
         call_subprocess(cmd, cwd=cwd, show_stdout=stdout)
     except:
@@ -179,7 +200,6 @@ def mongodb(args):
 
 def mongodb_backup(args):
     from metriqued.config import mongodb_config
-    import socket
 
     config = mongodb_config(args.config_file)
 
@@ -187,8 +207,9 @@ def mongodb_backup(args):
     out_dir = os.path.expanduser(out_dir)
     makedirs(out_dir)
 
+    prefix = 'mongodb'
     hostname = socket.gethostname()
-    saveas = "%s__%s" % (hostname, NOW)
+    saveas = '__'.join((prefix, hostname, NOW))
     out = os.path.join(out_dir, saveas)
 
     host = config.host
@@ -205,9 +226,23 @@ def mongodb_backup(args):
     call(cmd)
 
     if args.compress:
-        tgz_file = out + '.tar.gz'
-        call('tar cvfz %s %s' % (tgz_file, out), stdout=False)
+        out_tgz = out + '.tar.gz'
+        call('tar cvfz %s %s' % (out_tgz, out), stdout=False)
         shutil.rmtree(out)
+
+    mongodb_rotate(args, out_dir)
+
+
+def mongodb_rotate(args, path, prefix='mongodb'):
+    keep = args.keep if args.keep != 0 else 3
+    if args.compress:
+        path = os.path.join(path, '%s*.tar.gz' % prefix)
+    else:
+        path = os.path.join(path, prefix)
+    files = sorted(glob.glob(path), reverse=True)
+    to_remove = files[keep:]
+    logger.debug('Removing %i backups' % len(to_remove))
+    [os.remove(f) for f in to_remove]
 
 
 def clean(args):
@@ -261,7 +296,7 @@ def bump_release(line, reset=False, ga=False):
         # drop any 'a' if there is one
         bumped = re.sub('a$', '', str(bumped))
 
-    logger.notify('BUMP (RELEASE): %s->%s' % (current, bumped))
+    logger.info('BUMP (RELEASE): %s->%s' % (current, bumped))
     return '__release__ = %s\n' % bumped
 
 
@@ -296,13 +331,6 @@ def update_line(args, regex, bump_func):
             setup_py.write(content_str)
 
 
-def activate(args):
-    if (hasattr(args, 'virtenv') and args.virtenv):
-        activate = os.path.join(args.virtenv, 'bin', 'activate_this.py')
-        execfile(activate, dict(__file__=activate))
-        logger.notify('Virtual Env (%s): Activated' % args.virtenv)
-
-
 def setup(args, cmd, pip=False):
     global __pkgs__
     if isinstance(cmd, basestring):
@@ -313,15 +341,15 @@ def setup(args, cmd, pip=False):
     for path in __pkgs__:
         abspath = os.path.join(cwd, 'src', path)
         if pip and args.slow:
-            logger.notify('pip %s -e %s' % (cmd, abspath))
+            logger.info('pip %s -e %s' % (cmd, abspath))
             os.system('pip %s -e %s' % (cmd, abspath))
         elif pip:
-            logger.notify('pip-accel %s -e %s' % (cmd, abspath))
+            logger.info('pip-accel %s -e %s' % (cmd, abspath))
             os.system('pip-accel %s -e %s' % (cmd, abspath))
         else:
             os.chdir(abspath)
             _cmd = ['python', 'setup.py'] + cmd.split(' ')
-            logger.notify(str(_cmd))
+            logger.info(str(_cmd))
             call_subprocess(_cmd, show_stdout=True)
     os.chdir(cwd)
 
@@ -522,6 +550,7 @@ def main():
     _mongodb_backup.add_argument('-c', '--config-file', type=str)
     _mongodb_backup.add_argument('-o', '--out-dir', type=str)
     _mongodb_backup.add_argument('-z', '--compress', action='store_true')
+    _mongodb_backup.add_argument('-k', '--keep', type=int, default=3)
     _mongodb_backup.set_defaults(func=mongodb_backup)
 
     # nginx Server
