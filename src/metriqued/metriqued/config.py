@@ -54,7 +54,7 @@ class metriqued_config(JSONConf):
             'ssl_certificate': SSL_CERT,
             'ssl_certificate_key': SSL_KEY,
             'static_path': STATIC_PATH,
-            'superusers': [],
+            'superusers': ["admin"],
             'userdir': USER_DIR,
             'xsrf_cookies': False,
         }
