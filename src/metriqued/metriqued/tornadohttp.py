@@ -72,12 +72,14 @@ class TornadoHTTPServer(object):
         self.uri += ':%s' % port
 
         self.logger.debug('======= metrique =======')
-        self.logger.debug(' Host: %s' % self.uri)
         self.logger.debug(' Conf: %s' % self.mconf.config_file)
-        self.logger.debug(self.mconf.dumps())
+        self.logger.debug(' Host: %s' % self.uri)
+        self.logger.debug('  SSL: %s' % ssl)
         self.logger.debug('======= mongodb ========')
         self.logger.debug(' Conf: %s' % self.dbconf.config_file)
-        self.logger.debug(self.dbconf.dumps())
+        self.logger.debug(' Host: %s' % self.dbconf.host)
+        self.logger.debug('  SSL: %s' % self.dbconf.ssl)
+        self.logger.debug(' Port: %s' % self.dbconf.port)
 
     def debug_set(self):
         '''

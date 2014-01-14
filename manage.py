@@ -12,11 +12,14 @@ import getpass
 import glob
 import importlib
 import os
+import random
 import re
 import shlex
 import shutil
 import socket
+import string
 import sys
+import time
 
 try:
     import virtualenv
@@ -48,6 +51,7 @@ ETC_DIR = os.path.join(USER_DIR, 'etc')
 PID_DIR = os.path.join(USER_DIR, 'pids')
 BACKUP_DIR = os.path.join(USER_DIR, 'backup')
 MONGODB_DIR = os.path.join(USER_DIR, 'mongodb')
+CELERY_DIR = os.path.join(USER_DIR, 'celery')
 
 FIRSTBOOT_PATH = os.path.join(USER_DIR, '.firstboot')
 
@@ -63,12 +67,20 @@ MONGODB_CONF = os.path.join(ETC_DIR, 'mongodb.conf')
 MONGODB_PID = os.path.join(PID_DIR, 'mongodb.pid')
 MONGODB_LOG = os.path.join(LOGS_DIR, 'mongodb.log')
 
+MONGODB_JS = os.path.join(ETC_DIR, 'mongodb.js')
+
+CELERY_JSON = os.path.join(ETC_DIR, 'celery.json')
+
 # set cache dir so pip doesn't have to keep downloading over and over
 PIP_CACHE = '~/.pip/download-cache'
 PIP_ACCEL = '~/.pip-accel'
 os.environ['PIP_DOWNLOAD_CACHE'] = PIP_CACHE
 os.environ['PIP_ACCEL_CACHE'] = PIP_ACCEL
 PIP_EGGS = os.path.join(USER_DIR, '.python-eggs')
+
+def rand_pass(size=6, chars=string.ascii_uppercase + string.digits):
+    # see: http://stackoverflow.com/questions/2257441
+    return ''.join(random.choice(chars) for x in range(size))
 
 USER = getpass.getuser()
 NOW = datetime.datetime.utcnow().strftime('%FT%H:%M:%S')
@@ -80,7 +92,7 @@ DEFAULT_METRIQUE_JSON = '''
     "host": "127.0.0.1",
     "log2file": true,
     "logstdout": false,
-    "password": "__UPDATE_PASSWORD",
+    "password": "__UPDATE_PASSWORD__",
     "port": 5420,
     "sql_batch_size": 1000,
     "ssl": true,
@@ -107,11 +119,14 @@ DEFAULT_METRIQUED_JSON = '''
 ''' % (SSL_CERT, SSL_KEY, USER)
 DEFAULT_METRIQUED_JSON = DEFAULT_METRIQUED_JSON.strip()
 
+admin_password = rand_pass()
+data_password = rand_pass()
+
 DEFAULT_MONGODB_JSON = '''
 {
     "auth": false,
-    "admin_password": "",
-    "data_password": "",
+    "admin_password": "%s",
+    "data_password": "%s",
     "host": "127.0.0.1",
     "journal": true,
     "port": 27017,
@@ -119,7 +134,7 @@ DEFAULT_MONGODB_JSON = '''
     "ssl_certificate": "%s",
     "write_concern": 1
 }
-''' % SSL_PEM
+''' % (admin_password, data_password, SSL_PEM)
 DEFAULT_MONGODB_JSON = DEFAULT_MONGODB_JSON.strip()
 
 DEFAULT_MONGODB_CONF = '''
@@ -127,14 +142,29 @@ DEFAULT_MONGODB_CONF = '''
 bind_ip = 127.0.0.1
 fork = true
 dbpath = %s
-pidfilepath = %s
 logpath = %s
 noauth = true
 nohttpinterface = true
+pidfilepath = %s
 #sslOnNormalPorts = true
 #sslPEMKeyFile = %s
 ''' % (MONGODB_DIR, MONGODB_PID, MONGODB_LOG, SSL_PEM)
 DEFAULT_MONGODB_CONF = DEFAULT_MONGODB_CONF.strip()
+
+DEFAULT_MONGODB_JS = '''
+db = db.getSiblingDB('admin')
+db.addUser({'user': 'admin', 'pwd': '%s', 'roles': ['dbAdminAnyDatabase']}); 
+db.addUser({'user': 'metrique', 'pwd': '%s', 'roles': ['readAnyDatabase']});
+''' % (admin_password, data_password)
+DEFAULT_MONGODB_JS = DEFAULT_MONGODB_JS.strip()
+
+DEFAULT_CELERY_JSON = '''
+{
+    "BROKER_URL": "mongodb://admin:%s@127.0.0.1:27017",
+    "BROKER_USE_SSL": false
+}
+''' % (admin_password)
+DEFAULT_CELERY_JSON = DEFAULT_CELERY_JSON.strip()
 
 
 def activate(args):
@@ -175,7 +205,7 @@ def remove(path):
         os.remove(path)
 
 
-def call(cmd, cwd=None, stdout=True, fork=False):
+def call(cmd, cwd=None, stdout=True, fork=False, pidfile=None):
     if not cwd:
         cwd = os.getcwd()
     cmd = shlex.split(cmd.strip())
@@ -194,6 +224,9 @@ def call(cmd, cwd=None, stdout=True, fork=False):
         pid = os.fork()
         if pid == 0:
             run()
+        elif pidfile:
+            with open(pidfile, 'a') as f:
+                f.write(str(pid))
     else:
         run()
     logger.info(" ... Done!")
@@ -206,8 +239,10 @@ virtualenv.adjust_options = adjust_options
 
 def _celeryd_loop(args):
     log = os.path.expanduser('~/.metrique/logs/celeryd.log')
-    call('celery worker -f %s -l INFO -B --app %s' % (log, args.tasks_mod), 
-         fork=True)
+    pidfile = os.path.expanduser('~/.metrique/pids/celeryd.pid')
+    cmd = 'celery worker -f %s -l INFO -B --app %s' % (
+          log, args.tasks_mod)
+    call(cmd, fork=True, pidfile=pidfile)
 
 
 def _celeryd_run(args):
@@ -270,11 +305,21 @@ def mongodb(args):
     pid_file = os.path.join(pid_dir, 'mongodb.pid')
 
     if args.command == 'start':
-        return call('mongod -f %s --fork' % config_file)
+        cmd = 'mongod -f %s --fork' % config_file
+        cmd += ' --prealloc' if args.prealloc else ' --noprealloc'
+        cmd += ' --journal' if args.journal else ' --nojournal'
+        result = call(cmd)
+        time.sleep(1)  # give mongodb a second to start
+        if args.firstboot:
+            call('mongo %s %s' % (args.host, MONGODB_JS))
     elif args.command == 'stop':
         signal = 15
         pid = get_pid(pid_file)
-        code = os.kill(pid, signal)
+        try:
+            code = os.kill(pid, signal)
+        except OSError:
+            logger.error('MongoDB PID %s does not exist' % pid)
+            raise
         args.command = 'clean'
         mongodb(args)
         return code
@@ -289,6 +334,9 @@ def mongodb(args):
         dest = os.path.join(TRASH_DIR, 'mongodb-%s' % NOW)
         shutil.move(db_dir, dest)
         makedirs(db_dir)
+        # FIXME: try to STOP then TRASH, then CLEAN
+    elif args.command == 'status':
+        call('mongod %s --sysinfo' % args.host)
     else:
         raise ValueError("unknown command %s" % args.command)
 
@@ -595,7 +643,8 @@ def firstboot(args=None):
     # create default dirs in advance
     [makedirs(p) for p in (USER_DIR, PIP_CACHE, PIP_ACCEL,
                            PIP_EGGS, TRASH_DIR, LOGS_DIR,
-                           ETC_DIR, BACKUP_DIR, MONGODB_DIR)]
+                           ETC_DIR, BACKUP_DIR, MONGODB_DIR,
+                           CELERY_DIR)]
 
     # make sure the the default user python eggs dir is secure
     os.chmod(PIP_EGGS, 0700)
@@ -608,10 +657,11 @@ def firstboot(args=None):
     default_conf(METRIQUED_JSON, DEFAULT_METRIQUED_JSON)
     default_conf(MONGODB_JSON, DEFAULT_MONGODB_JSON)
     default_conf(MONGODB_CONF, DEFAULT_MONGODB_CONF)
+    default_conf(MONGODB_JS, DEFAULT_MONGODB_JS)
+    default_conf(CELERY_JSON, DEFAULT_CELERY_JSON)
 
     with open(FIRSTBOOT_PATH, 'w') as f:
         f.write(NOW)
-
 
 def main():
     import argparse
@@ -675,13 +725,14 @@ def main():
     _mongodb = _sub.add_parser('mongodb')
     _mongodb.add_argument('command',
                           choices=['start', 'stop', 'restart',
-                                   'clean', 'trash'])
-    _mongodb.add_argument('-c', '--config-file', type=str,
-                          default=MONGODB_CONF)
-    _mongodb.add_argument('-dd', '--db-dir', type=str,
-                          default=MONGODB_DIR)
-    _mongodb.add_argument('-pd', '--pid-dir', type=str,
-                          default=PID_DIR)
+                                   'clean', 'trash', 'status'])
+    _mongodb.add_argument('-c', '--config-file', default=MONGODB_CONF)
+    _mongodb.add_argument('-dd', '--db-dir', default=MONGODB_DIR)
+    _mongodb.add_argument('-pd', '--pid-dir', default=PID_DIR)
+    _mongodb.add_argument('-H', '--host', default='127.0.0.1')
+    _mongodb.add_argument('-F', '--firstboot', action='store_true')
+    _mongodb.add_argument('-p', '--prealloc', action='store_true')
+    _mongodb.add_argument('-j', '--journal', action='store_true')
     _mongodb.set_defaults(func=mongodb)
 
     # MongoDB Backup
