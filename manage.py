@@ -483,7 +483,7 @@ def deploy(args):
     if args.ipython:
         call('%s install -U ipython' % pip)
     if args.extras:
-        call('%s install -U numexpr cython' % pip)
+        call('%s install -U numexpr cython pytest' % pip)
 
     cmd = 'install'
     no_pre = getattr(args, 'no_pre', False)
