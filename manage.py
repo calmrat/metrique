@@ -102,7 +102,7 @@ DEFAULT_METRIQUED_JSON = '''
     "ssl": true,
     "ssl_certificate": "%s",
     "ssl_certificate_key": "%s",
-    "superusers": ["%s"]
+    "superusers": ["admin", "%s"]
 }
 ''' % (SSL_CERT, SSL_KEY, USER)
 DEFAULT_METRIQUED_JSON = DEFAULT_METRIQUED_JSON.strip()
