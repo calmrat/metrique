@@ -81,17 +81,16 @@ class TornadoHTTPServer(object):
         self.logger.debug(' Port: %s' % self.dbconf.port)
         self.logger.debug(' Conf: %s' % self.dbconf.config_file)
 
-    def debug_set(self, level=None, logstdout=None, logfile=None):
+    def debug_set(self):
         '''
         if we get a level of 2, we want to apply the
         debug level to all loggers
         '''
-        if level is None:
-            level = self.mconf['debug']
-        if logstdout is None:
-            logstdout = self.mconf['logstdout']
-        if logfile is None:
-            logfile = self.mconf['logfile']
+        level = self.mconf['debug']
+        logstdout = self.mconf['logstdout']
+        logfile = self.mconf['logfile']
+        logrotate = self.mconf['logrotate']
+        logkeep = self.mconf['logkeep']
 
         logdir = os.path.expanduser(self.mconf.logdir)
         if not os.path.exists(logdir):
@@ -119,7 +118,11 @@ class TornadoHTTPServer(object):
 
         if self.mconf.log2file and logfile:
             logfile = os.path.expanduser(logfile)
-            hdlr = logging.FileHandler(logfile)
+            if logrotate:
+                hdlr = logging.handlers.RotatingFileHandler(
+                    logfile, backupCount=logkeep, maxBytes=logrotate)
+            else:
+                hdlr = logging.FileHandler(logfile)
             hdlr.setFormatter(basic_format)
             logger.addHandler(hdlr)
 

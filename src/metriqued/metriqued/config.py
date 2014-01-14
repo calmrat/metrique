@@ -45,6 +45,8 @@ class metriqued_config(JSONConf):
             'logfile': 'metriqued.log',
             'log2file': True,
             'logstdout': False,
+            'logrotate': 134217728,  # 128M 'maxBytes' before rotate
+            'logkeep': 20,
             'login_url': '/login',
             'mongodb_config': None,
             'piddir': PID_DIR,
