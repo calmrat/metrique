@@ -19,7 +19,7 @@ from metriqued import core_api, cube_api, query_api, user_api
 logging.basicConfig()
 root_logger = logging.getLogger()
 [root_logger.removeHandler(hdlr) for hdlr in root_logger.handlers]
-BASIC_FORMAT = "%(name)s.%(process)s:%(levelname)s:%(message)s"
+BASIC_FORMAT = "%(name)s:%(asctime)s:%(message)s"
 
 
 def user_cube(value):
@@ -98,7 +98,7 @@ class TornadoHTTPServer(object):
             os.makedirs(logdir)
         logfile = os.path.join(logdir, logfile)
 
-        basic_format = logging.Formatter(BASIC_FORMAT)
+        basic_format = logging.Formatter(BASIC_FORMAT, "%Y%m%dT%H%M%S")
 
         if level == 2:
             self._logger_name = None

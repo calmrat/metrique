@@ -2,6 +2,7 @@
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 # Author: "Chris Ward" <cward@redhat.com>
 
+import logging
 import os
 try:
     from pymongo import MongoClient
@@ -17,6 +18,9 @@ class BaseMongoDB(object):
                  port=None, ssl=None, ssl_keyfile=None, tz_aware=True,
                  ssl_certfile=None, write_concern=1, journal=False,
                  fsync=False):
+
+        pid = os.getpid()
+        self.logger = logging.getLogger('metriqued.%i.mongodb' % pid)
 
         if ssl_keyfile:
             ssl_keyfile = os.path.expanduser(ssl_keyfile)
@@ -42,6 +46,7 @@ class BaseMongoDB(object):
         '''
         by default the default user only has read-only access to db
         '''
+        self.logger.debug('MongoDB Authentication: %s' % self.user)
         if not self.auth:
             pass
         elif not self.password:
@@ -59,8 +64,19 @@ class BaseMongoDB(object):
 
     @property
     def db(self):
+        retries = 3
         # return the connected, authenticated database object
-        return self._load_db_proxy()
+        while retries:
+            try:
+                return self._load_db_proxy()
+            except ConnectionFailure as e:
+                self.logger.warn("[%i] MongoDB Failed to connect (%s): %s" % (
+                            retries, self.host, e))
+                retries -= 1
+                self._db_proxy = None
+        else:
+            raise ConnectionFailure(
+                "MongoDB Failed to connect (%s): %s" % (self.host, e))
 
     def __getitem__(self, collection):
         return self.db[collection]
@@ -82,7 +98,8 @@ class BaseMongoDB(object):
                                      **kwargs)
 
     def _load_db_proxy(self):
-        if not hasattr(self, '_db_proxy'):
+        if not (hasattr(self, '_db_proxy') and self._db_proxy):
+            self.logger.debug('Loading NEW Mongodb Proxy connection')
             kwargs = {}
             if self.ssl:
                 if self.ssl_keyfile:
@@ -93,16 +110,11 @@ class BaseMongoDB(object):
                 # include ssl options only if it's enabled
                 kwargs.update(dict(ssl=self.ssl,
                                    ssl_certfile=self.ssl_certfile))
-            try:
-                if mongo_client_support:
-                    self._load_mongo_client(**kwargs)
-                else:
-                    self._load_mongo_connection(**kwargs)
-            except ConnectionFailure as e:
-                raise ConnectionFailure(
-                    "MongoDB Failed to connect (%s): %s" % (self.host, e))
+            if mongo_client_support:
+                self._load_mongo_client(**kwargs)
             else:
-                self._db_proxy = self._auth_db()
+                self._load_mongo_connection(**kwargs)
+            self._db_proxy = self._auth_db()
         return self._db_proxy
 
     def set_collection(self, collection):
