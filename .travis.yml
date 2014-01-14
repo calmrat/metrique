@@ -11,12 +11,13 @@ services:
 # NOTE: authentication will be enabled upon adding an 
 # admin user as mongod is started with the --auth parameter.
 before_script:
- - "./manage.py firstboot"  # install default configs, etc
+  - "./manage.py firstboot"  # install default configs, etc
 script: 
-  # run tests
-  #- "py.test tests"
   # test coverage badge
   - "coverage run --source=metrique,metriqued,metriqueu,metriquec -m py.test tests"
 # test coverage badge
 after_success:
-  coveralls
+  - coveralls
+after_failure:
+  - "cat ~/.metrique/logs/metriqued.log"
+  - "cat ~/.metrique/logs/metrique.log"

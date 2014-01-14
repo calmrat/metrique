@@ -115,7 +115,7 @@ DEFAULT_MONGODB_JSON = '''
     "host": "127.0.0.1",
     "journal": true,
     "port": 27017,
-    "ssl": true,
+    "ssl": false,
     "ssl_certificate": "%s",
     "write_concern": 1
 }
@@ -131,8 +131,8 @@ pidfilepath = %s
 logpath = %s
 noauth = true
 nohttpinterface = true
-sslOnNormalPorts = true
-sslPEMKeyFile = %s
+#sslOnNormalPorts = true
+#sslPEMKeyFile = %s
 ''' % (MONGODB_DIR, MONGODB_PID, MONGODB_LOG, SSL_PEM)
 DEFAULT_MONGODB_CONF = DEFAULT_MONGODB_CONF.strip()
 

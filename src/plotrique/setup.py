@@ -6,7 +6,7 @@ from setuptools import setup
 
 __pkg__ = 'plotrique'
 __version__ = '0.2.5'
-__release__ = "4a"
+__release__ = 7
 __nvr__ = '%s-%s' % (__version__, __release__)
 __pkgs__ = ['plotrique']
 __provides__ = ['plotrique']

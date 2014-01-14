@@ -136,6 +136,12 @@ class JSONConf(MutableMapping):
         self.config.update(config)
         self.config_file = config_file
 
+    def dumps(self):
+        try:
+            return json.dumps(self.config, indent=2)
+        except TypeError:
+            return unicode(self.config)
+
     def save(self, force=True, config_file=None):
         ''' save config data to disk '''
         config_file = config_file or self.config_file
@@ -147,11 +153,10 @@ class JSONConf(MutableMapping):
             else:
                 raise IOError("Path does not exist: %s" % config_file)
         with codecs.open(config_file, 'w', 'utf-8') as f:
-            f.write(json.dumps(self.config, indent=2))
+            f.write(self.dumps())
 
     def setdefault(self, key, value):
         self.defaults[key] = value
 
     def values(self):
         return self.config.values()
-
