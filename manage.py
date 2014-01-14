@@ -175,16 +175,27 @@ def remove(path):
         os.remove(path)
 
 
-def call(cmd, cwd=None, stdout=True):
+def call(cmd, cwd=None, stdout=True, fork=False):
     if not cwd:
         cwd = os.getcwd()
     cmd = shlex.split(cmd.strip())
     logger.info("[%s] Running `%s` ..." % (cwd, ' '.join(cmd)))
-    try:
-        call_subprocess(cmd, cwd=cwd, show_stdout=stdout)
-    except:
-        sys.stderr.write(str(cmd))
-        raise
+
+
+    def run():
+        try:
+            call_subprocess(cmd, cwd=cwd, show_stdout=stdout)
+        except:
+            sys.stderr.write(str(cmd))
+            raise
+
+
+    if fork:
+        pid = os.fork()
+        if pid == 0:
+            run()
+    else:
+        run()
     logger.info(" ... Done!")
 
 
@@ -194,7 +205,9 @@ virtualenv.adjust_options = adjust_options
 
 
 def _celeryd_loop(args):
-    call('celery worker -B --app %s' % args.tasks_mod)
+    log = os.path.expanduser('~/.metrique/logs/celeryd.log')
+    call('celery worker -f %s -l INFO -B --app %s' % (log, args.tasks_mod), 
+         fork=True)
 
 
 def _celeryd_run(args):
