@@ -84,9 +84,11 @@ os.environ['PIP_DOWNLOAD_CACHE'] = PIP_CACHE
 os.environ['PIP_ACCEL_CACHE'] = PIP_ACCEL
 PIP_EGGS = os.path.join(USER_DIR, '.python-eggs')
 
+
 def rand_chars(size=6, chars=string.ascii_uppercase + string.digits):
     # see: http://stackoverflow.com/questions/2257441
     return ''.join(random.choice(chars) for x in range(size))
+
 
 USER = getpass.getuser()
 NOW = datetime.datetime.utcnow().strftime('%FT%H:%M:%S')
@@ -159,7 +161,7 @@ DEFAULT_MONGODB_CONF = DEFAULT_MONGODB_CONF.strip()
 
 DEFAULT_MONGODB_JS = '''
 db = db.getSiblingDB('admin')
-db.addUser({'user': 'admin', 'pwd': '%s', 'roles': ['dbAdminAnyDatabase']}); 
+db.addUser({'user': 'admin', 'pwd': '%s', 'roles': ['dbAdminAnyDatabase']});
 db.addUser({'user': 'metrique', 'pwd': '%s', 'roles': ['readAnyDatabase']});
 ''' % (admin_password, data_password)
 DEFAULT_MONGODB_JS = DEFAULT_MONGODB_JS.strip()
@@ -222,7 +224,7 @@ def run(cmd, cwd, show_stdout):
     try:
         call_subprocess(cmd, cwd=cwd, show_stdout=show_stdout)
     except Exception:
-        logger.error(cmd_str)
+        logger.error(' '.join(cmd))
         raise
 
 
@@ -230,7 +232,6 @@ def call(cmd, cwd=None, show_stdout=True, fork=False, pidfile=None,
          sig=None, sig_func=None):
     if not cwd:
         cwd = os.getcwd()
-    cmd_str = cmd
     cmd = shlex.split(cmd.strip())
     logger.info("[%s] Running ...\n`%s`" % (cwd, ' '.join(cmd)))
 
@@ -357,7 +358,7 @@ def mongodb(args):
         cmd = 'mongod -f %s --fork' % config_file
         cmd += ' --prealloc' if args.prealloc else ' --noprealloc'
         cmd += ' --journal' if args.journal else ' --nojournal'
-        result = call(cmd)
+        call(cmd)
         time.sleep(1)  # give mongodb a second to start
         mongodb_firstboot(args)
     elif args.command == 'stop':
@@ -586,7 +587,7 @@ def deploy(args):
     # this required dep is installed separately b/c virtenv
     # path resolution issues; fails due to being unable to find
     # the python headers in the virtenv for some reason.
-    call('%s install -U numpy pandas' % pip)
+    call('%s install -U cython numexpr numpy pandas' % pip)
 
     # optional dependencies; highly recommended! but slow to
     # install if we're not testing
@@ -594,8 +595,8 @@ def deploy(args):
         call('%s install -U matplotlib' % pip)
     if args.ipython:
         call('%s install -U ipython' % pip)
-    if args.extras:
-        call('%s install -U numexpr cython pytest' % pip)
+    if args.pytest:
+        call('%s install -U pytest' % pip)
 
     cmd = 'install'
     no_pre = getattr(args, 'no_pre', False)
@@ -714,6 +715,7 @@ def sys_firstboot(args=None):
     with open(SYS_FIRSTBOOT_PATH, 'w') as f:
         f.write(NOW)
 
+
 def main():
     import argparse
 
@@ -734,7 +736,7 @@ def main():
     _deploy.add_argument(
         '--ipython', action='store_true', help='install ipython')
     _deploy.add_argument(
-        '--extras', action='store_true', help='install numexpr, cython, ...')
+        '--pytest', action='store_true', help='install pytest')
     _deploy.add_argument(
         '--matplotlib', action='store_true', help='install matplotlib')
     _deploy.set_defaults(func=deploy)
