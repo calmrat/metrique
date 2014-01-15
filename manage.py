@@ -567,14 +567,16 @@ def deploy(args):
     + install dep
     + install metrique and friends
     '''
-    virtenv = getattr(args, 'virtenv', None)
-    if virtenv:
-        # virtualenv.main; pass in only the virtenv path
-        sys.argv = sys.argv[0:1] + [virtenv]
-        # run the virtualenv script to install the virtenv
-        virtualenv.main()
-        # activate the newly installed virtenv
-        activate(args)
+    virtenv = getattr(args, 'virtenv')
+    if not virtenv:
+        raise RuntimeError("virtenv install path required!")
+
+    # virtualenv.main; pass in only the virtenv path
+    sys.argv = sys.argv[0:1] + [virtenv]
+    # run the virtualenv script to install the virtenv
+    virtualenv.main()
+    # activate the newly installed virtenv
+    activate(args)
 
     pip = 'pip' if args.slow else 'pip-accel'
     # make sure we have the installer basics and their up2date
@@ -598,11 +600,11 @@ def deploy(args):
     if args.pytest:
         call('%s install -U pytest' % pip)
 
-    cmd = 'install'
-    no_pre = getattr(args, 'no_pre', False)
-    if not no_pre:
-        cmd += ' --pre'
-    setup(args, cmd, pip=True)
+    cmd = 'deploy'
+    #no_pre = getattr(args, 'no_pre', False)
+    #if not no_pre:
+    #    cmd += ' --pre'
+    setup(args, cmd, pip=False)
 
     # run py.test after install
     if args.test:
@@ -720,7 +722,7 @@ def main():
     import argparse
 
     cli = argparse.ArgumentParser(description='Metrique Manage CLI')
-    cli.add_argument('-v', '--virtenv')
+    cli.add_argument('-V', '--virtenv')
 
     _sub = cli.add_subparsers(description='action')
 
