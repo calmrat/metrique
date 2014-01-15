@@ -55,7 +55,7 @@ class LoginHdlr(MetriqueHdlr):
                     ok = True
             else:
                 # FIXME: should we sleep a split sec for failed auth attempts?
-                self._raise(401, "this requires admin privleges")
+                self._raise(401, "log-in failed")
         if ok:
             # bump expiration...
             self.set_secure_cookie("user", username)

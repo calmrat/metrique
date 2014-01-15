@@ -12,6 +12,7 @@ Create/Drop cube indexes.
 '''
 
 from metriqueu.utils import batch_gen
+from requests.exceptions import HTTPError
 
 
 def list_all(self, startswith=None):

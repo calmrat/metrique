@@ -59,10 +59,11 @@ class Config(JSONConf):
         self.defaults = {
             'api_version': 'v2',
             'api_rel_path': 'api/v2',
-            'auto_login': True,
+            'auto_login': False,
             'batch_size': 5000,
             'cookiejar': COOKIEJAR,
             'configdir': CONFIG_DIR,
+            'cube_autoregister': False,
             'cube_pkgs': ['cubes'],
             'cube_paths': [],
             'debug': None,

@@ -46,7 +46,6 @@ class BaseMongoDB(object):
         '''
         by default the default user only has read-only access to db
         '''
-        self.logger.debug('MongoDB Authentication: %s' % self.user)
         if not self.auth:
             pass
         elif not self.password:

@@ -410,6 +410,8 @@ class MetriqueHdlr(RequestHandler):
             _realm = self.metrique_config.realm
             basic_realm = 'Basic realm="%s"' % _realm
             self.set_header('WWW-Authenticate', basic_realm)
+        self.logger.info('[%s] %s: %s ...\n%s' % (self.current_user, code, 
+                                                  msg, self.request))
         raise HTTPError(code, msg)
 
 

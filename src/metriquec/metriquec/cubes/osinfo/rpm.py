@@ -33,7 +33,7 @@ class Rpm(pyclient):
 
     def _ssh_cmd(self, fmt):
         import paramiko
-        cmd = "rpm -qa --queryformat '%s\\n'" % fmt
+        cmd = "rpm -qa --queryformat '%s'" % fmt
         self.logger.debug('[%s] Running: %s' % (self.ssh_host, cmd))
         ssh = paramiko.SSHClient()
         ssh.load_system_host_keys()

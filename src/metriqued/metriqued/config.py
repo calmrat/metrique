@@ -114,53 +114,48 @@ class mongodb_config(JSONConf):
 
     @property
     def db_metrique_data(self):
-        return BaseMongoDB(host=self.host, db=self.db_metrique,
-                           auth=self.auth,
-                           user=self.data_user,
-                           password=self.data_password,
-                           ssl=self.ssl,
-                           ssl_certfile=self.ssl_certificate,
-                           ssl_keyfile=self.ssl_certificate_key,
-                           tz_aware=self.tz_aware)
+        if not hasattr(self, '_db_metriqued_data'):
+            self._db_metriqued_data = BaseMongoDB(
+                host=self.host, db=self.db_metrique, auth=self.auth,
+                user=self.data_user, password=self.data_password,
+                ssl=self.ssl, ssl_certfile=self.ssl_certificate,
+                ssl_keyfile=self.ssl_certificate_key, tz_aware=self.tz_aware)
+        return self._db_metriqued_data
 
     @property
     def db_metrique_admin(self):
-        return BaseMongoDB(host=self.host, db=self.db_metrique,
-                           auth=self.auth,
-                           user=self.admin_user,
-                           password=self.admin_password,
-                           ssl=self.ssl,
-                           ssl_certfile=self.ssl_certificate,
-                           ssl_keyfile=self.ssl_certificate_key,
-                           write_concern=self.write_concern,
-                           fsync=self.fsync,
-                           journal=self.journal,
-                           tz_aware=self.tz_aware)
+        if not hasattr(self, '_db_metriqued_admin'):
+            self._db_metriqued_admin = BaseMongoDB(
+                host=self.host, db=self.db_metrique, auth=self.auth,
+                user=self.admin_user, password=self.admin_password,
+                ssl=self.ssl, ssl_certfile=self.ssl_certificate,
+                ssl_keyfile=self.ssl_certificate_key,
+                write_concern=self.write_concern, fsync=self.fsync,
+                journal=self.journal, tz_aware=self.tz_aware)
+        return self._db_metriqued_admin
 
     @property
     def db_timeline_admin(self):
-        return BaseMongoDB(host=self.host, db=self.db_timeline,
-                           auth=self.auth,
-                           user=self.admin_user,
-                           password=self.admin_password,
-                           ssl=self.ssl,
-                           ssl_certfile=self.ssl_certificate,
-                           ssl_keyfile=self.ssl_certificate_key,
-                           write_concern=self.write_concern,
-                           fsync=self.fsync,
-                           journal=self.journal,
-                           tz_aware=self.tz_aware)
+        if not hasattr(self, '_db_timeline_admin'):
+            self._db_timeline_admin = BaseMongoDB(
+            host=self.host, db=self.db_timeline, auth=self.auth,
+            user=self.admin_user, password=self.admin_password,
+            ssl=self.ssl, ssl_certfile=self.ssl_certificate,
+            ssl_keyfile=self.ssl_certificate_key,
+            write_concern=self.write_concern, fsync=self.fsync,
+            journal=self.journal, tz_aware=self.tz_aware)
+        return self._db_timeline_admin
 
     @property
     def db_timeline_data(self):
-        return BaseMongoDB(host=self.host, db=self.db_timeline,
-                           auth=self.auth,
-                           user=self.data_user,
-                           password=self.data_password,
-                           ssl=self.ssl,
-                           ssl_certfile=self.ssl_certificate,
-                           ssl_keyfile=self.ssl_certificate_key,
-                           tz_aware=self.tz_aware)
+        if not hasattr(self, '_db_timeline_data'):
+            self._db_timeline_data = BaseMongoDB(
+                host=self.host, db=self.db_timeline, auth=self.auth,
+                user=self.data_user, password=self.data_password,
+                ssl=self.ssl, ssl_certfile=self.ssl_certificate,
+                ssl_keyfile=self.ssl_certificate_key,
+                tz_aware=self.tz_aware)
+        return self._db_timeline_data
 
     @property
     def c_user_profile_data(self):

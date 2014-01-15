@@ -84,6 +84,7 @@ def login(self, username=None, password=None):
         self.config['username'] = username
         self.config['password'] = password
     self.cookiejar_save()
+    self.logged_in = True
     return result
 
 
@@ -93,6 +94,7 @@ def logout(self):
     '''
     result = self._post('logout', api_url=False)
     self._load_session()  # new session
+    self.logged_in = False
     return result
 
 

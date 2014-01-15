@@ -83,6 +83,7 @@ def test_api():
         assert _cube.cube_rename(new_name=name)
         # drop the cube
         assert _cube.cube_drop()
+        assert _cube.cube_id not in _cube.cube_list_all()
 
     # with the last cube, do a few more things...
     # re-register

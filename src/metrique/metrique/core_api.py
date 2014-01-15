@@ -426,12 +426,27 @@ class HTTPClient(BaseClient):
     regtest_remove = regression_test.regtest_remove
     regtest_list = regression_test.regtest_list
 
-    def __init__(self, cube=None, owner=None, **kwargs):
+    def __init__(self, owner=None, login=None, cube_register=None, **kwargs):
         super(HTTPClient, self).__init__(**kwargs)
         self.owner = owner or self.config.username
         # load a new requests session; for the cookies.
         self._load_session()
-        self._auto_login_attempted = False
+        self.logged_in = False
+
+        login = login if login is not None else self.config.auto_login
+
+        if login:
+            self.user_login(self.config.username, self.config.password)
+
+        cube_autoregister = cube_register or self.config.cube_autoregister
+        if self.logged_in and cube_autoregister:
+            if not self.cube_id in self.cube_list_all():
+                self.logger.info("Autoregistering %s" % self.name)
+                self.cube_register()
+
+    @property
+    def cube_id(self):
+        return '__'.join((self.owner, self.name))
 
     def _build_runner(self, kind, kwargs):
         ''' generic caller for HTTP
@@ -549,7 +564,6 @@ class HTTPClient(BaseClient):
     def _get_response(self, runner, _url, username, password,
                       allow_redirects=True, stream=False):
         ' wrapper for running a metrique api request; get/post/etc '
-        _auto = self.config.auto_login
         # avoids bug in requests-2.0.1 - pass a dict no RequestsCookieJar
         # eg, see: https://github.com/kennethreitz/requests/issues/1744
         dfc = requests.utils.dict_from_cookiejar
@@ -563,14 +577,6 @@ class HTTPClient(BaseClient):
             raise requests.exceptions.ConnectionError(
                 'Failed to connect (%s). Try http://? or https://?' % _url)
 
-        _attempted = self._auto_login_attempted
-        if _response.status_code in [401, 403] and _auto and not _attempted:
-            self._auto_login_attempted = True
-            # try to login and rerun the request
-            self.logger.debug('HTTP 40[13]: going to try to auto re-log-in')
-            self.user_login(username, password)
-            _response = self._get_response(runner, _url, username, password,
-                                           allow_redirects, stream)
         try:
             _response.raise_for_status()
         except Exception as e:
