@@ -12,12 +12,10 @@ ETC_DIR = os.path.join(USER_DIR, 'etc')
 PID_DIR = os.path.join(USER_DIR, 'pids')
 LOG_DIR = os.path.join(USER_DIR, 'logs')
 GNUPG_DIR = os.path.join(USER_DIR, 'gnupg')
+TEMP_DIR = os.path.join(USER_DIR, 'tmp')
+CACHE_DIR = os.path.join(USER_DIR, 'cache')
 
 DEFAULT_CONFIG = os.path.join(ETC_DIR, 'metriqued')
-
-for path in [USER_DIR, ETC_DIR, LOG_DIR, PID_DIR]:
-    if not os.path.exists(path):
-        os.makedirs(path)
 
 SSL_CERT = os.path.join(ETC_DIR, 'metrique.cert')
 SSL_KEY = os.path.join(ETC_DIR, 'metrique.key')
@@ -32,6 +30,7 @@ class metriqued_config(JSONConf):
         self.default_config = DEFAULT_CONFIG
         self.defaults = {
             'autoreload': False,
+            'cache_dir': CACHE_DIR,
             'cookie_secret': '____UPDATE_COOKIE_SECRET_CONFIG____',
             'configdir':  ETC_DIR,
             'user_cube_quota': 3,
@@ -57,6 +56,7 @@ class metriqued_config(JSONConf):
             'ssl_certificate_key': SSL_KEY,
             'static_path': STATIC_PATH,
             'superusers': ["admin"],
+            'temp_path': TEMP_DIR,
             'userdir': USER_DIR,
             'xsrf_cookies': False,
         }

@@ -52,30 +52,39 @@ LOGS_DIR = os.path.join(USER_DIR, 'logs')
 ETC_DIR = os.path.join(USER_DIR, 'etc')
 PID_DIR = os.path.join(USER_DIR, 'pids')
 BACKUP_DIR = os.path.join(USER_DIR, 'backup')
+TEMP_DIR = os.path.join(USER_DIR, 'tmp')
+CACHE_DIR = os.path.join(USER_DIR, 'cache')
 MONGODB_DIR = os.path.join(USER_DIR, 'mongodb')
 CELERY_DIR = os.path.join(USER_DIR, 'celery')
+GNUPG_DIR = os.path.join(USER_DIR, 'gnupg')
+
+cwd = os.getcwd()
+STATIC_PATH = os.path.join(cwd, 'src/metriqued/metriqued/static/')
 
 SYS_FIRSTBOOT_PATH = os.path.join(USER_DIR, '.firstboot_sys')
 METRIQUED_FIRSTBOOT_PATH = os.path.join(USER_DIR, '.firstboot_metriqued')
+METRIQUED_JSON = os.path.join(ETC_DIR, 'metriqued.json')
+METRIQUE_JSON = os.path.join(ETC_DIR, 'metrique.json')
 
 SSL_CERT = os.path.join(ETC_DIR, 'metrique.crt')
 SSL_KEY = os.path.join(ETC_DIR, 'metrique.key')
 SSL_PEM = os.path.join(ETC_DIR, 'metrique.pem')
 
-METRIQUE_JSON = os.path.join(ETC_DIR, 'metrique.json')
-METRIQUED_JSON = os.path.join(ETC_DIR, 'metriqued.json')
-MONGODB_JSON = os.path.join(ETC_DIR, 'mongodb.json')
-
+MONGODB_FIRSTBOOT_PATH = os.path.join(USER_DIR, '.firstboot_mongodb')
 MONGODB_CONF = os.path.join(ETC_DIR, 'mongodb.conf')
 MONGODB_PID = os.path.join(PID_DIR, 'mongodb.pid')
 MONGODB_LOG = os.path.join(LOGS_DIR, 'mongodb.log')
-MONGODB_FIRSTBOOT_PATH = os.path.join(USER_DIR, '.firstboot_mongodb')
-
+MONGODB_JSON = os.path.join(ETC_DIR, 'mongodb.json')
 MONGODB_JS = os.path.join(ETC_DIR, 'mongodb.js')
 
 CELERY_JSON = os.path.join(ETC_DIR, 'celery.json')
 CELERY_PIDFILE = os.path.expanduser('~/.metrique/pids/celeryd.pid')
 CELERY_LOG = os.path.expanduser('~/.metrique/logs/celeryd.log')
+
+NGINX_CONF = os.path.join(ETC_DIR, 'nginx.conf')
+NGINX_ACCESS_LOG = os.path.join(LOGS_DIR, 'nginx_access.log')
+NGINX_ERROR_LOG = os.path.join(LOGS_DIR, 'nginx_error.log')
+NGINX_PIDFILE = os.path.join(PID_DIR, 'nginx.pid')
 
 # set cache dir so pip doesn't have to keep downloading over and over
 PIP_CACHE = '~/.pip/download-cache'
@@ -95,7 +104,9 @@ NOW = datetime.datetime.utcnow().strftime('%FT%H:%M:%S')
 
 DEFAULT_METRIQUE_JSON = '''
 {
+    "auto_login": false,
     "batch_size": 5000,
+    "cube_autoregister": false,
     "debug": true,
     "host": "127.0.0.1",
     "log2file": true,
@@ -103,7 +114,7 @@ DEFAULT_METRIQUE_JSON = '''
     "password": "%s",
     "port": 5420,
     "sql_batch_size": 1000,
-    "ssl": true,
+    "ssl": false,
     "ssl_verify": false
 }
 ''' % (rand_chars())
@@ -119,7 +130,7 @@ DEFAULT_METRIQUED_JSON = '''
     "logstdout": false,
     "port": 5420,
     "realm": "metrique",
-    "ssl": true,
+    "ssl": false,
     "ssl_certificate": "%s",
     "ssl_certificate_key": "%s",
     "superusers": ["admin", "%s"]
@@ -174,6 +185,118 @@ DEFAULT_CELERY_JSON = '''
 ''' % (admin_password)
 DEFAULT_CELERY_JSON = DEFAULT_CELERY_JSON.strip()
 
+DEFAULT_NGINX_CONF = '''
+worker_processes auto;
+ 
+error_log %s;
+pid %s; 
+ 
+events {
+    worker_connections 1024;
+    use epoll;
+}
+ 
+http {
+    charset utf-8;
+    client_max_body_size 0;  # disabled
+    client_body_temp_path  %s 1 2;
+    client_header_buffer_size 256k;
+    large_client_header_buffers 8 1024k;
+
+    proxy_temp_path   %s  1 2;
+    proxy_cache_path  %s  levels=1:2     keys_zone=proxy_one:10m;
+
+    fastcgi_temp_path   %s  1 2;
+    fastcgi_cache_path  %s  levels=1:2   keys_zone=fastcgi_one:10m;
+
+    uwsgi_temp_path   %s  1 2;
+    uwsgi_cache_path  %s  levels=1:2     keys_zone=uwsgi_one:10m;
+ 
+    scgi_temp_path   %s  1 2;
+    scgi_cache_path  %s  levels=1:2     keys_zone=scgi_one:10m;
+ 
+    # Enumerate all the Tornado servers here
+    upstream frontends {
+        server 127.0.0.1:5421;
+        server 127.0.0.1:5422;
+        server 127.0.0.1:5423;
+        server 127.0.0.1:5424;
+    }
+ 
+    include /etc/nginx/mime.types;
+    default_type application/octet-stream;
+ 
+    error_log %s;
+    access_log %s;
+
+    keepalive_timeout 65;
+    proxy_read_timeout 200;
+    sendfile on;
+    tcp_nopush on;
+    tcp_nodelay on;
+    gzip on;
+    gzip_min_length 1000;
+    gzip_proxied any;
+    gzip_types text/plain text/css text/xml
+               application/x-javascript application/xml
+               application/atom+xml text/javascript
+               application/json;
+ 
+    # Only retry if there was a communication error, not a timeout
+    # on the Tornado server (to avoid propagating "queries of death"
+    # to all frontends)
+    proxy_next_upstream error;
+ 
+    server {
+        listen 127.0.0.1:5420;
+        ssl                 off;
+        ssl_certificate     %s;
+        ssl_certificate_key %s;
+
+        ssl_protocols        SSLv3 TLSv1 TLSv1.1 TLSv1.2;
+        ssl_ciphers RC4:HIGH:!aNULL:!MD5;
+     	ssl_prefer_server_ciphers on;
+     	keepalive_timeout    60;
+        ssl_session_cache    shared:SSL:10m;
+     	ssl_session_timeout  10m;
+ 
+        location ^~ /static/ {
+            root %s;
+            if ($query_string) {
+                expires max;
+            }
+        }
+ 
+        location / {
+            proxy_pass_header Server;
+            proxy_set_header Host $http_host;
+            proxy_redirect off;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Scheme $scheme;
+            proxy_pass http://frontends;
+
+            proxy_set_header        Accept-Encoding   "";
+            proxy_set_header        X-Forwarded-For $proxy_add_x_forwarded_for;
+
+            ### Most PHP, Python, Rails, Java App can use this header ###
+            #proxy_set_header X-Forwarded-Proto https;##
+            #This is better##
+            proxy_set_header        X-Forwarded-Proto $scheme;
+            add_header              Front-End-Https   on;
+
+            ### force timeouts if one of backend is died ##
+            proxy_next_upstream error timeout invalid_header http_500 http_502 http_503 http_504;
+
+        }
+    }
+}
+''' % (NGINX_ERROR_LOG, NGINX_PIDFILE, TEMP_DIR,
+       TEMP_DIR, CACHE_DIR, TEMP_DIR, CACHE_DIR, TEMP_DIR, CACHE_DIR,
+       TEMP_DIR, CACHE_DIR,
+       NGINX_ERROR_LOG, NGINX_ACCESS_LOG, SSL_CERT, SSL_KEY, STATIC_PATH)
+
+DEFAULT_NGINX_CONF = DEFAULT_NGINX_CONF.strip()
+
 
 def activate(args=None):
     global virtenv_activated
@@ -216,8 +339,15 @@ def makedirs(path, mode=0700):
 
 
 def remove(path):
-    if os.path.exists(path):
-        os.remove(path)
+    if isinstance(path, (list, tuple)):
+        [remove(p) for p in path]
+    else:
+        assert isinstance(path, basestring)
+        if os.path.exists(path):
+            if os.path.isdir(path):
+                shutil.rmtree(path)
+            else:
+                os.remove(path)
 
 
 def run(cmd, cwd, show_stdout):
@@ -298,27 +428,27 @@ def metrique_user_register():
 def metriqued_firstboot(args):
     if os.path.exists(METRIQUED_FIRSTBOOT_PATH):
         return
+    args.command = 'start'
+    metriqued(args)
     metrique_user_register()
     with open(METRIQUED_FIRSTBOOT_PATH, 'w') as f:
         f.write(NOW)
+    args.command = 'stop'
+    metriqued(args)
 
 
 def metriqued(args):
     '''
     START, STOP, RESTART, RELOAD,
     '''
-    call('metriqued %s' % args.command)
-    metriqued_firstboot(args)
+    if args.command == 'firstboot':
+        metriqued_firstboot(args)
+    else:
+        call('metriqued %s' % args.command)
 
 
 def nginx(args):
-    if os.getuid() != 0:
-        raise RuntimeError("must be run as root")
-    if not args.config_file:
-        logger.warn("nginx config is broken")
-        raise ImportError("nginx config is broken")
-    else:
-        config_file = os.path.expanduser(args.config_file)
+    config_file = os.path.expanduser(args.config_file)
 
     cmd = 'nginx -c %s' % config_file
     if args.command == 'test':
@@ -356,8 +486,7 @@ def mongodb(args):
 
     if args.command == 'start':
         cmd = 'mongod -f %s --fork' % config_file
-        cmd += ' --prealloc' if args.prealloc else ' --noprealloc'
-        cmd += ' --journal' if args.journal else ' --nojournal'
+        cmd += ' --noprealloc --nojournal' if args.fast else ''
         call(cmd)
         time.sleep(1)  # give mongodb a second to start
         mongodb_firstboot(args)
@@ -394,7 +523,6 @@ def mongodb(args):
 
 def mongodb_backup(args):
     from metriqued.config import mongodb_config
-
     config = mongodb_config(args.config_file)
 
     out_dir = args.out_dir or BACKUP_DIR
@@ -443,7 +571,7 @@ def mongodb_clean(args, path, prefix='mongodb'):
     files = sorted(glob.glob(path), reverse=True)
     to_remove = files[keep:]
     logger.debug('Removing %i backups' % len(to_remove))
-    [os.remove(f) for f in to_remove]
+    [remove(f) for f in to_remove]
 
 
 def clean(args):
@@ -567,9 +695,23 @@ def deploy(args):
     + install dep
     + install metrique and friends
     '''
+    # make sure we have the installer basics and their up2date
+    # argparse is needed for py2.6; pip-accel caches compiled binaries
+    # first run for a new virt-env will take forever...
+    # second run should be 90% faster!
+    call('pip install -U pip setuptools')
+    call('pip install pip-accel')
+
+    pip = 'pip' if args.slow else 'pip-accel'
+
+    call('%s install -U virtualenv argparse' % pip)
+
     virtenv = getattr(args, 'virtenv')
     if not virtenv:
         raise RuntimeError("virtenv install path required!")
+
+    # we can't be in a virtenv when running the virtualenv.main() script
+    sys.path = [p for p in sys.path if not p.startswith(virtenv)]
 
     # virtualenv.main; pass in only the virtenv path
     sys.argv = sys.argv[0:1] + [virtenv]
@@ -577,14 +719,6 @@ def deploy(args):
     virtualenv.main()
     # activate the newly installed virtenv
     activate(args)
-
-    pip = 'pip' if args.slow else 'pip-accel'
-    # make sure we have the installer basics and their up2date
-    # argparse is needed for py2.6; pip-accel caches compiled binaries
-    # first run for a new virt-env will take forever...
-    # second run should be 90% faster!
-    call('pip install -U pip setuptools')
-    call('pip install -U %s virtualenv argparse' % pip)
 
     # this required dep is installed separately b/c virtenv
     # path resolution issues; fails due to being unable to find
@@ -597,18 +731,23 @@ def deploy(args):
         call('%s install -U matplotlib' % pip)
     if args.ipython:
         call('%s install -U ipython' % pip)
-    if args.pytest:
+    if args.test or args.pytest:
         call('%s install -U pytest' % pip)
 
-    cmd = 'deploy'
-    #no_pre = getattr(args, 'no_pre', False)
-    #if not no_pre:
-    #    cmd += ' --pre'
-    setup(args, cmd, pip=False)
+    cmd = 'install'
+    no_pre = getattr(args, 'no_pre', False)
+    if not no_pre:
+        cmd += ' --pre'
+    setup(args, cmd, pip=True)
+
+    if args.develop:
+        path = os.path.join(virtenv, 'lib/python2.7/site-packages/metrique*')
+        mods = glob.glob(path)
+        remove(mods)
+        develop(args)
 
     # run py.test after install
     if args.test:
-        call('%s install -U pytest' % pip)
         for pkg in __pkgs__:
             if pkg == 'plotrique' and not args.matplotlib:
                 continue
@@ -698,7 +837,8 @@ def sys_firstboot(args=None):
     [makedirs(p) for p in (USER_DIR, PIP_CACHE, PIP_ACCEL,
                            PIP_EGGS, TRASH_DIR, LOGS_DIR,
                            ETC_DIR, BACKUP_DIR, MONGODB_DIR,
-                           CELERY_DIR)]
+                           CELERY_DIR, TEMP_DIR, CACHE_DIR,
+                           GNUPG_DIR, PID_DIR)]
 
     # make sure the the default user python eggs dir is secure
     os.chmod(PIP_EGGS, 0700)
@@ -713,6 +853,7 @@ def sys_firstboot(args=None):
     default_conf(MONGODB_CONF, DEFAULT_MONGODB_CONF)
     default_conf(MONGODB_JS, DEFAULT_MONGODB_JS)
     default_conf(CELERY_JSON, DEFAULT_CELERY_JSON)
+    default_conf(NGINX_CONF, DEFAULT_NGINX_CONF)
 
     with open(SYS_FIRSTBOOT_PATH, 'w') as f:
         f.write(NOW)
@@ -733,6 +874,8 @@ def main():
     _deploy.add_argument(
         '--no-pre', action='store_true',
         help='ignore pre-release versions')
+    _deploy.add_argument(
+        '--develop', action='store_true', help='install in "develop mode"')
     _deploy.add_argument(
         '--test', action='store_true', help='run tests after deployment')
     _deploy.add_argument(
@@ -785,8 +928,7 @@ def main():
     _mongodb.add_argument('-dd', '--db-dir', default=MONGODB_DIR)
     _mongodb.add_argument('-pd', '--pid-dir', default=PID_DIR)
     _mongodb.add_argument('-H', '--host', default='127.0.0.1')
-    _mongodb.add_argument('-p', '--prealloc', action='store_true')
-    _mongodb.add_argument('-j', '--journal', action='store_true')
+    _mongodb.add_argument('-f', '--fast', action='store_true')
     _mongodb.set_defaults(func=mongodb)
 
     # MongoDB Backup
@@ -806,7 +948,9 @@ def main():
     _nginx.add_argument('command',
                         choices=['start', 'stop', 'reload',
                                  'restart', 'test'])
-    _nginx.add_argument('config_file')
+    _nginx.add_argument('-c', '--config-file', default=NGINX_CONF)
+    _nginx.add_argument('-m', '--metriqued-config-file', 
+                        default=METRIQUED_JSON)
     _nginx.set_defaults(func=nginx)
 
     # metriqued Server

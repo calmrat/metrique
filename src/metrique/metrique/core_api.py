@@ -433,12 +433,15 @@ class HTTPClient(BaseClient):
         self._load_session()
         self.logged_in = False
 
-        login = login if login is not None else self.config.auto_login
+        cube_autoregister = cube_register or self.config.cube_autoregister
+
+        if login is None:
+            # login is needed if cube_autoregister is true
+            login = self.config.auto_login or cube_autoregister
 
         if login:
             self.user_login(self.config.username, self.config.password)
 
-        cube_autoregister = cube_register or self.config.cube_autoregister
         if self.logged_in and cube_autoregister:
             if not self.cube_id in self.cube_list_all():
                 self.logger.info("Autoregistering %s" % self.name)

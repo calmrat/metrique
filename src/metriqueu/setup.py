@@ -17,7 +17,7 @@ __requires__ = [
     'futures (==2.1.3)',
     'pql (==0.4.1)',
     'python_dateutil (==2.2.0)',
-    'pytz (==2013.8)'
+    'pytz'
     'simplejson (==3.3.1)',
 ]
 __irequires__ = [
@@ -25,7 +25,7 @@ __irequires__ = [
     'futures==2.1.3',
     'pql==0.4.1',
     'python_dateutil==2.2.0',
-    'pytz==2013.8',
+    'pytz',
     'simplejson==3.3.1',
 ]
 pip_src = 'https://pypi.python.org/packages/source'

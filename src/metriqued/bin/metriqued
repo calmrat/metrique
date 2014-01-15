@@ -5,7 +5,7 @@
 '''
 metrique-server.py contains a CLI for metrique server.
 
-    It is possible to start, stop, restart and request
+    It is possible to start, stop, and request
     current running status for metriqued
 
     # ... ^^^ cube class definition above ^^^ ...
@@ -31,8 +31,6 @@ def stop(args):
 
 
 def start(args):
-    if not args.instances:
-        args.instances = 1
     # A) there are no instances currently running
     # B) there are instances running; add additional
     args.port = args.port + running_k
@@ -60,7 +58,7 @@ if __name__ == '__main__':
     import argparse
     _args = argparse.ArgumentParser(description='metrique server CLI')
 
-    __cmds__ = ['start', 'stop', 'restart', 'status']
+    __cmds__ = ['start', 'stop', 'status']
     _args.add_argument('command', type=str, choices=__cmds__)
     _args.add_argument('-d', '--debug', type=int, default=True)
     _args.add_argument('-c', '--server-config-file', type=str)
@@ -88,6 +86,9 @@ if __name__ == '__main__':
     args.pid_dir = args.pid_dir or mconf.piddir
     args.pid_dir = os.path.expanduser(args.pid_dir)
 
+    if not args.instances:
+        args.instances = 1
+
     running = get_pids(args.pid_dir)
     running_k = len(running)
 
@@ -97,11 +98,6 @@ if __name__ == '__main__':
         start(args)
     elif cmd == 'stop':
         stop(args)
-    elif cmd == 'restart':
-        stop(args)
-        args.cmd = 'start'
-        args.instances = args.instances or running_k
-        start(args)
     elif cmd == 'status':
         print 'RUNNING: %s' % ', '.join(map(str, get_pids(args.pid_dir)))
     else:

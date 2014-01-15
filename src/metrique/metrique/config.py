@@ -32,10 +32,6 @@ GNUPG_DIR = os.path.expanduser('~/.gnupg')
 COOKIEJAR = os.path.join(USER_DIR, '.cookiejar')
 DEFAULT_CONFIG = os.path.join(CONFIG_DIR, 'metrique')
 
-for path in [USER_DIR, CONFIG_DIR, LOG_DIR, TMP_DIR]:
-    if not os.path.exists(path):
-        os.makedirs(path)
-
 
 class Config(JSONConf):
     ''' Client config (property) class
