@@ -138,12 +138,12 @@ class mongodb_config(JSONConf):
     def db_timeline_admin(self):
         if not hasattr(self, '_db_timeline_admin'):
             self._db_timeline_admin = BaseMongoDB(
-            host=self.host, db=self.db_timeline, auth=self.auth,
-            user=self.admin_user, password=self.admin_password,
-            ssl=self.ssl, ssl_certfile=self.ssl_certificate,
-            ssl_keyfile=self.ssl_certificate_key,
-            write_concern=self.write_concern, fsync=self.fsync,
-            journal=self.journal, tz_aware=self.tz_aware)
+                host=self.host, db=self.db_timeline, auth=self.auth,
+                user=self.admin_user, password=self.admin_password,
+                ssl=self.ssl, ssl_certfile=self.ssl_certificate,
+                ssl_keyfile=self.ssl_certificate_key,
+                write_concern=self.write_concern, fsync=self.fsync,
+                journal=self.journal, tz_aware=self.tz_aware)
         return self._db_timeline_admin
 
     @property
