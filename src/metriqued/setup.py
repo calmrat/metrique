@@ -12,9 +12,7 @@ __pkgs__ = ['metriqued']
 __provides__ = ['metriqued']
 __datafiles__ = []
 __desc__ = 'Python/MongoDB Information Platform - Server'
-__scripts__ = [
-    'bin/metriqued'
-]
+__scripts__ = []
 __requires__ = [
     'metriqueu (>=%s)' % __version__,
     'gnupg (==1.2.3)',
