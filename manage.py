@@ -172,9 +172,10 @@ DEFAULT_MONGODB_CONF = DEFAULT_MONGODB_CONF.strip()
 
 DEFAULT_MONGODB_JS = '''
 db = db.getSiblingDB('admin')
-db.addUser({'user': 'admin', 'pwd': '%s', 'roles': ['dbAdminAnyDatabase']});
+db.addUser({'user': 'admin', 'pwd': '%s', 'roles': ['dbAdminAnyDatabase', 
+           'userAdminAnyDatabase', 'clusterAdmin', 'readWriteAnyDatabase']});
 db.addUser({'user': 'metrique', 'pwd': '%s', 'roles': ['readAnyDatabase']});
-''' % (admin_password, data_password)
+''' % (root_password, admin_password, data_password)
 DEFAULT_MONGODB_JS = DEFAULT_MONGODB_JS.strip()
 
 DEFAULT_CELERY_JSON = '''
@@ -470,7 +471,8 @@ def nginx(args):
 def mongodb_firstboot(args):
     if os.path.exists(MONGODB_FIRSTBOOT_PATH):
         return
-    call('mongo %s %s' % (args.host, MONGODB_JS))
+    ssl = ' --ssl' if args.ssl else ''
+    call('mongo %s/admin %s %s' % (args.host, ssl, MONGODB_JS))
     with open(MONGODB_FIRSTBOOT_PATH, 'w') as f:
         f.write(NOW)
 
@@ -487,6 +489,7 @@ def mongodb(args):
     if args.command == 'start':
         cmd = 'mongod -f %s --fork' % config_file
         cmd += ' --noprealloc --nojournal' if args.fast else ''
+        cmd += ' --replSet %s' % args.repl_set if args.repl_set else ''
         call(cmd)
         time.sleep(1)  # give mongodb a second to start
         mongodb_firstboot(args)
@@ -929,6 +932,8 @@ def main():
     _mongodb.add_argument('-pd', '--pid-dir', default=PID_DIR)
     _mongodb.add_argument('-H', '--host', default='127.0.0.1')
     _mongodb.add_argument('-f', '--fast', action='store_true')
+    _mongodb.add_argument('-s', '--ssl', action='store_true')
+    _mongodb.add_argument('-r', '--repl-set')
     _mongodb.set_defaults(func=mongodb)
 
     # MongoDB Backup
