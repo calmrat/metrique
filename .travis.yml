@@ -5,13 +5,12 @@ python:
 install:
   - "pip install coveralls"
 #  - "sudo apt-get install libhdf5-serial-dev"
-  - "./manage.py deploy --matplotlib --slow"
+  - "./manage.py deploy travis --matplotlib --slow"
 services: 
   - mongodb
 # NOTE: authentication will be enabled upon adding an 
 # admin user as mongod is started with the --auth parameter.
-before_script:
-  - "./manage.py firstboot"  # install default configs, etc
+#before_script:
 script: 
   # test coverage badge
   - "coverage run --source=metrique,metriqued,metriqueu,metriquec -m py.test tests"
