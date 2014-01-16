@@ -138,12 +138,14 @@ DEFAULT_METRIQUED_JSON = '''
 ''' % (rand_chars(20), SSL_CERT, SSL_KEY, USER)
 DEFAULT_METRIQUED_JSON = DEFAULT_METRIQUED_JSON.strip()
 
+root_password = rand_chars()
 admin_password = rand_chars()
 data_password = rand_chars()
 
 DEFAULT_MONGODB_JSON = '''
 {
     "auth": false,
+    "root_password": "%s",
     "admin_password": "%s",
     "data_password": "%s",
     "host": "127.0.0.1",
@@ -153,7 +155,7 @@ DEFAULT_MONGODB_JSON = '''
     "ssl_certificate": "%s",
     "write_concern": 1
 }
-''' % (admin_password, data_password, SSL_PEM)
+''' % (root_password, admin_password, data_password, SSL_PEM)
 DEFAULT_MONGODB_JSON = DEFAULT_MONGODB_JSON.strip()
 
 DEFAULT_MONGODB_CONF = '''
@@ -172,8 +174,10 @@ DEFAULT_MONGODB_CONF = DEFAULT_MONGODB_CONF.strip()
 
 DEFAULT_MONGODB_JS = '''
 db = db.getSiblingDB('admin')
-db.addUser({'user': 'admin', 'pwd': '%s', 'roles': ['dbAdminAnyDatabase', 
+db.addUser({'user': 'root', 'pwd': '%s', 'roles': ['dbAdminAnyDatabase', 
            'userAdminAnyDatabase', 'clusterAdmin', 'readWriteAnyDatabase']});
+db.addUser({'user': 'admin', 'pwd': '%s', 'roles': ['dbAdminAnyDatabase', 
+           'userAdminAnyDatabase', 'readWriteAnyDatabase']});
 db.addUser({'user': 'metrique', 'pwd': '%s', 'roles': ['readAnyDatabase']});
 ''' % (root_password, admin_password, data_password)
 DEFAULT_MONGODB_JS = DEFAULT_MONGODB_JS.strip()
