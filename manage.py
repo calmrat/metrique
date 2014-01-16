@@ -43,6 +43,7 @@ RE_VERSION_Z = re.compile(r"__version__\s+=\s+[\"'](\d+.\d+.(\d+))[\"']")
 RE_RELEASE = re.compile(r"__release__ = [\"']?((\d+)a?)[\"']?")
 
 HOSTNAME = socket.gethostname()
+LOCAL_IP = socket.gethostbyname(HOSTNAME)
 
 CWD = os.getcwd()
 SRC_DIR = os.path.join(CWD, __src__)
@@ -76,6 +77,7 @@ MONGODB_PID = os.path.join(PID_DIR, 'mongodb.pid')
 MONGODB_LOG = os.path.join(LOGS_DIR, 'mongodb.log')
 MONGODB_JSON = os.path.join(ETC_DIR, 'mongodb.json')
 MONGODB_JS = os.path.join(ETC_DIR, 'mongodb.js')
+MONGODB_KEYFILE = os.path.join(ETC_DIR, 'mongodb.key')
 
 CELERY_JSON = os.path.join(ETC_DIR, 'celery.json')
 CELERY_PIDFILE = os.path.expanduser('~/.metrique/pids/celeryd.pid')
@@ -159,17 +161,25 @@ DEFAULT_MONGODB_JSON = '''
 DEFAULT_MONGODB_JSON = DEFAULT_MONGODB_JSON.strip()
 
 DEFAULT_MONGODB_CONF = '''
-#auth = true
-bind_ip = 127.0.0.1
 fork = true
+nohttpinterface = true
 dbpath = %s
 logpath = %s
-noauth = true
-nohttpinterface = true
 pidfilepath = %s
+
+#auth = true
+noauth = true
+
+bind_ip = 127.0.0.1
+#bind_ip = %s
+
 #sslOnNormalPorts = true
 #sslPEMKeyFile = %s
-''' % (MONGODB_DIR, MONGODB_LOG, MONGODB_PID, SSL_PEM)
+
+#replSet = rs0
+#keyFile = %s
+''' % (LOCAL_IP, MONGODB_DIR, MONGODB_LOG, MONGODB_PID, SSL_PEM, 
+       MONGODB_KEYFILE)
 DEFAULT_MONGODB_CONF = DEFAULT_MONGODB_CONF.strip()
 
 DEFAULT_MONGODB_JS = '''
@@ -524,6 +534,9 @@ def mongodb(args):
         remove(MONGODB_FIRSTBOOT_PATH)
     elif args.command == 'status':
         call('mongod %s --sysinfo' % args.host)
+    elif args.command == 'keyfile':
+        call('openssl rand -base64 741 -out %s' % MONGODB_KEYFILE)
+        os.chmod(MONGODB_KEYFILE, 0600)
     else:
         raise ValueError("unknown command %s" % args.command)
 
@@ -930,7 +943,8 @@ def main():
     _mongodb = _sub.add_parser('mongodb')
     _mongodb.add_argument('command',
                           choices=['start', 'stop', 'restart',
-                                   'clean', 'trash', 'status'])
+                                   'clean', 'trash', 'status',
+                                   'keyfile'])
     _mongodb.add_argument('-c', '--config-file', default=MONGODB_CONF)
     _mongodb.add_argument('-dd', '--db-dir', default=MONGODB_DIR)
     _mongodb.add_argument('-pd', '--pid-dir', default=PID_DIR)
