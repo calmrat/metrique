@@ -178,15 +178,15 @@ bind_ip = 127.0.0.1
 
 #replSet = rs0
 #keyFile = %s
-''' % (LOCAL_IP, MONGODB_DIR, MONGODB_LOG, MONGODB_PID, SSL_PEM, 
+''' % (LOCAL_IP, MONGODB_DIR, MONGODB_LOG, MONGODB_PID, SSL_PEM,
        MONGODB_KEYFILE)
 DEFAULT_MONGODB_CONF = DEFAULT_MONGODB_CONF.strip()
 
 DEFAULT_MONGODB_JS = '''
 db = db.getSiblingDB('admin')
-db.addUser({'user': 'root', 'pwd': '%s', 'roles': ['dbAdminAnyDatabase', 
+db.addUser({'user': 'root', 'pwd': '%s', 'roles': ['dbAdminAnyDatabase',
            'userAdminAnyDatabase', 'clusterAdmin', 'readWriteAnyDatabase']});
-db.addUser({'user': 'admin', 'pwd': '%s', 'roles': ['dbAdminAnyDatabase', 
+db.addUser({'user': 'admin', 'pwd': '%s', 'roles': ['dbAdminAnyDatabase',
            'userAdminAnyDatabase', 'readWriteAnyDatabase']});
 db.addUser({'user': 'metrique', 'pwd': '%s', 'roles': ['readAnyDatabase']});
 ''' % (root_password, admin_password, data_password)
@@ -202,15 +202,15 @@ DEFAULT_CELERY_JSON = DEFAULT_CELERY_JSON.strip()
 
 DEFAULT_NGINX_CONF = '''
 worker_processes auto;
- 
+
 error_log %s;
-pid %s; 
- 
+pid %s;
+
 events {
     worker_connections 1024;
     use epoll;
 }
- 
+
 http {
     charset utf-8;
     client_max_body_size 0;  # disabled
@@ -226,10 +226,10 @@ http {
 
     uwsgi_temp_path   %s  1 2;
     uwsgi_cache_path  %s  levels=1:2     keys_zone=uwsgi_one:10m;
- 
+
     scgi_temp_path   %s  1 2;
     scgi_cache_path  %s  levels=1:2     keys_zone=scgi_one:10m;
- 
+
     # Enumerate all the Tornado servers here
     upstream frontends {
         server 127.0.0.1:5421;
@@ -237,10 +237,10 @@ http {
         server 127.0.0.1:5423;
         server 127.0.0.1:5424;
     }
- 
+
     include /etc/nginx/mime.types;
     default_type application/octet-stream;
- 
+
     error_log %s;
     access_log %s;
 
@@ -256,12 +256,12 @@ http {
                application/x-javascript application/xml
                application/atom+xml text/javascript
                application/json;
- 
+
     # Only retry if there was a communication error, not a timeout
     # on the Tornado server (to avoid propagating "queries of death"
     # to all frontends)
     proxy_next_upstream error;
- 
+
     server {
         listen 127.0.0.1:5420;
         ssl                 off;
@@ -270,18 +270,18 @@ http {
 
         ssl_protocols        SSLv3 TLSv1 TLSv1.1 TLSv1.2;
         ssl_ciphers RC4:HIGH:!aNULL:!MD5;
-     	ssl_prefer_server_ciphers on;
-     	keepalive_timeout    60;
+        ssl_prefer_server_ciphers on;
+        keepalive_timeout    60;
         ssl_session_cache    shared:SSL:10m;
-     	ssl_session_timeout  10m;
- 
+        ssl_session_timeout  10m;
+
         location ^~ /static/ {
             root %s;
             if ($query_string) {
                 expires max;
             }
         }
- 
+
         location / {
             proxy_pass_header Server;
             proxy_set_header Host $http_host;
@@ -300,8 +300,8 @@ http {
             add_header              Front-End-Https   on;
 
             ### force timeouts if one of backend is died ##
-            proxy_next_upstream error timeout invalid_header http_500 http_502 http_503 http_504;
-
+            proxy_next_upstream error timeout invalid_header http_500 http_502
+                                                             http_503 http_504;
         }
     }
 }
@@ -328,10 +328,10 @@ def activate(args=None):
 
     if virtenv:
         activate_this = os.path.join(virtenv, 'bin', 'activate_this.py')
-        assert os.path.exists(activate_this)
-        execfile(activate_this, dict(__file__=activate_this))
-        virtenv_activated = True
-        logger.info('Virtual Env (%s): Activated' % virtenv)
+        if os.path.exists(activate_this):
+            execfile(activate_this, dict(__file__=activate_this))
+            virtenv_activated = True
+            logger.info('Virtual Env (%s): Activated' % virtenv)
 
 
 # Activate the virtual environment in this python session if
@@ -719,13 +719,6 @@ def deploy(args):
     # argparse is needed for py2.6; pip-accel caches compiled binaries
     # first run for a new virt-env will take forever...
     # second run should be 90% faster!
-    call('pip install -U pip setuptools')
-    call('pip install pip-accel')
-
-    pip = 'pip' if args.slow else 'pip-accel'
-
-    call('%s install -U virtualenv argparse' % pip)
-
     virtenv = getattr(args, 'virtenv')
     if not virtenv:
         raise RuntimeError("virtenv install path required!")
@@ -740,10 +733,17 @@ def deploy(args):
     # activate the newly installed virtenv
     activate(args)
 
+    call('pip install -U pip setuptools')
+    call('pip install pip-accel')
+
+    pip = 'pip' if args.slow else 'pip-accel'
+
+    call('%s install -U virtualenv argparse' % pip)
+
     # this required dep is installed separately b/c virtenv
     # path resolution issues; fails due to being unable to find
     # the python headers in the virtenv for some reason.
-    call('%s install -U cython numexpr numpy pandas' % pip)
+    call('%s install -U cython numpy pandas' % pip)
 
     # optional dependencies; highly recommended! but slow to
     # install if we're not testing
@@ -972,7 +972,7 @@ def main():
                         choices=['start', 'stop', 'reload',
                                  'restart', 'test'])
     _nginx.add_argument('-c', '--config-file', default=NGINX_CONF)
-    _nginx.add_argument('-m', '--metriqued-config-file', 
+    _nginx.add_argument('-m', '--metriqued-config-file',
                         default=METRIQUED_JSON)
     _nginx.set_defaults(func=nginx)
 
