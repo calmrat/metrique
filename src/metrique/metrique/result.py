@@ -182,9 +182,11 @@ class Result(DataFrame):
         if scale not in ['auto', 'maximum', 'daily', 'weekly', 'monthly',
                          'quarterly', 'yearly']:
             raise ValueError('Incorrect scale: %s' % scale)
-        start = Timestamp(start or self._start.min())
+        start = Timestamp(start or self._start.min() or '2010-01-01')
+        start = Timestamp('2010-01-01') if repr(start) == 'NaT' else start
         end = Timestamp(end or max(Timestamp(self._end.max()),
                                    self._start.max()))
+        end = datetime.utcnow() if repr(end) == 'NaT' else end
         start = start if self.check_in_bounds(start) else self._lbound
         end = end if self.check_in_bounds(end) else self._rbound
 
