@@ -20,7 +20,6 @@ import shutil
 import socket
 import string
 import sys
-import time
 
 try:
     import virtualenv
@@ -30,6 +29,36 @@ finally:
     virtenv_activated = False
     logger = virtualenv.Logger([(0, sys.stdout)])
     call_subprocess = virtualenv.call_subprocess
+
+def activate(args=None):
+    global virtenv_activated
+
+    if virtenv_activated:
+        return
+    elif (hasattr(args, 'virtenv') and args.virtenv):
+        virtenv = args.virtenv
+    elif isinstance(args, basestring):
+        # virtenv path is passed in direct as a string
+        virtenv = args
+    else:
+        virtenv = os.environ.get('VIRTUAL_ENV')
+
+    if virtenv:
+        activate_this = os.path.join(virtenv, 'bin', 'activate_this.py')
+        if os.path.exists(activate_this):
+            execfile(activate_this, dict(__file__=activate_this))
+            virtenv_activated = True
+            logger.info('Virtual Env (%s): Activated' % virtenv)
+
+
+# Activate the virtual environment in this python session if
+# parent env has one set
+activate()
+
+from metriqued.config import metriqued_config
+from metriqued.tornadohttp import TornadoHTTPServer
+from metriqued.utils import get_pids
+
 
 __pkgs__ = ['metrique', 'metriqued', 'metriquec', 'metriqueu',
             'plotrique']
@@ -63,6 +92,7 @@ cwd = os.getcwd()
 STATIC_PATH = os.path.join(cwd, 'src/metriqued/metriqued/static/')
 
 SYS_FIRSTBOOT_PATH = os.path.join(USER_DIR, '.firstboot_sys')
+
 METRIQUED_FIRSTBOOT_PATH = os.path.join(USER_DIR, '.firstboot_metriqued')
 METRIQUED_JSON = os.path.join(ETC_DIR, 'metriqued.json')
 METRIQUE_JSON = os.path.join(ETC_DIR, 'metrique.json')
@@ -313,32 +343,6 @@ http {
 DEFAULT_NGINX_CONF = DEFAULT_NGINX_CONF.strip()
 
 
-def activate(args=None):
-    global virtenv_activated
-
-    if virtenv_activated:
-        return
-    elif (hasattr(args, 'virtenv') and args.virtenv):
-        virtenv = args.virtenv
-    elif isinstance(args, basestring):
-        # virtenv path is passed in direct as a string
-        virtenv = args
-    else:
-        virtenv = os.environ.get('VIRTUAL_ENV')
-
-    if virtenv:
-        activate_this = os.path.join(virtenv, 'bin', 'activate_this.py')
-        if os.path.exists(activate_this):
-            execfile(activate_this, dict(__file__=activate_this))
-            virtenv_activated = True
-            logger.info('Virtual Env (%s): Activated' % virtenv)
-
-
-# Activate the virtual environment in this python session if
-# parent env has one set
-activate()
-
-
 def get_pid(pidfile):
     try:
         return int(''.join(open(pidfile).readlines()).strip())
@@ -452,14 +456,52 @@ def metriqued_firstboot(args):
     metriqued(args)
 
 
+def metriqued_stop(args):
+    running = get_pids(PID_DIR)
+    for pid in running:
+        print "Sending signal (%s) to (%s)" % (args.signal, pid)
+        os.kill(pid, args.signal)
+
+
+def metriqued_start(args):
+    # A) there are no instances currently running
+    # B) there are instances running; add additional
+    config_file = args.server_config_file
+    running = get_pids(PID_DIR)
+    running_k = len(running)
+    pids = []
+    port = args.port + running_k
+    for k in range(args.instances):
+        pid = os.fork()
+        if pid == 0:
+            metriqued = TornadoHTTPServer(config_file=config_file, port=port)
+            metriqued.start()
+            sys.exit()
+        else:
+            pids.append(pid)
+        port += 1
+    print 'Started: %s' % ', '.join(map(str, pids))
+
+
 def metriqued(args):
     '''
     START, STOP, RESTART, RELOAD,
     '''
-    if args.command == 'firstboot':
+    cmd = args.command
+
+    if not args.instances:
+        args.instances = 1
+
+    if cmd == 'start':
+        metriqued_start(args)
+    elif cmd == 'stop':
+        metriqued_stop(args)
+    elif cmd == 'status':
+        print 'RUNNING: %s' % ', '.join(map(str, get_pids(PID_DIR)))
+    elif args.command == 'firstboot':
         metriqued_firstboot(args)
     else:
-        call('metriqued %s' % args.command)
+        raise SystemExit('bad command "%s"... Try --help' % cmd)
 
 
 def nginx(args):
@@ -497,16 +539,13 @@ def mongodb(args):
 
     config_file = os.path.expanduser(args.config_file)
 
-    pid_dir = makedirs(args.pid_dir)
-    pidfile = os.path.join(pid_dir, 'mongodb.pid')
+    pidfile = os.path.join(PID_DIR, 'mongodb.pid')
 
     if args.command == 'start':
         cmd = 'mongod -f %s --fork' % config_file
         cmd += ' --noprealloc --nojournal' if args.fast else ''
         cmd += ' --replSet %s' % args.repl_set if args.repl_set else ''
         call(cmd)
-        time.sleep(1)  # give mongodb a second to start
-        mongodb_firstboot(args)
     elif args.command == 'stop':
         signal = 15
         pid = get_pid(pidfile)
@@ -532,6 +571,8 @@ def mongodb(args):
         shutil.move(db_dir, dest)
         makedirs(db_dir)
         remove(MONGODB_FIRSTBOOT_PATH)
+    elif args.command == 'firstboot':
+        mongodb_firstboot(args)
     elif args.command == 'status':
         call('mongod %s --sysinfo' % args.host)
     elif args.command == 'keyfile':
@@ -944,10 +985,9 @@ def main():
     _mongodb.add_argument('command',
                           choices=['start', 'stop', 'restart',
                                    'clean', 'trash', 'status',
-                                   'keyfile'])
+                                   'keyfile', 'firstboot'])
     _mongodb.add_argument('-c', '--config-file', default=MONGODB_CONF)
     _mongodb.add_argument('-dd', '--db-dir', default=MONGODB_DIR)
-    _mongodb.add_argument('-pd', '--pid-dir', default=PID_DIR)
     _mongodb.add_argument('-H', '--host', default='127.0.0.1')
     _mongodb.add_argument('-f', '--fast', action='store_true')
     _mongodb.add_argument('-s', '--ssl', action='store_true')
@@ -978,7 +1018,12 @@ def main():
 
     # metriqued Server
     _metriqued = _sub.add_parser('metriqued')
-    _metriqued.add_argument('command')
+    _metriqued.add_argument('command', choices=['start', 'stop', 'status'])
+    _metriqued.add_argument('-c', '--server-config-file')
+    _metriqued.add_argument('-P', '--port', type=int, default=5420)
+    _metriqued.add_argument('-i', '--instances', type=int)
+    _metriqued.add_argument('-s', '--signal', type=int, choices=[2, 9, 15],
+                            default=2)  # 2 = SIGINT; 15 = SIGTERM
     _metriqued.set_defaults(func=metriqued)
 
     # celeryd Server
