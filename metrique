@@ -30,6 +30,7 @@ finally:
     logger = virtualenv.Logger([(0, sys.stdout)])
     call_subprocess = virtualenv.call_subprocess
 
+
 def activate(args=None):
     global virtenv_activated
 
@@ -56,7 +57,6 @@ def activate(args=None):
 activate()
 
 # load metriqued stuff only after the virtenv has been initiated
-from metriqued.config import metriqued_config
 from metriqued.tornadohttp import TornadoHTTPServer
 from metriqued.utils import get_pids
 
@@ -158,6 +158,7 @@ DEFAULT_METRIQUED_JSON = '''
     "cookie_secret": "%s",
     "debug": true,
     "host": "127.0.0.1",
+    #"host": "%s",
     "krb_auth": false,
     "log2file": true,
     "logstdout": false,
@@ -168,7 +169,7 @@ DEFAULT_METRIQUED_JSON = '''
     "ssl_certificate_key": "%s",
     "superusers": ["admin", "%s"]
 }
-''' % (rand_chars(20), SSL_CERT, SSL_KEY, USER)
+''' % (rand_chars(20), LOCAL_IP, SSL_CERT, SSL_KEY, USER)
 DEFAULT_METRIQUED_JSON = DEFAULT_METRIQUED_JSON.strip()
 
 root_password = rand_chars()
@@ -226,9 +227,10 @@ DEFAULT_MONGODB_JS = DEFAULT_MONGODB_JS.strip()
 DEFAULT_CELERY_JSON = '''
 {
     "BROKER_URL": "mongodb://admin:%s@127.0.0.1:27017",
+    "BROKER_URL_LOCAL": "mongodb://admin:%s@%s:27017",
     "BROKER_USE_SSL": false
 }
-''' % (admin_password)
+''' % (admin_password, admin_password, LOCAL_IP)
 DEFAULT_CELERY_JSON = DEFAULT_CELERY_JSON.strip()
 
 DEFAULT_NGINX_CONF = '''
@@ -267,6 +269,10 @@ http {
         server 127.0.0.1:5422;
         server 127.0.0.1:5423;
         server 127.0.0.1:5424;
+        #server %s:5421;
+        #server %s:5422;
+        #server %s:5423;
+        #server %s:5424;
     }
 
     include /etc/nginx/mime.types;
@@ -294,7 +300,7 @@ http {
     proxy_next_upstream error;
 
     server {
-        listen 127.0.0.1:5420;
+        listen %s:5420;
         ssl                 off;
         ssl_certificate     %s;
         ssl_certificate_key %s;
@@ -338,8 +344,9 @@ http {
 }
 ''' % (NGINX_ERROR_LOG, NGINX_PIDFILE, TEMP_DIR,
        TEMP_DIR, CACHE_DIR, TEMP_DIR, CACHE_DIR, TEMP_DIR, CACHE_DIR,
-       TEMP_DIR, CACHE_DIR,
-       NGINX_ERROR_LOG, NGINX_ACCESS_LOG, SSL_CERT, SSL_KEY, STATIC_PATH)
+       TEMP_DIR, CACHE_DIR, LOCAL_IP, LOCAL_IP, LOCAL_IP, LOCAL_IP,
+       NGINX_ERROR_LOG, NGINX_ACCESS_LOG, LOCAL_IP, SSL_CERT, SSL_KEY,
+       STATIC_PATH)
 
 DEFAULT_NGINX_CONF = DEFAULT_NGINX_CONF.strip()
 
