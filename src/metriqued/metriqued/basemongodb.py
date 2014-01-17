@@ -5,19 +5,26 @@
 import logging
 import os
 try:
-    from pymongo import MongoClient
-    mongo_client_support = True
+    from pymongo import MongoClient, MongoReplicaSetClient
 except ImportError:
-    from pymongo import Connection
-    mongo_client_support = False
+    raise ImportError("Mongodb 2.4+ required!")
 from pymongo.errors import ConnectionFailure
+from pymongo.read_preferences import ReadPreference
+
+READ_PREFERENCE = {
+    'PRIMARY_PREFERRED': ReadPreference.PRIMARY,
+    'PRIMARY': ReadPreference.PRIMARY,
+    'SECONDARY': ReadPreference.SECONDARY,
+    'SECONDARY_PREFERRED': ReadPreference.SECONDARY_PREFERRED,
+    'NEAREST': ReadPreference.NEAREST,
+}
 
 
 class BaseMongoDB(object):
-    def __init__(self, db, host, user=None, password=None, auth=False,
+    def __init__(self, host, user=None, password=None, auth=False,
                  port=None, ssl=None, ssl_keyfile=None, tz_aware=True,
                  ssl_certfile=None, write_concern=1, journal=False,
-                 fsync=False):
+                 fsync=False, replica_set=None, read_preference=None):
 
         pid = os.getpid()
         self.logger = logging.getLogger('metriqued.%i.mongodb' % pid)
@@ -31,7 +38,9 @@ class BaseMongoDB(object):
         self.host = host
         self.user = user
         self.password = password
-        self._db = db
+
+        self.replica_set = replica_set
+        self.read_preference = read_preference or 'SECONDARY_PREFERRED'
 
         self.ssl = ssl
         self.ssl_keyfile = ssl_keyfile
@@ -55,7 +64,7 @@ class BaseMongoDB(object):
             if not admin_db.authenticate(self.user, self.password):
                 raise RuntimeError(
                     "MongoDB failed to authenticate user (%s)" % self.user)
-        return self._proxy[self._db]
+        return self._proxy
 
     def close(self):
         if hasattr(self, '_proxy'):
@@ -70,7 +79,7 @@ class BaseMongoDB(object):
                 return self._load_db_proxy()
             except ConnectionFailure as e:
                 self.logger.warn("[%i] MongoDB Failed to connect (%s): %s" % (
-                            retries, self.host, e))
+                                 retries, self.host, e))
                 retries -= 1
                 self._db_proxy = None
         else:
@@ -81,24 +90,22 @@ class BaseMongoDB(object):
         return self.db[collection]
 
     def _load_mongo_client(self, **kwargs):
-        self._proxy = MongoClient(self.host, self.port,
-                                  tz_aware=self.tz_aware,
-                                  w=self.write_concern,
-                                  j=self.journal,
-                                  fsync=self.fsync,
-                                  **kwargs)
+        self.logger.debug('Loading new MongoClient connection')
+        self._proxy = MongoClient(self.host, self.port, tz_aware=self.tz_aware,
+                                  w=self.write_concern, j=self.journal,
+                                  fsync=self.fsync, **kwargs)
 
-    def _load_mongo_connection(self, **kwargs):
-            self._proxy = Connection(self.host, self.port,
-                                     tz_aware=self.tz_aware,
-                                     w=self.write_concern,
-                                     j=self.journal,
-                                     fsync=self.fsync,
-                                     **kwargs)
+    def _load_mongo_replica_client(self, **kwargs):
+            self.logger.debug('Loading new MongoReplicaSetClient connection')
+            read_preference = READ_PREFERENCE[self.read_preference]
+            self._proxy = MongoReplicaSetClient(
+                self.host, self.port, tz_aware=self.tz_aware,
+                w=self.write_concern, j=self.journal,
+                fsync=self.fsync, replicaSet=self.replica_set,
+                read_preference=read_preference, **kwargs)
 
     def _load_db_proxy(self):
         if not (hasattr(self, '_db_proxy') and self._db_proxy):
-            self.logger.debug('Loading NEW Mongodb Proxy connection')
             kwargs = {}
             if self.ssl:
                 if self.ssl_keyfile:
@@ -109,10 +116,10 @@ class BaseMongoDB(object):
                 # include ssl options only if it's enabled
                 kwargs.update(dict(ssl=self.ssl,
                                    ssl_certfile=self.ssl_certfile))
-            if mongo_client_support:
-                self._load_mongo_client(**kwargs)
+            if self.replica_set:
+                self._load_mongo_replica_client(**kwargs)
             else:
-                self._load_mongo_connection(**kwargs)
+                self._load_mongo_client(**kwargs)
             self._db_proxy = self._auth_db()
         return self._db_proxy
 

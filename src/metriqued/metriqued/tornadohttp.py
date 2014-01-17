@@ -152,6 +152,8 @@ class TornadoHTTPServer(object):
         else:
             with open(self.pid_file, 'w') as _file:
                 _file.write(str(self.pid))
+        signal.signal(signal.SIGTERM, self._inst_terminate_handler)
+        signal.signal(signal.SIGINT, self._inst_kill_handler)
         self.logger.debug("PID stored (%s)" % self.pid)
 
     def remove_pid(self, quiet=False):
@@ -261,10 +263,8 @@ class TornadoHTTPServer(object):
 
     def spawn_instance(self):
         self.logger.debug("spawning tornado %s..." % self.uri)
-        self._mongodb_check()
         self.set_pid()
-        signal.signal(signal.SIGTERM, self._inst_terminate_handler)
-        signal.signal(signal.SIGINT, self._inst_kill_handler)
+        self._mongodb_check()
         self._init_basic_server()
 
     def start(self, fork=False):
@@ -324,8 +324,8 @@ class TornadoHTTPServer(object):
         self.logger.debug('testing mongodb connection status (%s) ...' % host)
         try:
             assert self.dbconf.db_metrique_admin.db
-            assert self.dbconf.db_metrique_data.db
             assert self.dbconf.db_timeline_admin.db
+            assert self.dbconf.db_metrique_data.db
             assert self.dbconf.db_timeline_data.db
             self.logger.debug('... mongodb connection ok')
         except Exception:

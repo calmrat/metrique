@@ -2,6 +2,7 @@
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 # Author: "Chris Ward <cward@redhat.com>
 
+import logging
 import os
 
 from metriqueu.jsonconf import JSONConf
@@ -61,6 +62,8 @@ class metriqued_config(JSONConf):
             'xsrf_cookies': False,
         }
         super(metriqued_config, self).__init__(config_file=config_file)
+        pid = os.getpid()
+        self.logger = logging.getLogger('metriqued.%i.metrique_config' % pid)
 
     @property
     def gnupg(self):
@@ -104,58 +107,63 @@ class mongodb_config(JSONConf):
             'journal': True,
             'port': 27017,
             'mongoexport': '/usr/bin/mongoexport',
-            'tz_aware': True,
+            'read_preference': 'SECONDARY_PREFERRED',
+            'replica_set': None,
             'ssl': True,
             'ssl_certificate': SSL_PEM,
             'ssl_certificate_key': None,
-            'write_concern': 1,
+            'tz_aware': True,
+            'write_concern': 2,  # primary + one replica
         }
         super(mongodb_config, self).__init__(config_file=config_file)
+        pid = os.getpid()
+        self.logger = logging.getLogger('metriqued.%i.config' % pid)
+
+    @property
+    def db_readonly(self):
+        if not hasattr(self, '_db_readonly'):
+            self.logger.debug(' ... caching readonly cursor')
+            user = self.data_user
+            pwd = self.data_password
+            self._db_readonly = BaseMongoDB(
+                host=self.host, port=self.port, auth=self.auth,
+                user=user, password=pwd,
+                ssl=self.ssl, ssl_certfile=self.ssl_certificate,
+                ssl_keyfile=self.ssl_certificate_key, tz_aware=self.tz_aware,
+                replica_set=self.replica_set,
+                read_preference=self.read_preference)
+        return self._db_readonly
+
+    @property
+    def db_admin(self):
+        if not hasattr(self, '_db_admin'):
+            self.logger.debug(' ... caching admin cursor')
+            user = self.admin_user
+            pwd = self.admin_password
+            self._db_admin = BaseMongoDB(
+                host=self.host, port=self.port, auth=self.auth,
+                user=user, password=pwd,
+                ssl=self.ssl, ssl_certfile=self.ssl_certificate,
+                ssl_keyfile=self.ssl_certificate_key, tz_aware=self.tz_aware,
+                replica_set=self.replica_set,
+                read_preference=self.read_preference)
+        return self._db_admin
 
     @property
     def db_metrique_data(self):
-        if not hasattr(self, '_db_metriqued_data'):
-            self._db_metriqued_data = BaseMongoDB(
-                host=self.host, db=self.db_metrique, auth=self.auth,
-                user=self.data_user, password=self.data_password,
-                ssl=self.ssl, ssl_certfile=self.ssl_certificate,
-                ssl_keyfile=self.ssl_certificate_key, tz_aware=self.tz_aware)
-        return self._db_metriqued_data
-
-    @property
-    def db_metrique_admin(self):
-        if not hasattr(self, '_db_metriqued_admin'):
-            self._db_metriqued_admin = BaseMongoDB(
-                host=self.host, db=self.db_metrique, auth=self.auth,
-                user=self.admin_user, password=self.admin_password,
-                ssl=self.ssl, ssl_certfile=self.ssl_certificate,
-                ssl_keyfile=self.ssl_certificate_key,
-                write_concern=self.write_concern, fsync=self.fsync,
-                journal=self.journal, tz_aware=self.tz_aware)
-        return self._db_metriqued_admin
-
-    @property
-    def db_timeline_admin(self):
-        if not hasattr(self, '_db_timeline_admin'):
-            self._db_timeline_admin = BaseMongoDB(
-                host=self.host, db=self.db_timeline, auth=self.auth,
-                user=self.admin_user, password=self.admin_password,
-                ssl=self.ssl, ssl_certfile=self.ssl_certificate,
-                ssl_keyfile=self.ssl_certificate_key,
-                write_concern=self.write_concern, fsync=self.fsync,
-                journal=self.journal, tz_aware=self.tz_aware)
-        return self._db_timeline_admin
+        return self.db_readonly[self.db_metrique]
 
     @property
     def db_timeline_data(self):
-        if not hasattr(self, '_db_timeline_data'):
-            self._db_timeline_data = BaseMongoDB(
-                host=self.host, db=self.db_timeline, auth=self.auth,
-                user=self.data_user, password=self.data_password,
-                ssl=self.ssl, ssl_certfile=self.ssl_certificate,
-                ssl_keyfile=self.ssl_certificate_key,
-                tz_aware=self.tz_aware)
-        return self._db_timeline_data
+        return self.db_readonly[self.db_timeline]
+
+    @property
+    def db_metrique_admin(self):
+        return self.db_admin[self.db_metrique]
+
+    @property
+    def db_timeline_admin(self):
+        return self.db_admin[self.db_timeline]
 
     @property
     def c_user_profile_data(self):

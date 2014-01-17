@@ -199,11 +199,11 @@ class MetriqueHdlr(RequestHandler):
 
     @property
     def _timeline_data(self):
-        return self.mongodb_config.db_timeline_data.db
+        return self.mongodb_config.db_timeline_data
 
     @property
     def _timeline_admin(self):
-        return self.mongodb_config.db_timeline_admin.db
+        return self.mongodb_config.db_timeline_admin
 
     def timeline(self, owner, cube, admin=False):
         ''' return back a mongodb connection to give cube collection '''
@@ -410,7 +410,7 @@ class MetriqueHdlr(RequestHandler):
             _realm = self.metrique_config.realm
             basic_realm = 'Basic realm="%s"' % _realm
             self.set_header('WWW-Authenticate', basic_realm)
-        self.logger.info('[%s] %s: %s ...\n%s' % (self.current_user, code, 
+        self.logger.info('[%s] %s: %s ...\n%s' % (self.current_user, code,
                                                   msg, self.request))
         raise HTTPError(code, msg)
 

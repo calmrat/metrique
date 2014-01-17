@@ -55,6 +55,7 @@ def activate(args=None):
 # parent env has one set
 activate()
 
+# load metriqued stuff only after the virtenv has been initiated
 from metriqued.config import metriqued_config
 from metriqued.tornadohttp import TornadoHTTPServer
 from metriqued.utils import get_pids

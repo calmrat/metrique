@@ -58,7 +58,7 @@ from metriqueu.utils import utcnow
 logging.basicConfig()
 root_logger = logging.getLogger()
 [root_logger.removeHandler(hdlr) for hdlr in root_logger.handlers]
-BASIC_FORMAT = "%(name)s:%(message)s"
+BASIC_FORMAT = "%(name)s:%(asctime)s:%(message)s"
 FILETYPES = {'csv': pd.read_csv,
              'json': pd.read_json}
 fields_re = re.compile('[\W]+')
