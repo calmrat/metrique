@@ -895,6 +895,7 @@ def default_conf(path, template):
         path = '.'.join([path, 'default'])
     with open(path, 'w') as f:
         f.write(template)
+    logger.info("Installed %s ..." % path)
 
 
 def sys_firstboot(args=None):
