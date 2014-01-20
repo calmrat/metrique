@@ -769,18 +769,16 @@ def deploy(args):
     # first run for a new virt-env will take forever...
     # second run should be 90% faster!
     virtenv = getattr(args, 'virtenv')
-    if not virtenv:
-        raise RuntimeError("virtenv install path required!")
+    if virtenv:
+        # we can't be in a virtenv when running the virtualenv.main() script
+        sys.path = [p for p in sys.path if not p.startswith(virtenv)]
 
-    # we can't be in a virtenv when running the virtualenv.main() script
-    sys.path = [p for p in sys.path if not p.startswith(virtenv)]
-
-    # virtualenv.main; pass in only the virtenv path
-    sys.argv = sys.argv[0:1] + [virtenv]
-    # run the virtualenv script to install the virtenv
-    virtualenv.main()
-    # activate the newly installed virtenv
-    activate(args)
+        # virtualenv.main; pass in only the virtenv path
+        sys.argv = sys.argv[0:1] + [virtenv]
+        # run the virtualenv script to install the virtenv
+        virtualenv.main()
+        # activate the newly installed virtenv
+        activate(args)
 
     call('pip install -U pip setuptools')
     call('pip install pip-accel')
