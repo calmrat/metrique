@@ -460,6 +460,7 @@ def _metriqued_firstboot(args):
 
 
 def _metriqued_stop(args):
+    from metriqued.utils import get_pids
     running = get_pids(PID_DIR)
     for pid in running:
         print "Sending signal (%s) to (%s)" % (args.signal, pid)
@@ -470,6 +471,7 @@ def _metriqued_start(args):
     # A) there are no instances currently running
     # B) there are instances running; add additional
     from metriqued.tornadohttp import TornadoHTTPServer
+    from metriqued.utils import get_pids
 
     config_file = args.server_config_file
     running = get_pids(PID_DIR)
