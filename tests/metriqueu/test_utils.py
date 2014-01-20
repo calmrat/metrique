@@ -54,7 +54,25 @@ def test_dt2ts():
 def test_jsonhash():
     from metriqueu.utils import jsonhash
 
-    dct = {'a': [3, 2, 1], 'z': ['a', 'c', 'b', 1], 'b': {1: [], 3: {}}}
+    dct = {'a': [3, 2, 1],
+           'z': ['a', 'c', 'b', 1],
+           'b': {1: [], 3: {}},
+           'partner': [],
+           'pm_score': None,
+           'priority': 'insignificant',
+           'product': 'thisorthat',
+           'qa_contact': None,
+           'qa_whiteboard': None,
+           'qe_cond_nak': None,
+           'reporter': 'test@test.com',
+           'resolution': None,
+           'severity': 'low',
+           'short_desc': 'blabla',
+           'status': 'CLOSED',
+           'target_milestone': '---',
+           'target_release': ['---'],
+           'verified': [],
+           'version': '2.1r'}
 
     dct_sorted_z = copy(dct)
     dct_sorted_z['z'] = sorted(dct_sorted_z['z'])
@@ -62,9 +80,9 @@ def test_jsonhash():
     dct_diff = copy(dct)
     del dct_diff['z']
 
-    DCT = '541d0fa961265d976d9a27e8632787875dc58406'
-    DCT_SORTED_Z = 'ca4631674276933bd251bd4bc86372138a841a4b'
-    DCT_DIFF = '07d6c518867fb6b6c77c0ec1d835fb800419fc24'
+    DCT = '9537205dc75418549068c0c14766645479ce2ec3'
+    DCT_SORTED_Z = '38179f7d2a5422efcfb078ecb5dc3354514d1bdc'
+    DCT_DIFF = 'dd8374c81577b1295b13aa9c86d2791e3a315399'
 
     assert dct != dct_sorted_z
 

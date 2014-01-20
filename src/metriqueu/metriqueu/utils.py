@@ -50,10 +50,15 @@ def jsonhash(obj, root=True, exclude=None):
     calculate the objects hash based on all field values
     '''
     if isinstance(obj, dict):
-	obj = obj.copy()  # don't affect the ref'd obj passed in
+        obj = obj.copy()  # don't affect the ref'd obj passed in
+        keys = set(obj.keys())
         if root and exclude:
-            [obj.__delitem__(f) for f in exclude]
-        result = frozenset(
+            [obj.__delitem__(f) for f in exclude if f in keys]
+        # frozenset's don't guarantee order; use sorted tuples
+        # which means different python interpreters can return
+        # back frozensets with different hash values even when
+        # the content of the object is exactly the same
+        result = sorted(
             (k, jsonhash(v, False)) for k, v in obj.items())
     elif isinstance(obj, list):
         result = tuple(jsonhash(e, False) for e in obj)

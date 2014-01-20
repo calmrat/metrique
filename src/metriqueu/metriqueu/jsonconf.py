@@ -19,7 +19,7 @@ class JSONConf(MutableMapping):
         Provides helper-methods for setting and saving
         options and config object properties
     '''
-    def __init__(self, config_file=None, defaults=None, autosave=False):
+    def __init__(self, config_file=None, defaults=None):
         if config_file is None and self.default_config:
             self.config_file = self.default_config
         else:
@@ -38,7 +38,6 @@ class JSONConf(MutableMapping):
                 self.config_file = self.config_file.config_file
             else:
                 self.load_config()
-        self.autosave = autosave
 
     config = None
     config_file = None
@@ -81,8 +80,6 @@ class JSONConf(MutableMapping):
 
     def __setitem__(self, key, value):
         self.config[key] = value
-        if self.autosave:
-            self.save()
 
     def __str__(self):
         return str(self.config)
