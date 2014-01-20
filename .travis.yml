@@ -5,13 +5,13 @@ python:
 install:
   - "pip install coveralls"
 #  - "sudo apt-get install libhdf5-serial-dev"
-  - "./metrique -V travis deploy --matplotlib --slow"
+  - "./metrique deploy --matplotlib --slow"
 services: 
   - mongodb
 # NOTE: authentication will be enabled upon adding an 
 # admin user as mongod is started with the --auth parameter.
-before_script:
-  - "./metrique metriqued firstboot"
+#before_script:
+#  - "./metrique metriqued firstboot"
 script: 
   # test coverage badge
   - "coverage run --source=metrique,metriqued,metriqueu,metriquec -m py.test tests"
