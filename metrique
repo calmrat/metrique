@@ -1026,7 +1026,8 @@ def main():
 
     # metriqued Server
     _metriqued = _sub.add_parser('metriqued')
-    _metriqued.add_argument('command', choices=['start', 'stop', 'status'])
+    _metriqued.add_argument('command', choices=['start', 'stop', 'status',
+                                                'firstboot'])
     _metriqued.add_argument('-c', '--server-config-file')
     _metriqued.add_argument('-P', '--port', type=int, default=5420)
     _metriqued.add_argument('-i', '--instances', type=int)

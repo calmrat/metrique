@@ -96,7 +96,7 @@ class RegisterHdlr(MetriqueHdlr):
                         "Invalid username; ascii alpha [a-z] characters only!")
         username = username.lower()
         if self.user_exists(username):
-            self._raise(409, "user exists")
+            self._raise(409, "[%s] user exists" % username)
         passhash = sha256_crypt.encrypt(password) if password else None
         if not (passhash or null_password_ok):
             self._raise(400, "[%s] no password provided" % username)
