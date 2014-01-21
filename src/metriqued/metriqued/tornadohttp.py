@@ -37,8 +37,6 @@ def ucv2(value):
 class MetriqueHTTP(TornadoHTTPServer):
     ''' HTTP (Tornado >=3.0) implemntation of MetriqueServer '''
     def __init__(self, config_file=None, **kwargs):
-        super(MetriqueHTTP, self).__init__(**kwargs)
-
         config_file = config_file or METRIQUED_JSON
 
         self.conf = metriqued_config(config_file=config_file,
@@ -50,11 +48,9 @@ class MetriqueHTTP(TornadoHTTPServer):
 
         self.dbconf = mongodb_config(self.conf.mongodb_config)
 
-        self.handlers = self._prepare_handlers()
-
         # call setup_logger() once more to ensure we've adjusted
         # for local config changes
-        self.setup_logger()
+        self.logger = self.setup_logger()
 
         self.logger.debug('======= metrique =======')
         self.logger.debug(' Conf: %s' % self.conf.config_file)
@@ -67,6 +63,8 @@ class MetriqueHTTP(TornadoHTTPServer):
         self.logger.debug(' Port: %s' % self.dbconf.port)
 
         self._mongodb_check()
+
+        self.handlers = self._prepare_handlers()
 
     def _prepare_handlers(self):
         # pass in metrique and mongodb config to all handlers (init)
