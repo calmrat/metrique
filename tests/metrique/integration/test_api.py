@@ -51,11 +51,11 @@ def test_api():
 
         _cube.extract()
         result = _cube.result
-        assert result
+        assert result is not None
 
         # we should get back some results
         df = _cube.find(fields='~', date='~')
-        assert df
+        assert df is not None
         # default obj type returned should be metrique.result.Result
         assert isinstance(df, Result)
 
@@ -117,24 +117,15 @@ def test_user_api():
         pass
 
     aboutme = m.aboutme()
-    assert aboutme
+    assert aboutme is not None
 
-    try:
-        # py2.6 doesn't have OrderedDict and gnupg module
-        # depends on it at the moment; pull request to fix
-        # it has been made;
-        # https://github.com/isislovecruft/python-gnupg/pull/36
-        import collections.OrderedDict
-    except ImportError:
-        pass
-    else:
-        assert m.config.gnupg_pubkey
-        pubkey = m.config.gnupg_pubkey
-        gnupg = {'pubkey': pubkey, 'fingerprint': fingerprint}
-        result = m.user_update_profile(gnupg=gnupg)
-        assert result['previous'] == aboutme
-        assert 'gnupg' in result['now']
-        assert result['now']['gnupg']['fingerprint'] == fingerprint
-        assert result['now']['gnupg']['pubkey'] == pubkey
+    assert m.config.gnupg_pubkey is not None
+    pubkey = m.config.gnupg_pubkey
+    gnupg = {'pubkey': pubkey, 'fingerprint': fingerprint}
+    result = m.user_update_profile(gnupg=gnupg)
+    assert result['previous'] == aboutme
+    assert 'gnupg' in result['now']
+    assert result['now']['gnupg']['fingerprint'] == fingerprint
+    assert result['now']['gnupg']['pubkey'] == pubkey
 
     assert m.user_remove()

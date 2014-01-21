@@ -21,6 +21,10 @@ root_logger = logging.getLogger()
 [root_logger.removeHandler(hdlr) for hdlr in root_logger.handlers]
 BASIC_FORMAT = "%(name)s:%(asctime)s:%(message)s"
 
+USER_DIR = os.path.expanduser('~/.metrique')
+ETC_DIR = os.path.join(USER_DIR, 'etc')
+METRIQUED_JSON = os.path.join(ETC_DIR, 'metriqued.json')
+
 
 def user_cube(value):
     user_cube = r'(\w+)/([-\w]+)'
@@ -45,6 +49,8 @@ def ucv2(value):
 class TornadoHTTPServer(object):
     ''' HTTP (Tornado >=3.0) implemntation of MetriqueServer '''
     def __init__(self, config_file=None, **kwargs):
+        if not config_file:
+            config_file = METRIQUED_JSON
         self.mconf = metriqued_config(config_file=config_file)
         self.dbconf = mongodb_config(self.mconf.mongodb_config)
 

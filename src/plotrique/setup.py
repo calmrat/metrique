@@ -5,8 +5,8 @@
 from setuptools import setup
 
 __pkg__ = 'plotrique'
-__version__ = '0.2.5'
-__release__ = 7
+__version__ = '0.2.6'
+__release__ = "5a"
 __nvr__ = '%s-%s' % (__version__, __release__)
 __pkgs__ = ['plotrique']
 __provides__ = ['plotrique']
@@ -14,12 +14,12 @@ __desc__ = 'plotrique - Convenience plotting tools'
 __scripts__ = [
 ]
 __requires__ = [
-    #'matplotlib==1.3',
-    'pandas(==0.12)',
+    'matplotlib (==1.3.1)',
+    'pandas (==0.13)',
 ]
 __irequires__ = [
-    #'matplotlib==1.3',
-    'pandas==0.12',
+    'matplotlib==1.3.1',
+    'pandas==0.13',
 ]
 pip_src = 'https://pypi.python.org/packages/source'
 __deplinks__ = []

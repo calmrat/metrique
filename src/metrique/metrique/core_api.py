@@ -576,6 +576,10 @@ class HTTPClient(BaseClient):
                            verify=self.config.ssl_verify,
                            allow_redirects=allow_redirects,
                            stream=stream)
+
+        self.session.cookies = _response.cookies
+        self.cookiejar_save()
+
         try:
             _response.raise_for_status()
         except Exception as e:
