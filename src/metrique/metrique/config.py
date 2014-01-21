@@ -108,19 +108,19 @@ class Config(JSONConf):
             return ''
 
     @property
-    def api_url(self):
+    def api_uris(self):
         ''' Url and schema - http(s)? needed to call metrique api '''
-        return os.path.join(self.host_port, self.api_rel_path)
+        return [os.path.join(uri, self.api_rel_path) for uri in self.uris]
 
     @property
-    def host_port(self):
+    def uris(self):
         ''' Url and schema - http(s)? needed to call metrique api '''
         protocol = 'https://' if self.ssl else 'http://'
 
-        if not re.match('https?://', self.host):
-            host = '%s%s' % (protocol, self.host)
-        else:
-            host = self.host
-
-        host_port = '%s:%s' % (host, self.port)
-        return host_port
+        uris = []
+        hosts = [x.strip() for x in self.host.split(',')]
+        for host in hosts:
+            if not re.match('https?://', host):
+                host = '%s%s' % (protocol, host)
+            uris.append('%s:%s' % (host, self.port))
+        return uris

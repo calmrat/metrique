@@ -464,14 +464,15 @@ class HTTPClient(BaseClient):
             runner = partial(kind, params=kwargs_json)
         return runner
 
-    def _build_url(self, cmd, api_url):
+    def _build_urls(self, cmd, api_url):
         ' generic path joininer for http api commands '
         cmd = cmd or ''
+        join = os.path.join
         if api_url:
-            _url = os.path.join(self.config.api_url, cmd)
+            urls = [join(api_uri, cmd) for api_uri in self.config.api_uris]
         else:
-            _url = os.path.join(self.config.host_port, cmd)
-        return _url
+            urls = [join(uri, cmd) for uri in self.config.uris]
+        return urls
 
     def cookiejar_clear(self):
         path = '%s.%s' % (self.config.cookiejar, self.config.username)
@@ -570,16 +571,11 @@ class HTTPClient(BaseClient):
         # avoids bug in requests-2.0.1 - pass a dict no RequestsCookieJar
         # eg, see: https://github.com/kennethreitz/requests/issues/1744
         dfc = requests.utils.dict_from_cookiejar
-        try:
-            _response = runner(_url, auth=(username, password),
-                               cookies=dfc(self.session.cookies),
-                               verify=self.config.ssl_verify,
-                               allow_redirects=allow_redirects,
-                               stream=stream)
-        except requests.exceptions.ConnectionError:
-            raise requests.exceptions.ConnectionError(
-                'Failed to connect (%s). Try http://? or https://?' % _url)
-
+        _response = runner(_url, auth=(username, password),
+                           cookies=dfc(self.session.cookies),
+                           verify=self.config.ssl_verify,
+                           allow_redirects=allow_redirects,
+                           stream=stream)
         try:
             _response.raise_for_status()
         except Exception as e:
@@ -605,7 +601,6 @@ class HTTPClient(BaseClient):
         to have this method available. auth=True is a quick way to
         test clients credentials.
         '''
-        self.logger.debug('Ping!')
         return self._get('ping', auth=auth)
 
     def _post(self, *args, **kwargs):
@@ -624,29 +619,41 @@ class HTTPClient(BaseClient):
         password = self.config.password
 
         runner = self._build_runner(kind, kwargs)
-        _url = self._build_url(cmd, api_url)
 
-        _response = self._get_response(runner, _url,
-                                       username, password,
-                                       allow_redirects,
-                                       stream)
-        if full_response:
-            return _response
-        elif stream:
-            with open(filename, 'wb') as handle:
-                for block in _response.iter_content(1024):
-                    if not block:
-                        break
-                    handle.write(block)
-            return filename
-        else:
+        urls = self._build_urls(cmd, api_url)
+        for url in urls:
             try:
-                return json.loads(_response.content)
-            except Exception as e:
-                m = getattr(e, 'message')
-                content = '%s\n%s\n%s' % (_url, m, _response.content)
-                self.logger.error(content)
-                raise
+                _response = self._get_response(runner, url,
+                                               username, password,
+                                               allow_redirects,
+                                               stream)
+            except requests.exceptions.ConnectionError:
+                self.logger.error("Failed to connect to %s" % url)
+                # try the next url available
+                continue
+            else:
+                self.logger.debug("Got response from %s" % url)
+
+            if full_response:
+                return _response
+            elif stream:
+                with open(filename, 'wb') as handle:
+                    for block in _response.iter_content(1024):
+                        if not block:
+                            break
+                        handle.write(block)
+                return filename
+            else:
+                try:
+                    return json.loads(_response.content)
+                except Exception as e:
+                    m = getattr(e, 'message')
+                    content = '%s\n%s\n%s' % (url, m, _response.content)
+                    self.logger.error(content)
+                    raise
+        else:
+            msg = 'Failed to connect to metriqued hosts [%s]' % urls
+            raise requests.exceptions.ConnectionError(msg)
 
     def _save(self, filename, *args, **kwargs):
         ' requests GET of a "file stream" using current session '
