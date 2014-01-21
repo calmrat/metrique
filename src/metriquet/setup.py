@@ -4,27 +4,19 @@
 
 from setuptools import setup
 
-__pkg__ = 'metrique'
+__pkg__ = 'metriquet'
 __version__ = '0.2.6'
 __release__ = "8a"
 __nvr__ = '%s-%s' % (__version__, __release__)
-__pkgs__ = ['metrique']
-__provides__ = ['metrique']
-__desc__ = 'Metrique - Client Libraries'
+__pkgs__ = ['metriquet']
+__provides__ = ['metriquet']
+__desc__ = 'Metrique - Generic Tornado Server'
 __scripts__ = []
 __requires__ = [
-    'gnupg (==1.2.5)',
-    'metriqueu (>=%s)' % __version__,
-    'pandas (==0.13.0)',
-    'plotrique (>=%s)' % __version__,
-    'requests (==2.2.0)',
+    'tornado (==3.2)',
 ]
 __irequires__ = [
-    'gnupg==1.2.5',
-    'metriqueu>=%s' % __version__,
-    'pandas==0.13.0',
-    'plotrique>=%s' % __version__,
-    'requests==2.2.0',
+    'tornado==3.2',
 ]
 pip_src = 'https://pypi.python.org/packages/source'
 __deplinks__ = []

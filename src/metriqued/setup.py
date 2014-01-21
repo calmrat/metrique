@@ -6,7 +6,7 @@ from setuptools import setup
 
 __pkg__ = 'metriqued'
 __version__ = '0.2.6'
-__release__ = "5a"
+__release__ = "8a"
 __nvr__ = '%s-%s' % (__version__, __release__)
 __pkgs__ = ['metriqued']
 __provides__ = ['metriqued']
@@ -14,18 +14,18 @@ __datafiles__ = []
 __desc__ = 'Python/MongoDB Information Platform - Server'
 __scripts__ = []
 __requires__ = [
+    'metriquet (>=%s)' % __version__,
     'metriqueu (>=%s)' % __version__,
     'gnupg (==1.2.5)',
     'passlib (==1.6.2)',
     'pymongo (==2.6.3)',
-    'tornado (==3.2)',
 ]
 __irequires__ = [
+    'metriquet>=%s' % __version__,
     'metriqueu>=%s' % __version__,
     'gnupg==1.2.5',
     'passlib==1.6.2',
     'pymongo==2.6.3',
-    'tornado==3.2',
 ]
 pip_src = 'https://pypi.python.org/packages/source'
 __deplinks__ = []

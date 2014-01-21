@@ -9,6 +9,8 @@ import os
 from metriqueu.jsonconf import JSONConf
 from metriqued.basemongodb import BaseMongoDB
 
+BASENAME = 'metriqued'
+
 USER_DIR = os.path.expanduser('~/.metrique')
 ETC_DIR = os.path.join(USER_DIR, 'etc')
 PID_DIR = os.path.join(USER_DIR, 'pids')
@@ -28,9 +30,12 @@ STATIC_PATH = os.path.join(here, 'static/')
 
 
 class metriqued_config(JSONConf):
-    def __init__(self, config_file=None):
-        self.default_config = DEFAULT_CONFIG
-        self.defaults = {
+    default_config = DEFAULT_CONFIG
+
+    def __init__(self, **kwargs):
+        super(metriqued_config, self).__init__(**kwargs)
+
+        defaults = {
             'autoreload': False,
             'cache_dir': CACHE_DIR,
             'cookie_secret': '____UPDATE_COOKIE_SECRET_CONFIG____',
@@ -42,17 +47,19 @@ class metriqued_config(JSONConf):
             'gzip': True,
             'host': '127.0.0.1',
             'krb_auth': False,
+            'logger_name': BASENAME,
             'logdir': LOG_DIR,
-            'logfile': 'metriqued.log',
+            'logfile': '%s.log' % BASENAME,
             'log2file': True,
             'logstdout': False,
             'logrotate': 134217728,  # 128M 'maxBytes' before rotate
             'logkeep': 20,
             'login_url': '/login',
             'mongodb_config': None,
+            'pid_name': BASENAME,
             'piddir': PID_DIR,
             'port': 5420,
-            'realm': 'metrique',
+            'realm': BASENAME,
             'ssl': False,
             'ssl_certificate': SSL_CERT,
             'ssl_certificate_key': SSL_KEY,
@@ -62,9 +69,15 @@ class metriqued_config(JSONConf):
             'userdir': USER_DIR,
             'xsrf_cookies': False,
         }
-        super(metriqued_config, self).__init__(config_file=config_file)
+
+        self.defaults.update(defaults)
+
         pid = os.getpid()
-        self.logger = logging.getLogger('metriqued.%i.metrique_config' % pid)
+        self.logger = logging.getLogger('%s.%i.metriqued_config' % (
+            self.logger_name, pid))
+
+        ################################################
+        self.logger.debug('*'*100)
 
     @property
     def gnupg(self):
@@ -110,7 +123,7 @@ class mongodb_config(JSONConf):
         }
         super(mongodb_config, self).__init__(config_file=config_file)
         pid = os.getpid()
-        self.logger = logging.getLogger('metriqued.%i.config' % pid)
+        self.logger = logging.getLogger('%s.%i.config' % (BASENAME, pid))
 
     @property
     def db_readonly(self):
