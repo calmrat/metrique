@@ -5,8 +5,8 @@
 from setuptools import setup
 
 __pkg__ = 'metriquec'
-__version__ = '0.2.5'
-__release__ = 7
+__version__ = '0.2.6'
+__release__ = "1a"
 __nvr__ = '%s-%s' % (__version__, __release__)
 __pkgs__ = ['metriquec', 'metriquec.sql',
             'metriquec.cubes',
@@ -22,15 +22,13 @@ __desc__ = 'Metrique - Cubes'
 __scripts__ = []
 __requires__ = [
     'metrique (>=%s)' % __version__,
-    'celery (==3.1.6)',
-    'pandas (==0.12.0)',
-    'psycopg2 (==2.5.1)',
+    'celery (==3.1.8)',
+    'psycopg2 (==2.5.2)',
 ]
 __irequires__ = [
     'metrique>=%s' % __version__,
-    'celery==3.1.6',
-    'pandas==0.12.0',
-    'psycopg2==2.5.1',
+    'celery==3.1.8',
+    'psycopg2==2.5.2',
 ]
 pip_src = 'https://pypi.python.org/packages/source'
 __deplinks__ = []

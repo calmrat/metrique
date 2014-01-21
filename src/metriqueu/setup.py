@@ -5,8 +5,8 @@
 from setuptools import setup
 
 __pkg__ = 'metriqueu'
-__version__ = '0.2.5'
-__release__ = 7
+__version__ = '0.2.6'
+__release__ = "1a"
 __nvr__ = '%s-%s' % (__version__, __release__)
 __pkgs__ = ['metriqueu']
 __provides__ = ['metriqueu']
@@ -14,19 +14,19 @@ __desc__ = 'Metrique - Shared Utility Libraries'
 __scripts__ = []
 __requires__ = [
     'decorator (==3.4.0)',
-    'futures (==2.1.3)',
-    'pql (==0.4.1)',
+    'futures (==2.1.6)',
+    'pql (==0.4.2)',
     'python_dateutil (==2.2.0)',
     'pytz'
-    'simplejson (==3.3.1)',
+    'simplejson (==3.3.2)',
 ]
 __irequires__ = [
     'decorator==3.4.0',
-    'futures==2.1.3',
-    'pql==0.4.1',
+    'futures==2.1.6',
+    'pql==0.4.2',
     'python_dateutil==2.2.0',
     'pytz',
-    'simplejson==3.3.1',
+    'simplejson==3.3.2',
 ]
 pip_src = 'https://pypi.python.org/packages/source'
 __deplinks__ = []

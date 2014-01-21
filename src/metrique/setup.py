@@ -5,26 +5,26 @@
 from setuptools import setup
 
 __pkg__ = 'metrique'
-__version__ = '0.2.5'
-__release__ = 7
+__version__ = '0.2.6'
+__release__ = "1a"
 __nvr__ = '%s-%s' % (__version__, __release__)
 __pkgs__ = ['metrique']
 __provides__ = ['metrique']
 __desc__ = 'Metrique - Client Libraries'
 __scripts__ = []
 __requires__ = [
-    'gnupg (==1.2.3)',
+    'gnupg (==1.2.5)',
     'metriqueu (>=%s)' % __version__,
-    'pandas (==0.12.0)',
+    'pandas (==0.13.0)',
     'plotrique (>=%s)' % __version__,
-    'requests (==2.0.1)',
+    'requests (==2.2.0)',
 ]
 __irequires__ = [
-    'gnupg==1.2.3',
+    'gnupg==1.2.5',
     'metriqueu>=%s' % __version__,
-    'pandas==0.12.0',
+    'pandas==0.13.0',
     'plotrique>=%s' % __version__,
-    'requests==2.0.1',
+    'requests==2.2.0',
 ]
 pip_src = 'https://pypi.python.org/packages/source'
 __deplinks__ = []
