@@ -796,8 +796,6 @@ def deploy(args):
 
     # optional dependencies; highly recommended! but slow to
     # install if we're not testing
-    if args.matplotlib or args.test:
-        call('%s install -U matplotlib' % pip)
     if args.ipython:
         call('%s install -U ipython' % pip)
     if args.test or args.pytest:
@@ -818,10 +816,7 @@ def deploy(args):
     # run py.test after install
     if args.test:
         for pkg in __pkgs__:
-            if pkg == 'plotrique' and not args.matplotlib:
-                continue
-            else:
-                call('py.test tests/%s' % pkg)
+            call('py.test tests/%s' % pkg)
 
 
 def bump(args, kind=None, reset=None):
@@ -952,8 +947,6 @@ def main():
         '--ipython', action='store_true', help='install ipython')
     _deploy.add_argument(
         '--pytest', action='store_true', help='install pytest')
-    _deploy.add_argument(
-        '--matplotlib', action='store_true', help='install matplotlib')
     _deploy.set_defaults(func=deploy)
 
     # PIP standard build

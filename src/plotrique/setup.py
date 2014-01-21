@@ -14,12 +14,12 @@ __desc__ = 'plotrique - Convenience plotting tools'
 __scripts__ = [
 ]
 __requires__ = [
-    #'matplotlib==1.3',
-    'pandas(==0.12)',
+    'matplotlib==1.3.1',
+    'pandas(==0.13)',
 ]
 __irequires__ = [
-    #'matplotlib==1.3',
-    'pandas==0.12',
+    'matplotlib==1.3.1',
+    'pandas==0.13',
 ]
 pip_src = 'https://pypi.python.org/packages/source'
 __deplinks__ = []
