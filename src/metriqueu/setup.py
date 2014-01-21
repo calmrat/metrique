@@ -16,6 +16,7 @@ __requires__ = [
     'decorator (==3.4.0)',
     'futures (==2.1.6)',
     'pql (==0.4.2)',
+    'psutil (==1.2.1)',  # indirect dep - for gnupg (metrique/d)
     'python_dateutil (==2.2.0)',
     'pytz'
     'simplejson (==3.3.2)',
@@ -24,6 +25,7 @@ __irequires__ = [
     'decorator==3.4.0',
     'futures==2.1.6',
     'pql==0.4.2',
+    'psutil==1.2.1',
     'python_dateutil==2.2.0',
     'pytz',
     'simplejson==3.3.2',
