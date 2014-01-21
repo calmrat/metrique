@@ -110,26 +110,15 @@ class JSONConf(MutableMapping):
 
         config_file = os.path.expanduser(config_file)
         if not os.path.exists(config_file):
-            if config_file[0] != '/':
-                # try to look in the default config folder:
-                old_conf = config_file
-                config_file = '~/.metrique/%s' % config_file
-                config_file = os.path.expanduser(config_file)
-                if not os.path.exists(config_file):
-                    if not silent:
-                        raise IOError('Config files %s and %s do not exist.' %
-                                      (config_file, old_conf))
-                    return
-            else:
-                if not silent:
-                    raise IOError('Config file %s does not exist.' %
-                                  config_file)
-                return
+            if not silent:
+                raise IOError('Config file %s does not exist.' %
+                              config_file)
         try:
             with codecs.open(config_file, 'r', 'utf-8') as f:
                 config = json.load(f)
-        except Exception:
-            raise TypeError("Failed to load json file: %s" % config_file)
+        except Exception as e:
+            raise TypeError(
+                "Failed to load json file [%s] %s" % (config_file, e))
         self.config.update(config)
         self.config_file = config_file
 

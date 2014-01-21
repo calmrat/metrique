@@ -11,6 +11,7 @@ from functools import partial
 import getpass
 import glob
 import importlib
+import multiprocessing
 import os
 import random
 import re
@@ -139,13 +140,14 @@ DEFAULT_METRIQUE_JSON = '''
     "host": "127.0.0.1",
     "log2file": true,
     "logstdout": false,
+    "max_workers": %s
     "password": "%s",
     "port": 5420,
     "sql_batch_size": 1000,
     "ssl": false,
     "ssl_verify": false
 }
-''' % (rand_chars())
+''' % (multiprocessing.cpu_count(), rand_chars())
 DEFAULT_METRIQUE_JSON = DEFAULT_METRIQUE_JSON.strip()
 
 DEFAULT_METRIQUED_JSON = '''
