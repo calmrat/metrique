@@ -606,7 +606,7 @@ def mongodb_backup(args):
     saveas = '__'.join((prefix, HOSTNAME, NOW))
     out = os.path.join(out_dir, saveas)
 
-    host = config.host
+    host = config.host.split(',')[0]  # get the first host (expected primary)
     port = config.port
     p = config.admin_password
     password = '--password %s' % p if p else ''
