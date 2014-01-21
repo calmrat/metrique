@@ -772,6 +772,8 @@ def deploy(args):
     # second run should be 90% faster!
     virtenv = getattr(args, 'virtenv')
     if virtenv:
+        if args.trash:
+            remove(args.virtenv)
         # we can't be in a virtenv when running the virtualenv.main() script
         sys.path = [p for p in sys.path if not p.startswith(virtenv)]
 
@@ -947,6 +949,8 @@ def main():
         '--ipython', action='store_true', help='install ipython')
     _deploy.add_argument(
         '--pytest', action='store_true', help='install pytest')
+    _deploy.add_argument(
+        '--trash', action='store_true', help='fresh install (rm old virtenv)')
     _deploy.set_defaults(func=deploy)
 
     # PIP standard build
