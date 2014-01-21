@@ -2,6 +2,7 @@
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 # Author: "Chris Ward <cward@redhat.com>
 
+from gnupg import GPG
 import logging
 import os
 
@@ -70,15 +71,7 @@ class metriqued_config(JSONConf):
         if hasattr(self, '_gnupg'):
             gpg = self._gnupg
         else:
-            # avoid exception in py2.6
-            # workaround until
-            # https://github.com/isislovecruft/python-gnupg/pull/36 is resolved
-            try:
-                from gnupg import GPG
-            except (ImportError, AttributeError):
-                gpg = None
-            else:
-                gpg = GPG(homedir=os.path.expanduser(self['gnupg_dir']))
+            gpg = GPG(homedir=os.path.expanduser(self['gnupg_dir']))
         return gpg
 
     @property
