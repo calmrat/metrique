@@ -55,7 +55,7 @@ def test_api():
 
         # we should get back some results
         df = _cube.find(fields='~', date='~')
-        assert df
+        assert df is not None
         # default obj type returned should be metrique.result.Result
         assert isinstance(df, Result)
 
@@ -117,9 +117,9 @@ def test_user_api():
         pass
 
     aboutme = m.aboutme()
-    assert aboutme
+    assert aboutme is not None
 
-    assert m.config.gnupg_pubkey
+    assert m.config.gnupg_pubkey is not None
     pubkey = m.config.gnupg_pubkey
     gnupg = {'pubkey': pubkey, 'fingerprint': fingerprint}
     result = m.user_update_profile(gnupg=gnupg)
