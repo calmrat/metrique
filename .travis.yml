@@ -18,5 +18,4 @@ script:
 after_success:
   - coveralls
 after_failure:
-  - "cat ~/.metrique/logs/metriqued.log"
-  - "cat ~/.metrique/logs/metrique.log"
+  - "cat ~/.metrique/*"
