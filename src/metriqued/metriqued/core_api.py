@@ -149,8 +149,6 @@ class MetriqueHdlr(RequestHandler):
         spec = {'_id': _id}
         cursor = _cube.find(spec)
         count = cursor.count()
-        print _cube, spec
-        print count, '*'*100
         if not count:
             if raise_if_not:
                 self._raise(400, 'resource does not exist: %s' % _id)

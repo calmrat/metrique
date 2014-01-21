@@ -5,7 +5,7 @@ python:
 install:
   - "pip install coveralls"
 #  - "sudo apt-get install libhdf5-serial-dev"
-  - "./metrique -V travis deploy --matplotlib --slow"
+  - "./metrique -V travis deploy --slow --develop"
 services: 
   - mongodb
 # NOTE: authentication will be enabled upon adding an 

@@ -60,7 +60,6 @@ def jsonhash(obj, root=True, exclude=None):
         # the content of the object is exactly the same
         result = sorted(
             (k, jsonhash(v, False)) for k, v in obj.items())
-        print result
     elif isinstance(obj, list):
         result = tuple(jsonhash(e, False) for e in obj)
     else:
