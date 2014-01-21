@@ -37,12 +37,11 @@ LOG_FILE = '%s.log' % BASENAME
 class TornadoHTTPServer(object):
     ''' HTTP (Tornado >=3.0) implemntation of MetriqueServer '''
     conf = JSONConf()
+    parent_pid = None
+    child_pid = None
+    handlers = []
 
     def __init__(self, **kwargs):
-        self.parent_pid = None
-        self.child_pid = None
-        self.handlers = []
-
         # key aliases (to shorten line <80c)
         cert = 'ssl_certificate'
         key = 'ssl_certificate_key'
@@ -67,26 +66,16 @@ class TornadoHTTPServer(object):
         self.conf['logfile'] = kwargs.pop('logfile', LOG_FILE)
         self.conf['logrotate'] = kwargs.pop('logrotate', False)
         self.conf['logkeep'] = kwargs.pop('logkeep', 3)
-        self.conf['logger_propogate'] = kwargs.pop('logkeep', False)
         self.conf['logger_name'] = kwargs.pop('logger_name', BASENAME)
-
-        self.setup_logger()
 
     @property
     def logger_name(self):
         logger_name = '%s.%s' % (self.conf['logger_name'], self.pid)
         return logger_name
 
-    def setup_logger(self):
+    def _setup_logger(self, logger):
         logdir = os.path.expanduser(self.conf.logdir)
         logfile = os.path.join(logdir, self.conf.logfile)
-
-        if self.conf.debug == 2:
-            logger = logging.getLogger()
-            logger.setLevel(logging.DEBUG)
-
-        logger = logging.getLogger(self.logger_name)
-        logger.propagate = self.conf.logger_propogate
 
         if self.conf.logstdout:
             hdlr = logging.StreamHandler()
@@ -109,7 +98,16 @@ class TornadoHTTPServer(object):
             logger.setLevel(logging.INFO)
         elif self.conf.debug in [True, 1, 2]:
             logger.setLevel(logging.DEBUG)
-        self.logger = logger
+        return logger
+
+        
+    def setup_logger(self):
+        if self.conf.debug == 2:
+            self._setup_logger(logging.getLogger())
+        
+        logger = logging.getLogger(self.logger_name)
+
+        return self._setup_logger(logger)
 
     @property
     def pid(self):
