@@ -579,6 +579,9 @@ class HTTPClient(BaseClient):
         except requests.exceptions.ConnectionError:
             raise requests.exceptions.ConnectionError(
                 'Failed to connect (%s). Try http://? or https://?' % _url)
+        finally:
+            self.session.cookies = _response.cookies
+            self.cookiejar_save()
 
         try:
             _response.raise_for_status()
