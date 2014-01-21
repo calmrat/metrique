@@ -140,7 +140,7 @@ DEFAULT_METRIQUE_JSON = '''
     "host": "127.0.0.1",
     "log2file": true,
     "logstdout": false,
-    "max_workers": %s
+    "max_workers": %s,
     "password": "%s",
     "port": 5420,
     "sql_batch_size": 1000,
