@@ -153,7 +153,7 @@ DEFAULT_METRIQUED_JSON = '''
     "cookie_secret": "%s",
     "debug": true,
     "host": "127.0.0.1",
-    #"host": "%s",
+    "host_LOCAL": "%s",
     "krb_auth": false,
     "log2file": true,
     "logstdout": false,
