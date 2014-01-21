@@ -76,9 +76,6 @@ class metriqued_config(JSONConf):
         self.logger = logging.getLogger('%s.%i.metriqued_config' % (
             self.logger_name, pid))
 
-        ################################################
-        self.logger.debug('*'*100)
-
     @property
     def gnupg(self):
         if hasattr(self, '_gnupg'):
@@ -115,7 +112,7 @@ class mongodb_config(JSONConf):
             'mongoexport': '/usr/bin/mongoexport',
             'read_preference': 'SECONDARY_PREFERRED',
             'replica_set': None,
-            'ssl': True,
+            'ssl': False,
             'ssl_certificate': SSL_PEM,
             'ssl_certificate_key': None,
             'tz_aware': True,

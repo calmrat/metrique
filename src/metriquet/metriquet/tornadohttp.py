@@ -48,14 +48,14 @@ class TornadoHTTPServer(object):
         key = 'ssl_certificate_key'
 
         self.conf['host'] = kwargs.pop('host', '127.0.0.1')
-        self.conf['port'] = kwargs.pop('port', '5420')
+        self.conf['port'] = kwargs.pop('port', 8080)
         self.conf['debug'] = kwargs.pop('debug', True)
         self.conf['gzip'] = kwargs.pop('gzip', True)
         self.conf['login_url'] = kwargs.pop('login_url', LOGIN_URL)
         self.conf['static_path'] = kwargs.pop('static_path', STATIC_PATH)
         self.conf['cookie_secret'] = kwargs.pop('cookie_secret', COOKIE_SECRET)
         self.conf['xsrf_cookies'] = kwargs.pop('xsrf_cookies', False)
-        self.conf['autoreload'] = kwargs.pop('autoreload', True)
+        self.conf['autoreload'] = kwargs.pop('autoreload', False)
         self.conf['ssl'] = kwargs.pop('ssl', False)
         self.conf['ssl_certificate'] = kwargs.pop(cert, SSL_CERT)
         self.conf['ssl_certificate_key'] = kwargs.pop(key, SSL_KEY)
@@ -75,7 +75,7 @@ class TornadoHTTPServer(object):
     @property
     def logger_name(self):
         logger_name = '%s.%s' % (self.conf['logger_name'], self.pid)
-        return conf['logger_name']
+        return logger_name
 
     def setup_logger(self):
         logdir = os.path.expanduser(self.conf.logdir)
@@ -83,10 +83,10 @@ class TornadoHTTPServer(object):
 
         if self.conf.debug == 2:
             logger = logging.getLogger()
-            logger.propagate = self.conf.logger_propogate
-        else:
-            logger = logging.getLogger(self.conf.logger_name)
-            logger.propagate = self.conf.logger_propogate
+            logger.setLevel(logging.DEBUG)
+
+        logger = logging.getLogger(self.logger_name)
+        logger.propagate = self.conf.logger_propogate
 
         if self.conf.logstdout:
             hdlr = logging.StreamHandler()

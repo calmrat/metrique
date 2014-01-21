@@ -86,10 +86,10 @@ class MetriqueHTTP(TornadoHTTPServer):
             (r"/(\w+)/update_group", user_api.UpdateGroupHdlr, init),
             (r"/(\w+)/update_properties", user_api.UpdatePropertiesHdlr, init),
 
-            (api_v1(r""), core_api.ObsoleteAPIHdlr),
-            (api_v2(r"ping"), core_api.PingHdlr),
+            (api_v1(r""), core_api.ObsoleteAPIHdlr, init),
+            (api_v2(r"ping"), core_api.PingHdlr, init),
 
-            (api_v2(r"(\w+)?/?([-\w]+)?"), cube_api.ListHdlr),
+            (api_v2(r"(\w+)?/?([-\w]+)?"), cube_api.ListHdlr, init),
         ]
 
         user_cube_handlers = [
