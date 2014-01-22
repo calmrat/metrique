@@ -19,6 +19,12 @@ class JSONConf(MutableMapping):
         Provides helper-methods for setting and saving
         options and config object properties
     '''
+    config = None
+    config_file = None
+    defaults = None
+    default_config = None
+    default_config_dir = None
+
     def __init__(self, config_file=None, defaults=None):
         if config_file is None and self.default_config:
             self.config_file = self.default_config
@@ -38,11 +44,6 @@ class JSONConf(MutableMapping):
                 self.config_file = self.config_file.config_file
             else:
                 self.load_config()
-
-    config = None
-    config_file = None
-    defaults = None
-    default_config = None
 
     def __delitem__(self, key):
         del self.config[key]
@@ -110,9 +111,15 @@ class JSONConf(MutableMapping):
 
         config_file = os.path.expanduser(config_file)
         if not os.path.exists(config_file):
-            if not silent:
-                raise IOError('Config file %s does not exist.' %
-                              config_file)
+            # if default_config_dir is set and the config_file is
+            # relative, attempt to find the conf relative to the path
+            if self.default_config_dir and not os.path.isabs(config_file):
+                path = os.path.expanduser(self.default_config_dir)
+                _config_file = os.path.join(path, config_file)
+            if not (os.path.exists(_config_file) or silent):
+                raise IOError('Config file %s does not exist.' % config_file)
+            else:
+                config_file = _config_file
         try:
             with codecs.open(config_file, 'r', 'utf-8') as f:
                 config = json.load(f)

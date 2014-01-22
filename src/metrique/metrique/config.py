@@ -50,15 +50,17 @@ class Config(JSONConf):
         ssl_verify: ...
     '''
     default_config = DEFAULT_CONFIG
+    default_config_dir = CONFIG_DIR
 
-    def __init__(self, config_file=None, *args, **kwargs):
+    def __init__(self, config_file=None, config_dir=None, *args, **kwargs):
+        config_dir = config_dir or self.default_config_dir
         self.defaults = {
             'api_version': 'v2',
             'api_rel_path': 'api/v2',
             'auto_login': False,
             'batch_size': 5000,
             'cookiejar': COOKIEJAR,
-            'configdir': CONFIG_DIR,
+            'configdir': config_dir,
             'cube_autoregister': False,
             'cube_pkgs': ['cubes'],
             'cube_paths': [],
