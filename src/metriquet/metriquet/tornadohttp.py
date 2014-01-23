@@ -25,7 +25,7 @@ LOG_FORMAT = logging.Formatter(BASIC_FORMAT, "%Y%m%dT%H%M%S")
 BASENAME = 'tornado'
 
 LOGIN_URL = '/login'
-COOKIE_SECRET = '__DEFAULT_COOKIE_SECRET__'
+SECRET = '__DEFAULT_COOKIE_SECRET__'
 SSL_CERT = 'mydomain.crt'
 SSL_KEY = 'mydomain.key'
 
@@ -38,45 +38,56 @@ STATIC_PATH = os.path.join(USER_DIR, 'static/')
 TEMPLATE_PATH = os.path.join(USER_DIR, 'templates/')
 
 
+class TornadoConfig(JSONConf):
+    def __init__(self, config_file=None, name=None, **kwargs):
+        self.name = name or BASENAME
+        log_file = '%s.log' % self.name
+
+        self.config = {
+            'host': '127.0.0.1',
+            'port': 8080,
+            'debug': True,
+            'gzip': True,
+            'login_url': LOGIN_URL,
+            'cookie_secret': SECRET,
+            'xsrf_cookies': False,
+            'autoreload': False,
+            'ssl': False,
+            'ssl_certificate': SSL_CERT,
+            'ssl_certificate_key': SSL_KEY,
+            'pid_name': self.name,
+            'cachedir': CACHE_DIR,
+            'piddir': PID_DIR,
+            'logdir': LOG_DIR,
+            'logstdout': True,
+            'log2file': False,
+            'logfile': log_file,
+            'logrotate': False,
+            'logkeep': 3,
+            'logger_name': self.name,
+            'static_path': STATIC_PATH,
+            'template_path': TEMPLATE_PATH,
+        }
+
+        # make sure kwargs passed in are set
+        for k, v in kwargs.items():
+            self.config[k] = v
+
+        # update the config with the args from the config_file
+        super(TornadoConfig, self).__init__(config_file=config_file)
+
+
 class TornadoHTTPServer(object):
     ''' HTTP (Tornado >=3.0) implemntation of MetriqueServer '''
-    conf = JSONConf()
+    conf = TornadoConfig()
     parent_pid = None
     child_pid = None
     handlers = []
     name = BASENAME
 
-    def __init__(self, name=None, **kwargs):
+    def __init__(self, config_file=None, name=None, **kwargs):
         self.name = name or self.name
-        log_file = '%s.log' % BASENAME
-
-        # key aliases (to shorten line <80c)
-        cert = 'ssl_certificate'
-        key = 'ssl_certificate_key'
-
-        self.conf['host'] = kwargs.pop('host', '127.0.0.1')
-        self.conf['port'] = kwargs.pop('port', 8080)
-        self.conf['debug'] = kwargs.pop('debug', True)
-        self.conf['gzip'] = kwargs.pop('gzip', True)
-        self.conf['login_url'] = kwargs.pop('login_url', LOGIN_URL)
-        self.conf['cookie_secret'] = kwargs.pop('cookie_secret', COOKIE_SECRET)
-        self.conf['xsrf_cookies'] = kwargs.pop('xsrf_cookies', False)
-        self.conf['autoreload'] = kwargs.pop('autoreload', False)
-        self.conf['ssl'] = kwargs.pop('ssl', False)
-        self.conf['ssl_certificate'] = kwargs.pop(cert, SSL_CERT)
-        self.conf['ssl_certificate_key'] = kwargs.pop(key, SSL_KEY)
-        self.conf['pid_name'] = kwargs.pop('pid_name', self.name)
-        self.conf['cachedir'] = kwargs.pop('cachedir', CACHE_DIR)
-        self.conf['piddir'] = kwargs.pop('piddir', PID_DIR)
-        self.conf['logdir'] = kwargs.pop('logdir', LOG_DIR)
-        self.conf['logstdout'] = kwargs.pop('logstdout', True)
-        self.conf['log2file'] = kwargs.pop('logstdout', False)
-        self.conf['logfile'] = kwargs.pop('logfile', log_file)
-        self.conf['logrotate'] = kwargs.pop('logrotate', False)
-        self.conf['logkeep'] = kwargs.pop('logkeep', 3)
-        self.conf['logger_name'] = kwargs.pop('logger_name', self.name)
-        self.conf['static_path'] = kwargs.pop('static_path', STATIC_PATH)
-        self.conf['template_path'] = kwargs.pop('template_path', TEMPLATE_PATH)
+        self.conf = TornadoConfig(config_file=config_file, **kwargs)
 
     @property
     def logger_name(self):

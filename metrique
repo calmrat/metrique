@@ -752,9 +752,6 @@ def setup(args, cmd, pip=False):
         else:
             os.chdir(abspath)
             call('python setup.py %s' % cmd, show_stdout=True)
-            #_cmd = ['python', 'setup.py'] + cmd.split(' ')
-            #logger.info(str(_cmd))
-            #call_subprocess(_cmd, show_stdout=True)
     os.chdir(cwd)
 
 
