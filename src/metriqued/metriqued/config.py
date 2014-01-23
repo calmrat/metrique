@@ -46,7 +46,6 @@ class metriqued_config(JSONConf):
             'gzip': True,
             'host': '127.0.0.1',
             'krb_auth': False,
-            'logger_name': name,
             'logdir': LOG_DIR,
             'logfile': '%s.log' % name,
             'log2file': True,

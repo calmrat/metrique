@@ -18,7 +18,7 @@ from metriqueu.jsonconf import JSONConf
 logging.basicConfig()
 root_logger = logging.getLogger()
 [root_logger.removeHandler(hdlr) for hdlr in root_logger.handlers]
-BASIC_FORMAT = "%(name)s:%(asctime)s:%(message)s"
+BASIC_FORMAT = "%(name)s.%(process)s:%(asctime)s:%(message)s"
 LOG_FORMAT = logging.Formatter(BASIC_FORMAT, "%Y%m%dT%H%M%S")
 
 
@@ -64,7 +64,6 @@ class TornadoConfig(JSONConf):
             'logfile': log_file,
             'logrotate': False,
             'logkeep': 3,
-            'logger_name': self.name,
             'static_path': STATIC_PATH,
             'template_path': TEMPLATE_PATH,
         }
@@ -89,12 +88,7 @@ class TornadoHTTPServer(object):
         self.name = name or self.name
         self.conf = TornadoConfig(config_file=config_file, **kwargs)
 
-    @property
-    def logger_name(self):
-        logger_name = '%s.%s' % (self.conf['logger_name'], self.pid)
-        return logger_name
-
-    def _setup_logger(self, logger):
+    def _setup_logger(self, logger, propagate=0):
         logdir = os.path.expanduser(self.conf.logdir)
         logfile = os.path.join(logdir, self.conf.logfile)
 
@@ -120,14 +114,14 @@ class TornadoHTTPServer(object):
         elif self.conf.debug in [True, 1, 2]:
             logger.setLevel(logging.DEBUG)
 
-        logger.propagate = 0
+        logger.propagate = propagate
 
         return logger
 
     def setup_logger(self):
         if self.conf.debug == 2:
             self._setup_logger(logging.getLogger())
-        logger = logging.getLogger(self.logger_name)
+        logger = logging.getLogger(self.name)
         return self._setup_logger(logger)
 
     @property
