@@ -6,16 +6,18 @@ from setuptools import setup
 
 __pkg__ = 'metriquet'
 __version__ = '0.2.6'
-__release__ = "9a"
+__release__ = "10a"
 __nvr__ = '%s-%s' % (__version__, __release__)
 __pkgs__ = ['metriquet']
 __provides__ = ['metriquet']
 __desc__ = 'Metrique - Generic Tornado Server'
 __scripts__ = []
 __requires__ = [
+    'metriqueu',
     'tornado (==3.2)',
 ]
 __irequires__ = [
+    'metriqueu',
     'tornado==3.2',
 ]
 pip_src = 'https://pypi.python.org/packages/source'

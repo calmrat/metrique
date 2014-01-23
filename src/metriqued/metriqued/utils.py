@@ -2,7 +2,6 @@
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 # Author: "Chris Ward <cward@redhat.com>
 
-import os
 import pql
 import re
 
@@ -46,31 +45,6 @@ def query_add_date(query, date):
     if query and date_pql:
         return '%s and %s' % (query, date_pql)
     return query or date_pql
-
-
-def get_pids(pid_dir, clear_stale=True):
-    pid_dir = os.path.expanduser(pid_dir)
-    # eg, server.22325.pid, server.23526.pid
-    pids = []
-    for f in os.listdir(pid_dir):
-        pid_re = re.search(r'metriqued.(\d+).pid', f)
-        if pid_re:
-            pids.append(pid_re.groups()[0])
-    if clear_stale:
-        pids = clear_stale_pids(pids, pid_dir)
-    return map(int, pids)
-
-
-def clear_stale_pids(pids, pid_dir):
-    'check for and remove any pids which have no corresponding process'
-    procs = os.listdir('/proc')
-    running = [pid for pid in pids if pid in procs]
-    for pid in pids:
-        if pid not in running:
-            pid_file = 'metriqued.%s.pid' % pid
-            path = os.path.join(pid_dir, pid_file)
-            os.remove(path)
-    return running
 
 
 def parse_pql_query(query):

@@ -6,7 +6,7 @@ from setuptools import setup
 
 __pkg__ = 'metrique'
 __version__ = '0.2.6'
-__release__ = "9a"
+__release__ = "10a"
 __nvr__ = '%s-%s' % (__version__, __release__)
 __pkgs__ = ['metrique']
 __provides__ = ['metrique']

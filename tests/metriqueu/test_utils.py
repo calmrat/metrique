@@ -5,6 +5,7 @@
 import calendar
 from copy import copy
 from datetime import datetime as dt
+import os
 from pytz import utc
 from time import time
 
@@ -49,6 +50,33 @@ def test_dt2ts():
     assert dt2ts(now_time) == now_time
     assert dt2ts(now_date) == now_time
     assert dt2ts(now_date_iso) == now_time
+
+
+def test_get_pids():
+    from metriqueu.utils import get_pids as _
+
+    pid_dir = os.path.expanduser('~/.metrique/trash')
+    if not os.path.exists(pid_dir):
+        os.makedirs(pid_dir)
+
+    # any pid files w/out a /proc/PID process mapped are removed
+    assert _(pid_dir, clear_stale=True) == []
+
+    fake_pid = 11111
+    assert fake_pid not in _(pid_dir, clear_stale=False)
+
+    pid = 99999
+    path = os.path.join(pid_dir, 'metriqued.%s.pid' % pid)
+    with open(path, 'w') as f:
+        f.write(str(pid))
+
+    # don't clear the fake pidfile... useful for testing only
+    pids = _(pid_dir, clear_stale=False)
+    assert pid in pids
+    assert all([True if isinstance(x, int) else False for x in pids])
+
+    # clear it now and it should not show up in the results
+    assert pid not in _(pid_dir, clear_stale=True)
 
 
 def test_jsonhash():

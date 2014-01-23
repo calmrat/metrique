@@ -6,7 +6,7 @@ import os
 import time
 
 from metriqued.tornadohttp import MetriqueHTTP
-from metriqued.utils import get_pids
+from metriqueu.utils import get_pids
 
 here = os.path.dirname(os.path.abspath(__file__))
 

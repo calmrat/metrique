@@ -6,7 +6,9 @@ from calendar import timegm
 from datetime import datetime
 from dateutil.parser import parse as dt_parse
 from hashlib import sha1
+import os
 import pytz
+import re
 
 
 def batch_gen(data, batch_size):
@@ -26,6 +28,18 @@ def batch_gen(data, batch_size):
         yield data[i:i + batch_size]
 
 
+def clear_stale_pids(pids, pid_dir, prefix='metriqued'):
+    'check for and remove any pids which have no corresponding process'
+    procs = os.listdir('/proc')
+    running = [pid for pid in pids if pid in procs]
+    for pid in pids:
+        if pid not in running:
+            pid_file = '%s.%s.pid' % (prefix, pid)
+            path = os.path.join(pid_dir, pid_file)
+            os.remove(path)
+    return running
+
+
 def dt2ts(dt, drop_micro=False):
     ''' convert datetime objects to timestamp seconds (float) '''
     # the equals check to 'NaT' is hack to avoid adding pandas as a dependency
@@ -43,6 +57,19 @@ def dt2ts(dt, drop_micro=False):
         return float(int(ts))
     else:
         return float(ts)
+
+
+def get_pids(pid_dir, prefix='metriqued', clear_stale=True):
+    pid_dir = os.path.expanduser(pid_dir)
+    # eg, server.22325.pid, server.23526.pid
+    pids = []
+    for f in os.listdir(pid_dir):
+        pid_re = re.search(r'%s.(\d+).pid' % prefix, f)
+        if pid_re:
+            pids.append(pid_re.groups()[0])
+    if clear_stale:
+        pids = clear_stale_pids(pids, pid_dir, prefix)
+    return map(int, pids)
 
 
 def jsonhash(obj, root=True, exclude=None):

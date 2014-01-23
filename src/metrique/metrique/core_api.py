@@ -583,7 +583,9 @@ class HTTPClient(BaseClient):
         try:
             _response.raise_for_status()
         except Exception as e:
-            content = '%s\n%s\n%s' % (_url, str(e), _response.content)
+            content = _response.content
+            code = _response.status_code
+            content = '[%s] %s\n%s\n%s' % (code, _url, str(e), content)
             self.logger.error(content)
             raise
         return _response

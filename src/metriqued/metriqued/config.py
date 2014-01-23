@@ -3,13 +3,10 @@
 # Author: "Chris Ward <cward@redhat.com>
 
 from gnupg import GPG
-import logging
 import os
 
 from metriqueu.jsonconf import JSONConf
 from metriqued.basemongodb import BaseMongoDB
-
-BASENAME = 'metriqued'
 
 USER_DIR = os.path.expanduser('~/.metrique')
 ETC_DIR = os.path.join(USER_DIR, 'etc')
@@ -18,6 +15,7 @@ LOG_DIR = os.path.join(USER_DIR, 'logs')
 GNUPG_DIR = os.path.join(USER_DIR, 'gnupg')
 TEMP_DIR = os.path.join(USER_DIR, 'tmp')
 CACHE_DIR = os.path.join(USER_DIR, 'cache')
+TEMPLATE_DIR = os.path.join(USER_DIR, 'templates')
 
 DEFAULT_CONFIG = os.path.join(ETC_DIR, 'metriqued')
 
@@ -32,8 +30,9 @@ STATIC_PATH = os.path.join(here, 'static/')
 class metriqued_config(JSONConf):
     default_config = DEFAULT_CONFIG
 
-    def __init__(self, **kwargs):
+    def __init__(self, name=None, **kwargs):
         super(metriqued_config, self).__init__(**kwargs)
+        name = name or 'metriqued'
 
         defaults = {
             'autoreload': False,
@@ -47,34 +46,31 @@ class metriqued_config(JSONConf):
             'gzip': True,
             'host': '127.0.0.1',
             'krb_auth': False,
-            'logger_name': BASENAME,
+            'logger_name': name,
             'logdir': LOG_DIR,
-            'logfile': '%s.log' % BASENAME,
+            'logfile': '%s.log' % name,
             'log2file': True,
             'logstdout': False,
             'logrotate': 134217728,  # 128M 'maxBytes' before rotate
             'logkeep': 20,
             'login_url': '/login',
             'mongodb_config': None,
-            'pid_name': BASENAME,
+            'pid_name': name,
             'piddir': PID_DIR,
             'port': 5420,
-            'realm': BASENAME,
+            'realm': name,
             'ssl': False,
             'ssl_certificate': SSL_CERT,
             'ssl_certificate_key': SSL_KEY,
             'static_path': STATIC_PATH,
             'superusers': ["admin"],
             'temp_path': TEMP_DIR,
+            'template_path': TEMPLATE_DIR,
             'userdir': USER_DIR,
             'xsrf_cookies': False,
         }
 
         self.defaults.update(defaults)
-
-        pid = os.getpid()
-        self.logger = logging.getLogger('%s.%i.metriqued_config' % (
-            self.logger_name, pid))
 
     @property
     def gnupg(self):
@@ -93,9 +89,13 @@ class metriqued_config(JSONConf):
 
 
 class mongodb_config(JSONConf):
-    def __init__(self, config_file=None):
-        self.default_config = os.path.join(ETC_DIR, 'mongodb')
-        self.defaults = {
+    default_config = os.path.join(ETC_DIR, 'mongodb')
+
+    def __init__(self, config_file=None, name=None, **kwargs):
+        super(mongodb_config, self).__init__(config_file=config_file)
+        name = name or 'mongodb'
+
+        defaults = {
             'auth': False,
             'admin_password': None,
             'admin_user': 'admin',
@@ -118,14 +118,11 @@ class mongodb_config(JSONConf):
             'tz_aware': True,
             'write_concern': 2,  # primary + one replica
         }
-        super(mongodb_config, self).__init__(config_file=config_file)
-        pid = os.getpid()
-        self.logger = logging.getLogger('%s.%i.config' % (BASENAME, pid))
+        self.defaults.update(defaults)
 
     @property
     def db_readonly(self):
         if not hasattr(self, '_db_readonly'):
-            self.logger.debug(' ... caching readonly cursor')
             user = self.data_user
             pwd = self.data_password
             self._db_readonly = BaseMongoDB(
@@ -140,7 +137,6 @@ class mongodb_config(JSONConf):
     @property
     def db_admin(self):
         if not hasattr(self, '_db_admin'):
-            self.logger.debug(' ... caching admin cursor')
             user = self.admin_user
             pwd = self.admin_password
             self._db_admin = BaseMongoDB(

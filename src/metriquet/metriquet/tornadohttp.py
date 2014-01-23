@@ -24,14 +24,18 @@ LOG_FORMAT = logging.Formatter(BASIC_FORMAT, "%Y%m%dT%H%M%S")
 
 BASENAME = 'tornado'
 
-STATIC_PATH = 'static/'
 LOGIN_URL = '/login'
 COOKIE_SECRET = '__DEFAULT_COOKIE_SECRET__'
 SSL_CERT = 'mydomain.crt'
 SSL_KEY = 'mydomain.key'
-PID_DIR = ''
-LOG_DIR = ''
-LOG_FILE = '%s.log' % BASENAME
+
+USER_DIR = os.path.expanduser('~/.metrique')
+ETC_DIR = os.path.join(USER_DIR, 'etc')
+CACHE_DIR = os.path.join(USER_DIR, 'cache')
+PID_DIR = os.path.join(USER_DIR, 'pids')
+LOG_DIR = os.path.join(USER_DIR, 'logs')
+STATIC_PATH = os.path.join(USER_DIR, 'static/')
+TEMPLATE_PATH = os.path.join(USER_DIR, 'templates/')
 
 
 class TornadoHTTPServer(object):
@@ -40,8 +44,12 @@ class TornadoHTTPServer(object):
     parent_pid = None
     child_pid = None
     handlers = []
+    name = BASENAME
 
-    def __init__(self, **kwargs):
+    def __init__(self, name=None, **kwargs):
+        self.name = name or self.name
+        log_file = '%s.log' % BASENAME
+
         # key aliases (to shorten line <80c)
         cert = 'ssl_certificate'
         key = 'ssl_certificate_key'
@@ -51,22 +59,24 @@ class TornadoHTTPServer(object):
         self.conf['debug'] = kwargs.pop('debug', True)
         self.conf['gzip'] = kwargs.pop('gzip', True)
         self.conf['login_url'] = kwargs.pop('login_url', LOGIN_URL)
-        self.conf['static_path'] = kwargs.pop('static_path', STATIC_PATH)
         self.conf['cookie_secret'] = kwargs.pop('cookie_secret', COOKIE_SECRET)
         self.conf['xsrf_cookies'] = kwargs.pop('xsrf_cookies', False)
         self.conf['autoreload'] = kwargs.pop('autoreload', False)
         self.conf['ssl'] = kwargs.pop('ssl', False)
         self.conf['ssl_certificate'] = kwargs.pop(cert, SSL_CERT)
         self.conf['ssl_certificate_key'] = kwargs.pop(key, SSL_KEY)
-        self.conf['pid_name'] = kwargs.pop('pid_name', BASENAME)
+        self.conf['pid_name'] = kwargs.pop('pid_name', self.name)
+        self.conf['cachedir'] = kwargs.pop('cachedir', CACHE_DIR)
         self.conf['piddir'] = kwargs.pop('piddir', PID_DIR)
         self.conf['logdir'] = kwargs.pop('logdir', LOG_DIR)
         self.conf['logstdout'] = kwargs.pop('logstdout', True)
         self.conf['log2file'] = kwargs.pop('logstdout', False)
-        self.conf['logfile'] = kwargs.pop('logfile', LOG_FILE)
+        self.conf['logfile'] = kwargs.pop('logfile', log_file)
         self.conf['logrotate'] = kwargs.pop('logrotate', False)
         self.conf['logkeep'] = kwargs.pop('logkeep', 3)
-        self.conf['logger_name'] = kwargs.pop('logger_name', BASENAME)
+        self.conf['logger_name'] = kwargs.pop('logger_name', self.name)
+        self.conf['static_path'] = kwargs.pop('static_path', STATIC_PATH)
+        self.conf['template_path'] = kwargs.pop('template_path', TEMPLATE_PATH)
 
     @property
     def logger_name(self):
@@ -98,15 +108,15 @@ class TornadoHTTPServer(object):
             logger.setLevel(logging.INFO)
         elif self.conf.debug in [True, 1, 2]:
             logger.setLevel(logging.DEBUG)
+
+        logger.propagate = 0
+
         return logger
 
-        
     def setup_logger(self):
         if self.conf.debug == 2:
             self._setup_logger(logging.getLogger())
-        
         logger = logging.getLogger(self.logger_name)
-
         return self._setup_logger(logger)
 
     @property
@@ -131,6 +141,7 @@ class TornadoHTTPServer(object):
             cookie_secret=self.conf.cookie_secret,
             login_url=self.conf.login_url,
             xsrf_cookies=self.conf.xsrf_cookies,
+            template_path=self.conf.template_path,
         )
 
         if self.conf.debug and not self.conf.autoreload:
@@ -172,6 +183,11 @@ class TornadoHTTPServer(object):
                 self.logger.debug("removed PID file: %s" % self.pid_file)
 
     def _init_basic_server(self):
+        self.logger.debug('======= %s =======' % self.name)
+        self.logger.debug(' Conf: %s' % self.conf.config_file)
+        self.logger.debug(' Host: %s' % self.uri)
+        self.logger.debug('  SSL: %s' % self.conf.ssl)
+
         self.server.listen(port=self.conf.port, address=self.conf.host)
         IOLoop.instance().start()
 

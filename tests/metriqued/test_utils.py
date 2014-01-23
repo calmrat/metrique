@@ -3,7 +3,6 @@
 # Author: "Chris Ward" <cward@redhat.com>
 
 from datetime import datetime
-import os
 import pytz
 
 from metriqueu.utils import dt2ts
@@ -41,33 +40,6 @@ def test_date_pql_string():
     d2_ts = dt2ts(d2)
     ba = '_start <= %f and (_end >= %f or _end == None)' % (d2_ts, d1_ts)
     assert _('%s~%s' % (d1, d2)) == ba
-
-
-def test_get_pids():
-    from metriqued.utils import get_pids as _
-
-    pid_dir = os.path.expanduser('~/.metrique/trash')
-    if not os.path.exists(pid_dir):
-        os.makedirs(pid_dir)
-
-    # any pid files w/out a /proc/PID process mapped are removed
-    assert _(pid_dir, clear_stale=True) == []
-
-    fake_pid = 11111
-    assert fake_pid not in _(pid_dir, clear_stale=False)
-
-    pid = 99999
-    path = os.path.join(pid_dir, 'metriqued.%s.pid' % pid)
-    with open(path, 'w') as f:
-        f.write(str(pid))
-
-    # don't clear the fake pidfile... useful for testing only
-    pids = _(pid_dir, clear_stale=False)
-    assert pid in pids
-    assert all([True if isinstance(x, int) else False for x in pids])
-
-    # clear it now and it should not show up in the results
-    assert pid not in _(pid_dir, clear_stale=True)
 
 
 def parse_pql_query():
