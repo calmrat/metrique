@@ -119,10 +119,10 @@ class TornadoHTTPServer(object):
         return logger
 
     def setup_logger(self):
-        if self.conf.debug == 2:
-            self._setup_logger(logging.getLogger())
-        logger = logging.getLogger(self.name)
-        return self._setup_logger(logger)
+        # override root logger so all output goes to one place
+        self._setup_logger(logging.getLogger())
+        # prepare the app logger this instance will use
+        return self._setup_logger(logging.getLogger(self.name))
 
     @property
     def pid(self):
