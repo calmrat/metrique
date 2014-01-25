@@ -1,6 +1,16 @@
-import json
+#!/usr/bin/env python
+# vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
+# Author: "Juraj Niznan" <jniznan@redhat.com>
+
+'''
+This module regression test api related functionality
+'''
+
+import simplejson as json
 import os
 
+
+# FIXME: @jniznan: add docstrings
 
 def fetch_objects(client, oids):
     return client.find('_oid in %s' % oids, fields='~', date='~',

@@ -4,11 +4,8 @@
 
 '''
 This module contains a Pandas DataFrame wrapper and
-additional Pandas object helper functions.
-
-Version = one row of a dataframe, it has its _oid, _start and _end
-Object = specified by its _oid, one object can have multiple versions in the
-    result object.
+additional Pandas object helper functions which is
+used to load and manipulate cube objects.
 '''
 
 from decorator import decorator
@@ -405,6 +402,7 @@ class Result(DataFrame):
 
 #################################### LOAD ####################################
 
+# FIXME: is this used anywhere? REMOVE?
 def load_from_cube(oid, pyclient, cube='results', owner=None):
     '''
     Loads a result object from cube.

@@ -11,6 +11,9 @@ from metriqueu.utils import set_default
 
 def aboutme(self, username=None):
     '''
+    Get user profile details
+
+    :param string username: username to query profile data for
     '''
     username = set_default(username, self.config.username)
 
@@ -24,8 +27,7 @@ def register(self, username=None, password=None, logon_as=True):
     Register new user
 
     :param String user: Name of the user you're managing
-    :param String password:
-        Password (plain text), if any of user
+    :param String password: Password (plain text), if any of user
     '''
     username = set_default(username, self.config.username)
     password = set_default(password, self.config.password)
@@ -44,9 +46,10 @@ def register(self, username=None, password=None, logon_as=True):
 
 def remove(self, username=None, quiet=False):
     '''
-    Register new user
+    Remove existing user
 
     :param String username: Name of the user you're managing
+    :param bool quiet: ignore exceptions
     '''
     username = set_default(username, self.config.username)
     cmd = os.path.join(username, 'remove')
@@ -65,8 +68,7 @@ def login(self, username=None, password=None):
     Login a user
 
     :param String user: Name of the user you're managing
-    :param String password:
-        Password (plain text), if any of user
+    :param String password: Password (plain text), if any of user
     '''
     username = set_default(username, self.config.username,
                            err_msg='username required')
@@ -94,6 +96,7 @@ def logout(self):
     '''
     result = self._post('logout', api_url=False)
     self._load_session()  # new session
+    # FIXME: logged_in should be set during _load_session()
     self.logged_in = False
     return result
 
@@ -101,11 +104,12 @@ def logout(self):
 def update_passwd(self, new_password, old_password=None,
                   username=None, save=False):
     '''
-    Update existing user profile properties
+    Update existing user's password
 
-    :param String user: Name of the user you're managing
-    :param String password:
-        Password (plain text), if any of user
+    :param String new_password: New user password to set
+    :param String old_password: Old user password to unset
+    :param String username: Name of the user to manipulate
+    :param bool save: update local config file with new password
     '''
     username = set_default(username, self.config.username)
     if not new_password:
@@ -133,15 +137,26 @@ def update_passwd(self, new_password, old_password=None,
 
 # FIXME: prefix api_url with _ to indicate it's a special kwarg
 def update_profile(self, username=None, gnupg=None):
+    '''
+    Update existing user profile properties
+
+    :param String username: Name of the user to manipulate
+    :param String gnupg: update gnupg profile settings
+    '''
     username = username or self.config.username
     cmd = os.path.join(username, 'update_profile')
-    result = self._post(cmd,
-                        gnupg=gnupg,
-                        api_url=False)
+    result = self._post(cmd, gnupg=gnupg, api_url=False)
     return result
 
 
 def update_properties(self, username=None, backup=True, cube_quota=None):
+    '''
+    Update existing system level user properties
+
+    :param String username: Name of the user to manipulate
+    :param String backup: request previous state of property values
+    :param int cube_quota: cube quota count to set
+    '''
     username = set_default(username, self.config.username)
     cmd = os.path.join(username, 'update_properties')
     result = self._post(cmd, backup=backup, cube_quota=cube_quota,

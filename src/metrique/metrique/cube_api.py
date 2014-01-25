@@ -3,22 +3,15 @@
 # Author: "Chris Ward" <cward@redhat.com>
 
 '''
-This module contains all the Cube related api
-functionality.
-
-Create/Drop/Update cubes.
-Save/Remove cube objects.
-Create/Drop cube indexes.
+This module contains all Cube related api functionality.
 '''
 
 from metriqueu.utils import batch_gen
-from requests.exceptions import HTTPError
 
 
 def list_all(self, startswith=None):
     '''
-    This is expected to list all cubes available to
-    the calling client.
+    List all cubes available to the calling client.
 
     :param string startswith: simple "startswith" filter string
     :returns list: sorted list of cube names
@@ -28,7 +21,14 @@ def list_all(self, startswith=None):
 
 def sample_fields(self, cube=None, sample_size=None, query=None, owner=None):
     '''
-    List all valid fields for a given cube
+    List a sample of all valid fields for a given cube.
+
+    Assuming all cube objects have the same exact fields, sampling
+    fields should result in a complete list of object fields.
+
+    However, if cube objects have different fields, sampling fields
+    might not result in a complete list of object fields, since
+    some object variants might not be included in the sample queried.
 
     :param int sample_size: number of random documents to query
     :param list exclude_fields:
@@ -43,9 +43,8 @@ def sample_fields(self, cube=None, sample_size=None, query=None, owner=None):
 
 def stats(self, cube, owner=None, keys=None):
     '''
-    Get back server reported statistics and other data
-    about a cube cube; optionally, return only the
-    keys specified, not all the stats.
+    Get server reported statistics and other cube details. Optionally,
+    return only the keys specified, not all the stats.
     '''
     owner = owner or self.config.username
     cmd = self.get_cmd(owner, cube, 'stats')
@@ -62,7 +61,7 @@ def stats(self, cube, owner=None, keys=None):
 
 def drop(self, quiet=False, cube=None, owner=None):
     '''
-    Drops current cube from timeline
+    Drop (delete) remote cube.
 
     :param string cube: cube name
     :param bool force: really, do it!
@@ -80,7 +79,7 @@ def drop(self, quiet=False, cube=None, owner=None):
 
 def register(self, cube=None, owner=None, quiet=False):
     '''
-    Register a new user cube
+    Register a new remote cube
 
     :param string cube: cube name
     :param string owner: username of cube owner
@@ -99,7 +98,7 @@ def register(self, cube=None, owner=None, quiet=False):
 def update_role(self, username, cube=None, action='addToSet',
                 role='read', owner=None):
     '''
-    Add/Remove cube ACLs
+    Manipulate cube access controls
 
     :param string action: action to take (addToSet, pull)
     :param string role:
@@ -112,7 +111,7 @@ def update_role(self, username, cube=None, action='addToSet',
 ######### INDEX #########
 def list_index(self, cube=None, owner=None):
     '''
-    List indexes for either timeline or warehouse.
+    List all remote cube indexes
 
     :param string cube: cube name
     :param string owner: username of cube owner
@@ -125,7 +124,11 @@ def list_index(self, cube=None, owner=None):
 def ensure_index(self, key_or_list, name=None, background=None,
                  cube=None, owner=None):
     '''
-    Ensures that an index exists on this cube.
+    Build a new index on a remote cube.
+
+    Examples:
+        + ensure_index('field_name')
+        + ensure_index([('field_name', 1), ('other_field_name', -1)])
 
     :param string/list key_or_list:
         Either a single key or a list of (key, direction) pairs.
@@ -172,7 +175,12 @@ def _save_default(self, objects, start_time, owner, cube):
     return saved
 
 
-def save(self, objects=None, cube=None, owner=None, start_time=None):
+# FIXME: get rid of start_time? we add this by default during normalization
+# we don't want server to work unnecessarily hard on this... force
+# it to happen client side or metriqued will use the datetime of when
+# the request object was
+def save(self, objects=None, cube=None, owner=None, start_time=None,
+         flush=True):
     '''
     Save a list of objects the given metrique.cube.
     Returns back a list of object ids (_id|_oid) saved.
@@ -180,26 +188,30 @@ def save(self, objects=None, cube=None, owner=None, start_time=None):
     :param list objects: list of dictionary-like objects to be stored
     :param string cube: cube name
     :param string owner: username of cube owner
+    :param string start_time: ISO format datetime to apply as _start
+                              per object, serverside
+    :param bool flush: flush objects from memory after save
     :rtype: list - list of object ids saved
     '''
     if objects is None:
         objects = self.objects
-    olen = len(objects) if objects else None
-    if not olen:
+    if not objects:
         self.logger.info("... No objects to save")
-        return []
+        self.result = []
     else:
         self.logger.info("Saving %s objects" % len(objects))
-    # support only list of dicts
-    saved = _save_default(self, objects, start_time, owner, cube)
-    self.logger.info("... Saved %s NEW docs" % len(saved))
-    self.result = saved
+        # support only list of dicts
+        saved = _save_default(self, objects, start_time, owner, cube)
+        self.logger.info("... Saved %s NEW docs" % len(saved))
+        self.result = saved
+        if flush:
+            self.flush()
     return
 
 
 def rename(self, new_name, cube=None, owner=None):
     '''
-    Rename a cube
+    Rename a remote cube.
 
     :param string new_name: new cube name
     :param string cube: cube name
@@ -214,7 +226,7 @@ def rename(self, new_name, cube=None, owner=None):
 
 def remove(self, query, date=None, cube=None, owner=None):
     '''
-    Remove objects from cube timeline
+    Remove objects from a remote cube.
 
     :param list ids: list of object ids to remove
     :param bool backup: return the documents removed to client?
@@ -228,7 +240,7 @@ def remove(self, query, date=None, cube=None, owner=None):
 
 def export(self, filename, cube=None, owner=None):
     '''
-    Export the entire cube to compressed (gzip) json
+    Export a remote cube to compressed (gzip) json
 
     :param string cube: cube name
     :param string owner: username of cube owner

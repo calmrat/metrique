@@ -16,13 +16,41 @@ and serverside python, ipython, pandas, numpy, matplotlib,
 and more.
 
     >>> from metrique import pyclient
-    >>> g = pyclient(cube="gitrepo_commit"")
-    >>> g.ping()
-    pong
-    >>> ids = g.extract(uri='https://github.com/drpoovilleorg/metrique.git')
-    >>> q = c.query.find('git_commit', 'author, committer_ts')
-    >>> q.groupby(['author']).size().plot(kind='barh')
-    >>> <matplotlib.axes.AxesSubplot at 0x6f77ad0>
+    >>> g = pyclient(cube="osinfo_rpm"")
+    >>> g.get_objects()  # get information about all installed RPMs
+    >>> 'Total RPMs: %s' % len(objects)
+    >>> 'Example Object:', objects[0]
+        {'_oid': 'dhcp129-66.brq.redhat.com__libreoffice-ure-4.1.4.2[...]',
+         '_start': 1390619596.0,
+         'arch': 'x86_64',
+         'host': 'dhcp129-66.brq.redhat.com',
+         'license': '(MPLv1.1 or LGPLv3+) and LGPLv3 and LGPLv2+ and[...]',
+         'name': 'libreoffice-ure',
+         'nvra': 'libreoffice-ure-4.1.4.2-2.fc20.x86_64',
+         'os': 'linux',
+         'packager': 'Fedora Project',
+         'platform': 'x86_64-redhat-linux-gnu',
+         'release': '2.fc20',
+         'sourcepackage': None,
+         'sourcerpm': 'libreoffice-4.1.4.2-2.fc20.src.rpm',
+         'summary': 'UNO Runtime Environment',
+         'version': '4.1.4.2'}
+
+    # connect to metriqued host to save the objects
+    >>> config_file = '~/.metrique/etc/metrique.json'  # default location
+    >>> m = pyclient(config_file=config_file)
+    >>> osinfo_rpm = m.get_cube('osinfo_rpm')
+    >>> osinfo_rpm.cube_register()  # (run once) register the new cube with the
+    >>> ids = osinfo_rpm.extract()  # alias for get_objects + save_objects
+    >>> df = osinfo_rpm.find(fields='license')
+    >>> threshold = 5
+    >>> license_k = df.groupby('license').apply(len)
+    >>> license_k.sort()
+    >>> sub = license_k[license_k >= threshold]
+    >>> # shorten the names a bit
+    >>> sub.index = [i[0:20] + '...' if len(i) > 20 else i for i in sub.index]
+    >>> sub.plot(kind='bar')
+        <matplotlib.axes.AxesSubplot at 0x6f77ad0>
 
 :copyright: 2013 "Chris Ward" <cward@redhat.com>
 :license: GPLv3, see LICENSE for more details
@@ -37,6 +65,7 @@ and more.
 from collections import MutableSequence
 from copy import copy
 import cPickle
+import gc
 from functools import partial
 import glob
 import logging
@@ -59,8 +88,7 @@ logging.basicConfig()
 root_logger = logging.getLogger()
 [root_logger.removeHandler(hdlr) for hdlr in root_logger.handlers]
 BASIC_FORMAT = "%(name)s:%(asctime)s:%(message)s"
-FILETYPES = {'csv': pd.read_csv,
-             'json': pd.read_json}
+FILETYPES = {'csv': pd.read_csv, 'json': pd.read_json}
 fields_re = re.compile('[\W]+')
 space_re = re.compile('\s+')
 unda_re = re.compile('_')
@@ -68,7 +96,27 @@ unda_re = re.compile('_')
 
 class BaseCube(MutableSequence):
     '''
-    list of dicts; default 'cube' container model
+    Default 'cube' container model. Essentially, this object is made from
+    a list of dicts. The underlying object inherits from python's
+    MutableSequence collection object (aka, list).
+
+    All objects contain the following key:value properties, plus any number
+    of additional, arbitrary properties.
+
+    _oid: unique object identifier
+    _start: datetime when the object state was set
+    _end: datetime when the object state changed to a new state
+
+    Field names (object dict keys) must consist of alphanumeric and underscore
+    characters only.
+
+    Field names are normalized automatically:
+        * non-alphanumeric characters are removed
+        * spaces converted to underscores
+        * letters are lowercased
+
+    Property values are normalized to some extent automatically as well:
+        * empty strings -> None
     '''
     _objects = []
 
@@ -123,7 +171,7 @@ class BaseCube(MutableSequence):
             return pd.DataFrame()
 
     def flush(self):
-        self.objects = []
+        del self.objects
 
     @property
     def objects(self):
@@ -155,6 +203,7 @@ class BaseCube(MutableSequence):
     def objects(self):
         del self._objects
         self._objects = []
+        gc.collect()  # be sure we garbage collect any old object refs
 
     @property
     def oids(self):
@@ -206,7 +255,15 @@ class BaseCube(MutableSequence):
 
 class BaseClient(BaseCube):
     '''
-    Essentially, a cube is a list of dictionaries.
+    Low level client API
+
+    Functionality includes methods for loading data from csv and json,
+    loading metrique client cubes, config file loading and logging
+    setup.
+
+    Additionally, some common operation methods are provided for
+    operations such as loading a HTTP uri and determining currently
+    configured username.
     '''
     name = None
     ' defaults is frequently overrided in subclasses as a property '
@@ -273,11 +330,8 @@ class BaseClient(BaseCube):
         # with each others logging.
         self.debug_set()
 
-####################### pandas/hd5 python interface ################
+####################### data loading api ###################
     def load_files(self, path, filetype=None, **kwargs):
-        '''
-        cache to hd5 on disk
-        '''
         # kwargs are for passing ftype load options (csv.delimiter, etc)
         # expect the use of globs; eg, file* might result in fileN (file1,
         # file2, file3), etc
@@ -306,7 +360,7 @@ class BaseClient(BaseCube):
     def load_json(self, path, **kwargs):
         return pd.read_json(path, **kwargs)
 
-#################### misc #######################
+#################### misc ##################################
     def debug_set(self, level=None, logstdout=None, logfile=None):
         '''
         if we get a level of 2, we want to apply the
@@ -370,6 +424,7 @@ class BaseClient(BaseCube):
             self.config = Config(config_file=config_file)
             self._config_file = config_file
 
+#################### Helper API ############################
     def urlretrieve(self, uri, saveas):
         return urllib.urlretrieve(uri, saveas)
 
@@ -384,9 +439,49 @@ class HTTPClient(BaseClient):
     rest api.
 
     The is a base class that clients are expected to
-    subclass to build metrique cubes.
+    subclass to build metrique cubes which are designed
+    to interact with remote metriqued hosts.
 
+    Currently, the following API methods are exported:
 
+        **User**
+        + aboutme: request user profile information
+        + login: main interface for authenticating against metriqued
+        + passwd: update user password
+        + update_profile: update other profile details
+        + register: register a new user account
+        + remove: (admin) remove an existing user account
+        + set_properties: (admin) set non-profile (system) user properties
+
+        **Cube**
+        + list_all: list all remote cubes current user has read access to
+        + stats: provide statistics and other information about a remote cube
+        + sample_fields: sample remote cube object fields names
+        + drop: drop (delete) a remote cube
+        + export: return back a complete export of a given remote cube
+        + register: register a new remote cube
+        + update_role: update remote cube access control details
+        + save: save/persist objects to the remote cube (expects list of dicts)
+        + rename: rename a remote cube
+        + remove: remove (delete) objects from the remote cube
+        + index_list: list all indexes currently available for a remote cube
+        + index: create a new index for a remote cube
+        + index_drop: remove (delete) an index from a remote cube
+
+    **Query**
+        + find: run pql (mongodb) query remotely
+        + history: aggregate historical counts for objects matching a query
+        + deptree: find all child ids for a given parent id
+        + count: count the number of results matching a query
+        + distinct: get a list of unique object property values
+        + sample: query for a psuedo-random set of objects
+        + aggregate: run pql (mongodb) aggregate query remotely
+
+    **Regtest**
+        + regtest: run a regression test
+        + create: create a regression test
+        + remove: remove a regression test
+        + list: list available regression tests
     '''
     # frequently 'typed' commands have shorter aliases too
     user_aboutme = aboutme = user_api.aboutme
@@ -431,6 +526,9 @@ class HTTPClient(BaseClient):
         self.owner = owner or self.config.username
         # load a new requests session; for the cookies.
         self._load_session()
+
+        # FIXME: move all the setup below here into _load_session()
+        # and in load_session, first run 'logout' etc
         self.logged_in = False
 
         cube_autoregister = cube_register or self.config.cube_autoregister
