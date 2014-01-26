@@ -6,18 +6,15 @@ from gnupg import GPG
 import os
 
 from metriqueu.jsonconf import JSONConf
+from metriquet.tornadohttp import TornadoConfig
 from metriqued.basemongodb import BaseMongoDB
 
 USER_DIR = os.path.expanduser('~/.metrique')
 ETC_DIR = os.path.join(USER_DIR, 'etc')
-PID_DIR = os.path.join(USER_DIR, 'pids')
-LOG_DIR = os.path.join(USER_DIR, 'logs')
 GNUPG_DIR = os.path.join(USER_DIR, 'gnupg')
-TEMP_DIR = os.path.join(USER_DIR, 'tmp')
-CACHE_DIR = os.path.join(USER_DIR, 'cache')
-TEMPLATE_DIR = os.path.join(USER_DIR, 'templates')
 
 DEFAULT_CONFIG = os.path.join(ETC_DIR, 'metriqued')
+MONGODB_CONFIG = os.path.join(ETC_DIR, 'mongodb')
 
 SSL_CERT = os.path.join(ETC_DIR, 'metrique.cert')
 SSL_KEY = os.path.join(ETC_DIR, 'metrique.key')
@@ -27,49 +24,23 @@ here = os.path.dirname(os.path.abspath(__file__))
 STATIC_PATH = os.path.join(here, 'static/')
 
 
-class metriqued_config(JSONConf):
+class metriqued_config(TornadoConfig):
     default_config = DEFAULT_CONFIG
+    name = 'metriqued'
 
-    def __init__(self, name=None, **kwargs):
-        super(metriqued_config, self).__init__(**kwargs)
-        name = name or 'metriqued'
-
-        defaults = {
-            'autoreload': False,
-            'cache_dir': CACHE_DIR,
-            'cookie_secret': '____UPDATE_COOKIE_SECRET_CONFIG____',
-            'configdir':  ETC_DIR,
+    def __init__(self, **kwargs):
+        config = {
             'user_cube_quota': 3,
-            'debug': None,
             'gnupg_dir': GNUPG_DIR,
             'gnupg_fingerprint': None,
-            'gzip': True,
-            'host': '127.0.0.1',
             'krb_auth': False,
-            'logdir': LOG_DIR,
-            'logfile': '%s.log' % name,
-            'log2file': True,
-            'logstdout': False,
             'logrotate': 134217728,  # 128M 'maxBytes' before rotate
-            'logkeep': 20,
-            'login_url': '/login',
             'mongodb_config': None,
-            'pid_name': name,
-            'piddir': PID_DIR,
             'port': 5420,
-            'realm': name,
-            'ssl': False,
-            'ssl_certificate': SSL_CERT,
-            'ssl_certificate_key': SSL_KEY,
-            'static_path': STATIC_PATH,
             'superusers': ["admin"],
-            'temp_path': TEMP_DIR,
-            'template_path': TEMPLATE_DIR,
-            'userdir': USER_DIR,
-            'xsrf_cookies': False,
         }
-
-        self.defaults.update(defaults)
+        config.update(kwargs)
+        super(metriqued_config, self).__init__(**config)
 
     @property
     def gnupg(self):
@@ -88,13 +59,11 @@ class metriqued_config(JSONConf):
 
 
 class mongodb_config(JSONConf):
-    default_config = os.path.join(ETC_DIR, 'mongodb')
+    default_config = MONGODB_CONFIG
+    name = 'mongodb'
 
-    def __init__(self, config_file=None, name=None, **kwargs):
-        super(mongodb_config, self).__init__(config_file=config_file)
-        name = name or 'mongodb'
-
-        defaults = {
+    def __init__(self, config_file=None, **kwargs):
+        config = {
             'auth': False,
             'admin_password': None,
             'admin_user': 'admin',
@@ -117,7 +86,8 @@ class mongodb_config(JSONConf):
             'tz_aware': True,
             'write_concern': 2,  # primary + one replica
         }
-        self.defaults.update(defaults)
+        config.update(kwargs)
+        super(mongodb_config, self).__init__(config_file=config_file, **config)
 
     @property
     def db_readonly(self):
