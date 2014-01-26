@@ -34,46 +34,50 @@ ETC_DIR = os.path.join(USER_DIR, 'etc')
 CACHE_DIR = os.path.join(USER_DIR, 'cache')
 PID_DIR = os.path.join(USER_DIR, 'pids')
 LOG_DIR = os.path.join(USER_DIR, 'logs')
+TEMP_DIR = os.path.join(USER_DIR, 'tmp')
 STATIC_PATH = os.path.join(USER_DIR, 'static/')
 TEMPLATE_PATH = os.path.join(USER_DIR, 'templates/')
 
 
 class TornadoConfig(JSONConf):
-    def __init__(self, config_file=None, name=None, **kwargs):
-        self.name = name or BASENAME
-        log_file = '%s.log' % self.name
+    name = BASENAME
 
-        self.config = {
-            'host': '127.0.0.1',
-            'port': 8080,
+    def __init__(self, config_file=None, **kwargs):
+        log_file = '%s.log' % self.name
+        ssl_cert = '%s.crt' % self.name
+        ssl_key = '%s.key' % self.name
+
+        config = {
+            'autoreload': False,
+            'cachedir': CACHE_DIR,
+            'configdir':  ETC_DIR,
+            'cookie_secret': SECRET,
             'debug': True,
             'gzip': True,
-            'login_url': LOGIN_URL,
-            'cookie_secret': SECRET,
-            'xsrf_cookies': False,
-            'autoreload': False,
-            'ssl': False,
-            'ssl_certificate': SSL_CERT,
-            'ssl_certificate_key': SSL_KEY,
-            'pid_name': self.name,
-            'cachedir': CACHE_DIR,
-            'piddir': PID_DIR,
+            'host': '127.0.0.1',
             'logdir': LOG_DIR,
             'logstdout': True,
             'log2file': False,
             'logfile': log_file,
             'logrotate': False,
             'logkeep': 3,
+            'login_url': LOGIN_URL,
+            'pid_name': self.name,
+            'piddir': PID_DIR,
+            'port': 8080,
+            'realm': self.name,
+            'ssl': False,
+            'ssl_certificate': ssl_cert,
+            'ssl_certificate_key': ssl_key,
             'static_path': STATIC_PATH,
+            'temp_path': TEMP_DIR,
             'template_path': TEMPLATE_PATH,
+            'userdir': USER_DIR,
+            'xsrf_cookies': False,
         }
-
-        # make sure kwargs passed in are set
-        for k, v in kwargs.items():
-            self.config[k] = v
-
+        config.update(kwargs)
         # update the config with the args from the config_file
-        super(TornadoConfig, self).__init__(config_file=config_file)
+        super(TornadoConfig, self).__init__(config_file=config_file, **config)
 
 
 class TornadoHTTPServer(object):
