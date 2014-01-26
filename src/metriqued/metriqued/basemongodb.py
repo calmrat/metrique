@@ -7,7 +7,7 @@ import os
 try:
     from pymongo import MongoClient, MongoReplicaSetClient
 except ImportError:
-    raise ImportError("Mongodb 2.4+ required!")
+    raise ImportError("Pymongo 2.6+ required!")
 from pymongo.errors import ConnectionFailure
 from pymongo.read_preferences import ReadPreference
 
@@ -21,12 +21,34 @@ READ_PREFERENCE = {
 
 
 class BaseMongoDB(object):
+    '''
+    Generic wrapper for MongoDB connection configuration and handling.
+
+    Automatically handles connection and authentication against admin db.
+
+    Connections are cached and reused, until destruction or connection
+    error is encountered.
+
+    Requires Mongodb 2.4+ and pymongo 2.6+!
+
+    Supports the following connection types:
+        + SSL and non-SSL (key/cert and combined)
+        + auth na non-auth
+        + primary / replicaset
+
+    Connections options avaiable:
+        + journal (True)
+        + write_concern (2)
+        + fsync (False)
+        + read_preference (SECONDARY_PREFERRED)
+        + tz_aware datetimes (True)
+    '''
     def __init__(self, host, user=None, password=None, auth=False,
                  port=None, ssl=None, ssl_keyfile=None, tz_aware=True,
-                 ssl_certfile=None, write_concern=1, journal=False,
+                 ssl_certfile=None, write_concern=2, journal=False,
                  fsync=False, replica_set=None, read_preference=None):
-
         pid = os.getpid()
+        # FIXME: this is ugly, don't hardcode here.
         self.logger = logging.getLogger('metriqued.%i.mongodb' % pid)
 
         if ssl_keyfile:
