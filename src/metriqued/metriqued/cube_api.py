@@ -12,6 +12,7 @@ import subprocess
 import tempfile
 from types import NoneType
 from tornado.web import authenticated
+# FIXME: gen.coroutine async decorator for find, index, export, saveobjects...
 
 from metriqued.core_api import MongoDBBackendHdlr
 from metriqued.utils import query_add_date, parse_pql_query

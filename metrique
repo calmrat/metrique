@@ -159,6 +159,7 @@ DEFAULT_METRIQUED_JSON = '''
     "krb_auth": false,
     "log2file": true,
     "logstdout": false,
+    "log_requests": false,
     "port": 5420,
     "realm": "metrique",
     "ssl": false,

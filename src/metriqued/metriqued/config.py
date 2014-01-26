@@ -29,6 +29,7 @@ class metriqued_config(TornadoConfig):
     name = 'metriqued'
 
     def __init__(self, **kwargs):
+        super(metriqued_config, self).__init__(**kwargs)
         config = {
             'user_cube_quota': 3,
             'gnupg_dir': GNUPG_DIR,
@@ -39,8 +40,7 @@ class metriqued_config(TornadoConfig):
             'port': 5420,
             'superusers': ["admin"],
         }
-        config.update(kwargs)
-        super(metriqued_config, self).__init__(**config)
+        self.config.update(config)
 
     @property
     def gnupg(self):
@@ -63,6 +63,7 @@ class mongodb_config(JSONConf):
     name = 'mongodb'
 
     def __init__(self, config_file=None, **kwargs):
+        super(mongodb_config, self).__init__(**kwargs)
         config = {
             'auth': False,
             'admin_password': None,
@@ -86,8 +87,7 @@ class mongodb_config(JSONConf):
             'tz_aware': True,
             'write_concern': 2,  # primary + one replica
         }
-        config.update(kwargs)
-        super(mongodb_config, self).__init__(config_file=config_file, **config)
+        self.config.update(config)
 
     @property
     def db_readonly(self):

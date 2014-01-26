@@ -39,13 +39,7 @@ class MetriqueHTTP(TornadoHTTPServer):
     def __init__(self, config_file=None, **kwargs):
         config_file = config_file or METRIQUED_JSON
 
-        self.conf = metriqued_config(config_file=config_file,
-                                     defaults=self.conf)
-
-        # make sure kwargs passed in are set
-        for k, v in kwargs.items():
-            self.conf[k] = v
-
+        self.conf = metriqued_config(config_file=config_file, **kwargs)
         self.dbconf = mongodb_config(self.conf.mongodb_config)
 
         # call setup_logger() once more to ensure we've adjusted
@@ -64,7 +58,7 @@ class MetriqueHTTP(TornadoHTTPServer):
 
         self._mongodb_check()
 
-        self.handlers = self._prepare_handlers()
+        self._prepare_handlers()
 
     def _prepare_handlers(self):
         # pass in metrique and mongodb config to all handlers (init)
@@ -110,7 +104,9 @@ class MetriqueHTTP(TornadoHTTPServer):
             (ucv2(r"register"), cube_api.RegisterHdlr, init),
         ]
 
-        return base_handlers + user_cube_handlers
+        handlers = base_handlers + user_cube_handlers
+        self.handlers = handlers
+        return handlers
 
     def _mongodb_check(self):
         # Fail to start if we can't communicate with mongo

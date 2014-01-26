@@ -11,6 +11,7 @@ usermanagement, logging, etc.
 
 import base64
 from bson import SON
+from concurrent.futures import ThreadPoolExecutor
 try:
     import kerberos
 except ImportError:
@@ -20,6 +21,7 @@ import cPickle
 import random
 import socket
 import simplejson as json
+from tornado import gen
 from tornado.web import RequestHandler, HTTPError
 
 from metriqued.utils import parse_pql_query
@@ -154,6 +156,42 @@ class MetriqueHdlr(RequestHandler):
 
         return arg
 
+    def _request_dict(self):
+        r = self.request
+        request = {
+            'start_time': r._start_time,
+            'finish_time': r._finish_time,
+            'arguments': r.arguments,
+            'body': r.body,
+            'cookies': r.cookies.output(),
+            'files': r.files,
+            'full_url': r.full_url(),
+            'headers': r.headers,
+            'host': r.host,
+            'method': r.method,
+            'path': r.path,
+            'protocol': r.protocol,
+            'query': r.query,
+            'remote_ip': r.remote_ip,
+            'request_time': r.request_time(),
+            'supports_http_1_1': r.supports_http_1_1(),
+            'uri': r.uri,
+            'version': r.version,
+        }
+        return request
+
+    def _log_request(self):
+        # FIXME: why not run during 'end' or request rather than prepare
+        request_json = json.dumps(self._request_dict())
+        # FIXME: create new logger handler (.request(msg))
+        with ThreadPoolExecutor(1) as ex:
+            return ex.submit(self.logger.info, request_json)
+
+    @gen.coroutine
+    def prepare(self):
+        if self.metrique_config.log_requests:
+            yield self._log_request()
+
     def write(self, value, binary=False):
         if binary:
             super(MetriqueHdlr, self).write(value)
@@ -270,28 +308,6 @@ class MetriqueHdlr(RequestHandler):
         self.logger.info('[%s] %s: %s ...\n%s' % (self.current_user, code,
                                                   msg, self.request))
         raise HTTPError(code, msg)
-
-
-class PingHdlr(MetriqueHdlr):
-    ''' RequestHandler for pings '''
-    def get(self):
-        auth = self.get_argument('auth')
-        result = self.ping(auth)
-        self.write(result)
-
-    def ping(self, auth=None):
-        user = self.current_user
-        if auth and not user:
-            self._raise(401, "authentication required")
-        else:
-            self.logger.debug(
-                'got ping from %s @ %s' % (user, utcnow(as_datetime=True)))
-            response = {
-                'action': 'ping',
-                'current_user': user,
-                'metriqued': HOSTNAME,
-            }
-            return response
 
 
 class ObsoleteAPIHdlr(MetriqueHdlr):
@@ -453,3 +469,25 @@ class MongoDBBackendHdlr(MetriqueHdlr):
         update = {'$%s' % action: {key: value}}
         _cube.update(spec, update)
         return True
+
+
+class PingHdlr(MongoDBBackendHdlr):
+    ''' RequestHandler for pings '''
+    def get(self):
+        auth = self.get_argument('auth')
+        result = self.ping(auth)
+        self.write(result)
+
+    def ping(self, auth=None):
+        user = self.current_user
+        if auth and not user:
+            self._raise(401, "authentication required")
+        else:
+            self.logger.debug(
+                'got ping from %s @ %s' % (user, utcnow(as_datetime=True)))
+            response = {
+                'action': 'ping',
+                'current_user': user,
+                'metriqued': HOSTNAME,
+            }
+            return response

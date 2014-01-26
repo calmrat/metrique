@@ -43,6 +43,9 @@ class TornadoConfig(JSONConf):
     name = BASENAME
 
     def __init__(self, config_file=None, **kwargs):
+        # update the config with the args from the config_file
+        super(TornadoConfig, self).__init__(config_file=config_file)
+
         log_file = '%s.log' % self.name
         ssl_cert = '%s.crt' % self.name
         ssl_key = '%s.key' % self.name
@@ -75,9 +78,8 @@ class TornadoConfig(JSONConf):
             'userdir': USER_DIR,
             'xsrf_cookies': False,
         }
-        config.update(kwargs)
-        # update the config with the args from the config_file
-        super(TornadoConfig, self).__init__(config_file=config_file, **config)
+        self.config.update(config)
+        self.config.update(kwargs)
 
 
 class TornadoHTTPServer(object):
