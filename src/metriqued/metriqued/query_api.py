@@ -10,12 +10,12 @@ from collections import defaultdict
 
 from metriqued.utils import parse_pql_query
 from metriqued.utils import date_pql_string, query_add_date
-from metriqued.core_api import MetriqueHdlr
+from metriqued.core_api import MongoDBBackendHdlr
 
 from metriqueu.utils import set_default, dt2ts
 
 
-class AggregateHdlr(MetriqueHdlr):
+class AggregateHdlr(MongoDBBackendHdlr):
     '''
     RequestHandler for running mongodb aggregation
     framwork pipeines against a given cube
@@ -33,7 +33,7 @@ class AggregateHdlr(MetriqueHdlr):
         return self.timeline(owner, cube).aggregate(pipeline)
 
 
-class CountHdlr(MetriqueHdlr):
+class CountHdlr(MongoDBBackendHdlr):
     '''
     RequestHandler for returning back simple integer
     counts of objects matching the given query
@@ -62,7 +62,7 @@ class CountHdlr(MetriqueHdlr):
         return docs.count() if docs else 0
 
 
-class DeptreeHdlr(MetriqueHdlr):
+class DeptreeHdlr(MongoDBBackendHdlr):
     '''
     RequestHandler for returning back the list of
     oids matching the given tree.
@@ -104,7 +104,7 @@ class DeptreeHdlr(MetriqueHdlr):
         return sorted(checked)
 
 
-class DistinctHdlr(MetriqueHdlr):
+class DistinctHdlr(MongoDBBackendHdlr):
     '''
     RequestHandler for fetching distinct token values for a
     given cube.field
@@ -121,7 +121,7 @@ class DistinctHdlr(MetriqueHdlr):
         return self.timeline(owner, cube).distinct(field)
 
 
-class FindHdlr(MetriqueHdlr):
+class FindHdlr(MongoDBBackendHdlr):
     '''
     RequestHandler for returning back object
     matching the given query
@@ -214,7 +214,7 @@ class FindHdlr(MetriqueHdlr):
         return ret[1:]
 
 
-class HistoryHdlr(MetriqueHdlr):
+class HistoryHdlr(MongoDBBackendHdlr):
     '''
     RequestHandler for returning back historical counts for
     the given query
@@ -286,7 +286,7 @@ class HistoryHdlr(MetriqueHdlr):
         return ret
 
 
-class SampleHdlr(MetriqueHdlr):
+class SampleHdlr(MongoDBBackendHdlr):
     '''
     RequestHandler for fetching distinct token values for a
     given cube.field

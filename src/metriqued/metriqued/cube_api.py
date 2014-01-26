@@ -13,14 +13,14 @@ import tempfile
 from types import NoneType
 from tornado.web import authenticated
 
-from metriqued.core_api import MetriqueHdlr
+from metriqued.core_api import MongoDBBackendHdlr
 from metriqued.utils import query_add_date, parse_pql_query
 from metriqueu.utils import utcnow, batch_gen, jsonhash
 
 OBJ_KEYS = set(['_id', '_hash', '_oid', '_start', '_end'])
 
 
-class DropHdlr(MetriqueHdlr):
+class DropHdlr(MongoDBBackendHdlr):
     ''' RequestsHandler for droping given cube from timeline '''
     @authenticated
     def delete(self, owner, cube):
@@ -47,7 +47,7 @@ class DropHdlr(MetriqueHdlr):
         return True
 
 
-class ExportHdlr(MetriqueHdlr):
+class ExportHdlr(MongoDBBackendHdlr):
     '''
     RequestHandler for exporting a collection (cube) to gzipped json
     '''
@@ -105,7 +105,7 @@ class ExportHdlr(MetriqueHdlr):
         return path_gz
 
 
-class IndexHdlr(MetriqueHdlr):
+class IndexHdlr(MongoDBBackendHdlr):
     '''
     RequestHandler for ensuring mongodb indexes
     in timeline collection for a given cube
@@ -152,7 +152,7 @@ class IndexHdlr(MetriqueHdlr):
         self.write(_cube.index_information())
 
 
-class ListHdlr(MetriqueHdlr):
+class ListHdlr(MongoDBBackendHdlr):
     '''
     RequestHandler for querying about available cubes and cube.fields
     '''
@@ -201,7 +201,7 @@ class ListHdlr(MetriqueHdlr):
         return cube_fields
 
 
-class RenameHdlr(MetriqueHdlr):
+class RenameHdlr(MongoDBBackendHdlr):
     '''
     RequestHandler for registering new users to metrique
     '''
@@ -249,7 +249,7 @@ class RenameHdlr(MetriqueHdlr):
         return True
 
 
-class RegisterHdlr(MetriqueHdlr):
+class RegisterHdlr(MongoDBBackendHdlr):
     '''
     RequestHandler for registering new users to metrique
     '''
@@ -312,7 +312,7 @@ class RegisterHdlr(MetriqueHdlr):
         return remaining
 
 
-class RemoveObjectsHdlr(MetriqueHdlr):
+class RemoveObjectsHdlr(MongoDBBackendHdlr):
     '''
     RequestHandler for saving a given object to a
     metrique server cube
@@ -355,7 +355,7 @@ class RemoveObjectsHdlr(MetriqueHdlr):
         return _cube.remove(spec)
 
 
-class SaveObjectsHdlr(MetriqueHdlr):
+class SaveObjectsHdlr(MongoDBBackendHdlr):
     '''
     RequestHandler for saving a given object to a metrique server cube
     '''
@@ -495,7 +495,7 @@ class SaveObjectsHdlr(MetriqueHdlr):
         return obj
 
 
-class StatsHdlr(MetriqueHdlr):
+class StatsHdlr(MongoDBBackendHdlr):
     '''
     RequestHandler for managing cube role properties
 
@@ -516,7 +516,7 @@ class StatsHdlr(MetriqueHdlr):
         return stats
 
 
-class UpdateRoleHdlr(MetriqueHdlr):
+class UpdateRoleHdlr(MongoDBBackendHdlr):
     '''
     RequestHandler for managing cube role properties
 

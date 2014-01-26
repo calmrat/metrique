@@ -36,29 +36,9 @@ VALID_ACTIONS = set(('pull', 'addToSet', 'set'))
 
 class MetriqueHdlr(RequestHandler):
     '''
-    Template RequestHandler that accepts init parameters
-    and unifies json get_argument handling
+    Template RequestHandler for handling incoming 'metriqued api' requests.
     '''
-##################### mongo db #################################
-    @staticmethod
-    def check_sort(sort, son=False):
-        '''
-        ordered dict (or son) is required for pymongo's $sort operators
-        '''
-        if not sort:
-            # FIXME
-            return None
-
-        try:
-            assert len(sort[0]) == 2
-        except (AssertionError, IndexError, TypeError):
-            raise ValueError(
-                "Invalid sort value (%s); try [('_oid': -1)]" % sort)
-        if son:
-            return SON(sort)
-        else:
-            return sort
-
+############################### Cube Manipulation ###########################
     @staticmethod
     def cjoin(owner, cube):
         ''' shorthand for joining owner and cube together with dunder'''
@@ -76,13 +56,6 @@ class MetriqueHdlr(RequestHandler):
                                      raise_if_not=raise_if_not,
                                      exists_only=True)
 
-    def cube_profile(self, admin=False):
-        ''' return back a mongodb connection to give cube collection '''
-        if admin:
-            return self.mongodb_config.c_cube_profile_admin
-        else:
-            return self.mongodb_config.c_cube_profile_data
-
     @staticmethod
     def estimate_obj_size(obj):
         return len(cPickle.dumps(obj))
@@ -96,7 +69,7 @@ class MetriqueHdlr(RequestHandler):
             self._raise(400, "owner and cube required")
         self.logger.debug('... fields: %s' % fields)
         if fields in ['__all__', '~']:
-            # None will make pymongo return back entire objects
+            # None indicates a request should return back whole objs
             _fields = None
         else:
             # to return `_id`, it must be included in fields
@@ -104,16 +77,6 @@ class MetriqueHdlr(RequestHandler):
             _split_fields = [f for f in strip_split(fields)]
             _fields.update(dict([(f, 1) for f in set(_split_fields)]))
         return _fields
-
-    def get_cube_last_start(self, owner, cube):
-        if not (owner and cube):
-            self._raise(400, "owner and cube required")
-        _cube = self.timeline(owner, cube)
-        doc = _cube.find_one({'_start': {'$exists': 1}}, sort=[('_start', -1)])
-        if doc:
-            return doc.get('_start')
-        else:
-            return None
 
     def get_user_profile(self, username, keys=None, raise_if_not=False,
                          exists_only=False, mask=None, null_value=None):
@@ -134,94 +97,6 @@ class MetriqueHdlr(RequestHandler):
                                 exists_only=exists_only,
                                 mask=mask)
 
-    def get_profile(self, _cube, _id, keys=None, raise_if_not=False,
-                    exists_only=False, mask=None, null_value=None):
-        '''
-        find and return the user's profile data
-        exists will just check if the user exists or not, then return
-        '''
-        if not _id:
-            self._raise(400, "_id required")
-        keys = set_default(keys, list, null_ok=True,
-                           err_msg="keys must be a list")
-        mask = set_default(mask, list, null_ok=True,
-                           err_msg="keys must be a list")
-        spec = {'_id': _id}
-        cursor = _cube.find(spec)
-        count = cursor.count()
-        if not count:
-            if raise_if_not:
-                self._raise(400, 'resource does not exist: %s' % _id)
-            elif exists_only:
-                return False
-            else:
-                return {}
-        elif exists_only:  # return back only the count
-            return True if count else False
-        else:
-            # return back the profile doc
-            # which is the first and only item in the cursor
-            profile = cursor.next()
-
-        if keys:
-            if profile:
-                # extract out the nested items; we have
-                # lists of singleton lists
-                result = [profile.get(k, null_value) for k in keys
-                          if not k in mask]
-            else:
-                # keep the same list length, for tuple unpacking assignments
-                # like a, b = ...get_profile(..., keys=['a', 'b'])
-                result = [null_value for k in keys]
-            if len(keys) == 1:
-                # return it un-nested
-                result = result[0]
-        else:
-            result = profile
-        return result
-
-    def sample_timeline(self, owner, cube, sample_size=None, query=None):
-        if not (owner and cube):
-            self._raise(400, "owner and cube required")
-        if sample_size is None:
-            sample_size = SAMPLE_SIZE
-        query = set_default(query, '', null_ok=True)
-        spec = parse_pql_query(query)
-        _cube = self.timeline(owner, cube)
-        docs = _cube.find(spec)
-        n = docs.count()
-        if n <= sample_size:
-            docs = tuple(docs)
-        else:
-            to_sample = sorted(set(random.sample(xrange(n), sample_size)))
-            docs = [docs[i] for i in to_sample]
-        return docs
-
-    @property
-    def _timeline_data(self):
-        return self.mongodb_config.db_timeline_data
-
-    @property
-    def _timeline_admin(self):
-        return self.mongodb_config.db_timeline_admin
-
-    def timeline(self, owner, cube, admin=False):
-        ''' return back a mongodb connection to give cube collection '''
-        if not (owner and cube):
-            self._raise(400, "owner and cube required")
-        collection = self.cjoin(owner, cube)
-        if admin:
-            return self._timeline_admin[collection]
-        else:
-            return self._timeline_data[collection]
-
-    def user_profile(self, admin=False):
-        ''' return back a mongodb connection to give cube collection '''
-        if admin:
-            return self.mongodb_config.c_user_profile_admin
-        else:
-            return self.mongodb_config.c_user_profile_data
-
     def update_cube_profile(self, owner, cube, action, key, value):
         self.cube_exists(owner, cube)
         self.valid_action(action)
@@ -235,15 +110,6 @@ class MetriqueHdlr(RequestHandler):
         _cube = self.user_profile(admin=True)
         return self._update_profile(_cube=_cube, _id=username,
                                     action=action, key=key, value=value)
-
-    def _update_profile(self, _cube, _id, action, key, value):
-        # FIXME: add optional type check...
-        # and drop utils set_propery function
-        self.valid_action(action)
-        spec = {'_id': _id}
-        update = {'$%s' % action: {key: value}}
-        _cube.update(spec, update)
-        return True
 
     def valid_in_set(self, x, valid_set, raise_if_not=True):
         if isinstance(x, basestring):
@@ -287,15 +153,6 @@ class MetriqueHdlr(RequestHandler):
             arg = _arg
 
         return arg
-
-    def initialize(self, metrique_config, mongodb_config, logger):
-        '''
-        :param HTTPServer proxy:
-            A pointer to the running metrique server instance
-        '''
-        self.metrique_config = metrique_config
-        self.mongodb_config = mongodb_config
-        self.logger = logger
 
     def write(self, value, binary=False):
         if binary:
@@ -450,3 +307,149 @@ class ObsoleteAPIHdlr(MetriqueHdlr):
 
     def update(self):
         self._raise(410, "this API version is no long supported")
+
+
+class MongoDBBackendHdlr(MetriqueHdlr):
+    '''
+    This class provides metrique requests methods for interaction with MongoDB
+    '''
+    @staticmethod
+    def check_sort(sort, son=False):
+        '''
+        ordered dict (or son) is required for pymongo's $sort operators
+        '''
+        if not sort:
+            # FIXME
+            return None
+        try:
+            assert len(sort[0]) == 2
+        except (AssertionError, IndexError, TypeError):
+            raise ValueError(
+                "Invalid sort value (%s); try [('_oid': -1)]" % sort)
+        if son:
+            return SON(sort)
+        else:
+            return sort
+
+    def cube_profile(self, admin=False):
+        ''' return back a mongodb connection to give cube collection '''
+        if admin:
+            return self.mongodb_config.c_cube_profile_admin
+        else:
+            return self.mongodb_config.c_cube_profile_data
+
+    def get_cube_last_start(self, owner, cube):
+        if not (owner and cube):
+            self._raise(400, "owner and cube required")
+        _cube = self.timeline(owner, cube)
+        doc = _cube.find_one({'_start': {'$exists': 1}}, sort=[('_start', -1)])
+        if doc:
+            return doc.get('_start')
+        else:
+            return None
+
+    def get_profile(self, _cube, _id, keys=None, raise_if_not=False,
+                    exists_only=False, mask=None, null_value=None):
+        '''
+        find and return the user's profile data
+        exists will just check if the user exists or not, then return
+        '''
+        if not _id:
+            self._raise(400, "_id required")
+        keys = set_default(keys, list, null_ok=True,
+                           err_msg="keys must be a list")
+        mask = set_default(mask, list, null_ok=True,
+                           err_msg="keys must be a list")
+        spec = {'_id': _id}
+        cursor = _cube.find(spec)
+        count = cursor.count()
+        if not count:
+            if raise_if_not:
+                self._raise(400, 'resource does not exist: %s' % _id)
+            elif exists_only:
+                return False
+            else:
+                return {}
+        elif exists_only:  # return back only the count
+            return True if count else False
+        else:
+            # return back the profile doc
+            # which is the first and only item in the cursor
+            profile = cursor.next()
+
+        if keys:
+            if profile:
+                # extract out the nested items; we have
+                # lists of singleton lists
+                result = [profile.get(k, null_value) for k in keys
+                          if not k in mask]
+            else:
+                # keep the same list length, for tuple unpacking assignments
+                # like a, b = ...get_profile(..., keys=['a', 'b'])
+                result = [null_value for k in keys]
+            if len(keys) == 1:
+                # return it un-nested
+                result = result[0]
+        else:
+            result = profile
+        return result
+
+    def initialize(self, metrique_config, mongodb_config, logger):
+        '''
+        :param HTTPServer proxy:
+            A pointer to the running metrique server instance
+        '''
+        self.metrique_config = metrique_config
+        self.mongodb_config = mongodb_config
+        self.logger = logger
+
+    def sample_timeline(self, owner, cube, sample_size=None, query=None):
+        if not (owner and cube):
+            self._raise(400, "owner and cube required")
+        if sample_size is None:
+            sample_size = SAMPLE_SIZE
+        query = set_default(query, '', null_ok=True)
+        spec = parse_pql_query(query)
+        _cube = self.timeline(owner, cube)
+        docs = _cube.find(spec)
+        n = docs.count()
+        if n <= sample_size:
+            docs = tuple(docs)
+        else:
+            to_sample = sorted(set(random.sample(xrange(n), sample_size)))
+            docs = [docs[i] for i in to_sample]
+        return docs
+
+    @property
+    def _timeline_data(self):
+        return self.mongodb_config.db_timeline_data
+
+    @property
+    def _timeline_admin(self):
+        return self.mongodb_config.db_timeline_admin
+
+    def timeline(self, owner, cube, admin=False):
+        ''' return back a mongodb connection to give cube collection '''
+        if not (owner and cube):
+            self._raise(400, "owner and cube required")
+        collection = self.cjoin(owner, cube)
+        if admin:
+            return self._timeline_admin[collection]
+        else:
+            return self._timeline_data[collection]
+
+    def user_profile(self, admin=False):
+        ''' return back a mongodb connection to give cube collection '''
+        if admin:
+            return self.mongodb_config.c_user_profile_admin
+        else:
+            return self.mongodb_config.c_user_profile_data
+
+    def _update_profile(self, _cube, _id, action, key, value):
+        # FIXME: add optional type check...
+        # and drop utils set_propery function
+        self.valid_action(action)
+        spec = {'_id': _id}
+        update = {'$%s' % action: {key: value}}
+        _cube.update(spec, update)
+        return True

@@ -6,14 +6,14 @@ from passlib.hash import sha256_crypt
 import re
 from tornado.web import authenticated
 
-from metriqued.core_api import MetriqueHdlr
+from metriqued.core_api import MongoDBBackendHdlr
 
 from metriqueu.utils import utcnow
 
 INVALID_USERNAME_RE = re.compile('[^a-z]', re.I)
 
 
-class AboutMeHdlr(MetriqueHdlr):
+class AboutMeHdlr(MongoDBBackendHdlr):
     '''
     RequestHandler for seeing your user profile
 
@@ -37,7 +37,7 @@ class AboutMeHdlr(MetriqueHdlr):
             mask += []
 
 
-class LoginHdlr(MetriqueHdlr):
+class LoginHdlr(MongoDBBackendHdlr):
     '''
     RequestHandler for logging a user into metrique
     '''
@@ -63,7 +63,7 @@ class LoginHdlr(MetriqueHdlr):
         self.write(ok)
 
 
-class LogoutHdlr(MetriqueHdlr):
+class LogoutHdlr(MongoDBBackendHdlr):
     '''
     RequestHandler for logging a user out of metrique
     '''
@@ -75,7 +75,7 @@ class LogoutHdlr(MetriqueHdlr):
 
 # FIXME: if there are no other users configured already
 # then the first user registered MUST be added to 'admin' group
-class RegisterHdlr(MetriqueHdlr):
+class RegisterHdlr(MongoDBBackendHdlr):
     '''
     RequestHandler for registering new users to metrique
     '''
@@ -115,7 +115,7 @@ class RegisterHdlr(MetriqueHdlr):
         return True
 
 
-class RemoveHdlr(MetriqueHdlr):
+class RemoveHdlr(MongoDBBackendHdlr):
     '''
     RequestHandler for removing existing users to metrique
     '''
@@ -146,7 +146,7 @@ class RemoveHdlr(MetriqueHdlr):
         return True
 
 
-class UpdatePasswordHdlr(MetriqueHdlr):
+class UpdatePasswordHdlr(MongoDBBackendHdlr):
     '''
     RequestHandler for updating existing users password
     '''
@@ -188,7 +188,7 @@ class UpdatePasswordHdlr(MetriqueHdlr):
         return True
 
 
-class UpdateGroupHdlr(MetriqueHdlr):
+class UpdateGroupHdlr(MongoDBBackendHdlr):
     '''
     RequestHandler for managing user group properties
 
@@ -214,7 +214,7 @@ class UpdateGroupHdlr(MetriqueHdlr):
         return True
 
 
-class UpdateProfileHdlr(MetriqueHdlr):
+class UpdateProfileHdlr(MongoDBBackendHdlr):
     @authenticated
     def post(self, username=None):
         gnupg = self.get_argument('gnupg')
@@ -244,7 +244,7 @@ class UpdateProfileHdlr(MetriqueHdlr):
         return self.metrique_config.gnupg.import_keys(gnupg_key)
 
 
-class UpdatePropertiesHdlr(MetriqueHdlr):
+class UpdatePropertiesHdlr(MongoDBBackendHdlr):
     '''
     '''
     @authenticated

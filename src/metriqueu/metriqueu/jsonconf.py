@@ -25,7 +25,7 @@ class JSONConf(MutableMapping):
     default_config = None
     default_config_dir = None
 
-    def __init__(self, config_file=None, defaults=None):
+    def __init__(self, config_file=None, defaults=None, **kwargs):
         if config_file is None and self.default_config:
             self.config_file = self.default_config
         else:
@@ -44,6 +44,11 @@ class JSONConf(MutableMapping):
                 self.config_file = self.config_file.config_file
             else:
                 self.load_config()
+
+        # apply kwargs passed in to config, overriding any preloaded defaults
+        # or values set in config_file
+        for k, v in kwargs.items():
+            self.config[k] = v
 
     def __delitem__(self, key):
         del self.config[key]
