@@ -266,14 +266,16 @@ class BaseClient(BaseCube):
     configured username.
     '''
     name = None
-    ' defaults is frequently overrided in subclasses as a property '
+    # defaults is frequently overrided in subclasses as a property
     defaults = None
-    ' fields is frequently overrided in subclasses as a property too '
+    # fields is frequently overrided in subclasses as a property too
     fields = None
-    ' filename of the data when saved to disk '
+    # filename of the data when saved to disk
     saveas = ''
-    ' a place to put stuff, temporarily... '
+    # a place to put stuff, temporarily...
     _cache = None
+    # config properties
+    config = {}
 
     def __new__(cls, *args, **kwargs):
         '''
@@ -306,12 +308,7 @@ class BaseClient(BaseCube):
 
         # all defaults are loaded, unless specified in
         # metrique_config.json
-        self.load_config()
-
-        # update config object with any additional kwargs
-        for k, v in kwargs.items():
-            if v is not None:
-                self.config[k] = v
+        self.load_config(**kwargs)
 
         utc_str = utcnow(as_datetime=True).strftime('%a%b%d%H%m%S')
         # set name if passed in, but don't overwrite default if not
@@ -415,14 +412,14 @@ class BaseClient(BaseCube):
         return get_cube(cube=cube, init=init, config=config,
                         name=name, **kwargs)
 
-    def load_config(self, config=None):
+    def load_config(self, config=None, **kwargs):
         ' try to load a config file and handle when its not available '
         if type(config) is type(Config):
             self._config_file = config.config_file
         else:
-            config_file = config or self._config_file
-            self.config = Config(config_file=config_file)
-            self._config_file = config_file
+            self._config_file = config or self._config_file
+            self.config = Config(config_file=self._config_file)
+        self.config.update(kwargs)
 
 #################### Helper API ############################
     def urlretrieve(self, uri, saveas):

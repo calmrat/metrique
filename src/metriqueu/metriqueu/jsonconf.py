@@ -19,7 +19,7 @@ class JSONConf(MutableMapping):
         Provides helper-methods for setting and saving
         options and config object properties
     '''
-    config = None
+    _config = None
     config_file = None
     defaults = None
     default_config = None
@@ -35,8 +35,6 @@ class JSONConf(MutableMapping):
             self.defaults = {}
         if defaults:
             self.defaults.update(defaults)
-        if self.config is None:
-            self.config = {}
 
         if self.config_file:
             if isinstance(self.config_file, JSONConf):
@@ -47,8 +45,13 @@ class JSONConf(MutableMapping):
 
         # apply kwargs passed in to config, overriding any preloaded defaults
         # or values set in config_file
-        for k, v in kwargs.items():
-            self.config[k] = v
+        self.config.update(kwargs)
+
+    @property
+    def config(self):
+        if not self._config:
+            self._config = {}
+        return self._config
 
     def __delitem__(self, key):
         del self.config[key]
@@ -77,12 +80,11 @@ class JSONConf(MutableMapping):
         return repr(self.config)
 
     def __setattr__(self, name, value):
-        if 'config' in self.__dict__:
-            if 'defaults' in self.__dict__ and name in self.defaults:
-                # you can only set those values specified IN defaults
-                self[name] = value
-                return
-        super(JSONConf, self).__setattr__(name, value)
+        if 'defaults' in self.__dict__ and name in self.defaults:
+            # you can only set those values specified IN defaults
+            self[name] = value
+        else:
+            super(JSONConf, self).__setattr__(name, value)
 
     def __setitem__(self, key, value):
         self.config[key] = value

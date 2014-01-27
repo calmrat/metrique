@@ -28,19 +28,24 @@ class metriqued_config(TornadoConfig):
     default_config = DEFAULT_CONFIG
     name = 'metriqued'
 
-    def __init__(self, **kwargs):
-        super(metriqued_config, self).__init__(**kwargs)
+    def __init__(self, config_file=None, **kwargs):
         config = {
             'user_cube_quota': 3,
             'gnupg_dir': GNUPG_DIR,
             'gnupg_fingerprint': None,
             'krb_auth': False,
-            'logrotate': 134217728,  # 128M 'maxBytes' before rotate
+            'log2mongodb': False,
+            'log_mongodb_level': 100,
             'mongodb_config': None,
             'port': 5420,
             'superusers': ["admin"],
         }
+        # apply defaults
         self.config.update(config)
+        # update the config with the args from the config_file
+        super(metriqued_config, self).__init__(config_file=config_file)
+        # anything passed in explicitly gets precedence
+        self.config.update(kwargs)
 
     @property
     def gnupg(self):
@@ -63,7 +68,6 @@ class mongodb_config(JSONConf):
     name = 'mongodb'
 
     def __init__(self, config_file=None, **kwargs):
-        super(mongodb_config, self).__init__(**kwargs)
         config = {
             'auth': False,
             'admin_password': None,
@@ -74,6 +78,7 @@ class mongodb_config(JSONConf):
             'db_timeline': 'timeline',
             'collection_cube_profile': 'cube_profile',
             'collection_user_profile': 'user_profile',
+            'collection_logs': 'logs',
             'fsync': False,
             'host': '127.0.0.1',
             'journal': True,
@@ -85,9 +90,14 @@ class mongodb_config(JSONConf):
             'ssl_certificate': SSL_PEM,
             'ssl_certificate_key': None,
             'tz_aware': True,
-            'write_concern': 2,  # primary + one replica
+            'write_concern': 1,  # primary; add X for X replicas
         }
+        # apply defaults
         self.config.update(config)
+        # update the config with the args from the config_file
+        super(mongodb_config, self).__init__(config_file=config_file)
+        # anything passed in explicitly gets precedence
+        self.config.update(kwargs)
 
     @property
     def db_readonly(self):
@@ -148,3 +158,7 @@ class mongodb_config(JSONConf):
     @property
     def c_cube_profile_admin(self):
         return self.db_metrique_admin[self.collection_cube_profile]
+
+    @property
+    def c_logs_admin(self):
+        return self.db_metrique_admin[self.collection_logs]

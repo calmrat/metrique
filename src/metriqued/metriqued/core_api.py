@@ -159,11 +159,12 @@ class MetriqueHdlr(RequestHandler):
     def _request_dict(self):
         r = self.request
         request = {
+            'current_user': self.current_user,
             'start_time': r._start_time,
             'finish_time': r._finish_time,
-            'arguments': r.arguments,
-            'body': r.body,
-            'cookies': r.cookies.output(),
+            'arguments_len': len(r.arguments),
+            'arguments_size': self.estimate_obj_size(r.arguments),
+            'body_size': self.estimate_obj_size(r.body),
             'files': r.files,
             'full_url': r.full_url(),
             'headers': r.headers,
@@ -175,22 +176,21 @@ class MetriqueHdlr(RequestHandler):
             'remote_ip': r.remote_ip,
             'request_time': r.request_time(),
             'supports_http_1_1': r.supports_http_1_1(),
+            'status': self.get_status(),
             'uri': r.uri,
             'version': r.version,
         }
         return request
 
     def _log_request(self):
-        # FIXME: why not run during 'end' or request rather than prepare
-        request_json = json.dumps(self._request_dict())
-        # FIXME: create new logger handler (.request(msg))
+        request_json = json.dumps(self._request_dict(), indent=1)
         with ThreadPoolExecutor(1) as ex:
-            return ex.submit(self.logger.info, request_json)
+            return ex.submit(self.logger.log_request, request_json)
 
     @gen.coroutine
-    def prepare(self):
-        if self.metrique_config.log_requests:
-            yield self._log_request()
+    def on_finish(self):
+        # log request details
+        yield self._log_request()
 
     def write(self, value, binary=False):
         if binary:

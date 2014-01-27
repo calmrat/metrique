@@ -2,7 +2,9 @@
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 # Author: "Chris Ward <cward@redhat.com>
 
+import logging
 import os
+import simplejson as json
 
 from metriquet.tornadohttp import TornadoHTTPServer
 
@@ -34,19 +36,49 @@ def ucv2(value):
     return a2
 
 
+class MongoDBHandler(logging.StreamHandler):
+    def __init__(self, collection):
+        super(MongoDBHandler, self).__init__()
+        self.collection = collection
+
+    def emit(self, record):
+        r = record
+        try:
+            msg = json.loads(r.getMessage())
+        except Exception:
+            msg = r.getMessage()
+        obj = {
+            'args': r.args,
+            'created': r.created,
+            'funcname': r.funcName,
+            'levelname': r.levelname,
+            'levelno': r.levelno,
+            'module': r.module,
+            'msecs': r.msecs,
+            'message': msg,
+            'name': r.name,
+            'process': r.process,
+            'thread': r.thread,
+        }
+        self.collection.insert(obj)
+
+
 class MetriqueHTTP(TornadoHTTPServer):
     ''' HTTP (Tornado >=3.0) implemntation of MetriqueServer '''
+    name = 'metriqued'
+
     def __init__(self, config_file=None, **kwargs):
         config_file = config_file or METRIQUED_JSON
 
         self.conf = metriqued_config(config_file=config_file, **kwargs)
         self.dbconf = mongodb_config(self.conf.mongodb_config)
 
-        # call setup_logger() once more to ensure we've adjusted
-        # for local config changes
-        self.logger = self.setup_logger()
+        # call setup_logger() after loading config
+        # results in a .logger and .request_logger attrs
+        self.setup_logger()
 
         self.logger.debug('======= metrique =======')
+        self.logger.debug(' pid:  %s' % self.pid)
         self.logger.debug(' Conf: %s' % self.conf.config_file)
         self.logger.debug(' Host: %s' % self.uri)
         self.logger.debug('  SSL: %s' % self.conf.ssl)
@@ -57,8 +89,8 @@ class MetriqueHTTP(TornadoHTTPServer):
         self.logger.debug(' Port: %s' % self.dbconf.port)
 
         self._mongodb_check()
-
         self._prepare_handlers()
+        self._setup_mongodb_logging()
 
     def _prepare_handlers(self):
         # pass in metrique and mongodb config to all handlers (init)
@@ -122,3 +154,12 @@ class MetriqueHTTP(TornadoHTTPServer):
             self.logger.error(
                 'failed to communicate with mongodb')
             raise
+
+    def _setup_mongodb_logging(self):
+        if self.conf.log2mongodb:
+            # override existing requests logger to pass request info to mongo
+            level = self.conf.log_mongodb_level
+            hdlr = MongoDBHandler(collection=self.dbconf.c_logs_admin)
+            hdlr.setLevel(level)
+            hdlr.propagate = 0
+            self.request_logger.addHandler(hdlr)

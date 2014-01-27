@@ -4,6 +4,7 @@
 
 import os
 import time
+import sys
 
 from metriqued.tornadohttp import MetriqueHTTP
 from metriqueu.utils import get_pids
@@ -17,10 +18,10 @@ pkey = os.path.join(here, 'pkey.pem')
 
 
 def start(**kwargs):
-    m = MetriqueHTTP(**kwargs)
+    m = MetriqueHTTP(debug=True, **kwargs)
     pid = m.start(fork=True)
     if pid == 0:
-        pass
+        sys.exit()
     else:
         time.sleep(1)
         pids = get_pids(pid_dir)

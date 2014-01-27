@@ -37,4 +37,4 @@ def runner(func):
 def start_server():
     pid = os.fork()
     if pid == 0:
-        MetriqueHTTP(debug=2).start()
+        MetriqueHTTP(debug=True).start()

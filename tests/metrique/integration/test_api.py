@@ -25,7 +25,7 @@ username = password = 'admin'
 
 config = dict(username=username,
               password=password,
-              debug=2)
+              debug=True)
 
 
 @testutils.runner

@@ -38,14 +38,14 @@ class BaseMongoDB(object):
 
     Connections options avaiable:
         + journal (True)
-        + write_concern (2)
+        + write_concern (1)
         + fsync (False)
         + read_preference (SECONDARY_PREFERRED)
         + tz_aware datetimes (True)
     '''
     def __init__(self, host, user=None, password=None, auth=False,
                  port=None, ssl=None, ssl_keyfile=None, tz_aware=True,
-                 ssl_certfile=None, write_concern=2, journal=False,
+                 ssl_certfile=None, write_concern=1, journal=False,
                  fsync=False, replica_set=None, read_preference=None):
         pid = os.getpid()
         # FIXME: this is ugly, don't hardcode here.

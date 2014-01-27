@@ -65,8 +65,7 @@ class Config(JSONConf):
     default_config_dir = CONFIG_DIR
 
     def __init__(self, config_file=None, **kwargs):
-        super(Config, self).__init__(config_file=config_file, **kwargs)
-        self.config.update({
+        config = {
             'api_version': 'v2',
             'api_rel_path': 'api/v2',
             'auto_login': False,
@@ -93,7 +92,13 @@ class Config(JSONConf):
             'tmpdir': TMP_DIR,
             'username': os.getenv('USER'),
             'userdir': USER_DIR,
-        })
+        }
+        # apply defaults
+        self.config.update(config)
+        # update the config with the args from the config_file
+        super(Config, self).__init__(config_file=config_file)
+        # anything passed in explicitly gets precedence
+        self.config.update(kwargs)
 
     @property
     def gnupg(self):

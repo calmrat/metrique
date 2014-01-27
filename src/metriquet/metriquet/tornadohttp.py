@@ -21,7 +21,6 @@ root_logger = logging.getLogger()
 BASIC_FORMAT = "%(name)s.%(process)s:%(asctime)s:%(message)s"
 LOG_FORMAT = logging.Formatter(BASIC_FORMAT, "%Y%m%dT%H%M%S")
 
-
 BASENAME = 'tornado'
 
 LOGIN_URL = '/login'
@@ -43,10 +42,8 @@ class TornadoConfig(JSONConf):
     name = BASENAME
 
     def __init__(self, config_file=None, **kwargs):
-        # update the config with the args from the config_file
-        super(TornadoConfig, self).__init__(config_file=config_file)
-
         log_file = '%s.log' % self.name
+        log_requests_file = '%s_access.log' % self.name
         ssl_cert = '%s.crt' % self.name
         ssl_key = '%s.key' % self.name
 
@@ -62,8 +59,11 @@ class TornadoConfig(JSONConf):
             'logstdout': True,
             'log2file': False,
             'logfile': log_file,
-            'logrotate': False,
-            'logkeep': 3,
+            'log_keep': 3,
+            'log_rotate': False,
+            'log_rotate_bytes': 134217728,  # 128M 'maxBytes' before rotate
+            'log_requests_file': log_requests_file,
+            'log_requests_level': 100,
             'login_url': LOGIN_URL,
             'pid_name': self.name,
             'piddir': PID_DIR,
@@ -78,7 +78,11 @@ class TornadoConfig(JSONConf):
             'userdir': USER_DIR,
             'xsrf_cookies': False,
         }
+        # apply defaults
         self.config.update(config)
+        # update the config with the args from the config_file
+        super(TornadoConfig, self).__init__(config_file=config_file)
+        # anything passed in explicitly gets precedence
         self.config.update(kwargs)
 
 
@@ -94,41 +98,86 @@ class TornadoHTTPServer(object):
         self.name = name or self.name
         self.conf = TornadoConfig(config_file=config_file, **kwargs)
 
-    def _setup_logger(self, logger, propagate=0):
-        logdir = os.path.expanduser(self.conf.logdir)
-        logfile = os.path.join(logdir, self.conf.logfile)
+    def _log_handler_get_level(self, level):
+        level = level or self.conf.debug
+        if level in [-1, False]:
+            level = logging.WARN
+        elif level is True or level >= 1:
+            level = logging.DEBUG
+        elif level in [0, None]:
+            level = logging.INFO
+        else:
+            level = int(level)
+        return level
 
-        if self.conf.logstdout:
-            hdlr = logging.StreamHandler()
-            hdlr.setFormatter(LOG_FORMAT)
-            logger.addHandler(hdlr)
+    def _log_stream_handler(self, level=None, fmt=LOG_FORMAT):
+        hdlr = logging.StreamHandler()
+        hdlr.setFormatter(fmt)
+        hdlr.setLevel(self._log_handler_get_level(level))
+        return hdlr
 
-        if self.conf.log2file and logfile:
-            if self.conf.logrotate:
-                hdlr = logging.handlers.RotatingFileHandler(
-                    logfile, backupCount=self.conf.logkeep,
-                    maxBytes=self.conf.logrotate)
-            else:
-                hdlr = logging.FileHandler(logfile)
-            hdlr.setFormatter(LOG_FORMAT)
-            logger.addHandler(hdlr)
+    def _log_file_handler(self, level=None, logdir=None, logfile=None,
+                          rotate=None, rotate_bytes=None, rotate_keep=None,
+                          fmt=LOG_FORMAT):
+        logdir = logdir or self.conf.logdir
+        logdir = os.path.expanduser(logdir)
+        logfile = logfile or self.conf.logfile
+        logfile = os.path.join(logdir, logfile)
+        rotate = rotate or self.conf.log_rotate
+        rotate_bytes = rotate_bytes or self.conf.log_rotate_bytes
+        rotate_keep = rotate_keep or self.conf.log_keep
 
-        if self.conf.debug in [-1, False]:
-            logger.setLevel(logging.WARN)
-        elif self.conf.debug in [0, None]:
-            logger.setLevel(logging.INFO)
-        elif self.conf.debug in [True, 1, 2]:
-            logger.setLevel(logging.DEBUG)
+        if rotate:
+            hdlr = logging.handlers.RotatingFileHandler(
+                logfile, backupCount=rotate_keep, maxBytes=rotate_bytes)
+        else:
+            hdlr = logging.FileHandler(logfile)
+        hdlr.setFormatter(fmt)
+        hdlr.setLevel(self._log_handler_get_level(level))
+        return hdlr
 
-        logger.propagate = propagate
+    def _setup_logger(self, logger_name, level=None, logstdout=None,
+                      log2file=None, logdir=None, logfile=None, rotate=None,
+                      rotate_bytes=None, rotate_keep=None, fmt=None):
+        logstdout = logstdout or self.conf.logstdout
+        stdout_hdlr = self._log_stream_handler(level) if logstdout else None
 
+        file_hdlr = None
+        log2file = log2file or self.conf.log2file
+        if log2file:
+            file_hdlr = self._log_file_handler(level, logdir, logfile, rotate,
+                                               rotate_bytes, rotate_keep)
+
+        logger = logging.getLogger(logger_name)
+
+        if stdout_hdlr:
+            logger.addHandler(stdout_hdlr)
+        if file_hdlr:
+            logger.addHandler(file_hdlr)
+
+        logger.setLevel(self._log_handler_get_level(level))
+        logger.propagate = 0
         return logger
 
     def setup_logger(self):
-        # override root logger so all output goes to one place
-        self._setup_logger(logging.getLogger())
-        # prepare the app logger this instance will use
-        return self._setup_logger(logging.getLogger(self.name))
+        # override root logger so all app logging goes to one place
+        self._setup_logger(logger_name=None)
+
+        # prepare 'request' logger for storing request details
+        logfile = self.conf.log_requests_file
+        logger_name = '%s.requests' % self.name
+        requests_level = self.conf.log_requests_level
+        self.request_logger = self._setup_logger(logger_name=logger_name,
+                                                 logfile=logfile,
+                                                 level=requests_level)
+        # this app's main logger
+        app_logger = logging.getLogger(self.name)
+        # add request handler output alias
+        app_logger.log_request = partial(self.request_logger.log,
+                                         requests_level)
+        # set expected self.logger instance attr and return
+        self.logger = app_logger
+        return self.logger
 
     @property
     def pid(self):
