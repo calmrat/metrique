@@ -49,7 +49,7 @@ class JSONConf(MutableMapping):
 
     @property
     def config(self):
-        if not self._config:
+        if self._config is None:
             self._config = {}
         return self._config
 
