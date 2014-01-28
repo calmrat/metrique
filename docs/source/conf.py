@@ -13,13 +13,15 @@ else:
 project = u'metrique'
 copyright = u'Chris Ward <cward@redhat.com>'
 
-#import sys
 import os
 
 # If extensions (or modules to document with autodoc) are in another directory,
 # add these directories to sys.path here. If the directory is relative to the
 # documentation root, use os.path.abspath to make it absolute, like shown here.
-#sys.path.insert(0, os.path.abspath('.'))
+#import sys
+#paths = ['../../src/metrique', '../../src/metriqued', '../../src/metriquet',
+#         '../../src/metriquec', '../../src/metriqueu', '../../src/plotrique']
+#[sys.path.insert(0, os.path.abspath(p)) for p in paths]
 
 # -- General configuration ----------------------------------------------------
 
