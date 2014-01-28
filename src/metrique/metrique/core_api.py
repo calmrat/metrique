@@ -3,17 +3,26 @@
 # Author: "Chris Ward" <cward@redhat.com>
 
 '''
-metrique
-~~~~~~~~
-**data warehouse and information platform**
+metrique.core_api
+~~~~~~~~~~~~~~~~~
+**Python/MongoDB data warehouse and information platform**
 
-metrique can be used to bring data from arbitrary sources
-into an intuitive, data object collection that supports
+metrique is used to bring data from any number of arbitrary
+sources into unified data collections that supports
 transparent historical version snapshotting, advanced
 ad-hoc server-side querying, including (mongodb)
 aggregations and (mongodb) mapreduce, along with client
-and serverside python, ipython, pandas, numpy, matplotlib,
-and more.
+side querying and analysis with the support of an array
+of scientific computing python libraries, such as ipython,
+pandas, numpy, matplotlib, and more.
+
+A simple example of how one might interact with metrique is
+demonstrated below. In short, we import one of the many
+pre-defined metrique cubes -- `osinfo_rpm` -- in this case.
+Then get all the objects which that cube is built to extract --
+a full list of installed RPMs on the current host system. Followed
+up by persisting those objects to an external `metriqued` host.
+And finishing with some querying and simple charting of the data.
 
     >>> from metrique import pyclient
     >>> g = pyclient(cube="osinfo_rpm"")
@@ -34,9 +43,9 @@ and more.
          'sourcepackage': None,
          'sourcerpm': 'libreoffice-4.1.4.2-2.fc20.src.rpm',
          'summary': 'UNO Runtime Environment',
-         'version': '4.1.4.2'}
-
-    # connect to metriqued host to save the objects
+         'version': '4.1.4.2'
+    }
+    >>> # connect to metriqued host to save the objects
     >>> config_file = '~/.metrique/etc/metrique.json'  # default location
     >>> m = pyclient(config_file=config_file)
     >>> osinfo_rpm = m.get_cube('osinfo_rpm')
@@ -50,7 +59,7 @@ and more.
     >>> # shorten the names a bit
     >>> sub.index = [i[0:20] + '...' if len(i) > 20 else i for i in sub.index]
     >>> sub.plot(kind='bar')
-        <matplotlib.axes.AxesSubplot at 0x6f77ad0>
+    ... <matplotlib.axes.AxesSubplot at 0x6f77ad0>
 
 :copyright: 2013 "Chris Ward" <cward@redhat.com>
 :license: GPLv3, see LICENSE for more details
@@ -60,8 +69,8 @@ and more.
     example date ranges: 'd', '~d', 'd~', 'd~d'
 .. note::
     valid date format: '%Y-%m-%d %H:%M:%S,%f', '%Y-%m-%d %H:%M:%S', '%Y-%m-%d'
-
 '''
+
 from collections import MutableSequence
 from copy import copy
 import cPickle
@@ -100,12 +109,17 @@ class BaseCube(MutableSequence):
     a list of dicts. The underlying object inherits from python's
     MutableSequence collection object (aka, list).
 
-    All objects contain the following key:value properties, plus any number
-    of additional, arbitrary properties.
+    All objects are expected to contain a `_oid` key value property. This
+    property should be unique per individual "object" defined. For example,
+    if we are storing logs, we might consider each log line a separate
+    "object" since those log lines should never change in the future and give
+    each a unique `_oid`. Or if we are storing data about 'meta objects' of
+    some sort, say 'github repo issues' for example, we might have objects
+    with _oids of '%(username)s_%(reponame)s_%(issuenumber)s'.
 
-    _oid: unique object identifier
-    _start: datetime when the object state was set
-    _end: datetime when the object state changed to a new state
+    Optionally, objects can contain the following additional meta-properties:
+        * _start - datetime when the object state was set
+        * _end - datetime when the object state changed to a new state
 
     Field names (object dict keys) must consist of alphanumeric and underscore
     characters only.
@@ -117,6 +131,7 @@ class BaseCube(MutableSequence):
 
     Property values are normalized to some extent automatically as well:
         * empty strings -> None
+
     '''
     _objects = []
 
@@ -441,7 +456,7 @@ class HTTPClient(BaseClient):
 
     Currently, the following API methods are exported:
 
-        **User**
+    **User**
         + aboutme: request user profile information
         + login: main interface for authenticating against metriqued
         + passwd: update user password
@@ -450,7 +465,7 @@ class HTTPClient(BaseClient):
         + remove: (admin) remove an existing user account
         + set_properties: (admin) set non-profile (system) user properties
 
-        **Cube**
+    **Cube**
         + list_all: list all remote cubes current user has read access to
         + stats: provide statistics and other information about a remote cube
         + sample_fields: sample remote cube object fields names

@@ -14,10 +14,29 @@ except ImportError:
 
 class JSONConf(MutableMapping):
     '''
-        Config object using json as its underlying data store
+    Config object using json as its underlying data store
 
-        Provides helper-methods for setting and saving
-        options and config object properties
+    Provides helper-methods for setting and saving
+    options and config object properties
+
+    When subclassing, make sure the __init__() executes in the following
+    order::
+
+        def __init__(self, config_file=None, **kwargs):
+            # define top-level default config values
+            config = {
+                ...
+            {
+
+            # apply default config values on top of empty .config dict
+            self.config.update(config)
+
+            # update the config with the args from the config_file
+            super(Config, self).__init__(config_file=config_file)
+
+            # anything passed in explicitly gets precedence
+            self.config.update(kwargs)
+
     '''
     _config = None
     config_file = None
@@ -49,6 +68,7 @@ class JSONConf(MutableMapping):
 
     @property
     def config(self):
+        '''main store for top-level configuration key:value pairs'''
         if self._config is None:
             self._config = {}
         return self._config
@@ -105,7 +125,7 @@ class JSONConf(MutableMapping):
         return self.config[option]
 
     def load_config(self):
-        ''' load config data from disk '''
+        ''' load json config file from disk '''
         # We don't want to throw exceptions if the default config file does not
         # exist.
         silent = self.config_file == self.default_config
@@ -137,13 +157,14 @@ class JSONConf(MutableMapping):
         self.config_file = config_file
 
     def dumps(self):
+        '''dump the config as json string'''
         try:
             return json.dumps(self.config, indent=2)
         except TypeError:
             return unicode(self.config)
 
     def save(self, force=True, config_file=None):
-        ''' save config data to disk '''
+        ''' save config json string dump to disk '''
         config_file = config_file or self.config_file
         if not os.path.exists(config_file):
             if force:
@@ -156,7 +177,9 @@ class JSONConf(MutableMapping):
             f.write(self.dumps())
 
     def setdefault(self, key, value):
+        '''set "secondary" default value for key'''
         self.defaults[key] = value
 
     def values(self):
+        '''return config (dict) values'''
         return self.config.values()

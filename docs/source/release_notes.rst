@@ -1,5 +1,27 @@
-Metrique Release Notes
-======================
+Release Notes
+=============
+
+0.2.6
+-----
+* auto-deploy and service management scripts added (`metrique`)
+* mongodb replicaset support
+* metriqued server failover pool support
+* py26 no longer supported
+* metriquet - generic, reusable tornado server class
+* object consistent hashing bugfix
+
+0.2.*
+-----
+* metriquec.cubes module added with generic cube reference classes
+* initial test framework added (pytest)
+* plotrique imported into source repo
+* user and cube profile api added
+* authentication api added
+* basesql activity import improvements (parallel support, single pass)
+* object consistent hashing support
+* cube refactors (use pandas.csv_import, etc)
+* lots of docs added (still much  more to go!)
+* app universal default paths set (~/.metrique)
 
 0.1.3
 -----

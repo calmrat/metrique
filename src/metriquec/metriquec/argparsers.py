@@ -6,13 +6,12 @@
 argparsers.py contains a CLI for metrique client cubes.
 
 To use the cli, cubes must import the cube_cli function
-    and initiatlize it with the cube class::
+and initiatlize it with the cube class::
 
     # ... ^^^ cube class definition above ^^^ ...
     if __name__ == '__main__':
         from metriquec.argparsers import cube_cli
         cube_cli(Bug)
-
 '''
 import argparse
 import simplejson as json

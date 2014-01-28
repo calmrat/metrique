@@ -803,6 +803,8 @@ def deploy(args):
         call('%s install -U ipython' % pip)
     if args.test or args.pytest:
         call('%s install -U pytest' % pip)
+    if args.docs:
+        call('%s install -U sphinx sphinx_bootstrap_theme' % pip)
 
     cmd = 'install'
     no_pre = getattr(args, 'no_pre', False)
@@ -950,6 +952,8 @@ def main():
         '--ipython', action='store_true', help='install ipython')
     _deploy.add_argument(
         '--pytest', action='store_true', help='install pytest')
+    _deploy.add_argument(
+        '--docs', action='store_true', help='install doc utils')
     _deploy.add_argument(
         '--trash', action='store_true', help='fresh install (rm old virtenv)')
     _deploy.set_defaults(func=deploy)

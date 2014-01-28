@@ -3,7 +3,10 @@
 # Author: "Chris Ward" <cward@redhat.com>
 
 '''
-config.py contains the main configuration object for
+metrique.config
+~~~~~~~~~~~~~~~
+
+This module contains the main configuration object for
 metrique client applications, which includes built-in
 defaults.
 
@@ -31,35 +34,43 @@ DEFAULT_CONFIG = os.path.join(CONFIG_DIR, 'metrique')
 
 
 class Config(JSONConf):
-    ''' Client config (property) class
+    '''
+    Client default config class. All metrique clients should subclass
+    from their config objects from this class to ensure defaults
+    values are available.
 
-    DEFAULTS::
-        api_verison: metriqued api version in use
-        api_rel_path: metriqued api uri prefix
-        auto_login: automatically attempt to log-in to metriqued host (False)
-        batch_size: The number of objs save at a time (5000)
-        cookiejar: path to file for storing cookies (~/.metrique/.cookiejar)
-        configdir: path to where config files are located (~/.metrique/etc)
-        cube_autoregister: automatically attempt to register non-existant cubes
-        cube_pkgs: list of package names where to search for cubes ('cubes')
-        cube_paths: Additional paths to search for client cubes
-        debug: turn on debug mode logging (level: INFO)
-        gnupg_dir: path to where user gnupg data directory
-        gnupg_fingerprint: gpnupg fingerprint to sign/verify with
-        host: metriqued server host (multiple hosts separated with ',')
-        logdir: path to where log files are stored (~/.metrique/logs)
-        logfile: filename for logs ('metrique.log')
-        log2file: boolean - log output to file? (False)
-        logstout: boolean - log output to stdout? (True)
-        max_workers: number of workers to use during threaded operations
-        password: the password to connect to metriqued with
-        port: metriqued server port
-        sql_batch_size: number of objects to sql query for at a time (1000)
-        ssl: connect to metriqued with SSL (https)
-        ssl_verify: verify ssl certificate
-        tmpdir: path to temporary data storage (~/.metrique/tmp)
-        username: the username to connect to metriqued with
-        userdir: path to metrique user directory (~/.metrique)
+    This configuration class defines the following overrideable defaults.
+
+    :param config_file:
+        path to json config file to load over defaults ($default_config)
+    :param api_verison: metriqued api version in use (v2)
+    :param api_rel_path: metriqued api uri prefix (api/v2)
+    :param auto_login:
+        automatically attempt to log-in to metriqued host (False)
+    :param batch_size: The number of objs save at a time (5000)
+    :param cookiejar: path to file for storing cookies (~/.metrique/.cookiejar)
+    :param configdir: path to where config files are located (~/.metrique/etc)
+    :param cube_autoregister:
+        automatically attempt to register non-existant cubes (False)
+    :param cube_pkgs: list of package names where to search for cubes ('cubes')
+    :param cube_paths: Additional paths to search for client cubes (None)
+    :param debug: turn on debug mode logging (level: INFO)
+    :param gnupg_dir: path to where user gnupg data directory (~/.gnupg)
+    :param gnupg_fingerprint: gpnupg fingerprint to sign/verify with (None)
+    :param host: metriqued server host (multiple hosts separated with ',')
+    :param logdir: path to where log files are stored (~/.metrique/logs)
+    :param logfile: filename for logs ('metrique.log')
+    :param log2file: boolean - log output to file? (False)
+    :param logstout: boolean - log output to stdout? (True)
+    :param max_workers: number of workers for threaded operations (#cpus)
+    :param password: the password to connect to metriqued with (None)
+    :param port: metriqued server port (5420)
+    :param sql_batch_size: number of objects to sql query for at a time (1000)
+    :param ssl: connect to metriqued with SSL (False)
+    :param ssl_verify: verify ssl certificate (False)
+    :param tmpdir: path to temporary data storage (~/.metrique/tmp)
+    :param username: the username to connect to metriqued with ($USERNAME)
+    :param userdir: path to metrique user directory (~/.metrique)
     '''
     default_config = DEFAULT_CONFIG
     default_config_dir = CONFIG_DIR
@@ -102,6 +113,7 @@ class Config(JSONConf):
 
     @property
     def gnupg(self):
+        '''alias for python gnupg module'''
         if hasattr(self, '_gnupg'):
             gpg = self._gnupg
         else:
@@ -118,6 +130,7 @@ class Config(JSONConf):
 
     @property
     def gnupg_pubkey(self):
+        '''Query and export gnupg fingerprint'''
         if self.gnupg:
             return self.gnupg.export_keys(self['gnupg_fingerprint'])
         else:
@@ -125,12 +138,13 @@ class Config(JSONConf):
 
     @property
     def api_uris(self):
-        ''' Url and schema - http(s)? needed to call metrique api '''
+        '''Autogenerate url and schema - http(s)? needed to call metrique api
+        '''
         return [os.path.join(uri, self.api_rel_path) for uri in self.uris]
 
     @property
     def uris(self):
-        ''' Url and schema - http(s)? needed to call metrique api '''
+        '''Determine uri schema http(s)? needed to call metrique api'''
         protocol = 'https://' if self.ssl else 'http://'
 
         uris = []

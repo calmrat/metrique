@@ -27,9 +27,9 @@ class Generic(HTTPClient):
     Base, common functionality driver for connecting
     and extracting data from SQL databases.
 
-    **This class MUST be subclassed**.
+    **This class MUST be subclassed**
 
-    .proxy must be defined, in order to know how
+    proxy must be defined, in order to know how
     to get a connection object to the target sql db.
 
     FIXME ... MORE DOCS TO COME
@@ -44,26 +44,25 @@ class Generic(HTTPClient):
 
     def activity_get(self, ids=None):
         '''
-        Returns a dictionary of `id: [(when, field, removed, added)]` kv pairs
-        that represent the activity history for the particular ids.
+        Returns a dictionary of `id: [(when, field, removed, added)]`
+        key:value pairs that represent the activity history for
+        the particular ids.
         '''
         raise NotImplementedError(
             'The activity_get method is not implemented in this cube.')
 
     def activity_import(self, force=None, cube=None, owner=None, delay=None):
         '''
-        WARNING: Do NOT run extract while activity import is running,
-                it might result in data corruption.
         Run the activity import for a given cube, if the cube supports it.
 
-        Essentially, recreate object histories from
-        a cubes 'activity history' table row data,
-        and dump those pre-calcultated historical
+        Essentially, recreate object histories from a cubes 'activity
+        history' table row data, and dump those pre-calcultated historical
         state object copies into the timeline.
 
-        :param object ids:
-            - None: import for all ids
-            - list of ids: import for ids in the list
+        :param list force:
+         - None: import for all ids
+         - list of ids: import for ids in the list
+
         '''
         oids = force or self.sql_get_oids()
 
