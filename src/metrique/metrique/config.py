@@ -41,8 +41,6 @@ class Config(JSONConf):
 
     This configuration class defines the following overrideable defaults.
 
-    :param config_file:
-        path to json config file to load over defaults ($default_config)
     :param api_verison: metriqued api version in use (v2)
     :param api_rel_path: metriqued api uri prefix (api/v2)
     :param auto_login:

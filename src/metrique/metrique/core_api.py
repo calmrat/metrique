@@ -16,6 +16,8 @@ side querying and analysis with the support of an array
 of scientific computing python libraries, such as ipython,
 pandas, numpy, matplotlib, and more.
 
+The main client interface is `metrique.pyclient`
+
 A simple example of how one might interact with metrique is
 demonstrated below. In short, we import one of the many
 pre-defined metrique cubes -- `osinfo_rpm` -- in this case.
@@ -60,10 +62,6 @@ And finishing with some querying and simple charting of the data.
     >>> sub.index = [i[0:20] + '...' if len(i) > 20 else i for i in sub.index]
     >>> sub.plot(kind='bar')
     ... <matplotlib.axes.AxesSubplot at 0x6f77ad0>
-
-:copyright: 2013 "Chris Ward" <cward@redhat.com>
-:license: GPLv3, see LICENSE for more details
-:sources: https://github.com/drpoovilleorg/metrique
 
 .. note::
     example date ranges: 'd', '~d', 'd~', 'd~d'
@@ -110,12 +108,14 @@ class BaseCube(MutableSequence):
     MutableSequence collection object (aka, list).
 
     All objects are expected to contain a `_oid` key value property. This
-    property should be unique per individual "object" defined. For example,
-    if we are storing logs, we might consider each log line a separate
-    "object" since those log lines should never change in the future and give
-    each a unique `_oid`. Or if we are storing data about 'meta objects' of
-    some sort, say 'github repo issues' for example, we might have objects
-    with _oids of '%(username)s_%(reponame)s_%(issuenumber)s'.
+    property should be unique per individual "object" defined.
+
+    For example, if we are storing logs, we might consider each log line a
+    separate "object" since those log lines should never change in the future
+    and give each a unique `_oid`. Or if we are storing data about
+    'meta objects' of some sort, say 'github repo issues' for example, we
+    might have objects with _oids of
+    `%(username)s_%(reponame)s_%(issuenumber)s`.
 
     Optionally, objects can contain the following additional meta-properties:
         * _start - datetime when the object state was set
@@ -124,7 +124,7 @@ class BaseCube(MutableSequence):
     Field names (object dict keys) must consist of alphanumeric and underscore
     characters only.
 
-    Field names are normalized automatically:
+    Field names are partially normalized automatically:
         * non-alphanumeric characters are removed
         * spaces converted to underscores
         * letters are lowercased
@@ -180,20 +180,24 @@ class BaseCube(MutableSequence):
 ####################################################################
     @property
     def df(self):
+        '''Return a pandas dataframe from the cached objects'''
         if self.objects:
             return pd.DataFrame(self.objects)
         else:
             return pd.DataFrame()
 
     def flush(self):
+        '''Delete locally cached objects from object instance'''
         del self.objects
 
     @property
     def objects(self):
+        '''Return list of locally cached objects'''
         return self._objects
 
     @objects.setter
     def objects(self, objects):
+        '''Convert, validate, normalize and locally cache objects'''
         # convert from other forms to basic list of dicts
         if objects is None:
             objects = []
@@ -216,12 +220,14 @@ class BaseCube(MutableSequence):
 
     @objects.deleter
     def objects(self):
+        '''Delete locally cached objects and run garbage collection'''
         del self._objects
         self._objects = []
         gc.collect()  # be sure we garbage collect any old object refs
 
     @property
     def oids(self):
+        '''Return back a list of _oids for all locally cached objects'''
         return [o['_oid'] for o in self._objects]
 
 ###################### normalization keys/values #################
@@ -270,39 +276,44 @@ class BaseCube(MutableSequence):
 
 class BaseClient(BaseCube):
     '''
-    Low level client API
-
-    Functionality includes methods for loading data from csv and json,
-    loading metrique client cubes, config file loading and logging
-    setup.
+    Low level client API which provides baseline functionality, including
+    methods for loading data from csv and json, loading metrique client
+    cubes, config file loading and logging setup.
 
     Additionally, some common operation methods are provided for
     operations such as loading a HTTP uri and determining currently
     configured username.
+
+    :cvar name: name of the cube
+    :cvar defaults: cube default property container (cube specific meta-data)
+    :cvar fields: cube fields definitions
+    :cvar saveas: filename to use when saving cube data to disk locally
+    :cvar config: local cube config object
+
+    If cube is specified as a kwarg upon initialization, the specific cube
+    class will be located and returned, assuming its available in sys.path.
+
+    If the cube fails to import, RuntimeError will be raised.
+
+    Example usage::
+
+        >>> import pyclient
+        >>> c = pyclient(cube='git_commit')
+            <type HTTPClient(...)>
+
+        >>> z = pyclient()
+        >>> z.get_cube(cube='git_commit')
+            <type HTTPClient(...)>
+
     '''
     name = None
-    # defaults is frequently overrided in subclasses as a property
     defaults = None
-    # fields is frequently overrided in subclasses as a property too
     fields = None
-    # filename of the data when saved to disk
     saveas = ''
-    # a place to put stuff, temporarily...
     _cache = None
-    # config properties
-    config = {}
+    config = None
 
     def __new__(cls, *args, **kwargs):
-        '''
-        Return the specific cube class, if specified. Its
-        expected the cube will be available in sys.path.
-
-        If the cube fails to import, just move on.
-
-            >>> import pyclient
-            >>> c = pyclient(cube='git_commit')
-                <type HTTPClient(...)>
-        '''
         if 'cube' in kwargs and kwargs['cube']:
             cls = get_cube(cube=kwargs['cube'], init=False)
         else:
@@ -318,6 +329,8 @@ class BaseClient(BaseCube):
             self.fields = {}
         if self._cache is None:
             self._cache = {}
+        if self.config is None:
+            self.config = {}
 
         self._config_file = config_file or Config.default_config
 
@@ -340,10 +353,26 @@ class BaseClient(BaseCube):
         # keep logging local to the cube so multiple
         # cubes can independently log without interferring
         # with each others logging.
-        self.debug_set()
+        self.debug_setup()
 
 ####################### data loading api ###################
     def load_files(self, path, filetype=None, **kwargs):
+        '''Load multiple files from various file types automatically.
+
+        Supports glob paths, eg::
+
+            path = 'data/*.csv'
+
+        Filetypes are autodetected by common extension strings.
+
+        Currently supports loadings from:
+            * csv (pd.read_csv)
+            * json (pd.read_json)
+
+        :param path: path to config json file
+        :param filetype: override filetype autodetection
+        :param kwargs: additional filetype loader method kwargs
+        '''
         # kwargs are for passing ftype load options (csv.delimiter, etc)
         # expect the use of globs; eg, file* might result in fileN (file1,
         # file2, file3), etc
@@ -353,38 +382,51 @@ class BaseClient(BaseCube):
             # buid up a single dataframe by concatting
             # all globbed files together
             self.objects = pd.concat(
-                [self.load_file(ds, filetype, **kwargs)
+                [self._load_file(ds, filetype, **kwargs)
                     for ds in datasets]).T.as_dict().values()
         return self.objects
 
-    def load_file(self, path, filetype, **kwargs):
+    def _load_file(self, path, filetype, **kwargs):
         if filetype in ['csv', 'txt']:
-            return self.load_csv(path, **kwargs)
+            return self._load_csv(path, **kwargs)
         elif filetype in ['json']:
-            return self.load_json(path, **kwargs)
+            return self._load_json(path, **kwargs)
         else:
             raise TypeError("Invalid filetype: %s" % filetype)
 
-    def load_csv(self, path, **kwargs):
+    def _load_csv(self, path, **kwargs):
         # load the file according to filetype
         return pd.read_csv(path, **kwargs)
 
-    def load_json(self, path, **kwargs):
+    def _load_json(self, path, **kwargs):
         return pd.read_json(path, **kwargs)
 
 #################### misc ##################################
-    def debug_set(self, level=None, logstdout=None, logfile=None):
+    def debug_setup(self):
         '''
-        if we get a level of 2, we want to apply the
-        debug level to all loggers
-        '''
-        if level is None:
-            level = self.config.debug
-        if logstdout is None:
-            logstdout = self.config.logstdout
-        if logfile is None:
-            logfile = self.config.logfile
+        Local object instance logger setup.
 
+        Verbosity levels are determined as such::
+
+            if level in [-1, False]:
+                logger.setLevel(logging.WARN)
+            elif level in [0, None]:
+                logger.setLevel(logging.INFO)
+            elif level in [True, 1, 2]:
+                logger.setLevel(logging.DEBUG)
+
+        If (level == 2) `logging.DEBUG` will be set even for
+        the "root logger".
+
+        Configuration options available for customized logger behaivor:
+            * debug (bool)
+            * logstdout (bool)
+            * log2file (bool)
+            * logfile (path)
+        '''
+        level = self.config.debug
+        logstdout = self.config.logstdout
+        logfile = self.config.logfile
         basic_format = logging.Formatter(BASIC_FORMAT)
 
         if level == 2:
@@ -420,15 +462,47 @@ class BaseClient(BaseCube):
         return logger
 
     def get_cube(self, cube, init=True, name=None, **kwargs):
-        ' wrapper for utils.get_cube(); try to load a cube, pyclient '
+        '''wrapper for :func:`metriqueu.utils.get_cube`
+
+        Locates and loads a metrique cube
+
+        :param cube: name of cube to load
+        :param init: (bool) initialize cube before returning?
+        :param name: override the name of the cube
+        :param kwargs: additional :func:`metriqueu.utils.get_cube`
+        '''
         config = copy(self.config)
         # don't apply the name to the current obj, but to the object
         # we get back from get_cube
         return get_cube(cube=cube, init=init, config=config,
                         name=name, **kwargs)
 
+    def get_property(self, property, field=None, default=None):
+        '''Lookup cube defined property (meta-data):
+
+            1. First try to use the field's property, if defined.
+            2. Then try to use the default property, if defined.
+            3. Then use the default for when neither is found.
+            4. Or return None, if no default is defined.
+
+        :param property: property key name
+        :param field: (optional) specific field to query first
+        :param default: default value to return if [field.]property not found
+        '''
+        try:
+            return self.fields[field][property]
+        except KeyError:
+            try:
+                return self.defaults[property]
+            except (TypeError, KeyError):
+                return default
+
     def load_config(self, config=None, **kwargs):
-        ' try to load a config file and handle when its not available '
+        '''Try to load a config file and handle when its not available
+
+        :param config: config file or :class:`metriqueu.jsonconf.JSONConf`
+        :param kwargs: additional config key:value pairs to store
+        '''
         if type(config) is type(Config):
             self._config_file = config.config_file
         else:
@@ -438,10 +512,11 @@ class BaseClient(BaseCube):
 
 #################### Helper API ############################
     def urlretrieve(self, uri, saveas):
+        '''urllib.urlretrieve wrapper'''
         return urllib.urlretrieve(uri, saveas)
 
     def whoami(self, auth=False):
-        ' quick way of checking the username the instance is working as '
+        '''Local api call to check the username of running user'''
         return self.config['username']
 
 
@@ -559,10 +634,11 @@ class HTTPClient(BaseClient):
 
     @property
     def cube_id(self):
+        '''Return the common cube id string; ie, `%(owner)s__%(name)s`'''
         return '__'.join((self.owner, self.name))
 
     def _build_runner(self, kind, kwargs):
-        ''' generic caller for HTTP
+        '''Generic caller for HTTP
             A) POST; use data, not params
             B) otherwise; use params
         '''
@@ -585,11 +661,13 @@ class HTTPClient(BaseClient):
         return urls
 
     def cookiejar_clear(self):
+        '''Delete existing user cookiejar, if it exists'''
         path = '%s.%s' % (self.config.cookiejar, self.config.username)
         if os.path.exists(path):
             os.remove(path)
 
     def cookiejar_load(self):
+        '''Loading existing user cookiejar, if it exists'''
         path = '%s.%s' % (self.config.cookiejar, self.config.username)
         cfd = requests.utils.cookiejar_from_dict
         if os.path.exists(path):
@@ -602,6 +680,7 @@ class HTTPClient(BaseClient):
                 self.session.cookies = cookiejar
 
     def cookiejar_save(self):
+        '''Save current session cookies to cookiejar, if possible'''
         path = '%s.%s' % (self.config.cookiejar, self.config.username)
         dfc = requests.utils.dict_from_cookiejar
         with open(path, 'w') as f:
@@ -615,20 +694,33 @@ class HTTPClient(BaseClient):
         ' requests GET; using current session '
         return self._run(self.session.get, *args, **kwargs)
 
-    def get_objects(**kwargs):
+    def get_objects():
+        '''Main API method for sub-classed cubes to override for the
+        generation of the objects which are to (potentially) be added
+        to the cube (assuming no duplicates)
+        '''
         raise NotImplementedError
 
     def extract(self, *args, **kwargs):
+        '''Wrapper of get_objects -> cube_save. Generate all objects
+        then save/persist them to external metriqued host
+
+        :param args: args to pass to `get_objects`
+        :param kwargs: args to pass to `get_objects`
+        '''
         self.get_objects(*args, **kwargs)  # default: stores into self.objects
         self.cube_save()  # default: saves from self.objects
         return
 
     def get_cmd(self, owner, cube, api_name=None):
-        '''
-        another helper for building api urls, specifically
+        '''Helper method for building api urls, specifically
         for the case where the api call always requires
         owner and cube; api_name is usually provided,
         if there is a 'command name'; but it's optional.
+
+        :param owner: cube owner name
+        :param cube: cube name
+        :param api_name: relative api path
         '''
         owner = owner or self.owner
         if not owner:
@@ -642,9 +734,10 @@ class HTTPClient(BaseClient):
             return os.path.join(owner, cube)
 
     def get_last_field(self, field):
-        '''
-        shortcut for querying to get the last field value for
+        '''Shortcut for querying to get the last field value for
         a given owner, cube.
+
+        :param field: field name to query
         '''
         # FIXME: these "get_*" methods are assuming owner/cube
         # are "None" defaults; ie, that the current instance
@@ -657,23 +750,6 @@ class HTTPClient(BaseClient):
         self.logger.debug(
             "last %s.%s: %s" % (self.name, field, last))
         return last
-
-    def get_property(self, property, field=None, default=None):
-        '''
-        First try to use the field's property, if defined
-        Then try to use the default property, if defined
-        Then use the default for when neither is found
-        Or None, if no default is defined
-
-        OBSOLETE: use metriqueu.utils.set_default
-        '''
-        try:
-            return self.fields[field][property]
-        except KeyError:
-            try:
-                return self.defaults[property]
-            except (TypeError, KeyError):
-                return default
 
     def _get_response(self, runner, _url, username, password,
                       allow_redirects=True, stream=False):
@@ -712,10 +788,21 @@ class HTTPClient(BaseClient):
         self.cookiejar_load()
 
     def ping(self, auth=False):
-        '''
-        global...base api call; all metrique servers will be expected
+        '''Base api call; all metriqued servers will be expected
         to have this method available. auth=True is a quick way to
         test clients credentials.
+
+        :param auth: (bool) login/authenticate before pinging?
+
+        Example Usage::
+
+            >>> from metrique import pyclient
+            >>> m = pyclient()
+            >>> m.ping()
+                {'action': 'ping', 'metriqued': '127.0.0.1'}
+            >>> m.ping(auth=True)
+                {'action': 'ping', 'metriqued': '127.0.0.1',
+                 'current_user': 'cward'}
         '''
         return self._get('ping', auth=auth)
 
@@ -777,7 +864,9 @@ class HTTPClient(BaseClient):
                          *args, **kwargs)
 
     def whoami(self, auth=False):
-        ' quick way of checking the username the instance is working as '
+        '''Request user profile status of currently authenticated user
+        :param auth: (bool) login/authenticate before querying?
+        '''
         if auth:
             self.user_login()
         else:

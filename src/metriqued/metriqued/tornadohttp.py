@@ -2,6 +2,15 @@
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 # Author: "Chris Ward <cward@redhat.com>
 
+'''
+metriqued.tornadohttp
+~~~~~~~~~~~~~~~~~~~~~
+
+This module contains the metriqued tornado web app
+and server class, including configuration loading
+and url handler definitions, start-up checks, etc.
+'''
+
 import logging
 import os
 import simplejson as json
@@ -107,7 +116,6 @@ class MetriqueHTTP(TornadoHTTPServer):
             (r"/(\w+)/passwd", user_api.UpdatePasswordHdlr, init),
             (r"/(\w+)/remove", user_api.RemoveHdlr, init),
             (r"/(\w+)/update_profile", user_api.UpdateProfileHdlr, init),
-            (r"/(\w+)/update_group", user_api.UpdateGroupHdlr, init),
             (r"/(\w+)/update_properties", user_api.UpdatePropertiesHdlr, init),
 
             (api_v1(r""), core_api.ObsoleteAPIHdlr, init),

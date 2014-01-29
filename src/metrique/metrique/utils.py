@@ -2,6 +2,14 @@
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 # Author: "Chris Ward" <cward@redhat.com>
 
+'''
+metrique.utils
+~~~~~~~~~~~~~~~~~
+
+This module contains utility functions shared between
+metrique sub-modules
+'''
+
 from datetime import datetime
 from dateutil.parser import parse as dt_parse
 import os
@@ -13,9 +21,15 @@ from metriqueu.utils import dt2ts
 
 json_encoder = json.JSONEncoder()
 
+DEFAULT_PKGS = ['metriquec.cubes']
+
 
 def csv2list(csv, delimiter=','):
-    ''' convert a str(csv,csv) into a list of sorted strings '''
+    ''' convert a str(csv,csv) into a list of sorted strings
+
+    :param csv: comma separated value string to convert
+    :param delimiter: character(s) separating the values (default: ',')
+    '''
     if type(csv) in [list, tuple, set]:
         result = list(map(str, csv))
     elif isinstance(csv, basestring):
@@ -38,6 +52,8 @@ def cube_pkg_mod_cls(cube):
     eg: tw_tweet -> tw, tweet, Tweet
 
     Assumes `Metrique Cube Naming Convention` is used
+
+    :param cube: cube name to use when searching for cube pkg.mod.class to load
     '''
     _cube = cube.split('_')
     pkg = _cube[0]
@@ -67,37 +83,27 @@ def get_cube(cube, init=False, config=None, pkgs=None, cube_paths=None,
     '''
     Dynamically locate and load a metrique cube
 
-    :param string cube:
-        Name of the cube Class to be imported from given module (eg, 'Build')
-    :param bool init:
-        Flag to request initialized instance or uninitialized class (default)
-    :param dict config:
-        dictionary to use as config for initialized cube instance
-        Setting config implies init=True
-    :param list pkgs:
-        list of module names to search for the cubes in
-    :param string path:
-        additional path to search for modules in (added to sys.path)
+    :param cube: name of the cube class to import from given module
+    :param init: flag to request initialized instance or uninitialized class
+    :param config: config dict to pass on initialization (implies init=True)
+    :param pkgs: list of package names to search for the cubes in
+    :param cube_path: additional paths to search for modules in (sys.path)
+    :param kwargs: additional kwargs to pass to cube during initialization
     '''
-    if not config:
-        config = {}
+    config = config or {}
     config.update(**kwargs)
-    if not pkgs:
-        pkgs = config.get('cube_pkgs', ['cubes'])
-    if isinstance(pkgs, basestring):
-        pkgs = [pkgs]
-
+    pkgs = pkgs or config.get('cube_pkgs', ['cubes'])
+    pkgs = [pkgs] if isinstance(pkgs, basestring) else pkgs
     # search in the given path too, if provided
-    if not cube_paths:
-        cube_paths = config.get('cube_paths', [])
-    if isinstance(cube_paths, basestring):
-        cube_paths = [cube_paths]
-    for path in cube_paths:
-        path = os.path.expanduser(path)
-        if path not in sys.path:
-            sys.path.append(path)
+    cube_paths = cube_paths if cube_paths else config.get('cube_paths', [])
+    cube_paths_is_basestring = isinstance(cube_paths, basestring)
+    cube_paths = [cube_paths] if cube_paths_is_basestring else cube_paths
+    cube_paths = [os.path.expanduser(path) for path in cube_paths]
 
-    pkgs = pkgs + ['metriquec.cubes']
+    # append paths which don't already exist in sys.path to sys.path
+    [sys.path.append(path) for path in cube_paths if path not in sys.path]
+
+    pkgs = pkgs + DEFAULT_PKGS
     err = False
     for pkg in pkgs:
         try:
@@ -120,6 +126,8 @@ def get_timezone_converter(from_timezone):
     '''
     return a function that converts a given
     datetime object from a timezone to utc
+
+    :param from_timezone: timezone name as string
     '''
     utc = pytz.utc
     from_tz = pytz.timezone(from_timezone)
@@ -136,6 +144,8 @@ def get_timezone_converter(from_timezone):
 def json_encode(obj):
     '''
     Convert datetime.datetime to timestamp
+
+    :param obj: value to (possibly) convert
     '''
     if isinstance(obj, datetime):
         return dt2ts(obj)

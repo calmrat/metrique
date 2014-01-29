@@ -3,6 +3,9 @@
 # Author: "Chris Ward" <cward@redhat.com>
 
 '''
+metrique.result
+~~~~~~~~~~~~~~~~~
+
 This module contains a Pandas DataFrame wrapper and
 additional Pandas object helper functions which is
 used to load and manipulate cube objects.
@@ -57,7 +60,10 @@ class Result(DataFrame):
         '''
         The json serialization/deserialization process leaves dates as
         timestamps (in s).
+
         This function converts the column to datetimes.
+
+        :param column: column to convert from current state -> datetime
         '''
         if column in self:
             if self[column].dtype in NUMPY_NUMERICAL:
@@ -69,10 +75,9 @@ class Result(DataFrame):
         '''
         Pass in the date used in the original query.
 
-        :param string date:
-            Date (date range) that was queried:
-                date -> 'd', '~d', 'd~', 'd~d'
-                d -> '%Y-%m-%d %H:%M:%S,%f', '%Y-%m-%d %H:%M:%S', '%Y-%m-%d'
+        :param date: Date (date range) that was queried:
+            date -> 'd', '~d', 'd~', 'd~d'
+            d -> '%Y-%m-%d %H:%M:%S,%f', '%Y-%m-%d %H:%M:%S', '%Y-%m-%d'
         '''
         if date is not None:
             split = date.split('~')
@@ -88,7 +93,10 @@ class Result(DataFrame):
                 raise Exception('Date %s is not in the correct format' % date)
 
     def check_in_bounds(self, date):
-        ''' Check that left and right bounds are sane '''
+        '''Check that left and right bounds are sane
+
+        :param date: date to validate left/right bounds for
+        '''
         dt = Timestamp(date)
         return ((self._lbound is None or dt >= self._lbound) and
                 (self._rbound is None or dt <= self._rbound))
@@ -98,8 +106,8 @@ class Result(DataFrame):
         Filters out only the rows that match the spectified date.
         Works only on a Result that has _start and _end columns.
 
-        :param string date:
-            date can be anything Pandas.Timestamp supports parsing
+        :param date: date can be anything Pandas.Timestamp supports parsing
+        :param only_count: return back only the match count
         '''
         if not self.check_in_bounds(date):
             raise ValueError('Date %s is not in the queried range.' % date)
@@ -115,11 +123,9 @@ class Result(DataFrame):
         '''
         Works only on a Result that has _start and _end columns.
 
-        :param list dates: List of dates
-        :param datetime linreg_since:
-            estimate the future values using linear regression.
-        :param integer lin_reg_days:
-            Set how many past days should we use for prediction calulation
+        :param dates: list of dates to query
+        :param linreg_since: estimate future values using linear regression.
+        :param lin_reg_days: number of past days to use as prediction basis
         '''
         dates = dates or self.get_dates_range()
         vals = [self.on_date(dt, only_count=True) for dt in dates]
@@ -132,13 +138,13 @@ class Result(DataFrame):
         '''
         Predicts future using linear regression.
 
-        :param pandas.Series series:
+        :param series:
             A series in which the values will be places.
             The index will not be touched.
             Only the values on dates > `since` will be predicted.
-        :param datetime since:
+        :param since:
             The starting date from which the future will be predicted.
-        :param integer days:
+        :param days:
             Specifies how many past days should be used in the linear
             regression.
         '''
@@ -162,19 +168,12 @@ class Result(DataFrame):
         '''
         Returns a list of dates sampled according to the specified parameters.
 
-        :param string scale:
-            {'auto', 'maximum', 'daily', 'weekly', 'monthly',
+        :param scale: {'auto', 'maximum', 'daily', 'weekly', 'monthly',
             'quarterly', 'yearly'}
             Scale specifies the sampling intervals.
-            'auto' will heuritically choose such scale that will give you
-            fast results.
-        :param string start:
-            First date that will be included.
-        :param string end:
-            Last date that will be included
-        :param boolean include_bounds:
-            Include start and end in the result if they are not included yet.
-
+            'auto' will heuristically choose a scale for quick processing
+        :param start: First date that will be included.
+        :param end: Last date that will be included
         '''
         if scale not in ['auto', 'maximum', 'daily', 'weekly', 'monthly',
                          'quarterly', 'yearly']:
@@ -237,6 +236,8 @@ class Result(DataFrame):
     def filter_oids(self, oids):
         '''
         Leaves only objects with specified oids.
+
+        :param oids: list of oids to include
         '''
         oids = set(oids)
         return self[self['_oid'].map(lambda x: x in oids)]
@@ -258,8 +259,7 @@ class Result(DataFrame):
         Counts have many objects (identified by their oids) existed before
         or on a given date.
 
-        :param list dates:
-            List of the dates at which the count should be computed.
+        :param dates: list of the dates the count should be computed.
         '''
         total = pd.Series([self.on_date(d)._oid for d in dates],
                           index=dates)
@@ -289,7 +289,7 @@ class Result(DataFrame):
                 else:
                     min(self._rbound, latest_version._end) is used
 
-        :param string index: Name of the new column.
+        :param index: name of the new column.
         '''
         def prep(df):
             ends = set(df._end.tolist())
@@ -331,9 +331,7 @@ class Result(DataFrame):
         '''
         Leaves only one version for each object.
 
-        :param int index:
-            List-like index of the version.
-            0 means first version, -1 means last.
+        :param index: List-like index of the version.  0 == first; -1 == last
         '''
         def prep(df):
             start = sorted(df._start.tolist())[index]
@@ -354,18 +352,24 @@ class Result(DataFrame):
         return self.one_version(-1)
 
     @filtered
-    def started_after(self, dt):
+    def started_after(self, date):
         '''
         Leaves only those objects whose first version started after the
         specified date.
+
+        :param date: date string to use in calculation
         '''
-        dt = Timestamp(dt)
+        dt = Timestamp(date)
         starts = self._start.groupby(self._oid).min()
         oids = set(starts[starts > dt].index.tolist())
         return self[self._oid.apply(lambda v: v in oids)]
 
     @filtered
     def filter(self, mask):
+        '''alias for pandas mask filters
+
+        :param mask: pandas mask filter query
+        '''
         return self[mask]
 
     @filtered
@@ -374,8 +378,7 @@ class Result(DataFrame):
         Groups by _oid, then applies the function to each group
         and finally concatenates the results.
 
-        :param (DataFrame -> DataFrame) function:
-            function that takes a DataFrame and returns a DataFrame
+        :param function: func that takes a DataFrame and returns a DataFrame
         '''
         return pd.concat([function(df) for _, df in self.groupby(self._oid)])
 
@@ -385,40 +388,12 @@ class Result(DataFrame):
         '''
         Saves this result objects to the specified metrique cube.
 
-        :param str oid:
-            The _oid to be used for this result.
-        :param HTTPClient pyclient:
-            A client that should be used to connect to the cube.
-        :param str cube:
-            Cube's name.
-        :param str owner:
-            Cube's owner.
+        :param oid: The _oid to be used for this result
+        :param pyclient: A client that should be used to connect to the cube
+        :param cube: cube name
+        :param owner: username of cube owner
         '''
         frame = self.to_dict('list')
         obj = {'_oid': str(oid), 'frame': frame,
                'lbound': self._lbound, 'rbound': self._rbound}
         pyclient.cube_save([obj], cube=cube, owner=owner)
-
-
-#################################### LOAD ####################################
-
-# FIXME: is this used anywhere? REMOVE?
-def load_from_cube(oid, pyclient, cube='results', owner=None):
-    '''
-    Loads a result object from cube.
-
-    :param str oid:
-        The _oid of the result to be loaded.
-    :param HTTPClient pyclient:
-        A client that should be used to connect to the cube.
-    :param str cube:
-        Cube's name.
-    :param str owner:
-        Cube's owner.
-    '''
-    res = pyclient.find('_oid == "%s"' % oid,
-                        fields='__all__', cube=cube, owner=owner, raw=True)
-    result = Result(res[0]['frame'])
-    result._lbound = res[0]['lbound']
-    result._rbound = res[0]['rbound']
-    return result

@@ -2,7 +2,12 @@
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 # Author: "Chris Ward" <cward@redhat.com>
 
-''' "Metrique User Management" related funtions '''
+'''
+metrique.result
+~~~~~~~~~~~~~~~~~
+
+This module contains all user management related api functionality.
+'''
 
 import os
 
@@ -11,9 +16,9 @@ from metriqueu.utils import set_default
 
 def aboutme(self, username=None):
     '''
-    Get user profile details
+    Get user profile details.
 
-    :param string username: username to query profile data for
+    :param username: username to query profile data for
     '''
     username = set_default(username, self.config.username)
 
@@ -24,10 +29,10 @@ def aboutme(self, username=None):
 
 def register(self, username=None, password=None, logon_as=True):
     '''
-    Register new user
+    Register new user.
 
-    :param String user: Name of the user you're managing
-    :param String password: Password (plain text), if any of user
+    :param user: Name of the user you're managing
+    :param password: Password (plain text), if any of user
     '''
     username = set_default(username, self.config.username)
     password = set_default(password, self.config.password)
@@ -46,10 +51,10 @@ def register(self, username=None, password=None, logon_as=True):
 
 def remove(self, username=None, quiet=False):
     '''
-    Remove existing user
+    Remove existing user.
 
-    :param String username: Name of the user you're managing
-    :param bool quiet: ignore exceptions
+    :param username: Name of the user you're managing
+    :param quiet: ignore exceptions
     '''
     username = set_default(username, self.config.username)
     cmd = os.path.join(username, 'remove')
@@ -65,10 +70,10 @@ def remove(self, username=None, quiet=False):
 
 def login(self, username=None, password=None):
     '''
-    Login a user
+    Login/authenticate a user.
 
-    :param String user: Name of the user you're managing
-    :param String password: Password (plain text), if any of user
+    :param user: Name of the user you're managing
+    :param password: Password (plain text), if any of user
     '''
     username = set_default(username, self.config.username,
                            err_msg='username required')
@@ -92,7 +97,7 @@ def login(self, username=None, password=None):
 
 def logout(self):
     '''
-    Log a user out by nulling their secrete cookie key
+    Log a user out by nulling their secrete cookie key.
     '''
     result = self._post('logout', api_url=False)
     self._load_session()  # new session
@@ -106,10 +111,10 @@ def update_passwd(self, new_password, old_password=None,
     '''
     Update existing user's password
 
-    :param String new_password: New user password to set
-    :param String old_password: Old user password to unset
-    :param String username: Name of the user to manipulate
-    :param bool save: update local config file with new password
+    :param new_password: New user password to set
+    :param old_password: Old user password to unset
+    :param username: Name of the user to manipulate
+    :param save: update local config file with new password
     '''
     username = set_default(username, self.config.username)
     if not new_password:
@@ -131,17 +136,23 @@ def update_passwd(self, new_password, old_password=None,
 
     if response.headers.get('location') == '/login':
         login(self, self.config.username, self.config.password)
-
-    return True
+    return response
 
 
 # FIXME: prefix api_url with _ to indicate it's a special kwarg
+# FIXME: make some sort of user class which can be used to manipulate
+#        the user profile indirectly? eg
+#        >>> user = pyclient().user_get_profile()
+#        >>> user.update_password(...)
+#        >>> user.gnupg_fingerprint = ...
+# where the server posts a json of all the available profile
+# properties and their current values
 def update_profile(self, username=None, gnupg=None):
     '''
     Update existing user profile properties
 
-    :param String username: Name of the user to manipulate
-    :param String gnupg: update gnupg profile settings
+    :param username: Name of the user to manipulate
+    :param gnupg: update gnupg profile settings
     '''
     username = username or self.config.username
     cmd = os.path.join(username, 'update_profile')
@@ -149,12 +160,15 @@ def update_profile(self, username=None, gnupg=None):
     return result
 
 
+# FIXME: use update_profile as well, but only permit
+# the 'property' fields to be seen/modified if the
+# requesting/authenticated user is 'admin'
 def update_properties(self, username=None, backup=True, cube_quota=None):
     '''
     Update existing system level user properties
 
-    :param String username: Name of the user to manipulate
-    :param String backup: request previous state of property values
+    :param username: Name of the user to manipulate
+    :param backup: request previous state of property values
     :param int cube_quota: cube quota count to set
     '''
     username = set_default(username, self.config.username)

@@ -2,6 +2,16 @@
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 # Author: "Chris Ward <cward@redhat.com>
 
+'''
+metriquet.tornadohttp
+~~~~~~~~~~~~~~~~~~~~~
+
+Generic, re-usable Tornado server and config classes.
+
+Supports log handling, server startup / shutdown and
+configuration loading.
+'''
+
 import logging
 from functools import partial
 import os
@@ -39,6 +49,54 @@ TEMPLATE_PATH = os.path.join(USER_DIR, 'templates/')
 
 
 class TornadoConfig(JSONConf):
+    '''
+    Tornado default config class. All tornado subclasses should
+    derive their config objects from this class to ensure defaults
+    values are available.
+
+    Pure defaults assume local, insecure 'test', 'development'
+    or 'personal' environment. The defaults are NOT for production
+    use!
+
+    To customize local client configuration, add/update
+    `~/.metrique/etc/tornado.json` (default).
+
+    This configuration class defines the following overrideable defaults.
+
+    :param config_file:
+        path to json config file to load over defaults ($default_config)
+    :param autoreload: permit tornado autoreload on file write?
+    :param cachedir: path to directory where cache is to be saved
+    :param configdir: path to directory where config files are stored
+    :param cookie_secret: random key for signing secure cookies
+    :param debug: verbosity level
+    :param gzip: enable gzip compression of requests?
+    :param host: host address to listen on
+    :param logdir: path to directory where logs are saved
+    :param logstdout: enable logging to stdout?
+    :param log2file: enable logging to disk?
+    :param logfile: log file name
+    :param log_keep: number of logs to save after rotation?
+    :param log_rotate: enable automatic log rotation?
+    :param log_rotate_bytes: max size of logs before rotation
+    :param log_requests_file: filename of 'access log'
+    :param log_requests_level: logger level that requests will be queue to
+    :param login_url: relative path of login url
+    :param pid_name: prefix string to be used for auto-naming pid files
+    :param piddir: path to directory where pid files are saved
+    :param port: port to list on
+    :param realm: authentication realm name
+    :param ssl: enable ssl?
+    :param ssl_certificate: path to ssl certificate file
+    :param ssl_certificate_key: path to ssl certificate key file
+    :param static_path: path to where static files are found
+    :param temp_path: path to directory where temporary files are saved
+    :param template_path: path to directory where template files are found
+    :param userdir: path to directory where user files are stored
+    :param xsrf_cookies: enable xsrf_cookie form validation?
+
+    :ivar name: name of the tornado instance
+    '''
     name = BASENAME
 
     def __init__(self, config_file=None, **kwargs):
@@ -160,6 +218,19 @@ class TornadoHTTPServer(object):
         return logger
 
     def setup_logger(self):
+        '''Setup application logging
+
+        The following loggers will be available:
+            * self.logger - main
+
+        By default, .debug, .info, .warn, etc methods are available in
+        the main logger.
+
+        Additionally, the following methods are also available via .logger:
+            * self.logger.request_logger
+
+        The base logger name is the value of the class attribute `name`.
+        '''
         # override root logger so all app logging goes to one place
         self._setup_logger(logger_name=None)
 
@@ -181,10 +252,12 @@ class TornadoHTTPServer(object):
 
     @property
     def pid(self):
+        '''Wrapper for os.getpid()'''
         return os.getpid()
 
     @property
     def pid_file(self):
+        '''Return back the name of the current instance's pid file on disk'''
         pid_file = '%s.%s.pid' % (self.conf.pid_name, str(self.pid))
         path = os.path.join(self.conf.piddir, pid_file)
         return os.path.expanduser(path)
@@ -219,6 +292,7 @@ class TornadoHTTPServer(object):
             self.server = HTTPServer(self._web_app)
 
     def set_pid(self):
+        '''Store the current instances pid number into a pid file on disk'''
         if os.path.exists(self.pid_file):
             raise RuntimeError(
                 "pid (%s) found in (%s)" % (self.pid,
@@ -231,6 +305,7 @@ class TornadoHTTPServer(object):
         self.logger.debug("PID stored (%s)" % self.pid)
 
     def remove_pid(self, quiet=False):
+        '''Remove existing pid file on disk, if available'''
         error = None
         try:
             os.remove(self.pid_file)
@@ -252,12 +327,14 @@ class TornadoHTTPServer(object):
         IOLoop.instance().start()
 
     def spawn_instance(self):
+        '''Spawn a new tornado server instance'''
         self.logger.debug("spawning tornado %s..." % self.uri)
         self.set_pid()
         self._init_basic_server()
 
     @property
     def uri(self):
+        '''Return a uri connection string for the current tornado instance'''
         host = self.conf.host
         ssl = self.conf.ssl
         port = self.conf.port

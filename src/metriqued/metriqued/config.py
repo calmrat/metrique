@@ -2,6 +2,22 @@
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 # Author: "Chris Ward <cward@redhat.com>
 
+'''
+metriqued.config
+~~~~~~~~~~~~~~~~
+
+This module contains the main configuration object for
+metriqued server applications, which includes built-in
+defaults.
+
+Pure defaults assume local, insecure 'test', 'development'
+or 'personal' environment. The defaults are NOT for production
+use!
+
+To customize local client configuration, add/update
+`~/.metrique/etc/metriqued.json` (default).
+'''
+
 from gnupg import GPG
 import os
 
@@ -25,6 +41,21 @@ STATIC_PATH = os.path.join(here, 'static/')
 
 
 class metriqued_config(TornadoConfig):
+    '''
+    metriqued default config class.
+
+    This configuration class defines the following overrideable defaults.
+
+    :param user_cube_quota: max number of cubes a user can own
+    :param gnupg_dir: path to gnupg data directory
+    :param gnupg_fingerprint: key fingerprint for gpg signing/verification
+    :param krb_auth: enable kerberos authentication
+    :param log2mongodb: enable passing log events to mongodb?
+    :param log_mongodb_level: logger level to listen on and pass to mongodb
+    :param mongodb_config: path to mongodb config json
+    :param port: port to listen on
+    :param superusers: list of usernames that have root access
+    '''
     default_config = DEFAULT_CONFIG
     name = 'metriqued'
 
@@ -49,6 +80,7 @@ class metriqued_config(TornadoConfig):
 
     @property
     def gnupg(self):
+        '''Shortcut for dynamically loading gpg module'''
         if hasattr(self, '_gnupg'):
             gpg = self._gnupg
         else:
@@ -57,6 +89,7 @@ class metriqued_config(TornadoConfig):
 
     @property
     def gnupg_pubkey(self):
+        '''Shortcut for to get gnupg public key for config'd fingerprint'''
         if self.gnupg:
             return self.gnupg.export_keys(self['gnupg_fingerprint'])
         else:
@@ -64,6 +97,34 @@ class metriqued_config(TornadoConfig):
 
 
 class mongodb_config(JSONConf):
+    '''
+    mongodb default config class.
+
+    This configuration class defines the following overrideable defaults.
+
+    :param auth: enable mongodb authentication
+    :param admin_password: admin user password
+    :param admin_user: admin username
+    :param data_password: data (read only) password
+    :param data_user: data (read only) username
+    :param db_metrique: metrique db name
+    :param db_timeline: timeline db name
+    :param collection_cube_profile: cube profile collection name
+    :param collection_user_profile: user profile collection name
+    :param collection_logs: logs collection name
+    :param fsync: sync writes to disk before return?
+    :param host: mongodb host(s) to connect to
+    :param journal: enable write journal before return?
+    :param port: mongodb port to connect to
+    :param mongoexport: path to mongoexport command
+    :param read_preference: default - SECONDARY_PREFERRED
+    :param replica_set: name of replica set, if any
+    :param ssl: enable ssl
+    :param ssl_certificate: path to ssl certificate file
+    :param ssl_certificate_key: path to ssl certificate key file
+    :param tz_aware: return back tz_aware dates?
+    :param write_concern: what level of write assurance before returning
+    '''
     default_config = MONGODB_CONFIG
     name = 'mongodb'
 
@@ -101,6 +162,7 @@ class mongodb_config(JSONConf):
 
     @property
     def db_readonly(self):
+        '''Wrapper for a readonly DB proxy connection'''
         if not hasattr(self, '_db_readonly'):
             user = self.data_user
             pwd = self.data_password
@@ -115,6 +177,7 @@ class mongodb_config(JSONConf):
 
     @property
     def db_admin(self):
+        '''Wrapper for a read/write DB proxy connection'''
         if not hasattr(self, '_db_admin'):
             user = self.admin_user
             pwd = self.admin_password
@@ -129,36 +192,45 @@ class mongodb_config(JSONConf):
 
     @property
     def db_metrique_data(self):
+        '''Wrapper for a read only 'metrique' DB proxy'''
         return self.db_readonly[self.db_metrique]
 
     @property
     def db_timeline_data(self):
+        '''Wrapper for a read only 'timeline' DB proxy'''
         return self.db_readonly[self.db_timeline]
 
     @property
     def db_metrique_admin(self):
+        '''Wrapper for a read/write 'metrique' DB proxy'''
         return self.db_admin[self.db_metrique]
 
     @property
     def db_timeline_admin(self):
+        '''Wrapper for a read/write 'timeline' DB proxy'''
         return self.db_admin[self.db_timeline]
 
     @property
     def c_user_profile_data(self):
+        '''Wrapper for a read only 'user profile' collection proxy'''
         return self.db_metrique_data[self.collection_user_profile]
 
     @property
     def c_user_profile_admin(self):
+        '''Wrapper for a read/write 'user profile' collection proxy'''
         return self.db_metrique_admin[self.collection_user_profile]
 
     @property
     def c_cube_profile_data(self):
+        '''Wrapper for a read only 'cube profile' collection proxy'''
         return self.db_metrique_data[self.collection_cube_profile]
 
     @property
     def c_cube_profile_admin(self):
+        '''Wrapper for a read/write 'cube profile' collection proxy'''
         return self.db_metrique_admin[self.collection_cube_profile]
 
     @property
     def c_logs_admin(self):
+        '''Wrapper for a read/write 'logs' collection proxy'''
         return self.db_metrique_admin[self.collection_logs]

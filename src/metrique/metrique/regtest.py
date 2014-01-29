@@ -3,6 +3,9 @@
 # Author: "Juraj Niznan" <jniznan@redhat.com>
 
 '''
+metrique.regtest
+~~~~~~~~~~~~~~~~~
+
 This module regression test api related functionality
 '''
 

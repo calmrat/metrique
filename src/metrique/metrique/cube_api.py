@@ -3,6 +3,9 @@
 # Author: "Chris Ward" <cward@redhat.com>
 
 '''
+metrique.cube_api
+~~~~~~~~~~~~~~~~~
+
 This module contains all Cube related api functionality.
 '''
 
@@ -13,7 +16,7 @@ def list_all(self, startswith=None):
     '''
     List all cubes available to the calling client.
 
-    :param string startswith: simple "startswith" filter string
+    :param startswith: string to use in a simple "startswith" query filter
     :returns list: sorted list of cube names
     '''
     return sorted(self._get(startswith))
@@ -30,9 +33,10 @@ def sample_fields(self, cube=None, sample_size=None, query=None, owner=None):
     might not result in a complete list of object fields, since
     some object variants might not be included in the sample queried.
 
-    :param int sample_size: number of random documents to query
-    :param list exclude_fields:
-        List (or csv) of fields to exclude from the results
+    :param cube: cube name
+    :param sample_size: number of random documents to query
+    :param query: `pql` query to filter sample query with
+    :param owner: username of cube owner
     :returns list: sorted list of fields
     '''
     cmd = self.get_cmd(owner, cube)
@@ -41,10 +45,13 @@ def sample_fields(self, cube=None, sample_size=None, query=None, owner=None):
     return sorted(result)
 
 
-def stats(self, cube, owner=None, keys=None):
-    '''
-    Get server reported statistics and other cube details. Optionally,
+def stats(self, cube=None, owner=None, keys=None):
+    '''Get server reported statistics and other cube details. Optionally,
     return only the keys specified, not all the stats.
+
+    :param cube: cube name
+    :param owner: username of cube owner
+    :param keys: return only the specified keys, not all
     '''
     owner = owner or self.config.username
     cmd = self.get_cmd(owner, cube, 'stats')
@@ -61,11 +68,11 @@ def stats(self, cube, owner=None, keys=None):
 
 def drop(self, quiet=False, cube=None, owner=None):
     '''
-    Drop (delete) remote cube.
+    Drop (delete) cube.
 
-    :param string cube: cube name
-    :param bool force: really, do it!
-    :param string owner: username of cube owner
+    :param quiet: ignore exceptions
+    :param owner: username of cube owner
+    :param cube: cube name
     '''
     cmd = self.get_cmd(owner, cube, 'drop')
     try:
@@ -79,10 +86,11 @@ def drop(self, quiet=False, cube=None, owner=None):
 
 def register(self, cube=None, owner=None, quiet=False):
     '''
-    Register a new remote cube
+    Register a new cube.
 
-    :param string cube: cube name
-    :param string owner: username of cube owner
+    :param cube: cube name
+    :param owner: username of cube owner
+    :param quiet: ignore exceptions
     '''
     cmd = self.get_cmd(owner, cube, 'register')
     try:
@@ -100,9 +108,11 @@ def update_role(self, username, cube=None, action='addToSet',
     '''
     Manipulate cube access controls
 
-    :param string action: action to take (addToSet, pull)
-    :param string role:
-        Permission: read, write, admin)
+    :param username: username to manipulate
+    :param cube: cube name
+    :param action: action to take (addToSet, pull)
+    :param role: Permission: read, write, admin)
+    :param owner: username of cube owner
     '''
     cmd = self.get_cmd(owner, cube, 'update_role')
     return self._post(cmd, username=username, action=action, role=role)
@@ -111,10 +121,10 @@ def update_role(self, username, cube=None, action='addToSet',
 ######### INDEX #########
 def list_index(self, cube=None, owner=None):
     '''
-    List all remote cube indexes
+    List all cube indexes
 
-    :param string cube: cube name
-    :param string owner: username of cube owner
+    :param cube: cube name
+    :param owner: username of cube owner
     '''
     cmd = self.get_cmd(owner, cube, 'index')
     result = self._get(cmd)
@@ -124,21 +134,17 @@ def list_index(self, cube=None, owner=None):
 def ensure_index(self, key_or_list, name=None, background=None,
                  cube=None, owner=None):
     '''
-    Build a new index on a remote cube.
+    Build a new index on a cube.
 
     Examples:
         + ensure_index('field_name')
         + ensure_index([('field_name', 1), ('other_field_name', -1)])
 
-    :param string/list key_or_list:
-        Either a single key or a list of (key, direction) pairs.
-    :param string name:
-        Custom name to use for this index.
-        If none is given, a name will be generated.
-    :param bool background:
-        If this index should be created in the background.
-    :param string cube: cube name
-    :param string owner: username of cube owner
+    :param key_or_list: A single field or a list of (key, direction) pairs
+    :param name: (optional) Custom name to use for this index
+    :param background: MongoDB should create in the background
+    :param cube: cube name
+    :param owner: username of cube owner
     '''
     cmd = self.get_cmd(owner, cube, 'index')
     return self._post(cmd, ensure=key_or_list, name=name,
@@ -149,10 +155,9 @@ def drop_index(self, index_or_name, cube=None, owner=None):
     '''
     Drops the specified index on this cube.
 
-    :param string/list index_or_name:
-        index (or name of index) to drop
-    :param string cube: cube name
-    :param string owner: username of cube owner
+    :param index_or_name: index (or name of index) to drop
+    :param cube: cube name
+    :param owner: username of cube owner
     '''
     cmd = self.get_cmd(owner, cube, 'index')
     return self._delete(cmd, drop=index_or_name)
@@ -185,13 +190,13 @@ def save(self, objects=None, cube=None, owner=None, start_time=None,
     Save a list of objects the given metrique.cube.
     Returns back a list of object ids (_id|_oid) saved.
 
-    :param list objects: list of dictionary-like objects to be stored
-    :param string cube: cube name
-    :param string owner: username of cube owner
-    :param string start_time: ISO format datetime to apply as _start
-                              per object, serverside
-    :param bool flush: flush objects from memory after save
-    :rtype: list - list of object ids saved
+    :param objects: list of dictionary-like objects to be stored
+    :param cube: cube name
+    :param owner: username of cube owner
+    :param start_time: ISO format datetime to apply as _start
+                       per object, serverside
+    :param flush: flush objects from memory after save
+    :returns None: results are saved in pyclient().result attribute
     '''
     if objects is None:
         objects = self.objects
@@ -211,11 +216,11 @@ def save(self, objects=None, cube=None, owner=None, start_time=None,
 
 def rename(self, new_name, cube=None, owner=None):
     '''
-    Rename a remote cube.
+    Rename a cube.
 
-    :param string new_name: new cube name
-    :param string cube: cube name
-    :param string owner: username of cube owner
+    :param new_name: new cube name
+    :param cube: cube name
+    :param owner: username of cube owner
     '''
     cmd = self.get_cmd(owner, cube, 'rename')
     result = self._post(cmd, new_name=new_name)
@@ -226,12 +231,11 @@ def rename(self, new_name, cube=None, owner=None):
 
 def remove(self, query, date=None, cube=None, owner=None):
     '''
-    Remove objects from a remote cube.
+    Remove objects from a cube.
 
-    :param list ids: list of object ids to remove
-    :param bool backup: return the documents removed to client?
-    :param string cube: cube name
-    :param string owner: username of cube owner
+    :param query: `pql` query to filter sample query with
+    :param cube: cube name
+    :param owner: username of cube owner
     '''
     cmd = self.get_cmd(owner, cube, 'remove')
     result = self._delete(cmd, query=query, date=date)
@@ -240,10 +244,11 @@ def remove(self, query, date=None, cube=None, owner=None):
 
 def export(self, filename, cube=None, owner=None):
     '''
-    Export a remote cube to compressed (gzip) json
+    Export a cube to compressed (gzip) json
 
-    :param string cube: cube name
-    :param string owner: username of cube owner
+    :param filename: path/filename of results export.tgz file
+    :param cube: cube name
+    :param owner: username of cube owner
     '''
     cmd = self.get_cmd(owner, cube, 'export')
     return self._save(cmd=cmd, filename=filename)
