@@ -2,6 +2,13 @@
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 # Author: "Chris Ward <cward@redhat.com>
 
+'''
+metriqued.cube_api
+~~~~~~~~~~~~~~~~~
+
+This module contains all Cube related api functionality.
+'''
+
 from copy import copy
 from datetime import datetime
 import gzip
@@ -22,7 +29,7 @@ OBJ_KEYS = set(['_id', '_hash', '_oid', '_start', '_end'])
 
 
 class DropHdlr(MongoDBBackendHdlr):
-    ''' RequestsHandler for droping given cube from timeline '''
+    ''' RequestsHandler for dropping given cube from timeline '''
     @authenticated
     def delete(self, owner, cube):
         result = self.drop_cube(owner=owner, cube=cube)
@@ -30,11 +37,12 @@ class DropHdlr(MongoDBBackendHdlr):
 
     def drop_cube(self, owner, cube):
         '''
-        :param str cube: target cube (collection) to save objects to
-
         Wraps pymongo's drop() for the given cube (collection)
+
+        :param owner: username of cube owner
+        :param cube: cube name
         '''
-        self.requires_owner_admin(owner, cube)
+        self.requires_admin(owner, cube)
         if not self.cube_exists(owner, cube):
             self._raise(404, '%s.%s does not exist' % (owner, cube))
         # drop the cube
@@ -48,14 +56,14 @@ class DropHdlr(MongoDBBackendHdlr):
         return True
 
 
+# FIXME: add 'gzip' to find() and drop this!
 class ExportHdlr(MongoDBBackendHdlr):
     '''
     RequestHandler for exporting a collection (cube) to gzipped json
     '''
     @authenticated
     def get(self, owner, cube):
-        self.cube_exists(owner, cube)
-        self.requires_owner_admin(owner, cube)
+        self.requires_admin(owner, cube)
         path = ''
         try:
             path = self.mongoexport(owner, cube)
@@ -71,6 +79,13 @@ class ExportHdlr(MongoDBBackendHdlr):
 
     # FIXME: UNICODE IS NOT PROPERLY ENCODED!
     def mongoexport(self, owner, cube):
+        '''
+        Calls mongoexport command line application and returns
+        the results as compressed gzip file.
+
+        :param owner: username of cube owner
+        :param cube: cube name
+        '''
         conf = self.mongodb_config
         _cube = '__'.join((owner, cube))
         now = datetime.now().isoformat()
@@ -108,13 +123,17 @@ class ExportHdlr(MongoDBBackendHdlr):
 
 class IndexHdlr(MongoDBBackendHdlr):
     '''
-    RequestHandler for ensuring mongodb indexes
-    in timeline collection for a given cube
+    RequestHandler for creating indexes for a given cube
     '''
     @authenticated
     def delete(self, owner, cube):
-        self.cube_exists(owner, cube)
-        self.requires_owner_admin(owner, cube)
+        '''
+        Delete an existing cube index.
+
+        :param owner: username of cube owner
+        :param cube: cube name
+        '''
+        self.requires_admin(owner, cube)
         drop = self.get_argument('drop')
         _cube = self.timeline(owner, cube, admin=True)
         if drop:
@@ -126,15 +145,25 @@ class IndexHdlr(MongoDBBackendHdlr):
 
     @authenticated
     def get(self, owner, cube):
-        self.cube_exists(owner, cube)
-        self.requires_owner_read(owner, cube)
+        '''
+        Return a list of the existing cube indexes.
+
+        :param owner: username of cube owner
+        :param cube: cube name
+        '''
+        self.requires_read(owner, cube)
         _cube = self.timeline(owner, cube, admin=True)
         self.write(_cube.index_information())
 
     @authenticated
     def post(self, owner, cube):
-        self.cube_exists(owner, cube)
-        self.requires_owner_admin(owner, cube)
+        '''
+        Create a new index for a cube.
+
+        :param owner: username of cube owner
+        :param cube: cube name
+        '''
+        self.requires_admin(owner, cube)
         ensure = self.get_argument('ensure')
         background = self.get_argument('background', True)
         name = self.get_argument('name', None)
@@ -157,12 +186,6 @@ class ListHdlr(MongoDBBackendHdlr):
     '''
     RequestHandler for querying about available cubes and cube.fields
     '''
-    def current_user_acl(self, roles):
-        self.valid_cube_role(roles)
-        roles = self.get_user_profile(self.current_user, keys=roles,
-                                      null_value=[])
-        return roles if roles else []
-
     @authenticated
     def get(self, owner=None, cube=None):
         if (owner and cube):
@@ -173,8 +196,6 @@ class ListHdlr(MongoDBBackendHdlr):
             sample_size = self.get_argument('sample_size')
             query = self.get_argument('query')
             names = self.sample_fields(owner, cube, sample_size, query=query)
-        elif self.requires_owner_admin(owner, cube, raise_if_not=False):
-            names = self.get_non_system_collections(owner, cube)
         else:
             names = self.get_readable_collections()
         if owner and not cube:
@@ -183,28 +204,34 @@ class ListHdlr(MongoDBBackendHdlr):
         names = filter(None, names)
         self.write(names)
 
-    def get_non_system_collections(self, owner, cube):
-        self.requires_owner_admin(owner, cube)
-        return [c for c in self._timeline_data.collection_names()
-                if not c.startswith('system')]
-
-    def get_readable_collections(self):
-        # return back a collections if user is owner or can read them
-        read = self.current_user_acl(['read'])
-        own = self.current_user_acl(['own'])
-        return read + own
-
     def sample_fields(self, owner, cube, sample_size=None, query=None):
-        self.cube_exists(owner, cube)
-        self.requires_owner_read(owner, cube)
-        docs = self.sample_timeline(owner, cube, sample_size, query)
+        '''
+        Sample object fields to get back a list of known field names.
+
+        Since cube object contents can vary widely, in theory, it's
+        possible a "sample" of less than "all" might result in an
+        incomplete list of field values.
+
+        To ensure a complete list offield values then, one must have
+        a sample size equal to the number of objects in the cube.
+
+        If all objects are known to be uniform, a sample size of 1
+        is sufficient.
+
+        :param owner: username of cube owner
+        :param cube: cube name
+        :param sample_size: number of objects to sample
+        :param query: high-level query used to create population to sample
+        '''
+        self.requires_read(owner, cube)
+        docs = self.sample_cube(owner, cube, sample_size, query)
         cube_fields = list(set([k for d in docs for k in d.keys()]))
         return cube_fields
 
 
 class RenameHdlr(MongoDBBackendHdlr):
     '''
-    RequestHandler for registering new users to metrique
+    RequestHandler for renaming cubes.
     '''
     def post(self, owner, cube):
         new_name = self.get_argument('new_name')
@@ -213,14 +240,11 @@ class RenameHdlr(MongoDBBackendHdlr):
 
     def rename(self, owner, cube, new_name):
         '''
-        Client registration method
+        Rename a cube.
 
-        Default behaivor (not currently overridable) is to permit
-        cube registrations by all registered users.
-
-        Update the user__cube __meta__ doc with defaults
-
-        Bump the user's total cube count, by 1
+        :param owner: username of cube owner
+        :param cube: cube name
+        :param new_new: the new name of the cube
         '''
         self.logger.debug("Renaming [%s] %s -> %s" % (owner, cube, new_name))
         self.cube_exists(owner, cube)
@@ -252,7 +276,7 @@ class RenameHdlr(MongoDBBackendHdlr):
 
 class RegisterHdlr(MongoDBBackendHdlr):
     '''
-    RequestHandler for registering new users to metrique
+    RequestHandler for registering new cubes.
     '''
     def post(self, owner, cube):
         result = self.register(owner=owner, cube=cube)
@@ -262,23 +286,30 @@ class RegisterHdlr(MongoDBBackendHdlr):
         '''
         Client registration method
 
-        Default behaivor (not currently overridable) is to permit
-        cube registrations by all registered users.
+        Cube registrations is open access. All registered
+        users can create cubes, assuming their quota has
+        not been filled already.
 
-        Update the user__cube __meta__ doc with defaults
+        Update the cube_profile with new cube defaults values.
 
         Bump the user's total cube count, by 1
+
+        Create default cubes indexes.
+
+        :param owner: username of cube owner
+        :param cube: cube name
         '''
         # FIXME: take out a lock; to avoid situation
         # where client tries to create multiple cubes
         # simultaneously and we hit race condition
         # where user creates more cubes than has quota
+        # ie, cube create lock...
         if self.cube_exists(owner, cube, raise_if_not=False):
             self._raise(409, "cube already exists")
 
-        # FIXME: move to remaining =  self.check_user_cube_quota(...)
-        quota, own = self.get_user_profile(owner, keys=['_cube_quota',
-                                                        '_own'])
+        # FIXME: move to remaining = self.check_user_cube_quota(...)
+        quota, own = self.get_user_profile(owner, keys=['cube_quota',
+                                                        'own'])
         if quota is None:
             remaining = True
         else:
@@ -293,11 +324,11 @@ class RegisterHdlr(MongoDBBackendHdlr):
         collection = self.cjoin(owner, cube)
 
         doc = {'_id': collection,
-               'owner': owner,
+               'creater': owner,
                'created': now_utc,
                'read': [],
                'write': [],
-               'admin': []}
+               'admin': [owner]}
         self.cube_profile(admin=True).insert(doc)
 
         # push the collection into the list of ones user owns
@@ -315,8 +346,7 @@ class RegisterHdlr(MongoDBBackendHdlr):
 
 class RemoveObjectsHdlr(MongoDBBackendHdlr):
     '''
-    RequestHandler for saving a given object to a
-    metrique server cube
+    RequestHandler for removing objects from a cube.
     '''
     @authenticated
     def delete(self, owner, cube):
@@ -328,18 +358,14 @@ class RemoveObjectsHdlr(MongoDBBackendHdlr):
 
     def remove_objects(self, owner, cube, query, date=None):
         '''
-        Remove all the objects (docs) from the given
-        cube (mongodb collection)
+        Remove all the objects from the given cube.
 
-        :param pymongo.collection cube:
-            cube object (pymongo collection connection)
-        :param string query:
-            pql query string
-        :param string date:
-            metrique date(range)
+        :param owner: username of cube owner
+        :param cube: cube name
+        :param string query: pql query string
+        :param string date: metrique date(range)
         '''
-        self.cube_exists(owner, cube)
-        self.requires_owner_admin(owner, cube)
+        self.requires_admin(owner, cube)
         if not query:
             return []
 
@@ -358,9 +384,23 @@ class RemoveObjectsHdlr(MongoDBBackendHdlr):
 
 class SaveObjectsHdlr(MongoDBBackendHdlr):
     '''
-    RequestHandler for saving a given object to a metrique server cube
+    RequestHandler for saving/persisting objects to a cube
     '''
-    def insert_bulk(self, _cube, docs, size=-1):
+    @authenticated
+    def post(self, owner, cube):
+        objects = self.get_argument('objects')
+        result = self.save_objects(owner=owner, cube=cube,
+                                   objects=objects)
+        self.write(result)
+
+    def insert_bulk(self, _cube, docs, size=10000):
+        '''
+        Insert a list of objects into a give cube.
+
+        :param _cube: mongodb cube collection proxy
+        :param docs: list of docs to insert
+        :param size: max size of insert batches
+        '''
         # little reason to batch insert...
         # http://stackoverflow.com/questions/16753366
         # and after testing, it seems splitting things
@@ -371,18 +411,12 @@ class SaveObjectsHdlr(MongoDBBackendHdlr):
             for batch in batch_gen(docs, size):
                 _cube.insert(batch, manipulate=False)
 
-    @authenticated
-    def post(self, owner, cube):
-        objects = self.get_argument('objects')
-        result = self.save_objects(owner=owner, cube=cube,
-                                   objects=objects)
-        self.write(result)
-
     def prepare_objects(self, _cube, objects):
         '''
-        :param dict obj: dictionary that will be converted to mongodb doc
+        Validate and normalize objects.
 
-        Do some basic object validatation and add an _start timestamp value
+        :param _cube: mongodb cube collection proxy
+        :param obejcts: list of objects to manipulate
         '''
         hashes = []
         ids = []
@@ -423,16 +457,14 @@ class SaveObjectsHdlr(MongoDBBackendHdlr):
 
     def save_objects(self, owner, cube, objects):
         '''
-        :param str owner: target owner's cube
-        :param str cube: target cube (collection) to save objects to
-        :param list objects: list of dictionary-like objects to be stored
-        :rtype: list - list of object ids saved
-
         Get a list of dictionary objects from client and insert
         or save them to the timeline.
+
+        :param owner: username of cube owner
+        :param cube: cube name
+        :param obejcts: list of objects to save
         '''
-        self.cube_exists(owner, cube)
-        self.requires_owner_write(owner, cube)
+        self.requires_write(owner, cube)
         _cube = self.timeline(owner, cube, admin=True)
 
         olen_r = len(objects)
@@ -443,7 +475,7 @@ class SaveObjectsHdlr(MongoDBBackendHdlr):
 
         self.logger.debug(
             '[%s.%s] SKIPPED %s objs matching their current version in db' % (
-            owner, cube, olen_r - len(objects)))
+                owner, cube, olen_r - len(objects)))
 
         if not objects:
             self.logger.debug('[%s.%s] No NEW objects to save' % (owner, cube))
@@ -498,10 +530,7 @@ class SaveObjectsHdlr(MongoDBBackendHdlr):
 
 class StatsHdlr(MongoDBBackendHdlr):
     '''
-    RequestHandler for managing cube role properties
-
-    action can be addToSet, pull
-    role can be read, write, admin
+    RequestHandler for getting basic statistics about a cube
     '''
     @authenticated
     def get(self, owner, cube):
@@ -509,11 +538,17 @@ class StatsHdlr(MongoDBBackendHdlr):
         self.write(result)
 
     def stats(self, owner, cube):
-        self.cube_exists(owner, cube)
-        self.requires_owner_read(owner, cube)
-        _cube = self.timeline(owner, cube)
-        size = _cube.count()
-        stats = dict(cube=cube, size=size)
+        '''
+        Return basic statistics about a cube.
+
+        Wraps mongodb's 'collstats' function.
+
+        :param owner: username of cube owner
+        :param cube: cube name
+        '''
+        self.requires_read(owner, cube)
+        _cube = self.mongodb_config.db_timeline_data
+        stats = _cube.command("collstats", self.cjoin(owner, cube))
         return stats
 
 
@@ -536,8 +571,20 @@ class UpdateRoleHdlr(MongoDBBackendHdlr):
 
     def update_role(self, owner, cube, username, action='addToSet',
                     role='read'):
-        self.cube_exists(owner, cube)
-        self.requires_owner_admin(owner, cube)
+        '''
+        Update user's ACL role for a given cube.
+
+        :param owner: username of cube owner
+        :param cube: cube name
+        :param username: username who's ACLs will be manipulated
+        :param action: update action to take
+
+        Available actions:
+            * pull - remove a value
+            * addToSet - add a value
+            * set - set or replace a value
+        '''
+        self.requires_admin(owner, cube)
         self.valid_cube_role(role)
         result = self.update_cube_profile(owner, cube, action, role, username)
         # push the collection into the list of ones user owns

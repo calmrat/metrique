@@ -2,6 +2,13 @@
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 # Author: "Chris Ward <cward@redhat.com>
 
+'''
+metriqued.user_api
+~~~~~~~~~~~~~~~~~~
+
+This module contains all the user related api functionality.
+'''
+
 from passlib.hash import sha256_crypt
 import re
 from tornado.web import authenticated
@@ -21,18 +28,18 @@ class AboutMeHdlr(MongoDBBackendHdlr):
     role can be read, write, admin
     '''
     @authenticated
-    def get(self, owner):
+    def get(self, username):
         # FIXME: add admin check
         # if admin, look up anyone is possible
         # otherwise, must be owner or read
-        result = self.aboutme(owner=owner)
+        result = self.aboutme(username=username)
         self.write(result)
 
-    def aboutme(self, owner):
-        self.user_exists(owner)
+    def aboutme(self, username):
+        self.user_exists(username)
         mask = ['passhash']
-        if self.is_self(owner):
-            return self.get_user_profile(owner, mask=mask)
+        if self.is_self(username):
+            return self.get_user_profile(username, mask=mask)
         else:
             mask += []
 
@@ -92,8 +99,8 @@ class RegisterHdlr(MongoDBBackendHdlr):
 
     def register(self, username, password=None, null_password_ok=False):
         if INVALID_USERNAME_RE.search(username):
-            self._raise(400,
-                        "Invalid username; ascii alpha [a-z] characters only!")
+            self._raise(
+                400, "Invalid username; ascii alpha [a-z] characters only!")
         username = username.lower()
         if self.user_exists(username):
             self._raise(409, "[%s] user exists" % username)
@@ -107,7 +114,7 @@ class RegisterHdlr(MongoDBBackendHdlr):
                'read': [],
                'write': [],
                'admin': [],
-               '_cube_quota': cube_quota,
+               'cube_quota': cube_quota,
                '_passhash': passhash,
                }
         self.user_profile(admin=True).save(doc, upset=True, safe=True)
@@ -125,7 +132,7 @@ class RemoveHdlr(MongoDBBackendHdlr):
 
     def remove(self, username):
         username = username.lower()
-        if not self.is_admin(username):
+        if not self.is_superuser():
             self._raise(403, 'admin privleges required!')
         if not self.user_exists(username):
             self._raise(409, "user does not exist")
@@ -168,7 +175,7 @@ class UpdatePasswordHdlr(MongoDBBackendHdlr):
         ''' Change a logged in user's password '''
         # FIXME: take out a lock... for updating any properties
         self.user_exists(username)
-        self.requires_owner_admin(username)
+        self.is_self(username)
         if not new_password:
             self._raise(400, 'new password can not be null')
         if not old_password:
@@ -188,32 +195,6 @@ class UpdatePasswordHdlr(MongoDBBackendHdlr):
         return True
 
 
-class UpdateGroupHdlr(MongoDBBackendHdlr):
-    '''
-    RequestHandler for managing user group properties
-
-    action can be addToSet, pull
-    role can be admin
-    '''
-    @authenticated
-    def post(self, username):
-        action = self.get_argument('action')
-        group = self.get_argument('group')
-        result = self.update_passwd(username=username,
-                                    group=group, action=action)
-        self.write(result)
-
-    def update_group(self, username, group, action='addToSet'):
-        ''' Change a logged in user's password '''
-        self.user_exists(username)
-        self.requires_owner_admin(username)
-        self.valid_group(group)
-        self.valid_action(action)
-        self.update_user_profile(username, action, 'groups', group)
-        self.logger.debug("group updated (%s)" % username)
-        return True
-
-
 class UpdateProfileHdlr(MongoDBBackendHdlr):
     @authenticated
     def post(self, username=None):
@@ -227,7 +208,7 @@ class UpdateProfileHdlr(MongoDBBackendHdlr):
         update user profile
         '''
         self.user_exists(username)
-        self.requires_owner_admin(username)
+        self.is_self(username)
         reqkeys = ('fingerprint', 'pubkey')
         if not isinstance(gnupg, dict) and sorted(gnupg.keys()) != reqkeys:
             self._raise(400,
@@ -250,21 +231,18 @@ class UpdatePropertiesHdlr(MongoDBBackendHdlr):
     @authenticated
     def post(self, username=None):
         backup = self.get_argument('backup')
-        cube_quota = self.get_argument('_cube_quota')
+        cube_quota = self.get_argument('cube_quota')
         result = self.update_properties(username=username,
                                         backup=backup,
                                         cube_quota=cube_quota)
-        if result:
-            self.write(True)
-        else:
-            self.write(False)
+        self.write(bool(result))
 
     def update_properties(self, username, backup=True, cube_quota=None):
         '''
         update global user properties
         '''
         self.user_exists(username)
-        self.is_admin(username)
+        self.is_superuser()
         if backup:
             backup = self.get_user_profile(username)
 

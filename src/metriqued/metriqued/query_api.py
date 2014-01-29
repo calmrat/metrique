@@ -2,6 +2,13 @@
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 # Author: "Chris Ward <cward@redhat.com>
 
+'''
+metriqued.query_api
+~~~~~~~~~~~~~~~~~~~
+
+This module contains all the query metriqued api functionality.
+'''
+
 from operator import itemgetter
 import pql
 import random
@@ -27,8 +34,16 @@ class AggregateHdlr(MongoDBBackendHdlr):
         self.write(result)
 
     def aggregate(self, owner, cube, pipeline):
-        self.cube_exists(owner, cube)
-        self.requires_owner_read(owner, cube)
+        '''
+        Wrapper around pymongo's aggregate command.
+
+        Aggregation sytax parsing is handled by `pql`.
+
+        :param cube: cube name
+        :param owner: username of cube owner
+        :param pipeline: pql aggretation pipeline
+        '''
+        self.requires_read(owner, cube)
         pipeline = set_default(pipeline, None, null_ok=False)
         return self.timeline(owner, cube).aggregate(pipeline)
 
@@ -47,8 +62,19 @@ class CountHdlr(MongoDBBackendHdlr):
         self.write(result)
 
     def count(self, owner, cube, query, date=None):
-        self.cube_exists(owner, cube)
-        self.requires_owner_read(owner, cube)
+        '''
+        Wrapper around pymongo's find().count() command.
+
+        Query sytax parsing is handled by `pql`.
+
+        :param cube: cube name
+        :param owner: username of cube owner
+        :param query: The query in pql
+        :param date: date (metrique date range) that should be queried
+                           If date==None then the most recent versions of the
+                           objects will be queried.
+        '''
+        self.requires_read(owner, cube)
 
         query = query or ''
         query = query_add_date(query, date)
@@ -79,8 +105,20 @@ class DeptreeHdlr(MongoDBBackendHdlr):
         self.write(result)
 
     def deptree(self, owner, cube, field, oids, date, level):
-        self.cube_exists(owner, cube)
-        self.requires_owner_read(owner, cube)
+        '''
+        Dependency tree builder. Recursively fetchs objects that
+        are children of the initial set of parent object ids provided.
+
+        :param cube: cube name
+        :param owner: username of cube owner
+        :param field: Field that contains the 'parent of' data
+        :param oids: Object oids to build depedency tree for
+        :param date: date (metrique date range) that should be queried.
+                    If date==None then the most recent versions of the
+                    objects will be queried.
+        :param level: limit depth of recursion
+        '''
+        self.requires_read(owner, cube)
         if level and level <= 0:
             self._raise(400, 'level must be >= 1')
         if isinstance(oids, basestring):
@@ -116,8 +154,15 @@ class DistinctHdlr(MongoDBBackendHdlr):
         self.write(result)
 
     def distinct(self, owner, cube, field):
-        self.cube_exists(owner, cube)
-        self.requires_owner_read(owner, cube)
+        '''
+        Return back a distinct (unique) list of field values
+        across the entire cube dataset
+
+        :param cube: cube name
+        :param owner: username of cube owner
+        :param field: field to get distinct token values from
+        '''
+        self.requires_read(owner, cube)
         return self.timeline(owner, cube).distinct(field)
 
 
@@ -148,8 +193,26 @@ class FindHdlr(MongoDBBackendHdlr):
     def find(self, owner, cube, query, fields=None, date=None,
              sort=None, one=False, explain=False, merge_versions=True,
              skip=0, limit=0):
-        self.cube_exists(owner, cube)
-        self.requires_owner_read(owner, cube)
+        '''
+        Wrapper around pymongo's find() command.
+
+        Query sytax parsing is handled by `pql`.
+
+        :param cube: cube name
+        :param owner: username of cube owner
+        :param query: The query in pql
+        :param fields: Fields that should be returned (comma-separated)
+        :param date: date (metrique date range) that should be queried.
+                    If date==None then the most recent versions of the
+                    objects will be queried.
+        :param explain: return execution plan instead of results
+        :param merge_versions: merge versions where fields values equal
+        :param one: return back only first matching object
+        :param sort: return back results sorted
+        :param skip: number of results matched to skip and not return
+        :param limit: number of results matched to return of total found
+        '''
+        self.requires_read(owner, cube)
 
         sort = self.check_sort(sort)
         fields = self.get_fields(owner, cube, fields)
@@ -230,8 +293,19 @@ class HistoryHdlr(MongoDBBackendHdlr):
         self.write(result)
 
     def history(self, owner, cube, query, by_field=None, date_list=None):
-        self.cube_exists(owner, cube)
-        self.requires_owner_read(owner, cube)
+        '''
+        Run a pql mongodb based query on the given cube and return back the
+        aggregate historical counts of matching results.
+
+        Query sytax parsing is handled by `pql`.
+
+        :param cube: cube name
+        :param owner: username of cube owner
+        :param query: The query in pql
+        :param by_field: Which field to slice/dice and aggregate from
+        :param date: list of dates that should be used to bin the results
+        '''
+        self.requires_read(owner, cube)
 
         date_list = sorted(map(dt2ts, date_list))
         query = '%s and _start < %s and (_end >= %s or _end == None)' % (
@@ -305,8 +379,21 @@ class SampleHdlr(MongoDBBackendHdlr):
 
     def sample(self, owner, cube, sample_size=None, fields=None,
                date=None, query=None):
-        self.cube_exists(owner, cube)
-        self.requires_owner_read(owner, cube)
+        '''
+        Draws a sample of objects at random from the cube.
+
+        Query sytax parsing is handled by `pql`.
+
+        :param cube: cube name
+        :param owner: username of cube owner
+        :param sample_size: Size of the sample
+        :param fields: Fields that should be returned
+        :param date: date (metrique date range) that should be queried
+                        If date==None then the most recent versions of
+                        the objects will be queried
+        :param query: query used to filter sampleset
+        '''
+        self.requires_read(owner, cube)
         fields = self.get_fields(owner, cube, fields)
         query = query_add_date(query, date)
         try:

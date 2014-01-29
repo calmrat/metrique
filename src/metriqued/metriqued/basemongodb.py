@@ -2,6 +2,15 @@
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 # Author: "Chris Ward" <cward@redhat.com>
 
+'''
+metriqued.basemongodb
+~~~~~~~~~~~~~~~~~~~~~
+
+This module contains a convenience wrapper around PyMongo,
+providing methods for simple connection and authentication
+workflows and default configuration and setup.
+'''
+
 import logging
 import os
 try:
@@ -89,11 +98,13 @@ class BaseMongoDB(object):
         return self._proxy
 
     def close(self):
+        '''Close the existing cached mongodb proxy connection'''
         if hasattr(self, '_proxy'):
             self._proxy.close()
 
     @property
     def db(self):
+        '''Load a mongodb database and authenticate, if necessary'''
         retries = 3
         # return the connected, authenticated database object
         while retries:
@@ -144,6 +155,3 @@ class BaseMongoDB(object):
                 self._load_mongo_client(**kwargs)
             self._db_proxy = self._auth_db()
         return self._db_proxy
-
-    def set_collection(self, collection):
-        self.collection = collection
