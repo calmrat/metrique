@@ -2,6 +2,14 @@
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 # Author: "Chris Ward <cward@redhat.com>
 
+'''
+metriquec.cubes.sqldata.generic
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+This module contains the cube methods for extracting
+data from generic SQL data sources.
+'''
+
 from copy import deepcopy
 try:
     from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -16,23 +24,26 @@ import simplejson as json
 import time
 import traceback
 
-from metrique.core_api import HTTPClient
+from metrique import pyclient
 from metriqueu.utils import batch_gen, ts2dt, dt2ts, utcnow
 
 DEFAULT_ENCODING = 'latin-1'
 
 
-class Generic(HTTPClient):
+class Generic(pyclient):
     '''
     Base, common functionality driver for connecting
     and extracting data from SQL databases.
 
-    **This class MUST be subclassed**
+    It is expected that specific database connectors will
+    subclass this basecube to implement db specific connection
+    methods, etc.
 
-    proxy must be defined, in order to know how
+    .proxy must be defined, in order to know how
     to get a connection object to the target sql db.
 
-    FIXME ... MORE DOCS TO COME
+    :param sql_host: teiid hostname
+    :param sql_port: teiid port
     '''
     def __init__(self, sql_host=None, sql_port=None, **kwargs):
         super(Generic, self).__init__(**kwargs)
@@ -47,6 +58,13 @@ class Generic(HTTPClient):
         Returns a dictionary of `id: [(when, field, removed, added)]`
         key:value pairs that represent the activity history for
         the particular ids.
+
+        This is used when originating data source has some form of
+        a 'change log' table that tracks changes to individual
+        object.fields.
+
+        The data returned by this method is used to rebuild historical
+        object states.
         '''
         raise NotImplementedError(
             'The activity_get method is not implemented in this cube.')
@@ -59,9 +77,10 @@ class Generic(HTTPClient):
         history' table row data, and dump those pre-calcultated historical
         state object copies into the timeline.
 
-        :param list force:
+        :param force:
          - None: import for all ids
          - list of ids: import for ids in the list
+        :param cube:
 
         '''
         oids = force or self.sql_get_oids()
@@ -101,6 +120,8 @@ class Generic(HTTPClient):
         self.result = saved
         return
 
+    # FIXME: why are we passing cube and owner in here? it's not currently
+    # being used. Pass it into cube_save?
     def _activity_import(self, oids, cube, owner):
         self.logger.debug('Getting Objects + Activity History')
         docs = self.get_objects(force=oids)
@@ -364,7 +385,7 @@ class Generic(HTTPClient):
     @property
     def fieldmap(self):
         '''
-        Dictionary of field_id: field_name
+        Dictionary of field_id: field_name, as defined in self.fields property
         '''
         fieldmap = defaultdict(str)
         for field in self.fields:
@@ -428,6 +449,8 @@ class Generic(HTTPClient):
 
         If `delta_mtime` evaluates to False then this method is not expected
         to be used.
+
+        :param mtime: datetime string used as 'change since date'
         '''
         mtime_columns = self.get_property('delta_mtime', default=list())
         if not (mtime_columns and mtime):
@@ -455,16 +478,12 @@ class Generic(HTTPClient):
         '''
         Extract routine for SQL based cubes.
 
-        ... docs coming soon ...
-
         :param force:
-            If None (use: default False), then it will try to extract
-            only the objects that have changed since the last extract.
-            If True, then it will try to extract all the objects.
-            If it is a list of oids, then it will try to extract only those
-            objects with oids from the list.
-
-        Accept, but ignore unknown kwargs.
+            for querying for all objects (True) or only those passed in as list
+        :param last_update: manual override for 'changed since date'
+        :param parse_timestamp: flag to convert timestamp timezones in-line
+        :param delay: sleep time between queries (avoid DOSing!)
+        :param kwargs: accepted, but ignored
         '''
         oids = []
         objects = []
@@ -518,7 +537,10 @@ class Generic(HTTPClient):
 
     def get_new_oids(self):
         '''
-        Returns a list of new oids that have not been extracted yet.
+        Returns a list of unique oids that have not been extracted yet.
+
+        Essentially, a diff of distinct oids in the source database
+        compared to cube.
         '''
         table = self.get_property('table')
         db = self.get_property('db')
@@ -678,6 +700,9 @@ class Generic(HTTPClient):
                     yield field, tokens
 
     def sql_get_oids(self):
+        '''
+        Query source database for a distinct list of oids.
+        '''
         table = self.get_property('table')
         _id = self.get_property('column')
         db = self.get_property('db')

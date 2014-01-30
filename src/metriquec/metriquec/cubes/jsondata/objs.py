@@ -2,6 +2,14 @@
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 # Author: "Chris Ward <cward@redhat.com>
 
+'''
+metriquec.cubes.jsondata.objs
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+This module contains the generic metrique cube used
+for exctacting data from JSON data.
+'''
+
 try:
     import simplejson as json
 except ImportError:
@@ -10,9 +18,10 @@ except ImportError:
 from metrique import pyclient
 
 
+# FIXME: USE pandas read_json!
 class Objs(pyclient):
     """
-    Object used for extracting data in JSON format
+    Object used for extracting data in JSON format from files on disk.
     """
     name = 'jsondata_objs'
 

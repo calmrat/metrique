@@ -2,18 +2,38 @@
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 # Author: "Chris Ward <cward@redhat.com>
 
+'''
+metriquec.cubes.github.issue
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+This module contains the generic metrique cube used
+for exctacting issue data from a github repo.
+
+'''
+
 from dateutil.parser import parse as dt_parse
+try:
+    import github
+except ImportError:
+    msg = "requires https://github.com/jacquev6/PyGithub"
+    raise ImportError(msg)
 from itertools import chain
 
 from metrique import pyclient
 from metriqueu.utils import dt2ts
 
-DEFAULT_REPO = 'drpoovilleorg/metrique'
+DEFAULT_REPO = 'kejbaly2/metrique'
 
 
 class Issue(pyclient):
     """
     Object used for extracting issue data from github.com API
+
+    Requires either github auth token or username password!
+
+    :param github_token: github authentication token
+    :param github_user: github username
+    :param github_pass: github password
     """
     name = 'github_issue'
     _proxy = None
@@ -29,6 +49,37 @@ class Issue(pyclient):
         self.config.github_token = token or self.config.get('github_token')
 
     def get_objects(self, repo_fullname=DEFAULT_REPO, since=None):
+        '''
+        Given valid github credentials and a repository name, generate
+        a list of github issue objects for all existing issues in the
+        repository.
+
+        All issues are returned, including open and closed.
+
+        :param repo_fullname: github repository name (ie, 'user/repo')
+        :param since: dateonly return issues updated since date
+
+        An example repo_fullname is 'kejbaly2/metrique'.
+
+        Issue objects contain the following properties:
+            *_oid (issue id)
+            * assignee
+            * body
+            * closed_at
+            * closed_by
+            * created_at
+            * labels
+            * milestone
+            * name
+            * number
+            * repo url
+            * state
+            * title
+            * updated_at
+            * full github url
+            * user (reported by)
+
+        '''
         repo_fullname = repo_fullname
         repo = self.proxy.get_repo(repo_fullname)
         if not repo:
@@ -67,22 +118,14 @@ class Issue(pyclient):
             break
         return self.objects
 
-    def extract(self, repo_fullname=None, since=None, save=True, **kwargs):
-        '''
-        Go to github.com user account page to generate a new token
-
-        repo_fullname::
-            eg, drpoovilleorg/metrique
-        '''
-        objs = self.get_objects(repo_fullname=repo_fullname, since=since)
-        if save:
-            self.cube_save(objs)
-        return objs
-
     @property
     def proxy(self):
+        '''
+        Given a github auth token or username and password,
+        connect to the github API using github python module,
+        cache it and return it to the caller.
+        '''
         if not self._proxy:
-            import github
             if self.config.github_token:
                 self._proxy = github.Github(self.config.github_token)
             else:

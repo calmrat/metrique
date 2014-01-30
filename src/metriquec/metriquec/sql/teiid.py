@@ -2,6 +2,15 @@
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 # Author: "Chris Ward <cward@redhat.com>
 
+'''
+metriquec.sql.teiid
+~~~~~~~~~~~~~~~~~~~
+
+This module contains a convenience wrapper for connecting
+to TEIID databases using postgres (psycopg2).
+'''
+
+import psycopg2
 from psycopg2.extensions import TRANSACTION_STATUS_UNKNOWN
 from psycopg2.extensions import TRANSACTION_STATUS_INERROR
 from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
@@ -16,9 +25,8 @@ class TEIID(BaseSql):
     '''
     Connection object for Teiid database. Uses psycopg2 postgres.
 
-    Only difference from basesql is self.vdb and connection
-    method. To connect, TEIID (psycopg2) expects a single string with
-    all the required arguments included.
+    Only difference from metriquec.sql.basesql is self.vdb and connection
+    method. To connect,
     '''
     def __init__(self, vdb, host, username, password, port, **kwargs):
         super(TEIID, self).__init__(**kwargs)
@@ -30,6 +38,12 @@ class TEIID(BaseSql):
 
     @property
     def connect_str(self):
+        '''
+        TEIID (psycopg2) expects a single string with all the required
+        arguments included in-line.
+
+        eg, connect_str = "dbname=%s user=%s password=%s host=%s port=%s"
+        '''
         connect_str = "dbname=%s user=%s password=%s host=%s port=%s" % (
             self.vdb, self.username, self.password, self.host, self.port)
         self.logger.debug('TEIID Config: %s' % re.sub(
@@ -41,6 +55,17 @@ class TEIID(BaseSql):
         Connect to TEIID, using psycopg2; run some teiid
         specific calls to get ready for querying and return
         the proxy.
+
+        Some versions of TEIID do not support 'set' command at all; so
+        unless we specify ISOLATION_LEVEL_AUTOCOMMIT (zero), psycopg2
+        will send a SET command the teiid server doesn't understand.
+
+        As we're only making reads against the db, we set autocommit=True
+        to ensure cursors are properly flushed/closed after read.
+
+        Connections are cached and reused by default and reconnections only
+        occur if we encouter some sort of transaction error that indicates
+        our connection is some how invalid.
         '''
         err_state = False
         if hasattr(self, '_proxy'):
@@ -56,11 +81,6 @@ class TEIID(BaseSql):
                 del self._proxy
 
         if err_state or not (cached and hasattr(self, '_proxy')):
-            try:
-                # FIXME: only try to import if not already imported...
-                import psycopg2
-            except ImportError:
-                raise ImportError("pip install psycopg2")
             proxy = psycopg2.connect(self.connect_str)
             self.logger.debug(' ... Connected (New)')
             # Teiid does not support 'set' command at all; so unless we

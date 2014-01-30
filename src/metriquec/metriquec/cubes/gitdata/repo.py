@@ -2,21 +2,21 @@
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 # Author: "Chris Ward <cward@redhat.com>
 
-try:
-    eval('{x: x for x in range(1)}')
-except SyntaxError:
-    # gittle has tons of dict comprehensions...
-    raise RuntimeError("This cube requires python 2.7+")
+'''
+metriquec.cubes.gitdata.repo
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-try:
-    from gittle.gittle import Gittle
-except ImportError:
-    raise ImportError("`pip install gittle` required")
+This module contains the generic metrique cube used
+for exctacting data from a git repository.
 
+.. note:: This cube requires python 2.7+
+'''
+
+from gittle.gittle import Gittle
+from gittle.utils.git import commit_info
 import os
 import re
 import subprocess
-from gittle.utils.git import commit_info
 
 from metrique import pyclient
 
@@ -26,7 +26,7 @@ signed_off_by_re = re.compile('Signed-off-by: (.+)', re.I)
 acked_by_re = re.compile('Acked-by: (.+)', re.I)
 hash_re = re.compile('[0-9a-f]{40}', re.I)
 
-TMP_DIR = '~/.metrique/gitrepos'
+CACHE_DIR = '~/.metrique/cache'
 
 
 class Repo(pyclient):
@@ -34,23 +34,27 @@ class Repo(pyclient):
     Basic gitrepo cube for extracting git object data from git repos
 
     Currently supports extracting the following::
-
-        commit
+        * commit
     '''
     name = 'gitdata_repo'
 
-    def __init__(self, **kwargs):
+    def __init__(self, cache_dir=None, **kwargs):
         super(Repo, self).__init__(**kwargs)
-        self.tmp_dir = os.path.expanduser(TMP_DIR)
+        cache_dir = cache_dir or CACHE_DIR
+        self.cache_dir = os.path.expanduser(cache_dir)
 
-    def get_repo(self, uri, pull=True, tmp_dir=None):
+    def get_repo(self, uri, pull=True):
+        '''
+        Given a git repo, clone (cache) it locally and
+        return back a Gittle object instance to caller.
+
+        :param uri: git repo uri
+        :param pull: whether to pull after cloning (or loading cache)
+        '''
         # FIXME: use gittle to clone repos; bare=True
-        if tmp_dir is None:
-            tmp_dir = self.tmp_dir
-        tmp_dir = os.path.expanduser(tmp_dir)
         # make the uri safe for filesystems
         _uri = "".join(x for x in uri if x.isalnum())
-        repo_path = os.path.join(tmp_dir, _uri)
+        repo_path = os.path.join(self.cache_dir, _uri)
         self.repo_path = repo_path = os.path.expanduser(repo_path)
         self.logger.debug('GIT URI: %s' % uri)
         if pull:
@@ -120,6 +124,21 @@ class Repo(pyclient):
         return commits
 
     def get_objects(self, uri, fetch=True, **kwargs):
+        '''
+        Walk through repo commits to generate a list of repo commit
+        objects.
+
+        Each object has the following properties:
+            * repo uri
+            * general commit info (who, when, sha, etc)
+             + for specifics: see gittle.utils.git.commit_info
+            * files added, removed fnames
+            * lines added, removed
+            * acked_by
+            * signed_off_by
+            * resolves
+            * related
+        '''
         self.logger.debug("Extracting GIT repo: %s" % uri)
         self.repo = self.get_repo(uri, fetch)
         cmd = 'git rev-list --all'

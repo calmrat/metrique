@@ -2,16 +2,28 @@
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 # Author: "Chris Ward <cward@redhat.com>
 
+'''
+metriquec.sql.basesql
+~~~~~~~~~~~~~~~~~~~~~
+
+This module contains a generic, reuable SQL connection
+and authentication wrapper for connecting to databases.
+'''
+
 import logging
 import re
 
 
 class BaseSql(object):
     '''
-    Metrique SQL obj; contains helper methods for
-     * executing SQL
+    Baseclass for SQL connectors; contains generic methods for
+     * consistently executing SQL
      * preparing select statements for extraction of object
        column/field values
+
+    It is expected that database specific drivers will subclass
+    this class to add connection and authentication methods
+    required to obtain a cursor for querying.
     '''
 
     def __init__(self, logger=None):
@@ -22,6 +34,13 @@ class BaseSql(object):
         self._auto_reconnect_attempted = False
 
     def get_proxy(self, **kwargs):
+        '''
+        Database specific drivers must implemented this method.
+
+        It is expected that by calling this method, the instance
+        will set ._proxy with a auhenticated connection, which is
+        also returned to the caller.
+        '''
         raise NotImplementedError(
             "Driver has not provided a get_proxy method!")
 
@@ -30,6 +49,12 @@ class BaseSql(object):
         Shortcut for getting a cursor, cleaning the sql a bit,
         adding the LIMIT clause, executing the sql, fetching
         all the results
+
+        If certain failures occur, this method will authomatically
+        attempt to reconnect and rerun.
+
+        :param sql: sql string to execute
+        :param cached: flag for using a chaced proxy or not
         '''
         self.logger.debug('Fetching rows...')
         proxy = self.get_proxy(cached=cached)

@@ -2,6 +2,18 @@
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 # Author: "Chris Ward <cward@redhat.com>
 
+'''
+metriquec.cubes.osinfo.rpm
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+This module contains the generic metrique cube used
+for extracting installed RPM details on a RPM based system.
+
+.. note:: Target system must be RPM based!
+
+.. note:: Requires paramiko python package!
+'''
+
 from datetime import datetime
 import getpass
 import shlex
@@ -9,7 +21,6 @@ import socket
 import subprocess
 
 from metrique import pyclient
-#from metrique.core_api import BaseClient as pyclient
 from metriqueu.utils import dt2ts
 
 FIELDS = ["name", "version", "release", "arch", "nvra", "license",
@@ -19,7 +30,13 @@ FIELDS = ["name", "version", "release", "arch", "nvra", "license",
 
 class Rpm(pyclient):
     """
-    Object used for extracting data in JSON format
+    Class used for extracting data related to RPM's installed on
+    a given system.
+
+    :param fields: rpm -q fields to query
+    :param ssh_host: hostname for running query on a remote host
+    :param ssh_user: username for running query on a remote host
+    :param ssh_pass: password for running query on a remote host
     """
     name = 'osinfo_rpm'
 
@@ -50,6 +67,24 @@ class Rpm(pyclient):
         return subprocess.check_output(cmd)
 
     def get_objects(self):
+        '''
+        Run `rpm -q` command on a {local, remote} system to get back
+        details of installed RPMs.
+
+        Default rpm details extracted are as follows:
+            * name
+            * version
+            * release
+            * arch
+            * nvra
+            * license
+            * os
+            * packager
+            * platform
+            * sourcepackage
+            * sourcerpm
+            * summary
+        '''
         fmt = ':::'.join('%%{%s}' % f for f in self.fields)
         if self.ssh_host:
             output = self._ssh_cmd(fmt)
@@ -69,10 +104,6 @@ class Rpm(pyclient):
             obj['_oid'] = '%s__%s' % (host, obj['nvra'])
             self.objects.append(obj)
         return self.objects
-
-    def extract(self):
-        objects = self.get_objects()
-        return self.cube_save(objects)
 
 
 if __name__ == '__main__':

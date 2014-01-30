@@ -3,16 +3,29 @@
 # Author: "Chris Ward <cward@redhat.com>
 
 '''
-argparsers.py contains a CLI for metrique client cubes.
+metriquec.argparsers
+~~~~~~~~~~~~~~~~~~~~
+
+This module contains a generic CLI for metrique client
+cubes.
 
 To use the cli, cubes must import the cube_cli function
-and initiatlize it with the cube class::
+and initiatlize it with the cube class. For example::
 
     # ... ^^^ cube class definition above ^^^ ...
     if __name__ == '__main__':
         from metriquec.argparsers import cube_cli
-        cube_cli(Bug)
+        cube_cli(CubeClass)
+
+The following CLI functionaltiity is implemented:
+    * config overrides
+    * cube.extract()
+    * cube.register()
+
+See `python cube --help` for more details of the config
+options that can be overriden at runtime.
 '''
+
 import argparse
 import simplejson as json
 

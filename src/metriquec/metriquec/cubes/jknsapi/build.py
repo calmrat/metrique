@@ -3,7 +3,11 @@
 # Author: "Chris Ward <cward@redhat.com>
 
 '''
-Basic Jenkins.build cube for extracting BUILD data from Jenkins
+metriquec.cubes.jknsapi.build
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+This module contains the generic metrique cube used
+for exctacting build / test run data from Jenkins.
 '''
 
 try:
@@ -22,6 +26,8 @@ from metriqueu.utils import dt2ts
 
 MAX_WORKERS = 25
 SSL_VERIFY = True
+# MOVE ALL this to metrique.config; as they're generic and used
+# in several other cubes too
 
 rget = partial(requests.get, verify=SSL_VERIFY)
 
@@ -30,6 +36,13 @@ rget = partial(requests.get, verify=SSL_VERIFY)
 
 
 def obj_hook(dct):
+    '''
+    JSON decoder.
+
+    Converts the following:
+        * 'timestamp' from epoch milliseconds to epoch seconds
+        * 'date' strings to epoch seconds
+    '''
     _dct = {}
     for k, v in dct.items():
         _k = str(k).replace('.', '_')
@@ -47,6 +60,9 @@ def obj_hook(dct):
 
 
 def id_when(id):
+    '''
+    Convert akwards datetime strings to ISO format.
+    '''
     if isinstance(id, datetime):
         return id
     else:
@@ -58,11 +74,30 @@ def id_when(id):
 
 class Build(pyclient):
     """
-    Object used for communication with Jenkins Build (job detail) interface
+    Object used for communication with Jenkins Build (job detail) interface.
     """
     name = 'jknsapi_build'
 
     def get_objects(self, uri, api_path='api/json', force=False, **kwargs):
+        '''
+        Query the Jenkins API and generate build /test run detail objects.
+
+        By default, requests are executed across many worker threads to
+        speed up extraction, since most of the processing time is consumed
+        waiting for response from jenkins.
+
+        :param uri: uri (file://, http(s)://) of csv file to load
+        :param api_path: relative uri path for rest api
+        :param force: flag for forcing full import; ie, no deltas
+
+        Object properties generated are as follows:
+            * _oid: '%s #%s' % (job_name, build_number)
+            * job_uri
+            * job name
+            * job number
+            * test report uri
+            * test report (see jenkins API docs for specifics)
+        '''
         self.api_path = api_path
         args = 'tree=jobs[name,builds[number]]'
         _uri_jobs = '%s/%s?%s' % (uri, self.api_path, args)
@@ -88,7 +123,7 @@ class Build(pyclient):
                                                  len(jobs),
                                                  len(job['builds'])))
             nums = [b['number'] for b in job['builds']]
-            builds = [self.get_build(uri, job_name, n) for n in nums]
+            builds = [self._get_build(uri, job_name, n) for n in nums]
         return builds
 
     def _extract_async(self, uri, jobs, force):
@@ -104,7 +139,7 @@ class Build(pyclient):
                 nums = [b['number'] for b in job['builds']]
                 for n in nums:
                     future_builds.append(
-                        executor.submit(self.get_build, uri, job_name, n))
+                        executor.submit(self._get_build, uri, job_name, n))
 
                 for future in as_completed(future_builds):
                     try:
@@ -114,7 +149,7 @@ class Build(pyclient):
                             '(%s) Failed to save: %s' % (e, job_name))
         return builds
 
-    def get_build(self, uri, job_name, build_number):
+    def _get_build(self, uri, job_name, build_number):
         _oid = '%s #%s' % (job_name, build_number)
 
         _build = {}

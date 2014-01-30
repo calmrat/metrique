@@ -2,6 +2,14 @@
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 # Author: "Chris Ward <cward@redhat.com>
 
+'''
+metriquec.cubes.sqldata.teiid
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+This module contains the cube methods for extracting
+data from SQL TEIID data sources.
+'''
+
 from metrique.utils import get_cube
 sqldata_generic = get_cube('sqldata_generic')
 
@@ -11,6 +19,12 @@ from metriquec.sql.teiid import TEIID
 class Teiid(sqldata_generic):
     '''
     Driver which adds support for TEIID based sql cubes.
+
+    :param sql_host: teiid hostname
+    :param sql_port: teiid port
+    :param sql_vdb: teiid virtual database name
+    :param sql_username: teiid username
+    :param sql_password: teiid password
     '''
     def __init__(self, sql_host=None, sql_port=None, sql_vdb=None,
                  sql_username=None, sql_password=None, **kwargs):
@@ -33,6 +47,10 @@ class Teiid(sqldata_generic):
 
     @property
     def proxy(self):
+        '''
+        Connect, authenticate and cache TEIID db connection and return it
+        to caller.
+        '''
         if not hasattr(self, '_teiid'):
             for arg in ('sql_vdb', 'sql_host', 'sql_port',
                         'sql_username', 'sql_password'):

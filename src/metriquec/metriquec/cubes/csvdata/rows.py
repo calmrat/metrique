@@ -2,6 +2,14 @@
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 # Author: "Chris Ward <cward@redhat.com>
 
+'''
+metriquec.cubes.csvdata.rows
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+This module contains the generic metrique cube used
+for exctacting data from CSV.
+'''
+
 import itertools
 import os
 import pandas as pd
@@ -14,7 +22,9 @@ from metrique import pyclient
 
 class Rows(pyclient):
     """
-    Object used for extracting data from CSV files
+    Object used for extracting data from CSV files.
+
+    Esentially, a wrapper for pandas.read_csv method.
 
     It's possible to load from a http(s):// or file://.
 
@@ -24,6 +34,28 @@ class Rows(pyclient):
     name = 'csvdata_rows'
 
     def get_objects(self, uri, _oid=None, _start=None, **kwargs):
+        '''
+        Load and transform csv data into a list of dictionaries.
+
+        Each row in the csv will result in one dictionary in the list.
+
+        :param uri: uri (file://, http(s)://) of csv file to load
+        :param _oid:
+            column or func to apply to map _oid in all resulting objects
+        :param _start:
+            column or func to apply to map _start in all resulting objects
+        :param kwargs: kwargs to pass to pandas.read_csv method
+
+        _start and _oid arguments can be a column name or a function
+        which accepts a single argument -- the row being extracted.
+
+        If either is a column name (string) then that column will be applied
+        as _oid for each object generated.
+
+        If either is a function, the function will be applied per each row
+        and the result of the function will be assigned to the _start
+        or _oid, respectively.
+        '''
         path = self.save_uri(uri)
         objects = pd.read_csv(path, **kwargs)
         # convert to list of dicts
@@ -50,10 +82,10 @@ class Rows(pyclient):
         '''
         Load csv from a given uri and save it to a temp file
         or load the csv file directly, if already on disk.
+
         Supports: http(s) or from file
 
-        :param string uri:
-            uri path to load csv contents from
+        :param uri: uri path (file://, http(s)://) to load csv contents from
         '''
         self.logger.debug("Loading CSV: %s" % uri)
         if re.match('https?://', uri):
@@ -70,6 +102,11 @@ class Rows(pyclient):
     def set_column(self, objects, key, value, static=False):
         '''
         Save an additional column/field to all objects in memory
+
+        :param objects: objects (rows) to manipulate
+        :param key: key name that will be assigned to each object
+        :param value: value that will be assigned to each object
+        :param static: flag if value should applied to key per object 'as-is'
         '''
         if type(value) is type or hasattr(value, '__call__'):
             # class or function; use the resulting object after init/exec
