@@ -12,11 +12,6 @@ for exctacting issue data from a github repo.
 '''
 
 from dateutil.parser import parse as dt_parse
-try:
-    import github
-except ImportError:
-    msg = "requires https://github.com/jacquev6/PyGithub"
-    raise ImportError(msg)
 from itertools import chain
 
 from metrique import pyclient
@@ -62,7 +57,7 @@ class Issue(pyclient):
         An example repo_fullname is 'kejbaly2/metrique'.
 
         Issue objects contain the following properties:
-            *_oid (issue id)
+            * _oid (issue id)
             * assignee
             * body
             * closed_at
@@ -125,6 +120,12 @@ class Issue(pyclient):
         connect to the github API using github python module,
         cache it and return it to the caller.
         '''
+        try:
+            import github
+        except ImportError:
+            msg = "requires https://github.com/jacquev6/PyGithub"
+            raise ImportError(msg)
+
         if not self._proxy:
             if self.config.github_token:
                 self._proxy = github.Github(self.config.github_token)

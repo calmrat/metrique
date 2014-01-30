@@ -12,8 +12,6 @@ for exctacting data from a git repository.
 .. note:: This cube requires python 2.7+
 '''
 
-from gittle.gittle import Gittle
-from gittle.utils.git import commit_info
 import os
 import re
 import subprocess
@@ -51,6 +49,7 @@ class Repo(pyclient):
         :param uri: git repo uri
         :param pull: whether to pull after cloning (or loading cache)
         '''
+        from gittle.gittle import Gittle
         # FIXME: use gittle to clone repos; bare=True
         # make the uri safe for filesystems
         _uri = "".join(x for x in uri if x.isalnum())
@@ -75,6 +74,7 @@ class Repo(pyclient):
         return Gittle(repo_path)
 
     def _build_commits(self, delta_shas, uri):
+        from gittle.utils.git import commit_info
         cmd = 'git --no-pager log --all --format=sha:%H --numstat'
         p = subprocess.Popen(cmd.split(), stdout=subprocess.PIPE)
         all_logs = p.communicate()[0]
@@ -130,8 +130,7 @@ class Repo(pyclient):
 
         Each object has the following properties:
             * repo uri
-            * general commit info (who, when, sha, etc)
-             + for specifics: see gittle.utils.git.commit_info
+            * general commit info (see gittle.utils.git.commit_info)
             * files added, removed fnames
             * lines added, removed
             * acked_by

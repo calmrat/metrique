@@ -36,9 +36,6 @@ SSL_CERT = os.path.join(ETC_DIR, 'metrique.cert')
 SSL_KEY = os.path.join(ETC_DIR, 'metrique.key')
 SSL_PEM = os.path.join(ETC_DIR, 'metrique.pem')
 
-here = os.path.dirname(os.path.abspath(__file__))
-STATIC_PATH = os.path.join(here, 'static/')
-
 
 class metriqued_config(TornadoConfig):
     '''

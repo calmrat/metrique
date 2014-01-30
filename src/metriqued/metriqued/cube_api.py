@@ -4,7 +4,7 @@
 
 '''
 metriqued.cube_api
-~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~
 
 This module contains all Cube related api functionality.
 '''

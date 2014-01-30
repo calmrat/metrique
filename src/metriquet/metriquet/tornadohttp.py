@@ -44,7 +44,8 @@ CACHE_DIR = os.path.join(USER_DIR, 'cache')
 PID_DIR = os.path.join(USER_DIR, 'pids')
 LOG_DIR = os.path.join(USER_DIR, 'logs')
 TEMP_DIR = os.path.join(USER_DIR, 'tmp')
-STATIC_PATH = os.path.join(USER_DIR, 'static/')
+STATIC_DIR = os.path.join(USER_DIR, 'static/')
+API_DOCS_PATH = os.path.join(STATIC_DIR, 'api_docs/')
 TEMPLATE_PATH = os.path.join(USER_DIR, 'templates/')
 
 
@@ -106,6 +107,7 @@ class TornadoConfig(JSONConf):
         ssl_key = '%s.key' % self.name
 
         config = {
+            'api_docs': API_DOCS_PATH,
             'autoreload': False,
             'cachedir': CACHE_DIR,
             'configdir':  ETC_DIR,
@@ -130,7 +132,7 @@ class TornadoConfig(JSONConf):
             'ssl': False,
             'ssl_certificate': ssl_cert,
             'ssl_certificate_key': ssl_key,
-            'static_path': STATIC_PATH,
+            'static_path': STATIC_DIR,
             'temp_path': TEMP_DIR,
             'template_path': TEMPLATE_PATH,
             'userdir': USER_DIR,

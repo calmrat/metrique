@@ -87,6 +87,7 @@ GNUPG_DIR = os.path.join(USER_DIR, 'gnupg')
 
 cwd = os.getcwd()
 STATIC_PATH = os.path.join(cwd, 'src/metriqued/metriqued/static/')
+API_DOCS_PATH = os.path.join(cwd, 'docs/build/html/')
 
 SYS_FIRSTBOOT_PATH = os.path.join(USER_DIR, '.firstboot_sys')
 
@@ -152,6 +153,7 @@ DEFAULT_METRIQUE_JSON = DEFAULT_METRIQUE_JSON.strip()
 
 DEFAULT_METRIQUED_JSON = '''
 {
+    "api_docs": "%s",
     "cookie_secret": "%s",
     "debug": true,
     "host": "127.0.0.1",
@@ -167,7 +169,8 @@ DEFAULT_METRIQUED_JSON = '''
     "ssl_certificate_key": "%s",
     "superusers": ["admin", "%s"]
 }
-''' % (rand_chars(20), LOCAL_IP, SSL_CERT, SSL_KEY, USER)
+''' % (API_DOCS_PATH, rand_chars(20), LOCAL_IP,
+       SSL_CERT, SSL_KEY, USER)
 DEFAULT_METRIQUED_JSON = DEFAULT_METRIQUED_JSON.strip()
 
 root_password = rand_chars()

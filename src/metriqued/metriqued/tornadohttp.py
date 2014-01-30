@@ -13,6 +13,7 @@ and url handler definitions, start-up checks, etc.
 
 import logging
 import os
+from tornado.web import StaticFileHandler
 import simplejson as json
 
 from metriquet.tornadohttp import TornadoHTTPServer
@@ -107,7 +108,10 @@ class MetriqueHTTP(TornadoHTTPServer):
                     mongodb_config=self.dbconf,
                     logger=self.logger)
 
+        api_docs = self.conf.api_docs
         base_handlers = [
+            (r"/api/v2/docs/(.*)", StaticFileHandler, {'path': api_docs}),
+
             (r"/register", user_api.RegisterHdlr, init),
             (r"/login", user_api.LoginHdlr, init),
             (r"/logout", user_api.LogoutHdlr, init),
