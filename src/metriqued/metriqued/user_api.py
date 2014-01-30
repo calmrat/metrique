@@ -43,7 +43,7 @@ class AboutMeHdlr(MongoDBBackendHdlr):
         :param username: username whose profile is being requested
         '''
         mask = ['passhash']
-        if not self.is_self():
+        if not self.is_self(username):
             self._raise(401, "not authorized")
         self.user_exists(username, raise_if_not=True)
         return self.get_user_profile(username, mask=mask)
@@ -147,7 +147,7 @@ class RegisterHdlr(MongoDBBackendHdlr):
                'cube_quota': cube_quota,
                '_passhash': passhash,
                }
-        self.user_profile(admin=True).save(doc, upsert=True, safe=True)
+        self.user_profile(admin=True).save(doc, safe=True)
         self.logger.info("new user added (%s)" % (username))
         return True
 
@@ -216,7 +216,7 @@ class UpdatePasswordHdlr(MongoDBBackendHdlr):
         :param old_password: old (current) password for validation
         '''
         # FIXME: take out a lock... for updating any properties
-        if not self.is_self():
+        if not self.is_self(username):
             self._raise(401, "not authorized")
         self.user_exists(username, raise_if_not=True)
         if not new_password:
@@ -261,7 +261,7 @@ class UpdateProfileHdlr(MongoDBBackendHdlr):
         :param username: username whose profile will be manipulated
         :param gnupg: gnupg public key
         '''
-        if not self.is_self():
+        if not self.is_self(username):
             self._raise(401, "not authorized")
         self.user_exists(username, raise_if_not=True)
         reqkeys = ('fingerprint', 'pubkey')
