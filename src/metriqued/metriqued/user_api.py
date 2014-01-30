@@ -11,6 +11,7 @@ This module contains all the user related api functionality.
 
 from passlib.hash import sha256_crypt
 import re
+import time
 from tornado.web import authenticated
 
 from metriqued.core_api import MongoDBBackendHdlr
@@ -22,10 +23,7 @@ INVALID_USERNAME_RE = re.compile('[^a-z]', re.I)
 
 class AboutMeHdlr(MongoDBBackendHdlr):
     '''
-    RequestHandler for seeing your user profile
-
-    action can be addToSet, pull
-    role can be read, write, admin
+    RequestHandler for retreiving a user profile
     '''
     @authenticated
     def get(self, username):
@@ -36,19 +34,40 @@ class AboutMeHdlr(MongoDBBackendHdlr):
         self.write(result)
 
     def aboutme(self, username):
-        self.user_exists(username)
+        '''
+        Get a user profile.
+
+        Requires the requesting user be authenticated as the same
+        user who's details are being requested or a superuser.
+
+        :param username: username whose profile is being requested
+        '''
         mask = ['passhash']
-        if self.is_self(username):
-            return self.get_user_profile(username, mask=mask)
-        else:
-            mask += []
+        if not self.is_self():
+            self._raise(401, "not authorized")
+        self.user_exists(username, raise_if_not=True)
+        return self.get_user_profile(username, mask=mask)
 
 
 class LoginHdlr(MongoDBBackendHdlr):
     '''
-    RequestHandler for logging a user into metrique
+    RequestHandler for authenticating a user into metrique
     '''
     def post(self):
+        '''
+        Authenticate the user.
+
+        Check for existing secure cookie if available.
+
+        Otherwise, fallback to checking auth headers; basic, kerberos,
+        etc. depending on what's enabled.
+
+        Redirect user according to the 'next' argument's value, if
+        the user was directed to login from some other resource
+        they were trying to access which requires authentication.
+
+        Raise 401 if there are any issues
+        '''
         if self.current_user:
             ok, username = True, self.current_user
         else:
@@ -61,12 +80,13 @@ class LoginHdlr(MongoDBBackendHdlr):
                 else:
                     ok = True
             else:
-                # FIXME: should we sleep a split sec for failed auth attempts?
-                self._raise(401, "log-in failed")
+                time.sleep(1)  # sleep for a second
+                self._raise(401, "authentication failed")
         if ok:
-            # bump expiration...
+            self.clear_cookie("user")
             self.set_secure_cookie("user", username)
-        self.logger.debug("AUTH HEADERS ... [%s] %s" % (username, ok))
+        result = 'OK' if ok else 'FAILED'
+        self.logger.debug("Auth %s ... [%s]" % (result, username))
         self.write(ok)
 
 
@@ -76,33 +96,43 @@ class LogoutHdlr(MongoDBBackendHdlr):
     '''
     @authenticated
     def post(self):
+        '''
+        Clear any existing secure cookies.
+        '''
         self.clear_cookie("user")
         self.write(True)
 
 
-# FIXME: if there are no other users configured already
-# then the first user registered MUST be added to 'admin' group
 class RegisterHdlr(MongoDBBackendHdlr):
     '''
     RequestHandler for registering new users to metrique
     '''
     def post(self):
-        # FIXME: add a 'cube registration' lock
         username = self.get_argument('username')
         password = self.get_argument('password')
-        result = self.register(username=username,
-                               password=password)
-        # FIXME: DO THIS FOR ALL HANDLERS! REST REST REST
-        # http://www.w3.org/Protocols/rfc2616/rfc2616-sec10.html
+        result = self.register(username=username, password=password)
         self.set_status(201, 'Registration successful: %s' % username)
         self.write(result)
 
     def register(self, username, password=None, null_password_ok=False):
+        '''
+        Register a given username, if available.
+
+        Username's must be ascii alpha characters only (a-z).
+
+        Usernames are automatically normalized in the following ways:
+            * lowercased
+
+        :param username: username to register
+        :param password: password to register for username
+        :param null_password_ok: flag for whether empty password is ok (krb5)
+        '''
+        # FIXME: add a 'cube registration' lock
         if INVALID_USERNAME_RE.search(username):
             self._raise(
                 400, "Invalid username; ascii alpha [a-z] characters only!")
         username = username.lower()
-        if self.user_exists(username):
+        if self.user_exists(username, raise_if_not=False):
             self._raise(409, "[%s] user exists" % username)
         passhash = sha256_crypt.encrypt(password) if password else None
         if not (passhash or null_password_ok):
@@ -117,28 +147,35 @@ class RegisterHdlr(MongoDBBackendHdlr):
                'cube_quota': cube_quota,
                '_passhash': passhash,
                }
-        self.user_profile(admin=True).save(doc, upset=True, safe=True)
-        self.logger.debug("new user added (%s)" % (username))
+        self.user_profile(admin=True).save(doc, upsert=True, safe=True)
+        self.logger.info("new user added (%s)" % (username))
         return True
 
 
 class RemoveHdlr(MongoDBBackendHdlr):
     '''
-    RequestHandler for removing existing users to metrique
+    RequestHandler for removing existing users.
     '''
     def delete(self, username):
         result = self.remove(username=username)
         self.write(result)
 
     def remove(self, username):
-        username = username.lower()
+        '''
+        Remove an existing user.
+
+        Requires requesting user be a superuser.
+
+        Raises an exception if the user doesn't exist.
+
+        :param username: username whose profile will be removed
+        '''
         if not self.is_superuser():
-            self._raise(403, 'admin privleges required!')
-        if not self.user_exists(username):
-            self._raise(409, "user does not exist")
+            self._raise(401, "not authorized")
+        username = username.lower()
+        self.user_exists(username, raise_if_not=True)
         # delete the user's profile
         spec = {'_id': username}
-        self.logger.debug(spec)
         self.user_profile(admin=True).remove(spec)
 
         # remove the user's cubes
@@ -147,9 +184,8 @@ class RemoveHdlr(MongoDBBackendHdlr):
         for cube in cubes:
             cube = cube.get('_id')
             self.mongodb_config.db_timeline_admin[cube].drop()
-
         # FIXME: # remove the user from cube acls?
-        self.logger.debug("user removed (%s)" % username)
+        self.logger.info("user removed (%s)" % username)
         return True
 
 
@@ -172,14 +208,22 @@ class UpdatePasswordHdlr(MongoDBBackendHdlr):
             self.write(result)
 
     def update_passwd(self, username, new_password, old_password=None):
-        ''' Change a logged in user's password '''
+        '''
+        Change a logged in user's password.
+
+        :param username: username who's password will be updated
+        :param new_password: new password to apply to user's profile
+        :param old_password: old (current) password for validation
+        '''
         # FIXME: take out a lock... for updating any properties
-        self.user_exists(username)
-        self.is_self(username)
+        if not self.is_self():
+            self._raise(401, "not authorized")
+        self.user_exists(username, raise_if_not=True)
         if not new_password:
             self._raise(400, 'new password can not be null')
         if not old_password:
-            old_password = ''
+            if not self.is_superuser():
+                self._raise(400, 'old password can not be null')
         old_passhash = None
         if old_password:
             old_passhash = self.get_user_profile(username, ['_passhash'])
@@ -191,11 +235,15 @@ class UpdatePasswordHdlr(MongoDBBackendHdlr):
         else:
             new_passhash = sha256_crypt.encrypt(new_password)
         self.update_user_profile(username, 'set', '_passhash', new_passhash)
-        self.logger.debug("passwd updated (%s)" % username)
+        self.logger.debug(
+            "password updated (%s) by %s" % (username, self.current_user))
         return True
 
 
 class UpdateProfileHdlr(MongoDBBackendHdlr):
+    '''
+    RequestHandler for updating existing user profiles non-system properties.
+    '''
     @authenticated
     def post(self, username=None):
         gnupg = self.get_argument('gnupg')
@@ -205,10 +253,17 @@ class UpdateProfileHdlr(MongoDBBackendHdlr):
 
     def update_profile(self, username, gnupg=None):
         '''
-        update user profile
+        Update user profile non-system properties.
+
+        A backup of the current profile state will be returned
+        after succesful modification of user profile.
+
+        :param username: username whose profile will be manipulated
+        :param gnupg: gnupg public key
         '''
-        self.user_exists(username)
-        self.is_self(username)
+        if not self.is_self():
+            self._raise(401, "not authorized")
+        self.user_exists(username, raise_if_not=True)
         reqkeys = ('fingerprint', 'pubkey')
         if not isinstance(gnupg, dict) and sorted(gnupg.keys()) != reqkeys:
             self._raise(400,
@@ -227,6 +282,7 @@ class UpdateProfileHdlr(MongoDBBackendHdlr):
 
 class UpdatePropertiesHdlr(MongoDBBackendHdlr):
     '''
+    RequestHandler for updating existing user profiles system properties.
     '''
     @authenticated
     def post(self, username=None):
@@ -237,26 +293,27 @@ class UpdatePropertiesHdlr(MongoDBBackendHdlr):
                                         cube_quota=cube_quota)
         self.write(bool(result))
 
-    def update_properties(self, username, backup=True, cube_quota=None):
+    def update_properties(self, username, cube_quota=None):
         '''
-        update global user properties
+        Update user profile system properties.
+
+        A backup of the current profile state will be returned
+        after succesful modification of user profile.
+
+        Requesting user must be a superuser to update system level
+        user profile properties.
+
+        :param username: username whose profile will be manipulated
+        :param gnupg: maximum number of cubes the user can create
         '''
-        self.user_exists(username)
-        self.is_superuser()
-        if backup:
-            backup = self.get_user_profile(username)
-
-        spec = {'_id': username}
-        cuba_quota = {'_cube_quote': cube_quota}
-
+        if not self.is_superuser():
+            self._raise(401, "not authorized")
+        self.user_exists(username, raise_if_not=True)
+        backup = self.get_user_profile(username)
         # FIXME: make update_user_profile (or new method) to accept
         # a dict to apply not just a single key/value
-        update = {'$set': cuba_quota}
-        result = self.user_profile(admin=True).update(spec, update,
-                                                      safe=True)
+        self.update_user_profile(username, 'set', 'cube_quota', cube_quota)
+        current = self.get_user_profile(username)
         self.logger.debug(
-            "user properties updated (%s): %s" % (username, result))
-        if backup:
-            return backup
-        else:
-            return True
+            "user properties updated (%s): %s" % (username, current))
+        return {'now': current, 'previous': backup}
