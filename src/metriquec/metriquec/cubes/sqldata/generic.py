@@ -10,7 +10,7 @@ This module contains the cube methods for extracting
 data from generic SQL data sources.
 '''
 
-from copy import deepcopy
+from copy import deepcopy, copy
 try:
     from concurrent.futures import ThreadPoolExecutor, as_completed
 except ImportError:
@@ -472,6 +472,42 @@ class Generic(pyclient):
                            ' OR '.join(filters))
         rows = self.proxy.fetchall(sql) or []
         return [x[0] for x in rows]
+
+    def get_metrics(self, names=None):
+        '''
+        Run metric SQL defined in the cube.
+        '''
+        if isinstance(names, basestring):
+            names = [names]
+
+        start = utcnow()
+
+        obj = {
+            '_start': start,
+            '_end': None,
+        }
+
+        metrics = []
+        for metric, definition in self.metrics.items():
+            if names and metric not in names:
+                continue
+            sql = definition['sql']
+            fields = definition['fields']
+            _oid = definition['_oid']
+            rows = self.proxy.fetchall(sql)
+            for row in rows:
+                d = copy(obj)
+
+                # derive _oid from metric name and row contents
+                d['_oid'] = _oid(metric, row)
+
+                for i, element in enumerate(row):
+                    d[fields[i]] = element
+
+                # append to the local metric result list
+                metrics.append(d)
+        self.objects = metrics
+        return metrics
 
     def get_objects(self, force=None, last_update=None, parse_timestamp=None,
                     delay=None, **kwargs):
