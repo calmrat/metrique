@@ -59,22 +59,22 @@ The examples given below use yum and assume fedora rpm package names::
     # our installation directory is always a python virtualenv
     sudo pip-accel install virtualenv
 
-
     # get the metrique sources
     git clone https://github.com/kejbaly2/metrique.git
     cd metrique
 
     # deploy metrique master branch into a virtual environment
     # including dependencies. WARNING: This takes 10-15 minutes!
-    ./manage.py deploy ~/virtenv-metrique --pandas --matplotlib --ipython
-
+    ./manage.py -V ~/virtenv-metrique deploy --ipython
 
     # activate the virtual environment
     source ~/virtenv-metrique/bin/activate
 
+    # deploy metrique environment to a new virtual environment
+    ./manage.py deploy ~/metrique.master --ipython
 
-    # optionally, start the metriqued server
+    # optionally, start mongodb and metriqued
+    ./manage.py mongodb start --fast
     ./manage.py metriqued start
-
 
     # launch ipython, connect to a metriqued instance and start mining!
