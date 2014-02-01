@@ -19,9 +19,17 @@ Metrique
 .. image:: https://coveralls.io/repos/kejbaly2/metrique/badge.png 
    :target: https://coveralls.io/r/kejbaly2/metrique
 
-Python/MongoDB Data Warehouse and Data Glue
+Python/MongoDB Data Warehouse and Information Platform
 
-*Metrique can help bring data into an intuitive, indexable 
+metrique is what happens when you need to load data from many
+disperate sources, iteratively, rapidly and reproducibly, knowing
+you'll need to produce a wide variety of analysis and reports,
+large and small. 
+
+The main feature of metrique is 
+
+else and 
+pytho bring data into an intuitive, indexable 
 data object collection that supports transparent 
 historical version snapshotting, advanced ad-hoc 
 server-side querying, including (mongodb) aggregations 
