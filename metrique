@@ -21,15 +21,12 @@ import shutil
 import socket
 import string
 import sys
+import virtualenv
 
-try:
-    import virtualenv
-except ImportError:
-    os.system('pip install virtualenv')
-finally:
-    virtenv_activated = False
-    logger = virtualenv.Logger([(0, sys.stdout)])
-    call_subprocess = virtualenv.call_subprocess
+
+virtenv_activated = False
+logger = virtualenv.Logger([(0, sys.stdout)])
+call_subprocess = virtualenv.call_subprocess
 
 
 def activate(args=None):
@@ -793,7 +790,7 @@ def deploy(args):
 
     pip = 'pip' if args.slow else 'pip-accel'
 
-    call('%s install -U virtualenv argparse' % pip)
+    call('%s install -U argparse' % pip)
 
     # this required dep is installed separately b/c virtenv
     # path resolution issues; fails due to being unable to find
@@ -807,7 +804,9 @@ def deploy(args):
     if args.test or args.pytest:
         call('%s install -U pytest' % pip)
     if args.docs:
-        call('%s install -U sphinx sphinx_bootstrap_theme' % pip)
+        call('%s install -U sphinx' % pip)
+        # pip-accel fails to install this package...
+        call('pip install -U sphinx_bootstrap_theme')
 
     cmd = 'install'
     no_pre = getattr(args, 'no_pre', False)
