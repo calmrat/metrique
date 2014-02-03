@@ -265,7 +265,7 @@ class Generic(pyclient):
 
     def _extract(self, id_delta, field_order, start):
         objects = []
-        retries = self.config.sql_retries
+        retries = self.config.retries
         sql = self._gen_sql(id_delta, field_order)
         while 1:
             try:
