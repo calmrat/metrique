@@ -154,12 +154,11 @@ class TornadoHTTPServer(object):
     handlers = []
     name = BASENAME
 
-    def __init__(self, config_file=None, name=None, **kwargs):
-        self.name = name or self.name
-        self.conf = TornadoConfig(config_file=config_file, **kwargs)
+    def __init__(self, config_file=None, **kwargs):
+        self.config = TornadoConfig(config_file=config_file, **kwargs)
 
     def _log_handler_get_level(self, level):
-        level = level or self.conf.debug
+        level = level or self.config.debug
         if level in [-1, False]:
             level = logging.WARN
         elif level is True or level >= 1:
@@ -179,13 +178,13 @@ class TornadoHTTPServer(object):
     def _log_file_handler(self, level=None, logdir=None, logfile=None,
                           rotate=None, rotate_bytes=None, rotate_keep=None,
                           fmt=LOG_FORMAT):
-        logdir = logdir or self.conf.logdir
+        logdir = logdir or self.config.logdir
         logdir = os.path.expanduser(logdir)
-        logfile = logfile or self.conf.logfile
+        logfile = logfile or self.config.logfile
         logfile = os.path.join(logdir, logfile)
-        rotate = rotate or self.conf.log_rotate
-        rotate_bytes = rotate_bytes or self.conf.log_rotate_bytes
-        rotate_keep = rotate_keep or self.conf.log_keep
+        rotate = rotate or self.config.log_rotate
+        rotate_bytes = rotate_bytes or self.config.log_rotate_bytes
+        rotate_keep = rotate_keep or self.config.log_keep
 
         if rotate:
             hdlr = logging.handlers.RotatingFileHandler(
@@ -199,16 +198,19 @@ class TornadoHTTPServer(object):
     def _setup_logger(self, logger_name, level=None, logstdout=None,
                       log2file=None, logdir=None, logfile=None, rotate=None,
                       rotate_bytes=None, rotate_keep=None, fmt=None):
-        logstdout = logstdout or self.conf.logstdout
+        logstdout = logstdout or self.config.logstdout
         stdout_hdlr = self._log_stream_handler(level) if logstdout else None
 
         file_hdlr = None
-        log2file = log2file or self.conf.log2file
+        log2file = log2file or self.config.log2file
         if log2file:
             file_hdlr = self._log_file_handler(level, logdir, logfile, rotate,
                                                rotate_bytes, rotate_keep)
 
         logger = logging.getLogger(logger_name)
+
+        # clear existing handlers
+        [logger.removeHandler(hdlr) for hdlr in logger.handlers]
 
         if stdout_hdlr:
             logger.addHandler(stdout_hdlr)
@@ -237,15 +239,16 @@ class TornadoHTTPServer(object):
         self._setup_logger(logger_name=None)
 
         # prepare 'request' logger for storing request details
-        logfile = self.conf.log_requests_file
+        logfile = self.config.log_requests_file
         logger_name = '%s.requests' % self.name
-        requests_level = self.conf.log_requests_level
-        self.request_logger = self._setup_logger(logger_name=logger_name,
-                                                 logfile=logfile,
-                                                 level=requests_level)
+        requests_level = self.config.log_requests_level
+
         # this app's main logger
         app_logger = self._setup_logger(logger_name=self.name)
 
+        self.request_logger = self._setup_logger(logger_name=logger_name,
+                                                 logfile=logfile,
+                                                 level=requests_level)
         # add request handler output alias
         app_logger.log_request = partial(self.request_logger.log,
                                          requests_level)
@@ -261,8 +264,8 @@ class TornadoHTTPServer(object):
     @property
     def pid_file(self):
         '''Return back the name of the current instance's pid file on disk'''
-        pid_file = '%s.%s.pid' % (self.conf.pid_name, str(self.pid))
-        path = os.path.join(self.conf.piddir, pid_file)
+        pid_file = '%s.%s.pid' % (self.config.pid_name, str(self.pid))
+        path = os.path.join(self.config.piddir, pid_file)
         return os.path.expanduser(path)
 
     def _prepare_web_app(self):
@@ -270,26 +273,26 @@ class TornadoHTTPServer(object):
         self.logger.debug("tornado web app setup")
 
         self._web_app = Application(
-            gzip=self.conf.gzip,
-            debug=self.conf.debug,
-            static_path=self.conf.static_path,
+            gzip=self.config.gzip,
+            debug=self.config.debug,
+            static_path=self.config.static_path,
             handlers=self.handlers,
-            cookie_secret=self.conf.cookie_secret,
-            login_url=self.conf.login_url,
-            xsrf_cookies=self.conf.xsrf_cookies,
-            template_path=self.conf.template_path,
+            cookie_secret=self.config.cookie_secret,
+            login_url=self.config.login_url,
+            xsrf_cookies=self.config.xsrf_cookies,
+            template_path=self.config.template_path,
         )
 
-        if self.conf.debug and not self.conf.autoreload:
+        if self.config.debug and not self.config.autoreload:
             # FIXME hack to disable autoreload when debug is True
             from tornado import autoreload
             autoreload._reload_attempted = True
             autoreload._reload = lambda: None
 
-        if self.conf.ssl:
+        if self.config.ssl:
             ssl_options = dict(
-                certfile=os.path.expanduser(self.conf.ssl_certificate),
-                keyfile=os.path.expanduser(self.conf.ssl_certificate_key))
+                certfile=os.path.expanduser(self.config.ssl_certificate),
+                keyfile=os.path.expanduser(self.config.ssl_certificate_key))
             self.server = HTTPServer(self._web_app, ssl_options=ssl_options)
         else:
             self.server = HTTPServer(self._web_app)
@@ -322,11 +325,11 @@ class TornadoHTTPServer(object):
 
     def _init_basic_server(self):
         self.logger.debug('======= %s =======' % self.name)
-        self.logger.debug(' Conf: %s' % self.conf.config_file)
+        self.logger.debug(' Conf: %s' % self.config.config_file)
         self.logger.debug(' Host: %s' % self.uri)
-        self.logger.debug('  SSL: %s' % self.conf.ssl)
+        self.logger.debug('  SSL: %s' % self.config.ssl)
 
-        self.server.listen(port=self.conf.port, address=self.conf.host)
+        self.server.listen(port=self.config.port, address=self.config.host)
         IOLoop.instance().start()
 
     def spawn_instance(self):
@@ -338,9 +341,9 @@ class TornadoHTTPServer(object):
     @property
     def uri(self):
         '''Return a uri connection string for the current tornado instance'''
-        host = self.conf.host
-        ssl = self.conf.ssl
-        port = self.conf.port
+        host = self.config.host
+        ssl = self.config.ssl
+        port = self.config.port
         uri = 'https://%s' % host if ssl else 'http://%s' % host
         uri += ':%s' % port
         return uri
@@ -383,7 +386,7 @@ class TornadoHTTPServer(object):
 
     def _inst_delayed_stop(self, delay=None):
         if delay is None:
-            if self.conf.debug:
+            if self.config.debug:
                 delay = 0
             else:
                 delay = 5
