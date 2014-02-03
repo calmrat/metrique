@@ -63,6 +63,7 @@ class Config(JSONConf):
     :param max_workers: number of workers for threaded operations (#cpus)
     :param password: the password to connect to metriqued with (None)
     :param port: metriqued server port (5420)
+    :param sql_retries: number of attempts to run sql queries before excepting
     :param sql_batch_size: number of objects to sql query for at a time (1000)
     :param ssl: connect to metriqued with SSL (False)
     :param ssl_verify: verify ssl certificate (False)
@@ -95,6 +96,7 @@ class Config(JSONConf):
             'max_workers': multiprocessing.cpu_count(),
             'password': None,
             'port': 5420,
+            'sql_retries': 1,
             'sql_batch_size': 1000,
             'ssl': False,
             'ssl_verify': False,
