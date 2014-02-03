@@ -244,7 +244,8 @@ class TornadoHTTPServer(object):
                                                  logfile=logfile,
                                                  level=requests_level)
         # this app's main logger
-        app_logger = logging.getLogger(self.name)
+        app_logger = self._setup_logger(logger_name=self.name)
+
         # add request handler output alias
         app_logger.log_request = partial(self.request_logger.log,
                                          requests_level)
