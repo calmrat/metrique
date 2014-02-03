@@ -55,7 +55,7 @@ class Config(JSONConf):
     :param debug: turn on debug mode logging (level: INFO)
     :param gnupg_dir: path to where user gnupg data directory (~/.gnupg)
     :param gnupg_fingerprint: gpnupg fingerprint to sign/verify with (None)
-    :param host: metriqued server host (multiple hosts separated with ',')
+    :param host: metriqued server host(s) (single string or list or strings)
     :param logdir: path to where log files are stored (~/.metrique/logs)
     :param logfile: filename for logs ('metrique.log')
     :param log2file: boolean - log output to file? (False)
@@ -138,7 +138,8 @@ class Config(JSONConf):
 
     @property
     def api_uris(self):
-        '''Autogenerate url and schema - http(s)? needed to call metrique api
+        '''
+        Autogenerate url and schema - http(s)? needed to call metrique api
         '''
         return [os.path.join(uri, self.api_rel_path) for uri in self.uris]
 
@@ -148,7 +149,11 @@ class Config(JSONConf):
         protocol = 'https://' if self.ssl else 'http://'
 
         uris = []
-        hosts = [x.strip() for x in self.host.split(',')]
+        if isinstance(self.host, basestring):
+            self.host = hosts = self.host.split(',')
+        else:
+            hosts = self.host
+        hosts = [x.strip() for x in hosts]
         for host in hosts:
             if not re.match('https?://', host):
                 host = '%s%s' % (protocol, host)
