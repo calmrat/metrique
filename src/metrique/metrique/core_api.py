@@ -869,8 +869,7 @@ class HTTPClient(BaseClient):
         '''
         if auth:
             self.user_login()
-        else:
-            super(HTTPClient, self).whoami()
+        return super(HTTPClient, self).whoami()
 
 
 # import alias

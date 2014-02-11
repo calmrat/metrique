@@ -79,10 +79,7 @@ class CountHdlr(MongoDBBackendHdlr):
         query = query or ''
         query = query_add_date(query, date)
         self.logger.info('pql query: %s' % query)
-        try:
-            spec = parse_pql_query(query)
-        except Exception as e:
-            self._raise(400, "Invalid Query (%s)" % str(e))
+        spec = parse_pql_query(query)
         _cube = self.timeline(owner, cube)
         docs = _cube.find(spec=spec)
         return docs.count() if docs else 0
@@ -150,20 +147,33 @@ class DistinctHdlr(MongoDBBackendHdlr):
     @authenticated
     def get(self, owner, cube):
         field = self.get_argument('field')
-        result = self.distinct(owner=owner, cube=cube, field=field)
+        query = self.get_argument('query')
+        result = self.distinct(owner=owner, cube=cube, field=field,
+                               query=query)
         self.write(result)
 
-    def distinct(self, owner, cube, field):
+    def distinct(self, owner, cube, field, query=None):
         '''
         Return back a distinct (unique) list of field values
         across the entire cube dataset
 
+        Query sytax parsing is handled by `pql`.
+
         :param cube: cube name
         :param owner: username of cube owner
         :param field: field to get distinct token values from
+        :param query: pql query to run as a pre-filter
+
+        If query is provided, rather than running collection.distinct(field)
+        directly, run on a find cursor.
         '''
         self.requires_read(owner, cube)
-        return self.timeline(owner, cube).distinct(field)
+        if query:
+            spec = parse_pql_query(query)
+            result = self.timeline(owner, cube).find(spec).distinct(field)
+        else:
+            result = self.timeline(owner, cube).distinct(field)
+        return result
 
 
 class FindHdlr(MongoDBBackendHdlr):
@@ -224,10 +234,7 @@ class FindHdlr(MongoDBBackendHdlr):
         query = query or ''
         query = query_add_date(query, date)
         self.logger.info('pql query: %s' % query)
-        try:
-            spec = parse_pql_query(query)
-        except Exception as e:
-            self._raise(400, "Invalid Query (%s)" % str(e))
+        spec = parse_pql_query(query)
 
         _cube = self.timeline(owner, cube)
         if explain:
@@ -310,11 +317,7 @@ class HistoryHdlr(MongoDBBackendHdlr):
         date_list = sorted(map(dt2ts, date_list))
         query = '%s and _start < %s and (_end >= %s or _end == None)' % (
                 query, max(date_list), min(date_list))
-        try:
-            spec = parse_pql_query(query)
-        except Exception as e:
-            self._raise(400, "Invalid Query (%s)" % str(e))
-
+        spec = parse_pql_query(query)
         _cube = self.timeline(owner, cube)
 
         agg = [{'$match': spec},
@@ -396,10 +399,7 @@ class SampleHdlr(MongoDBBackendHdlr):
         self.requires_read(owner, cube)
         fields = self.get_fields(owner, cube, fields)
         query = query_add_date(query, date)
-        try:
-            spec = parse_pql_query(query)
-        except Exception as e:
-            self._raise(400, "Invalid Query (%s)" % str(e))
+        spec = parse_pql_query(query)
         _cube = self.timeline(owner, cube)
         _docs = _cube.find(spec, fields=fields)
         n = _docs.count()
