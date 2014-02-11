@@ -546,11 +546,24 @@ def mongodb_firstboot(args):
         f.write(NOW)
 
 
+def mongodb_passwd(args):
+    if not (args.user and args.password):
+        raise ValueError("Invalid user: %s" % args.user)
+    from metriqued.config import mongodb_config
+    config = mongodb_config()
+    ssl = ' --ssl' if config.ssl or args.ssl else ''
+    port = config.port
+    old_pw = config.admin_password
+    script = "db.changeUserPassword('%s', '%s')" % (args.user, args.password)
+    call('mongo %s/admin %s --eval "%s" -u admin -p %s' % (args.host, ssl, 
+                                                           script, old_pw))
+        
+
 def mongodb(args):
     db_dir = makedirs(args.db_dir)
     lockfile = os.path.join(db_dir, 'mongod.lock')
 
-    config_file = os.path.expanduser(args.config_file)
+    config_file = os.path.expanduser(MONGODB_CONF)
 
     pidfile = os.path.join(PID_DIR, 'mongodb.pid')
 
@@ -591,13 +604,15 @@ def mongodb(args):
     elif args.command == 'keyfile':
         call('openssl rand -base64 741 -out %s' % MONGODB_KEYFILE)
         os.chmod(MONGODB_KEYFILE, 0600)
+    elif args.command == 'passwd':
+        mongodb_passwd(args)
     else:
         raise ValueError("unknown command %s" % args.command)
 
 
 def mongodb_backup(args):
     from metriqued.config import mongodb_config
-    config = mongodb_config(args.config_file)
+    config = mongodb_config()
 
     out_dir = args.out_dir or BACKUP_DIR
     out_dir = os.path.expanduser(out_dir)
@@ -613,7 +628,7 @@ def mongodb_backup(args):
     password = '--password %s' % p if p else ''
     username = '--username %s' % config.admin_user if password else ''
     authdb = '--authenticationDatabase admin' if password else ''
-    ssl = '--ssl' if config.ssl else ''
+    ssl = '--ssl' if config.ssl or args.ssl else ''
 
     cmd = ('mongodump', '--host %s' % host, '--port %s' % port,
            ssl, username, password, '--out %s' % out, authdb)
@@ -998,12 +1013,13 @@ def main():
     _mongodb.add_argument('command',
                           choices=['start', 'stop', 'restart',
                                    'clean', 'trash', 'status',
-                                   'keyfile', 'firstboot'])
-    _mongodb.add_argument('-c', '--config-file', default=MONGODB_CONF)
+                                   'keyfile', 'firstboot', 'passwd'])
     _mongodb.add_argument('-dd', '--db-dir', default=MONGODB_DIR)
     _mongodb.add_argument('-H', '--host', default='127.0.0.1')
     _mongodb.add_argument('-f', '--fast', action='store_true')
     _mongodb.add_argument('-s', '--ssl', action='store_true')
+    _mongodb.add_argument('-u', '--user')
+    _mongodb.add_argument('-p', '--password')
     _mongodb.add_argument('-r', '--repl-set')
     _mongodb.set_defaults(func=mongodb)
 
