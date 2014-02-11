@@ -20,6 +20,7 @@ import shlex
 import shutil
 import socket
 import string
+import subprocess
 import sys
 import virtualenv
 
@@ -127,7 +128,7 @@ def rand_chars(size=6, chars=string.ascii_uppercase + string.digits):
 
 
 USER = getpass.getuser()
-NOW = datetime.datetime.utcnow().strftime('%FT%H:%M:%S')
+NOW = datetime.datetime.utcnow().strftime('%FT%H%M%S')
 
 DEFAULT_METRIQUE_JSON = '''
 {
@@ -375,6 +376,13 @@ def remove(path):
                 os.remove(path)
 
 
+def system(cmd):
+    cmd = cmd.split()
+    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    text = p.stdout.read()
+    retcode = p.wait()
+    return text
+
 def run(cmd, cwd, show_stdout):
     try:
         call_subprocess(cmd, cwd=cwd, show_stdout=show_stdout)
@@ -408,6 +416,22 @@ def call(cmd, cwd=None, show_stdout=True, fork=False, pidfile=None,
 def adjust_options(options, args):
     options.no_site_packages = True
 virtualenv.adjust_options = adjust_options
+
+
+def backup(saveas, path):
+    gzip = system('which pigz') or system('which gzip')
+    cmd = 'tar cf - %s | pigz > %s' % (path, saveas)
+    cmd = 'tar -c --use-compress-program=pigz -f %s %s' % (saveas, path)
+    system(cmd)
+
+
+def backup_clean(args, path, prefix):
+    keep = args.keep if args.keep != 0 else 3
+    path = os.path.join(path, prefix) + '*'
+    files = sorted(glob.glob(path), reverse=True)
+    to_remove = files[keep:]
+    logger.debug('Removing %i backups' % len(to_remove))
+    [remove(f) for f in to_remove]
 
 
 def celeryd_terminate(sig=None, frame=None):
@@ -493,6 +517,23 @@ def _metriqued_start(args):
     print 'Started: %s' % ', '.join(map(str, pids))
 
 
+def metriqued_backup(args):
+    to_backup = [ETC_DIR]
+
+    for path in to_backup:
+        prefix = 'metriqued.%s' % os.path.basename(path)
+        saveas = '__'.join((prefix, HOSTNAME, NOW)) + '.tar.gz'
+        saveas = os.path.join(BACKUP_DIR, saveas)
+        backup(saveas, path)
+        backup_clean(args, BACKUP_DIR, prefix)
+        if args.scp_export:
+            user = args.scp_user
+            host = args.scp_host
+            out_dir = args.scp_out_dir
+            cmd = 'scp %s %s@%s:%s' % (out, user, host, out_dir)
+            call(cmd)
+
+
 def metriqued(args):
     '''
     START, STOP, RESTART, RELOAD,
@@ -555,9 +596,9 @@ def mongodb_passwd(args):
     port = config.port
     old_pw = config.admin_password
     script = "db.changeUserPassword('%s', '%s')" % (args.user, args.password)
-    call('mongo %s/admin %s --eval "%s" -u admin -p %s' % (args.host, ssl, 
+    call('mongo %s/admin %s --eval "%s" -u admin -p %s' % (args.host, ssl,
                                                            script, old_pw))
-        
+
 
 def mongodb(args):
     db_dir = makedirs(args.db_dir)
@@ -614,13 +655,9 @@ def mongodb_backup(args):
     from metriqued.config import mongodb_config
     config = mongodb_config()
 
-    out_dir = args.out_dir or BACKUP_DIR
-    out_dir = os.path.expanduser(out_dir)
-    makedirs(out_dir)
-
     prefix = 'mongodb'
     saveas = '__'.join((prefix, HOSTNAME, NOW))
-    out = os.path.join(out_dir, saveas)
+    out = os.path.join(BACKUP_DIR, saveas)
 
     host = config.host.split(',')[0]  # get the first host (expected primary)
     port = config.port
@@ -628,20 +665,18 @@ def mongodb_backup(args):
     password = '--password %s' % p if p else ''
     username = '--username %s' % config.admin_user if password else ''
     authdb = '--authenticationDatabase admin' if password else ''
-    ssl = '--ssl' if config.ssl or args.ssl else ''
+    ssl = '--ssl' if config.ssl else ''
 
     cmd = ('mongodump', '--host %s' % host, '--port %s' % port,
            ssl, username, password, '--out %s' % out, authdb)
     cmd = ' '.join(cmd).replace('  ', ' ')
     call(cmd)
 
-    if args.compress or args.scp_export:
-        # compress if asked to or if we're going to export
-        out_tgz = out + '.tar.gz'
-        call('tar cvfz %s %s' % (out_tgz, out), show_stdout=False)
-        shutil.rmtree(out)
+    saveas = out + '.tar.gz'
+    backup(saveas, out)
+    shutil.rmtree(out)
 
-    mongodb_clean(args, out_dir)
+    backup_clean(args, BACKUP_DIR, 'mongodb')
 
     if args.scp_export:
         user = args.scp_user
@@ -649,18 +684,6 @@ def mongodb_backup(args):
         out_dir = args.scp_out_dir
         cmd = 'scp %s %s@%s:%s' % (out_tgz, user, host, out_dir)
         call(cmd)
-
-
-def mongodb_clean(args, path, prefix='mongodb'):
-    keep = args.keep if args.keep != 0 else 3
-    if args.compress:
-        path = os.path.join(path, '%s*.tar.gz' % prefix)
-    else:
-        path = os.path.join(path, prefix)
-    files = sorted(glob.glob(path), reverse=True)
-    to_remove = files[keep:]
-    logger.debug('Removing %i backups' % len(to_remove))
-    [remove(f) for f in to_remove]
 
 
 def clean(args):
@@ -1026,8 +1049,6 @@ def main():
     # MongoDB Backup
     _mongodb_backup = _sub.add_parser('mongodb_backup')
     _mongodb_backup.add_argument('-c', '--config-file')
-    _mongodb_backup.add_argument('-o', '--out-dir')
-    _mongodb_backup.add_argument('-z', '--compress', action='store_true')
     _mongodb_backup.add_argument('-k', '--keep', type=int, default=3)
     _mongodb_backup.add_argument('-x', '--scp-export', action='store_true')
     _mongodb_backup.add_argument('-H', '--scp-host')
@@ -1056,6 +1077,15 @@ def main():
     _metriqued.add_argument('-s', '--signal', type=int, choices=[2, 9, 15],
                             default=2)  # 2 = SIGINT; 15 = SIGTERM
     _metriqued.set_defaults(func=metriqued)
+
+    # metriqued Backup
+    _metriqued_backup = _sub.add_parser('metriqued_backup')
+    _metriqued_backup.add_argument('-k', '--keep', type=int, default=3)
+    _metriqued_backup.add_argument('-x', '--scp-export', action='store_true')
+    _metriqued_backup.add_argument('-H', '--scp-host')
+    _metriqued_backup.add_argument('-u', '--scp-user', default='backup')
+    _metriqued_backup.add_argument('-O', '--scp-out-dir', default='~/')
+    _metriqued_backup.set_defaults(func=metriqued_backup)
 
     # celeryd Server
     _celeryd = _sub.add_parser('celeryd')
