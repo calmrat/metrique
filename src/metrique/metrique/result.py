@@ -298,7 +298,10 @@ class Result(DataFrame):
                 age = cut_ts - df._start.min()
             else:
                 age = min(cut_ts, end) - df._start.min()
-            last = df[df._end == end].copy()
+            # for some reason this is not working:
+            #last = df[df._end == end].copy()
+            # but this is:
+            last = df[df._end.isin([end])].copy()
             last[col_name] = age - timedelta(microseconds=age.microseconds)
             return last
 

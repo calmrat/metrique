@@ -137,6 +137,7 @@ class JSONConf(MutableMapping):
             config_file = '.'.join((config_file, 'json'))
 
         config_file = os.path.expanduser(config_file)
+        _config_file = None
         if not os.path.exists(config_file):
             # if default_config_dir is set and the config_file is
             # relative, attempt to find the conf relative to the path

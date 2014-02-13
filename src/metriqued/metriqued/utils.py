@@ -10,9 +10,13 @@ This module contains various shared utils used by metriqued and friends.
 '''
 
 import pql
+from bson.timestamp import Timestamp
 import re
+import simplejson as json
 
 from metriqueu.utils import dt2ts
+
+json_encoder = json.JSONEncoder()
 
 OBJECTS_MAX_BYTES = 16777216
 EXISTS_SPEC = {'$exists': 1}
@@ -105,5 +109,20 @@ def parse_pql_query(query):
     if not isinstance(query, basestring):
         raise TypeError("query expected as a string")
     pql_parser = pql.SchemaFreeParser()
-    spec = pql_parser.parse(query)
+    try:
+        spec = pql_parser.parse(query)
+    except Exception as e:
+        raise SyntaxError("Invalid Query (%s)" % str(e))
     return spec
+
+
+def json_encode(obj):
+    '''
+    Convert pymongo.timestamp.Timestamp to epoch
+
+    :param obj: value to (possibly) convert
+    '''
+    if isinstance(obj, Timestamp):
+        return obj.time
+    else:
+        return json_encoder.default(obj)

@@ -80,8 +80,8 @@ class MetriqueHTTP(TornadoHTTPServer):
     def __init__(self, config_file=None, **kwargs):
         config_file = config_file or METRIQUED_JSON
 
-        self.conf = metriqued_config(config_file=config_file, **kwargs)
-        self.dbconf = mongodb_config(self.conf.mongodb_config)
+        self.config = metriqued_config(config_file=config_file, **kwargs)
+        self.dbconf = mongodb_config(self.config.mongodb_config)
 
         # call setup_logger() after loading config
         # results in a .logger and .request_logger attrs
@@ -89,9 +89,9 @@ class MetriqueHTTP(TornadoHTTPServer):
 
         self.logger.debug('======= metrique =======')
         self.logger.debug(' pid:  %s' % self.pid)
-        self.logger.debug(' Conf: %s' % self.conf.config_file)
+        self.logger.debug(' Conf: %s' % self.config.config_file)
         self.logger.debug(' Host: %s' % self.uri)
-        self.logger.debug('  SSL: %s' % self.conf.ssl)
+        self.logger.debug('  SSL: %s' % self.config.ssl)
         self.logger.debug('======= mongodb ========')
         self.logger.debug(' Conf: %s' % self.dbconf.config_file)
         self.logger.debug(' Host: %s' % self.dbconf.host)
@@ -104,11 +104,11 @@ class MetriqueHTTP(TornadoHTTPServer):
 
     def _prepare_handlers(self):
         # pass in metrique and mongodb config to all handlers (init)
-        init = dict(metrique_config=self.conf,
+        init = dict(metrique_config=self.config,
                     mongodb_config=self.dbconf,
                     logger=self.logger)
 
-        api_docs = self.conf.api_docs
+        api_docs = self.config.api_docs
         base_handlers = [
             (r"/api/v2/docs/(.*)", StaticFileHandler, {'path': api_docs}),
 
@@ -168,9 +168,9 @@ class MetriqueHTTP(TornadoHTTPServer):
             raise
 
     def _setup_mongodb_logging(self):
-        if self.conf.log2mongodb:
+        if self.config.log2mongodb:
             # override existing requests logger to pass request info to mongo
-            level = self.conf.log_mongodb_level
+            level = self.config.log_mongodb_level
             hdlr = MongoDBHandler(collection=self.dbconf.c_logs_admin)
             hdlr.setLevel(level)
             hdlr.propagate = 0

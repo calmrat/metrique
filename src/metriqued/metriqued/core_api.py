@@ -24,7 +24,7 @@ import simplejson as json
 from tornado import gen
 from tornado.web import RequestHandler, HTTPError
 
-from metriqued.utils import parse_pql_query
+from metriqued.utils import parse_pql_query, json_encode
 
 from metriqueu.utils import set_default, utcnow, strip_split
 
@@ -327,7 +327,7 @@ class MetriqueHdlr(RequestHandler):
         if binary:
             super(MetriqueHdlr, self).write(value)
         else:
-            result = json.dumps(value, ensure_ascii=False)
+            result = json.dumps(value, default=json_encode, ensure_ascii=False)
             super(MetriqueHdlr, self).write(result)
 
 ##################### auth #################################
