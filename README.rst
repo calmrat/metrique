@@ -8,7 +8,7 @@ Metrique
    :target: https://travis-ci.org/kejbaly2/metrique
 
 .. image:: https://badge.fury.io/py/metrique.png
-    :target: http://badge.fury.io/py/metrique
+   :target: http://badge.fury.io/py/metrique
 
 .. image:: https://pypip.in/d/metrique/badge.png
    :target: https://crate.io/packages/metrique
@@ -20,32 +20,24 @@ Metrique
    :target: https://coveralls.io/r/kejbaly2/metrique
 
 Python/MongoDB Data Warehouse and Information Platform
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-metrique is what happens when you need to load data from many
-disperate sources, iteratively, rapidly and reproducibly, knowing
-you'll need to produce a wide variety of analysis and reports,
-large and small. 
-
-The main feature of metrique is 
-
-else and 
-pytho bring data into an intuitive, indexable 
-data object collection that supports transparent 
-historical version snapshotting, advanced ad-hoc 
-server-side querying, including (mongodb) aggregations 
-and (mongodb) mapreduce, along with python, ipython, 
-pandas, numpy, matplotlib, and so on, is well integrated 
-with the scientific python computing stack. 
+metrique provides a simple python and rest API to support
+ETL workloads for extracting data from disperate sources, 
+iteratively, rapidly and reproducibly, with transparent,
+historical serverside object persistence and tight clientside 
+integration with popular python scientific computing libraries 
+to faciliate creation and publication of a wide variety of analysis 
+and reports, large and small. 
 
 **Author:** "Chris Ward" <cward@redhat.com>
-
 **Sources:** https://github.com/kejbaly2/metrique
 
 
 Quick Install (auto-deploy -> virtenv)
 --------------------------------------
 
-The examples given below use yum and assume fedora rpm package names::
+The instructions given below assume fedora rpm package names::
 
     # prerequisite *os* packages
     sudo yum install python python-devel python-setuptools python-pip
@@ -72,17 +64,18 @@ The examples given below use yum and assume fedora rpm package names::
     cd metrique
 
     # deploy metrique master branch into a virtual environment
-    # including dependencies. WARNING: This takes 10-15 minutes!
-    ./manage.py -V ~/virtenv-metrique deploy --ipython
+    # including dependencies. 
+    # NOTE this takes 10-15 minutes to compile everything from source!
+    ./metrique -V ~/metrique.master deploy --ipython --pytest --docs --develop
 
     # activate the virtual environment
     source ~/virtenv-metrique/bin/activate
 
-    # deploy metrique environment to a new virtual environment
-    ./manage.py deploy ~/metrique.master --ipython
-
     # optionally, start mongodb and metriqued
-    ./manage.py mongodb start --fast
-    ./manage.py metriqued start
+    ./metrique mongodb firstboot
+    ./metrique mongodb start
+
+    ./metrique metriqued firstboot
+    ./metrique metriqued start
 
     # launch ipython, connect to a metriqued instance and start mining!
