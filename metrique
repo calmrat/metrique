@@ -556,7 +556,8 @@ def _metriqued_start(args):
 
 
 def metriqued_backup(args):
-    to_backup = [ETC_DIR]
+    hosts_dir = '/etc/hosts'
+    to_backup = [ETC_DIR, hosts_dir]
 
     for path in to_backup:
         prefix = 'metriqued.%s' % os.path.basename(path)
