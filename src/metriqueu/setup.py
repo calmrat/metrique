@@ -11,7 +11,7 @@ __nvr__ = '%s-%s' % (__version__, __release__)
 __pkgs__ = ['metriqueu']
 __provides__ = ['metriqueu']
 __desc__ = 'Metrique - Shared Utility Libraries'
-__scripts__ = []
+__scripts__ = ['../../metrique']
 __requires__ = [
     'decorator (==3.4.0)',
     'futures (==2.1.6)',

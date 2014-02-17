@@ -25,7 +25,13 @@ from metriqueu.jsonconf import JSONConf
 from metriquet.tornadohttp import TornadoConfig
 from metriqued.basemongodb import BaseMongoDB
 
-USER_DIR = os.path.expanduser('~/.metrique')
+# if HOME environment variable is set, use that
+# useful when running 'as user' with root (supervisord)
+HOME = os.environ.get('HOME')
+if HOME:
+    USER_DIR = os.path.join(HOME, '.metrique')
+else:
+    USER_DIR = os.path.expanduser('~/.metrique')
 ETC_DIR = os.path.join(USER_DIR, 'etc')
 GNUPG_DIR = os.path.join(USER_DIR, 'gnupg')
 
@@ -81,7 +87,7 @@ class metriqued_config(TornadoConfig):
         if hasattr(self, '_gnupg'):
             gpg = self._gnupg
         else:
-            gpg = GPG(homedir=os.path.expanduser(self['gnupg_dir']))
+            gpg = GPG(homedir=self['gnupg_dir'])
         return gpg
 
     @property

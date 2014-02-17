@@ -16,6 +16,7 @@ import logging
 from functools import partial
 import os
 import signal
+import sys
 import time
 from tornado.httpserver import HTTPServer
 from tornado.ioloop import IOLoop
@@ -368,6 +369,7 @@ class TornadoHTTPServer(object):
             self.server.stop()  # stop this tornado instance
             delayed_kill = partial(self._inst_delayed_stop, delay)
             IOLoop.instance().add_callback(delayed_kill)
+        sys.exit(2)
 
     def _inst_stop(self, sig, delay=None):
         if self.child_pid:
@@ -377,12 +379,12 @@ class TornadoHTTPServer(object):
         self.remove_pid(quiet=True)
 
     def _inst_terminate_handler(self, sig, frame):
-        self.logger.debug("[INST] (%s) recieved TERM signal" % self.pid)
-        self._inst_stop(sig)
+        self.logger.debug("[INST] (%s) recieved KILL (9) signal" % self.pid)
+        self._inst_stop(sig, 0)
 
     def _inst_kill_handler(self, sig, frame):
-        self.logger.debug("[INST] (%s) recieved KILL signal" % self.pid)
-        self._inst_stop(sig, 0)
+        self.logger.debug("[INST] (%s) recieved TERM (15) signal" % self.pid)
+        self._inst_stop(sig)
 
     def _inst_delayed_stop(self, delay=None):
         if delay is None:
