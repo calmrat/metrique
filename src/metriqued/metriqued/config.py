@@ -114,7 +114,7 @@ class mongodb_config(JSONConf):
     :param journal: enable write journal before return?
     :param port: mongodb port to connect to
     :param mongoexport: path to mongoexport command
-    :param read_preference: default - SECONDARY_PREFERRED
+    :param read_preference: default - NEAREST
     :param replica_set: name of replica set, if any
     :param ssl: enable ssl
     :param ssl_certificate: path to ssl certificate file
@@ -142,7 +142,7 @@ class mongodb_config(JSONConf):
             'journal': True,
             'port': 27017,
             'mongoexport': '/usr/bin/mongoexport',
-            'read_preference': 'SECONDARY_PREFERRED',
+            'read_preference': 'NEAREST',
             'replica_set': None,
             'ssl': False,
             'ssl_certificate': SSL_PEM,
