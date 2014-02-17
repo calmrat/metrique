@@ -22,7 +22,6 @@ import socket
 import string
 import subprocess
 import sys
-import time
 import virtualenv
 
 
@@ -51,6 +50,7 @@ def activate(args=None):
             virtenv_activated = True
             logger.info('Virtual Env (%s): Activated' % virtenv)
         os.chdir(virtenv)
+
 
 def rand_chars(size=6, chars=string.ascii_uppercase + string.digits):
     # see: http://stackoverflow.com/questions/2257441
@@ -139,7 +139,7 @@ SUPERVISORD_HISTORYFILE = os.path.join(TEMP_DIR, 'supervisord_history')
 
 # set cache dir so pip doesn't have to keep downloading over and over
 PIP_DIR = os.path.join(USER_DIR, '.pip')
-PIP_CACHE_DIR = os.path.join(PIP_DIR,'download-cache')
+PIP_CACHE_DIR = os.path.join(PIP_DIR, 'download-cache')
 PIP_ACCEL_DIR = os.path.join(PIP_DIR, 'pip-accel')
 os.environ['PIP_DOWNLOAD_CACHE'] = PIP_CACHE_DIR
 os.environ['PIP_ACCEL_CACHE'] = PIP_ACCEL_DIR
@@ -422,11 +422,12 @@ command=%s start --nofork
 process_name=viztrique
 numprocs=1
 priority=40
-''' % (LOCAL_IP, PASSWORD, SUPERVISORD_LOGFILE, SUPERVISORD_PIDFILE, 
-       LOG_DIR, USER, 'VIRTUAL_ENV="%s"' % VIRTUAL_ENV, 
+''' % (LOCAL_IP, PASSWORD, SUPERVISORD_LOGFILE, SUPERVISORD_PIDFILE,
+       LOG_DIR, USER, 'VIRTUAL_ENV="%s"' % VIRTUAL_ENV,
        LOCAL_IP, PASSWORD, SUPERVISORD_HISTORYFILE,
        METRIQUE, METRIQUE, METRIQUE, VIZTRIQUE)
 DEFAULT_SUPERVISORD_CONF = DEFAULT_SUPERVISORD_CONF.strip()
+
 
 def get_pid(pidfile):
     try:
@@ -459,8 +460,8 @@ def system(cmd):
     cmd = cmd.split()
     p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     text = p.stdout.read()
-    retcode = p.wait()
     return text
+
 
 def run(cmd, cwd, show_stdout):
     try:
@@ -499,8 +500,7 @@ virtualenv.adjust_options = adjust_options
 
 def backup(saveas, path):
     gzip = system('which pigz') or system('which gzip')
-    cmd = 'tar cf - %s | pigz > %s' % (path, saveas)
-    cmd = 'tar -c --use-compress-program=pigz -f %s %s' % (saveas, path)
+    cmd = 'tar -c --use-compress-program=%s -f %s %s' % (gzip, saveas, path)
     system(cmd)
 
 
@@ -539,7 +539,7 @@ def celeryd_loop(args):
     pidfile = '--pidfile=%s' % CELERYD_PIDFILE
     app = '-A %s' % args.tasks_mod
     workers = 1
-    cmd = 'celery %s start %s %s %s %s %s' % (x, workers, logfile, loglvl, 
+    cmd = 'celery %s start %s %s %s %s %s' % (x, workers, logfile, loglvl,
                                               pidfile, app)
     call(cmd, fork=True, sig=signal.SIGTERM, sig_func=celeryd_terminate)
 
@@ -683,7 +683,7 @@ def metriqued_backup(args):
             user = args.scp_user
             host = args.scp_host
             out_dir = args.scp_out_dir
-            cmd = 'scp %s %s@%s:%s' % (out, user, host, out_dir)
+            cmd = 'scp %s %s@%s:%s' % (saveas, user, host, out_dir)
             call(cmd)
 
 
@@ -750,7 +750,6 @@ def mongodb_passwd(args):
     from metriqued.config import mongodb_config
     config = mongodb_config()
     ssl = ' --ssl' if config.ssl or args.ssl else ''
-    port = config.port
     old_pw = config.admin_password
     script = "db.changeUserPassword('%s', '%s')" % (args.user, args.password)
     call('mongo %s/admin %s --eval "%s" -u admin -p %s' % (args.host, ssl,
@@ -771,7 +770,6 @@ def mongodb(args):
         cmd += ' --noprealloc --nojournal' if args.fast else ''
         call(cmd, fork=_fork, sig=signal.SIGTERM, sig_func=mongodb_terminate)
     elif args.command == 'stop':
-        pid = get_pid(MONGODB_PIDFILE)
         terminate(MONGODB_PIDFILE)
         args.command = 'clean'
         mongodb(args)
@@ -833,7 +831,7 @@ def mongodb_backup(args):
         user = args.scp_user
         host = args.scp_host
         out_dir = args.scp_out_dir
-        cmd = 'scp %s %s@%s:%s' % (out_tgz, user, host, out_dir)
+        cmd = 'scp %s %s@%s:%s' % (saveas, user, host, out_dir)
         call(cmd)
 
 
@@ -1149,6 +1147,8 @@ def main():
     _deploy.add_argument(
         '--docs', action='store_true', help='install doc utils')
     _deploy.add_argument(
+        '--supervisord', action='store_true', help='install doc utils')
+    _deploy.add_argument(
         '--trash', action='store_true', help='fresh install (rm old virtenv)')
     _deploy.set_defaults(func=deploy)
 
@@ -1252,14 +1252,14 @@ def main():
     # celerybeat Server
     _celerybeat = _sub.add_parser('celerybeat')
     _celerybeat.add_argument('command',
-                          choices=['start', 'stop', 'clean'])
+                             choices=['start', 'stop', 'clean'])
     _celerybeat.add_argument('tasks_mod', nargs='?')
     _celerybeat.set_defaults(func=celerybeat)
 
     # celerybeat Server
     _supervisord = _sub.add_parser('supervisord')
     _supervisord.add_argument('command',
-                          choices=['start', 'stop', 'clean'])
+                              choices=['start', 'stop', 'clean'])
     _supervisord.set_defaults(func=supervisord)
 
     # SSL creation
