@@ -106,8 +106,9 @@ MONGODB_JS = os.path.join(ETC_DIR, 'mongodb.js')
 MONGODB_KEYFILE = os.path.join(ETC_DIR, 'mongodb.key')
 
 CELERY_JSON = os.path.join(ETC_DIR, 'celery.json')
-CELERY_PIDFILE = os.path.expanduser('~/.metrique/pids/celeryd.pid')
-CELERY_LOG = os.path.expanduser('~/.metrique/logs/celeryd.log')
+CELERYD_PIDFILE = os.path.expanduser('~/.metrique/pids/celeryd.pid')
+CELERYBEAT_PIDFILE = os.path.expanduser('~/.metrique/pids/celerybeat.pid')
+CELERY_LOGFILE = os.path.expanduser('~/.metrique/logs/celeryd.log')
 
 NGINX_CONF = os.path.join(ETC_DIR, 'nginx.conf')
 NGINX_ACCESS_LOG = os.path.join(LOGS_DIR, 'nginx_access.log')
@@ -434,17 +435,29 @@ def backup_clean(args, path, prefix):
     [remove(f) for f in to_remove]
 
 
+def terminate(pidfile, sig=signal.SIGTERM):
+    if os.path.exists(pidfile):
+        pid = get_pid(pidfile)
+        os.kill(pid, sig)
+        logger.warn("%s killed" % pid)
+        remove(pidfile)
+    else:
+        logger.warn("%s does not exist" % pidfile)
+
+
 def celeryd_terminate(sig=None, frame=None):
-    if not os.path.exists(CELERY_PIDFILE):
-        logger.warn("%s does not exist" % CELERY_PIDFILE)
-        return
-    pid = get_pid(CELERY_PIDFILE)
-    os.kill(pid, signal.SIGTERM)
+    terminate(CELERYD_PIDFILE)
 
 
 def celeryd_loop(args):
-    cmd = 'celery worker -f %s -l INFO -B --pidfile=%s --app %s' % (
-          CELERY_LOG, CELERY_PIDFILE, args.tasks_mod)
+    x = 'multi'
+    logfile = '--logfile=%s' % CELERY_LOGFILE
+    loglvl = '-l INFO'
+    pidfile = '--pidfile=%s' % CELERYD_PIDFILE
+    app = '-A %s' % args.tasks_mod
+    workers = 1
+    cmd = 'celery %s start %s %s %s %s %s' % (x, workers, logfile, loglvl, 
+                                              pidfile, app)
     call(cmd, fork=True, sig=signal.SIGTERM, sig_func=celeryd_terminate)
 
 
@@ -463,7 +476,32 @@ def celeryd(args):
     elif args.command == "stop":
         celeryd_terminate()
     elif args.command == "clean":
-        remove(CELERY_PIDFILE)
+        remove(CELERYD_PIDFILE)
+    else:
+        raise ValueError("unknown command %s" % args.command)
+
+
+def celerybeat_terminate(sig=None, frame=None):
+    terminate(CELERYBEAT_PIDFILE)
+
+
+def celerybeat_run(args):
+    x = 'beat'
+    logfile = '--logfile=%s' % CELERY_LOGFILE
+    loglvl = '-l INFO'
+    pidfile = '--pidfile=%s' % CELERYBEAT_PIDFILE
+    app = '-A %s' % args.tasks_mod
+    cmd = 'celery %s %s %s %s %s' % (x, logfile, loglvl, pidfile, app)
+    call(cmd, fork=True, sig=signal.SIGTERM, sig_func=celerybeat_terminate)
+
+
+def celerybeat(args):
+    if args.command == "start":
+        celerybeat_run(args)
+    elif args.command == "stop":
+        celerybeat_terminate()
+    elif args.command == "clean":
+        remove(CELERYBEAT_PIDFILE)
     else:
         raise ValueError("unknown command %s" % args.command)
 
@@ -1095,6 +1133,13 @@ def main():
     _celeryd.add_argument('task', nargs='?')
     _celeryd.add_argument('-l', '--loop', action='store_true')
     _celeryd.set_defaults(func=celeryd)
+
+    # celerybeat Server
+    _celerybeat = _sub.add_parser('celerybeat')
+    _celerybeat.add_argument('command',
+                          choices=['start', 'stop', 'clean'])
+    _celerybeat.add_argument('tasks_mod', nargs='?')
+    _celerybeat.set_defaults(func=celerybeat)
 
     # SSL creation
     _ssl = _sub.add_parser('ssl')
