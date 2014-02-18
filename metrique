@@ -24,10 +24,16 @@ import subprocess
 import sys
 import virtualenv
 
-
 virtenv_activated = False
 logger = virtualenv.Logger([(0, sys.stdout)])
 call_subprocess = virtualenv.call_subprocess
+
+
+def deactivate():
+    try:
+        system('deactivate')
+    except OSError:
+        pass
 
 
 def activate(args=None):
@@ -49,7 +55,6 @@ def activate(args=None):
             execfile(activate_this, dict(__file__=activate_this))
             virtenv_activated = True
             logger.info('Virtual Env (%s): Activated' % virtenv)
-        os.chdir(virtenv)
 
 
 def rand_chars(size=6, chars=string.ascii_uppercase + string.digits):
@@ -63,7 +68,6 @@ activate()
 
 __pkgs__ = ['metrique', 'metriqued', 'metriquec', 'metriqueu',
             'metriquet', 'plotrique']
-__src__ = 'src/'
 __actions__ = ['build', 'sdist', 'install', 'develop', 'register',
                'bump', 'status']
 __bumps__ = ['x', 'y', 'z', 'r']
@@ -72,19 +76,40 @@ RE_VERSION_Y = re.compile(r"__version__\s+=\s+[\"'](\d+.(\d+).\d+)[\"']")
 RE_VERSION_Z = re.compile(r"__version__\s+=\s+[\"'](\d+.\d+.(\d+))[\"']")
 RE_RELEASE = re.compile(r"__release__ = [\"']?((\d+)a?)[\"']?")
 
-HOSTNAME = socket.gethostname()
-LOCAL_IP = socket.gethostbyname(HOSTNAME)
+HERE = os.getcwd()
+USER = getpass.getuser()
+VIRTUAL_ENV = os.environ.get('VIRTUAL_ENV', '')
+NOW = datetime.datetime.utcnow().strftime('%FT%H%M%S')
 
-CWD = os.getcwd()
-SRC_DIR = os.path.join(CWD, __src__)
+HOSTNAME = socket.gethostname()
+try:
+    # try to get one of the local inet device ip addresses
+    LOCAL_IP = socket.gethostbyname(HOSTNAME)
+except Exception:
+    LOCAL_IP = '127.0.0.1'
+
+
+GIT_DIR = os.environ.get('METRIQUE_GIT', HERE)
+
+if not os.path.exists(GIT_DIR):
+    raise OSError("can't find metrique git repo path; `export METRIQUE_GIT=...`")
+
+SRC_DIR = os.path.join(GIT_DIR, 'src/')
 
 # if HOME environment variable is set, use that
-# useful when running 'as user' with root (supervisord)
-HOME = os.environ.get('HOME')
-if HOME:
-    USER_DIR = os.path.join(HOME, '.metrique')
-else:
-    USER_DIR = os.path.expanduser('~/.metrique')
+# useful to overide when running 'as user' with root (supervisord)
+HOME_DIR = os.environ.get('HOME', os.path.expanduser('~/'))
+USER_DIR = os.path.join(HOME_DIR, '.metrique')
+
+# set cache dir so pip doesn't have to keep downloading over and over
+PIP_DIR = os.path.join(USER_DIR, '.pip')
+PIP_CACHE_DIR = os.path.join(PIP_DIR, 'download-cache')
+PIP_ACCEL_DIR = os.path.join(USER_DIR, '.pip-accel')
+PIP_EGGS = os.path.join(USER_DIR, '.python-eggs')
+os.environ['PIP_DOWNLOAD_CACHE'] = PIP_CACHE_DIR
+os.environ['PIP_ACCEL_CACHE'] = PIP_ACCEL_DIR
+os.environ['PYTHON_EGG_CACHE'] = PIP_EGGS
+
 TRASH_DIR = os.path.join(USER_DIR, 'trash')
 LOG_DIR = os.path.join(USER_DIR, 'logs')
 ETC_DIR = os.path.join(USER_DIR, 'etc')
@@ -96,9 +121,8 @@ MONGODB_DIR = os.path.join(USER_DIR, 'mongodb')
 CELERY_DIR = os.path.join(USER_DIR, 'celery')
 GNUPG_DIR = os.path.join(USER_DIR, 'gnupg')
 
-cwd = os.getcwd()
-STATIC_PATH = os.path.join(cwd, 'src/metriqued/metriqued/static/')
-API_DOCS_PATH = os.path.join(cwd, 'docs/build/html/')
+STATIC_PATH = os.path.join(SRC_DIR, 'metriqued/metriqued/static/')
+API_DOCS_PATH = os.path.join(GIT_DIR, 'docs/build/html/')
 
 SYS_FIRSTBOOT_PATH = os.path.join(USER_DIR, '.firstboot_sys')
 
@@ -124,7 +148,7 @@ MONGODB_KEYFILE = os.path.join(ETC_DIR, 'mongodb.key')
 
 CELERY_JSON = os.path.join(ETC_DIR, 'celery.json')
 CELERYD_PIDFILE = os.path.join(PID_DIR, 'celeryd.pid')
-CELERYBEAT_PIDFILE = os.path.join(PID_DIR, '/celerybeat.pid')
+CELERYBEAT_PIDFILE = os.path.join(PID_DIR, 'celerybeat.pid')
 CELERY_LOGFILE = os.path.join(LOG_DIR, 'celeryd.log')
 
 NGINX_CONF = os.path.join(ETC_DIR, 'nginx.conf')
@@ -137,16 +161,18 @@ SUPERVISORD_PIDFILE = os.path.join(PID_DIR, 'supervisord.pid')
 SUPERVISORD_LOGFILE = os.path.join(LOG_DIR, 'supervisord.log')
 SUPERVISORD_HISTORYFILE = os.path.join(TEMP_DIR, 'supervisord_history')
 
-# set cache dir so pip doesn't have to keep downloading over and over
-PIP_DIR = os.path.join(USER_DIR, '.pip')
-PIP_CACHE_DIR = os.path.join(PIP_DIR, 'download-cache')
-PIP_ACCEL_DIR = os.path.join(PIP_DIR, 'pip-accel')
-os.environ['PIP_DOWNLOAD_CACHE'] = PIP_CACHE_DIR
-os.environ['PIP_ACCEL_CACHE'] = PIP_ACCEL_DIR
-PIP_EGGS = os.path.join(USER_DIR, 'eggs')
-
-USER = getpass.getuser()
-NOW = datetime.datetime.utcnow().strftime('%FT%H%M%S')
+logger.warn('-'*30)
+logger.warn('Started at  : %s' % NOW)
+logger.warn('Current User: %s' % USER)
+logger.warn('Current CWD : %s' % HERE)
+logger.warn('Virtual Env : %s' % VIRTUAL_ENV)
+logger.warn('Hostname    : %s' % HOSTNAME)
+logger.warn('Local IP    : %s' % LOCAL_IP)
+logger.warn('GIT Repo    : %s' % GIT_DIR)
+logger.warn('Source Path : %s' % SRC_DIR)
+logger.warn('Home Path   : %s' % HOME_DIR)
+logger.warn('User Path   : %s' % USER_DIR)
+logger.warn('-'*30)
 
 DEFAULT_METRIQUE_JSON = '''
 {
@@ -299,8 +325,14 @@ http {
     error_log %s;
     access_log %s;
 
-    keepalive_timeout 65;
-    proxy_read_timeout 200;
+    # Timeouts
+    keepalive_timeout 3m;
+    client_header_timeout  3m;
+    client_body_timeout  3m;
+    proxy_connect_timeout 3m;
+    proxy_send_timeout 3m;
+    proxy_read_timeout 3m;
+
     sendfile on;
     tcp_nopush on;
     tcp_nodelay on;
@@ -326,9 +358,8 @@ http {
         ssl_protocols        SSLv3 TLSv1 TLSv1.1 TLSv1.2;
         ssl_ciphers RC4:HIGH:!aNULL:!MD5;
         ssl_prefer_server_ciphers on;
-        keepalive_timeout    60;
         ssl_session_cache    shared:SSL:10m;
-        ssl_session_timeout  10m;
+        ssl_session_timeout  60m;
 
         location ^~ /static/ {
             root %s;
@@ -367,7 +398,9 @@ http {
        STATIC_PATH)
 DEFAULT_NGINX_CONF = DEFAULT_NGINX_CONF.strip()
 
-VIRTUAL_ENV = os.environ.get('VIRTUAL_ENV', '')
+ENVIRONMENT = 'VIRTUAL_ENV="%s", HOME="%s", METRIQUE_GIT="%s"' % (
+    VIRTUAL_ENV, HOME_DIR, GIT_DIR)
+PYTHON = os.path.join(VIRTUAL_ENV, 'bin/python')
 METRIQUE = os.path.join(VIRTUAL_ENV, 'bin/metrique')
 VIZTRIQUE = os.path.join(VIRTUAL_ENV, 'bin/viztriqued')
 DEFAULT_SUPERVISORD_CONF = '''
@@ -385,7 +418,9 @@ logfile=%s
 pidfile=%s
 childlogdir=%s
 user=%s
+directory=%s
 environment=%s
+loglevel=debug
 
 [supervisorctl]
 serverurl=http://127.0.0.1:9001
@@ -417,15 +452,30 @@ numprocs=1
 priority=30
 startsecs=30
 
-[program:viztriqued]
-command=%s start --nofork
-process_name=viztrique
+[program:celeryd]
+command=%s celeryd start --nofork
+process_name=celeryd
 numprocs=1
 priority=40
+startsecs=30
+
+[program:celerybeat]
+command=%s celerybeat start --nofork
+process_name=celerybeat
+numprocs=1
+priority=41
+startsecs=30
+
+[program:viztriqued]
+command=%s start --nofork
+directory=path/to/viztrique/git/repo
+process_name=viztrique
+numprocs=1
+priority=100
 ''' % (LOCAL_IP, PASSWORD, SUPERVISORD_LOGFILE, SUPERVISORD_PIDFILE,
-       LOG_DIR, USER, 'VIRTUAL_ENV="%s"' % VIRTUAL_ENV,
+       LOG_DIR, USER, GIT_DIR, ENVIRONMENT,
        LOCAL_IP, PASSWORD, SUPERVISORD_HISTORYFILE,
-       METRIQUE, METRIQUE, METRIQUE, VIZTRIQUE)
+       METRIQUE, METRIQUE, METRIQUE, METRIQUE, METRIQUE, VIZTRIQUE)
 DEFAULT_SUPERVISORD_CONF = DEFAULT_SUPERVISORD_CONF.strip()
 
 
@@ -456,7 +506,11 @@ def remove(path):
                 os.remove(path)
 
 
-def system(cmd):
+def system(cmd, fork=False, sig=None, sig_func=None):
+    if sig and sig_func:
+        signal.signal(sig, sig_func)
+
+    logger.debug("Running: %s" % cmd)
     cmd = cmd.split()
     p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     text = p.stdout.read()
@@ -464,6 +518,8 @@ def system(cmd):
 
 
 def run(cmd, cwd, show_stdout):
+    cwd = cwd or SRC_DIR
+    logger.info("[%s] Running ...\n`%s`" % (cwd, ' '.join(cmd)))
     try:
         call_subprocess(cmd, cwd=cwd, show_stdout=show_stdout)
     except KeyboardInterrupt:
@@ -476,8 +532,6 @@ def run(cmd, cwd, show_stdout):
 def call(cmd, cwd=None, show_stdout=True, fork=False, pidfile=None,
          sig=None, sig_func=None):
     cmd = shlex.split(cmd.strip())
-    logger.info("[%s] Running ...\n`%s`" % (cwd, ' '.join(cmd)))
-
     if sig and sig_func:
         signal.signal(sig, sig_func)
 
@@ -533,18 +587,17 @@ def celeryd_terminate(sig=None, frame=None):
 
 
 def celeryd_loop(args):
-    x = 'multi'
+    fork = not args.nofork
+    x = 'worker'
     logfile = '--logfile=%s' % CELERY_LOGFILE
     loglvl = '-l INFO'
     pidfile = '--pidfile=%s' % CELERYD_PIDFILE
     app = '-A %s' % args.tasks_mod
-    workers = 1
-    cmd = 'celery %s start %s %s %s %s %s' % (x, workers, logfile, loglvl,
-                                              pidfile, app)
-    call(cmd, fork=True, sig=signal.SIGTERM, sig_func=celeryd_terminate)
+    cmd = 'celery %s %s %s %s %s' % (x, logfile, loglvl, pidfile, app)
+    call(cmd, fork=fork, sig=signal.SIGTERM, sig_func=celeryd_terminate)
 
 
-def celeryd_run(args):
+def celeryd_task(args):
     tasks = importlib.import_module(args.tasks_mod)
     task = getattr(tasks, args.task)
     return task.run()
@@ -552,10 +605,7 @@ def celeryd_run(args):
 
 def celeryd(args):
     if args.command == "start":
-        if args.loop:
-            celeryd_loop(args)
-        else:
-            celeryd_run(args)
+        celeryd_loop(args)
     elif args.command == "stop":
         terminate(CELERYD_PIDFILE)
     elif args.command == "clean":
@@ -570,13 +620,14 @@ def celerybeat_terminate(sig=None, frame=None):
 
 
 def celerybeat_run(args):
+    fork = not args.nofork
     x = 'beat'
     logfile = '--logfile=%s' % CELERY_LOGFILE
     loglvl = '-l INFO'
     pidfile = '--pidfile=%s' % CELERYBEAT_PIDFILE
     app = '-A %s' % args.tasks_mod
     cmd = 'celery %s %s %s %s %s' % (x, logfile, loglvl, pidfile, app)
-    call(cmd, fork=True, sig=signal.SIGTERM, sig_func=celerybeat_terminate)
+    call(cmd, fork=fork, sig=signal.SIGTERM, sig_func=celerybeat_terminate)
 
 
 def celerybeat(args):
@@ -645,10 +696,8 @@ def _metriqued_start(args):
     from metriqueu.utils import get_pids
 
     config_file = args.server_config_file
-    running = get_pids(PID_DIR)
-    running_k = len(running)
     pids = []
-    port = args.port + running_k
+    port = args.port
     fork = not args.nofork
     instances = args.instances or 0
 
@@ -657,6 +706,8 @@ def _metriqued_start(args):
         for k in range(instances):
             pid = os.fork()
             if pid == 0:
+                running_k = len(get_pids(PID_DIR))
+                port = port + running_k
                 metriqued = MetriqueHTTP(config_file=config_file, port=port)
                 metriqued.start()
                 sys.exit()
@@ -800,6 +851,45 @@ def mongodb(args):
         raise ValueError("unknown command %s" % args.command)
 
 
+def mongodb_rsync(args):
+    from metriqued.config import mongodb_config
+    config = mongodb_config()
+    ssl = ' --ssl' if config.ssl else ''
+    password = config.admin_password
+    host = args.host or config.host.split(',')[0]  # first host listed
+    target = MONGODB_DIR
+    prefix = 'mongodb'
+    saveas = '__'.join((prefix, HOSTNAME))
+    ssh_user = args.ssh_user
+    ssh_host = args.ssh_host
+
+    js_islocked = 'printjson(db.currentOp().fsyncLock)'
+    js_lock = 'db.fsyncLock()'
+    js_unlock = 'db.fsyncUnlock()'
+
+    # if mongodb is running, we'll need to sync and lock the db first
+    running = get_pid(MONGODB_PIDFILE) != 0
+    locked = False
+    if running:
+        locked = system(
+            'mongo %s/admin %s --eval "%s" -u admin -p %s --quiet' % (
+                host, ssl, js_islocked, password))
+        locked = True if locked == 'true' else False
+
+        if not locked:
+            # sync and lock
+            call('mongo %s/admin %s --eval "%s" -u admin -p %s' % (
+                host, ssl, js_lock, password))
+            locked = True
+
+    call('rsync -az -e ssh %s %s@%s:%s' % (target, ssh_user, ssh_host, saveas))
+
+    if running and locked:
+        # unlock
+        call('mongo %s/admin %s --eval "%s" -u admin -p %s' % (host, ssl,
+                                                               js_unlock, password))
+
+
 def mongodb_backup(args):
     from metriqued.config import mongodb_config
     config = mongodb_config()
@@ -892,7 +982,6 @@ def bump_release(line, reset=False, ga=False):
 
 def get_packages(args):
     global __pkgs__
-    global SRC_DIR
     return [os.path.join(SRC_DIR, pkg) for pkg in __pkgs__]
 
 
@@ -928,19 +1017,16 @@ def setup(args, cmd, pip=False):
         cmd = cmd.strip()
     else:
         cmd = ' '.join([s.strip() for s in cmd])
-    cwd = os.getcwd()
     for path in __pkgs__:
-        abspath = os.path.join(cwd, 'src', path)
+        abspath = os.path.join(SRC_DIR, path)
+        os.chdir(abspath)
         if pip and args.slow:
-            logger.info('pip %s -e %s' % (cmd, abspath))
-            os.system('pip %s -e %s' % (cmd, abspath))
+            logger.info(system('pip %s -e %s' % (cmd, abspath)))
         elif pip:
-            logger.info('pip-accel %s -e %s' % (cmd, abspath))
-            os.system('pip-accel %s -e %s' % (cmd, abspath))
+            logger.info(system('pip-accel %s -e %s' % (cmd, abspath)))
         else:
             os.chdir(abspath)
-            call('python setup.py %s' % cmd, show_stdout=True)
-    os.chdir(cwd)
+            logger.info(system('python setup.py %s' % cmd))
 
 
 def deploy(args):
@@ -960,11 +1046,11 @@ def deploy(args):
     # second run should be 90% faster!
     virtenv = getattr(args, 'virtenv')
     if virtenv:
+        # we can't be in a virtenv when running the virtualenv.main() script
+        #sys.path = [p for p in sys.path if not p.startswith(virtenv)]
+        deactivate()
         if args.trash:
             remove(args.virtenv)
-        # we can't be in a virtenv when running the virtualenv.main() script
-        sys.path = [p for p in sys.path if not p.startswith(virtenv)]
-
         # virtualenv.main; pass in only the virtenv path
         sys.argv = sys.argv[0:1] + [virtenv]
         # run the virtualenv script to install the virtenv
@@ -1012,7 +1098,7 @@ def deploy(args):
     # run py.test after install
     if args.test:
         for pkg in __pkgs__:
-            call('py.test tests/%s' % pkg)
+            call('py.test tests/%s' % pkg, cwd=GIT_DIR)
 
 
 def bump(args, kind=None, reset=None):
@@ -1195,9 +1281,16 @@ def main():
     _mongodb.add_argument('-f', '--fast', action='store_true')
     _mongodb.add_argument('-s', '--ssl', action='store_true')
     _mongodb.add_argument('-u', '--user')
-    _mongodb.add_argument('-F', '--nofork', action='store_true')
     _mongodb.add_argument('-p', '--password')
+    _mongodb.add_argument('-F', '--nofork', action='store_true')
     _mongodb.set_defaults(func=mongodb)
+
+    # MongoDB rsync
+    _mongodb_rsync = _sub.add_parser('mongodb_rsync')
+    _mongodb_rsync.add_argument('host', nargs='?')
+    _mongodb_rsync.add_argument('-H', '--ssh-host')
+    _mongodb_rsync.add_argument('-u', '--ssh-user', default='backup')
+    _mongodb_rsync.set_defaults(func=mongodb_rsync)
 
     # MongoDB Backup
     _mongodb_backup = _sub.add_parser('mongodb_backup')
@@ -1240,26 +1333,29 @@ def main():
     _metriqued_backup.add_argument('-O', '--scp-out-dir')
     _metriqued_backup.set_defaults(func=metriqued_backup)
 
-    # celeryd Server
+    # celeryd task run
+    _celeryd_task = _sub.add_parser('celeryd_task')
+    _celeryd_task.add_argument('task')
+    _celeryd_task.add_argument('--tasks-mod', default='dataservices.tasks')
+    _celeryd_task.set_defaults(func=celeryd_task)
+
+    # celeryd server
     _celeryd = _sub.add_parser('celeryd')
-    _celeryd.add_argument('command',
-                          choices=['start', 'stop', 'clean'])
-    _celeryd.add_argument('tasks_mod', nargs='?')
-    _celeryd.add_argument('task', nargs='?')
-    _celeryd.add_argument('-l', '--loop', action='store_true')
+    _celeryd.add_argument('command', choices=['start', 'stop', 'clean'])
+    _celeryd.add_argument('--tasks-mod', default='dataservices.tasks')
+    _celeryd.add_argument('-F', '--nofork', action='store_true')
     _celeryd.set_defaults(func=celeryd)
 
-    # celerybeat Server
+    # celerybeat server
     _celerybeat = _sub.add_parser('celerybeat')
-    _celerybeat.add_argument('command',
-                             choices=['start', 'stop', 'clean'])
-    _celerybeat.add_argument('tasks_mod', nargs='?')
+    _celerybeat.add_argument('command', choices=['start', 'stop', 'clean'])
+    _celerybeat.add_argument('--tasks-mod', default='dataservices.tasks')
+    _celerybeat.add_argument('-F', '--nofork', action='store_true')
     _celerybeat.set_defaults(func=celerybeat)
 
-    # celerybeat Server
+    # supervisord server
     _supervisord = _sub.add_parser('supervisord')
-    _supervisord.add_argument('command',
-                              choices=['start', 'stop', 'clean'])
+    _supervisord.add_argument('command', choices=['start', 'stop', 'clean'])
     _supervisord.set_defaults(func=supervisord)
 
     # SSL creation
@@ -1268,8 +1364,6 @@ def main():
 
     # parse argv
     args = cli.parse_args()
-
-    activate(args)
 
     # make sure we have some basic defaults configured in the environment
     sys_firstboot(args)

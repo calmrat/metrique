@@ -330,7 +330,12 @@ class TornadoHTTPServer(object):
         self.logger.debug(' Host: %s' % self.uri)
         self.logger.debug('  SSL: %s' % self.config.ssl)
 
-        self.server.listen(port=self.config.port, address=self.config.host)
+        host, port = self.config.host, self.config.port
+        try:
+            self.server.listen(port=port, address=host)
+        except Exception as e:
+            self.logger.error(
+                'Failed to connect to %s:%s (%s)' % (host, port, e))
         IOLoop.instance().start()
 
     def spawn_instance(self):

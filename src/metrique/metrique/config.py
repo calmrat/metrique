@@ -24,11 +24,17 @@ import re
 
 from metriqueu.jsonconf import JSONConf
 
-USER_DIR = os.path.expanduser('~/.metrique')
+# if HOME environment variable is set, use that
+# useful when running 'as user' with root (supervisord)
+HOME = os.environ.get('HOME')
+if HOME:
+    USER_DIR = os.path.join(HOME, '.metrique')
+else:
+    USER_DIR = os.path.expanduser('~/.metrique')
 CONFIG_DIR = os.path.join(USER_DIR, 'etc')
 LOG_DIR = os.path.join(USER_DIR, 'logs')
 TMP_DIR = os.path.join(USER_DIR, 'tmp')
-GNUPG_DIR = os.path.expanduser('~/.gnupg')
+GNUPG_DIR = os.path.join(USER_DIR, '.gnupg')
 COOKIEJAR = os.path.join(USER_DIR, '.cookiejar')
 DEFAULT_CONFIG = os.path.join(CONFIG_DIR, 'metrique')
 
