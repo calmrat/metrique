@@ -283,20 +283,15 @@ DEFAULT_CELERY_JSON = DEFAULT_CELERY_JSON.strip()
 
 DEFAULT_NGINX_CONF = '''
 worker_processes auto;
-
 daemon on;  # turn off to avoid forking on startup (supervisord)
 # see warnings: http://wiki.nginx.org/CoreModule#daemon
-
 user %s
-
 error_log %s;
 pid %s;
-
 events {
     worker_connections 1024;
     use epoll;
 }
-
 http {
     charset utf-8;
     client_max_body_size 0;  # disabled
@@ -409,9 +404,6 @@ DEFAULT_NGINX_CONF = DEFAULT_NGINX_CONF.strip()
 
 ENVIRONMENT = 'VIRTUAL_ENV="%s", HOME="%s", METRIQUE_GIT="%s"' % (
     VIRTUAL_ENV, HOME_DIR, GIT_DIR)
-PYTHON = os.path.join(VIRTUAL_ENV, 'bin/python')
-METRIQUE = os.path.join(VIRTUAL_ENV, 'bin/metrique')
-VIZTRIQUE = os.path.join(VIRTUAL_ENV, 'bin/viztriqued')
 DEFAULT_SUPERVISORD_CONF = '''
 [inet_http_server]
 port=127.0.0.1:9001
@@ -439,7 +431,7 @@ password=%s
 history_file=%s
 
 [program:mongodb]
-command=%s mongodb start --nofork
+command=python metrique mongodb start --nofork
 process_name=mongodb
 numprocs=1
 priority=10
@@ -447,44 +439,46 @@ startsecs=60
 stopwaitsecs=60
 
 [program:metriqued]
-command=%s metriqued start -P5421 --nofork
+command=python metrique metriqued start -P542%%(process_num)d --nofork
 process_name=metriqued-%%(process_num)d
 numprocs=4
+numprocs_start=1
 priority=20
 startsecs=60
 startretries=5
 
 [program:nginx]
-command=%s nginx start --nofork
+command=python metrique nginx start --nofork
 process_name=nginx
 numprocs=1
 priority=30
 startsecs=30
 
 [program:celeryd]
-command=%s celeryd start --nofork
+command=python metrique celeryd start --nofork
 process_name=celeryd
 numprocs=1
 priority=40
 startsecs=30
+autorestart=true
 
 [program:celerybeat]
-command=%s celerybeat start --nofork
+command=python metrique celerybeat start --nofork
 process_name=celerybeat
 numprocs=1
 priority=41
 startsecs=30
+autorestart=true
 
 [program:viztriqued]
-command=%s start --nofork
+command=python viztriqued start --nofork
 directory=path/to/viztrique/git/repo
-process_name=viztrique
+process_name=viztriqued
 numprocs=1
 priority=100
 ''' % (LOCAL_IP, PASSWORD, SUPERVISORD_LOGFILE, SUPERVISORD_PIDFILE,
        LOG_DIR, USER, GIT_DIR, ENVIRONMENT,
-       LOCAL_IP, PASSWORD, SUPERVISORD_HISTORYFILE,
-       METRIQUE, METRIQUE, METRIQUE, METRIQUE, METRIQUE, VIZTRIQUE)
+       LOCAL_IP, PASSWORD, SUPERVISORD_HISTORYFILE)
 DEFAULT_SUPERVISORD_CONF = DEFAULT_SUPERVISORD_CONF.strip()
 
 
@@ -860,6 +854,14 @@ def mongodb(args):
         raise ValueError("unknown command %s" % args.command)
 
 
+def _mongodb_is_locked(host, ssl, password):
+    js_islocked = 'printjson(db.currentOp().fsyncLock)'
+    locked = system(
+        'mongo %s/admin %s --eval "%s" -u admin -p %s --quiet' % (
+            host, ssl, js_islocked, password))
+    return True if locked == 'true' else False
+
+
 def mongodb_rsync(args):
     from metriqued.config import mongodb_config
     config = mongodb_config()
@@ -871,34 +873,30 @@ def mongodb_rsync(args):
     saveas = '__'.join((prefix, HOSTNAME))
     ssh_user = args.ssh_user
     ssh_host = args.ssh_host
+    compress = '-z' if not args.nocompress else ''
+    lock_fsync = not args.nolock
 
-    js_islocked = 'printjson(db.currentOp().fsyncLock)'
     js_lock = 'db.fsyncLock()'
     js_unlock = 'db.fsyncUnlock()'
 
     # if mongodb is running, we'll need to sync and lock the db first
     running = get_pid(MONGODB_PIDFILE) != 0
-    locked = False
-    if running:
-        locked = system(
-            'mongo %s/admin %s --eval "%s" -u admin -p %s --quiet' % (
-                host, ssl, js_islocked, password))
-        locked = True if locked == 'true' else False
+    locked = _mongodb_is_locked(host, ssl, password) if running else False
 
-        if not locked:
-            # sync and lock
-            call('mongo %s/admin %s --eval "%s" -u admin -p %s' % (
-                host, ssl, js_lock, password))
-            locked = True
+    if lock_fsync and not locked:  # sync and lock
+        call('mongo %s/admin %s --eval "%s" -u admin -p %s' % (
+            host, ssl, js_lock, password))
 
     if ssh_host:
-        call('rsync -az -e ssh %s %s@%s:%s' % (target, ssh_user, ssh_host, saveas))
+        call('rsync -av %s -e ssh %s %s@%s:%s' % (compress, target, ssh_user,
+                                                  ssh_host, saveas),
+             show_stdout=True)
     else:
         saveas = os.path.join(BACKUP_DIR, saveas)
-        call('rsync -az %s %s' % (target, saveas))
+        call('rsync -av %s %s %s' % (compress, target, saveas), show_stdout=True)
 
-    if running and locked:
-        # unlock
+    locked = _mongodb_is_locked(host, ssl, password) if running else False
+    if locked:  # unlock
         call('mongo %s/admin %s --eval "%s" -u admin -p %s' % (host, ssl,
                                                                js_unlock, password))
 
@@ -1310,6 +1308,8 @@ def main():
     # MongoDB rsync
     _mongodb_rsync = _sub.add_parser('mongodb_rsync')
     _mongodb_rsync.add_argument('host', nargs='?')
+    _mongodb_rsync.add_argument('-Z', '--nocompress', action='store_true')
+    _mongodb_rsync.add_argument('-L', '--nolock', action='store_true')
     _mongodb_rsync.add_argument('-H', '--ssh-host')
     _mongodb_rsync.add_argument('-u', '--ssh-user', default='backup')
     _mongodb_rsync.set_defaults(func=mongodb_rsync)
