@@ -24,47 +24,12 @@ import subprocess
 import sys
 import virtualenv
 
+pjoin = os.path.join
+env = os.environ
+
 virtenv_activated = False
 logger = virtualenv.Logger([(0, sys.stdout)])
 call_subprocess = virtualenv.call_subprocess
-
-
-def deactivate():
-    try:
-        system('deactivate')
-    except OSError:
-        pass
-
-
-def activate(args=None):
-    global virtenv_activated
-
-    if virtenv_activated:
-        return
-    elif (hasattr(args, 'virtenv') and args.virtenv):
-        virtenv = args.virtenv
-    elif isinstance(args, basestring):
-        # virtenv path is passed in direct as a string
-        virtenv = args
-    else:
-        virtenv = os.environ.get('VIRTUAL_ENV')
-
-    if virtenv:
-        activate_this = os.path.join(virtenv, 'bin', 'activate_this.py')
-        if os.path.exists(activate_this):
-            execfile(activate_this, dict(__file__=activate_this))
-            virtenv_activated = True
-            logger.info('Virtual Env (%s): Activated' % virtenv)
-
-
-def rand_chars(size=6, chars=string.ascii_uppercase + string.digits):
-    # see: http://stackoverflow.com/questions/2257441
-    return ''.join(random.choice(chars) for x in range(size))
-
-
-# Activate the virtual environment in this python session if
-# parent env has one set
-activate()
 
 __pkgs__ = ['metrique', 'metriqued', 'metriquec', 'metriqueu',
             'metriquet', 'plotrique']
@@ -84,9 +49,38 @@ RPMS = ['git', 'python', 'python-devel', 'python-setuptools', 'python-pip',
         'mongodb', 'mongodb-server', 'nginx', 'krb5-devel', 'postgresql',
         'postgresql-devel']
 
-HERE = os.getcwd()
+
+def deactivate(virtenv):
+    sys.path = [p for p in sys.path if not p.startswith(virtenv)]
+
+
+def activate(args=None):
+    global virtenv_activated
+
+    if virtenv_activated:
+        return
+    elif (hasattr(args, 'virtenv') and args.virtenv):
+        virtenv = args.virtenv
+    else:
+        virtenv = env.get('VIRTUAL_ENV', '')
+
+    if virtenv:
+        activate_this = pjoin(virtenv, 'bin', 'activate_this.py')
+        if os.path.exists(activate_this):
+            execfile(activate_this, dict(__file__=activate_this))
+            env['VIRTUAL_ENV'] = virtenv
+            virtenv_activated = True
+            logger.info('Virtual Env (%s): Activated' % virtenv)
+    return virtenv
+
+
+def rand_chars(size=6, chars=string.ascii_uppercase + string.digits):
+    # see: http://stackoverflow.com/questions/2257441
+    return ''.join(random.choice(chars) for x in range(size))
+
+
 USER = getpass.getuser()
-VIRTUAL_ENV = os.environ.get('VIRTUAL_ENV', '')
+VIRTUAL_ENV = env.get('VIRTUAL_ENV', '')
 NOW = datetime.datetime.utcnow().strftime('%FT%H%M%S')
 
 HOSTNAME = socket.gethostname()
@@ -96,14 +90,15 @@ try:
 except Exception:
     LOCAL_IP = '127.0.0.1'
 
-GIT_DIR = os.environ.get('METRIQUE_GIT', HERE)
+PASSWORD = rand_chars(10)
+COOKIE_SECRET = rand_chars(50)
 
-SRC_DIR = os.path.join(GIT_DIR, 'src/')
+HERE = os.getcwd()
+GIT_DIR = env.get('METRIQUE_GIT', HERE)
+SRC_DIR = pjoin(GIT_DIR, 'src/')
 
-# if HOME environment variable is set, use that
-# useful to overide when running 'as user' with root (supervisord)
-HOME_DIR = os.environ.get('HOME', os.path.expanduser('~/'))
-USER_DIR = os.path.join(HOME_DIR, '.metrique')
+HOME_DIR = env.get('METRIQUE_HOME', os.path.expanduser('~/'))
+USER_DIR = env.get('METRIQUE_USR', pjoin(HOME_DIR, '.metrique'))
 
 logger.warn('-'*30)
 logger.warn('Started at  : %s' % NOW)
@@ -120,366 +115,65 @@ logger.warn('User Path   : %s' % USER_DIR)
 logger.warn('-'*30)
 
 if not (os.path.exists(SRC_DIR) or
-        os.path.exists(os.path.join(SRC_DIR, '.git'))):
+        os.path.exists(pjoin(SRC_DIR, '.git'))):
     raise OSError("can't find metrique src/ path; `export METRIQUE_GIT=...`?")
 
 # set cache dir so pip doesn't have to keep downloading over and over
-PIP_DIR = os.path.join(USER_DIR, '.pip')
-PIP_CACHE_DIR = os.path.join(PIP_DIR, 'download-cache')
-PIP_ACCEL_DIR = os.path.join(USER_DIR, '.pip-accel')
-PIP_EGGS = os.path.join(USER_DIR, '.python-eggs')
-os.environ['PIP_DOWNLOAD_CACHE'] = PIP_CACHE_DIR
-os.environ['PIP_ACCEL_CACHE'] = PIP_ACCEL_DIR
-os.environ['PYTHON_EGG_CACHE'] = PIP_EGGS
+PIP_DIR = pjoin(USER_DIR, '.pip')
+PIP_CACHE_DIR = pjoin(PIP_DIR, 'download-cache')
+PIP_ACCEL_DIR = pjoin(USER_DIR, '.pip-accel')
+PIP_EGGS = pjoin(USER_DIR, '.python-eggs')
+env['PIP_DOWNLOAD_CACHE'] = env.get('PIP_DOWNLOAD_CACHE', PIP_CACHE_DIR)
+env['PIP_ACCEL_CACHE'] = env.get('PIP_ACCEL_CACHE', PIP_ACCEL_DIR)
+env['PYTHON_EGG_CACHE'] = env.get('PYTHON_EGG_CACHE', PIP_EGGS)
 
-TRASH_DIR = os.path.join(USER_DIR, 'trash')
-LOG_DIR = os.path.join(USER_DIR, 'logs')
-ETC_DIR = os.path.join(USER_DIR, 'etc')
-PID_DIR = os.path.join(USER_DIR, 'pids')
-BACKUP_DIR = os.path.join(USER_DIR, 'backup')
-TEMP_DIR = os.path.join(USER_DIR, 'tmp')
-CACHE_DIR = os.path.join(USER_DIR, 'cache')
-MONGODB_DIR = os.path.join(USER_DIR, 'mongodb')
-CELERY_DIR = os.path.join(USER_DIR, 'celery')
-GNUPG_DIR = os.path.join(USER_DIR, 'gnupg')
+TRASH_DIR = env.get('METRIQUE_TRASH', pjoin(USER_DIR, 'trash'))
+LOG_DIR = env.get('METRIQUE_LOG', pjoin(USER_DIR, 'logs'))
+ETC_DIR = env.get('METRIQUE_ETC', pjoin(USER_DIR, 'etc'))
+PID_DIR = env.get('METRIQUE_PID', pjoin(USER_DIR, 'pids'))
+BACKUP_DIR = env.get('METRIQUE_BACKUP', pjoin(USER_DIR, 'backup'))
+TEMP_DIR = env.get('METRIQUE_TEMP', pjoin(USER_DIR, 'tmp'))
+CACHE_DIR = env.get('METRIQUE_CACHE', pjoin(USER_DIR, 'cache'))
+MONGODB_DIR = env.get('METRIQUE_MONGODB', pjoin(USER_DIR, 'mongodb'))
+CELERY_DIR = env.get('METRIQUE_CELERY', pjoin(USER_DIR, 'celery'))
+GNUPG_DIR = env.get('METRIQUE_GNUPG', pjoin(USER_DIR, 'gnupg'))
 
-STATIC_PATH = os.path.join(SRC_DIR, 'metriqued/metriqued/static/')
-API_DOCS_PATH = os.path.join(GIT_DIR, 'docs/build/html/')
+METRIQUED_JSON = pjoin(ETC_DIR, 'metriqued.json')
+METRIQUE_JSON = pjoin(ETC_DIR, 'metrique.json')
 
-SYS_FIRSTBOOT_PATH = os.path.join(USER_DIR, '.firstboot_sys')
+STATIC_PATH = env.get('METRIQUE_STATIC', pjoin(SRC_DIR, 'metriqued/metriqued/static/'))
+API_DOCS_PATH = env.get('METRIQUE_API_DOCS', pjoin(GIT_DIR, 'docs/build/html/'))
 
-METRIQUED_FIRSTBOOT_PATH = os.path.join(USER_DIR, '.firstboot_metriqued')
-METRIQUED_JSON = os.path.join(ETC_DIR, 'metriqued.json')
-METRIQUE_JSON = os.path.join(ETC_DIR, 'metrique.json')
+SYS_FIRSTBOOT_PATH = pjoin(USER_DIR, '.firstboot_sys')
+METRIQUED_FIRSTBOOT_PATH = pjoin(USER_DIR, '.firstboot_metriqued')
 
-PASSWORD = rand_chars(10)
-COOKIE_SECRET = rand_chars(50)
+SSL_CERT = pjoin(ETC_DIR, 'metrique.crt')
+SSL_KEY = pjoin(ETC_DIR, 'metrique.key')
+SSL_PEM = pjoin(ETC_DIR, 'metrique.pem')
 
-SSL_CERT = os.path.join(ETC_DIR, 'metrique.crt')
-SSL_KEY = os.path.join(ETC_DIR, 'metrique.key')
-SSL_PEM = os.path.join(ETC_DIR, 'metrique.pem')
+MONGODB_FIRSTBOOT_PATH = pjoin(USER_DIR, '.firstboot_mongodb')
+MONGODB_CONF = pjoin(ETC_DIR, 'mongodb.conf')
+MONGODB_PIDFILE = pjoin(PID_DIR, 'mongodb.pid')
+MONGODB_LOCKFILE = pjoin(MONGODB_DIR, 'mongod.lock')
+MONGODB_LOG = pjoin(LOG_DIR, 'mongodb.log')
+MONGODB_JSON = pjoin(ETC_DIR, 'mongodb.json')
+MONGODB_JS = pjoin(ETC_DIR, 'mongodb.js')
+MONGODB_KEYFILE = pjoin(ETC_DIR, 'mongodb.key')
 
-MONGODB_FIRSTBOOT_PATH = os.path.join(USER_DIR, '.firstboot_mongodb')
-MONGODB_CONF = os.path.join(ETC_DIR, 'mongodb.conf')
-MONGODB_PIDFILE = os.path.join(PID_DIR, 'mongodb.pid')
-MONGODB_LOCKFILE = os.path.join(MONGODB_DIR, 'mongodb.lock')
-MONGODB_LOG = os.path.join(LOG_DIR, 'mongodb.log')
-MONGODB_JSON = os.path.join(ETC_DIR, 'mongodb.json')
-MONGODB_JS = os.path.join(ETC_DIR, 'mongodb.js')
-MONGODB_KEYFILE = os.path.join(ETC_DIR, 'mongodb.key')
+CELERY_JSON = pjoin(ETC_DIR, 'celery.json')
+CELERYD_PIDFILE = pjoin(PID_DIR, 'celeryd.pid')
+CELERYBEAT_PIDFILE = pjoin(PID_DIR, 'celerybeat.pid')
+CELERY_LOGFILE = pjoin(LOG_DIR, 'celeryd.log')
 
-CELERY_JSON = os.path.join(ETC_DIR, 'celery.json')
-CELERYD_PIDFILE = os.path.join(PID_DIR, 'celeryd.pid')
-CELERYBEAT_PIDFILE = os.path.join(PID_DIR, 'celerybeat.pid')
-CELERY_LOGFILE = os.path.join(LOG_DIR, 'celeryd.log')
+NGINX_CONF = pjoin(ETC_DIR, 'nginx.conf')
+NGINX_ACCESS_LOG = pjoin(LOG_DIR, 'nginx_access.log')
+NGINX_ERROR_LOG = pjoin(LOG_DIR, 'nginx_error.log')
+NGINX_PIDFILE = pjoin(PID_DIR, 'nginx.pid')
 
-NGINX_CONF = os.path.join(ETC_DIR, 'nginx.conf')
-NGINX_ACCESS_LOG = os.path.join(LOG_DIR, 'nginx_access.log')
-NGINX_ERROR_LOG = os.path.join(LOG_DIR, 'nginx_error.log')
-NGINX_PIDFILE = os.path.join(PID_DIR, 'nginx.pid')
-
-SUPERVISORD_CONF = os.path.join(ETC_DIR, 'supervisord.conf')
-SUPERVISORD_PIDFILE = os.path.join(PID_DIR, 'supervisord.pid')
-SUPERVISORD_LOGFILE = os.path.join(LOG_DIR, 'supervisord.log')
-SUPERVISORD_HISTORYFILE = os.path.join(TEMP_DIR, 'supervisord_history')
-
-DEFAULT_METRIQUE_JSON = '''
-{
-    "auto_login": false,
-    "batch_size": 5000,
-    "cube_autoregister": false,
-    "debug": true,
-    "host": "127.0.0.1",
-    "log2file": true,
-    "logstdout": false,
-    "max_workers": %s,
-    "password": "%s",
-    "port": 5420,
-    "sql_batch_size": 1000,
-    "ssl": false,
-    "ssl_verify": false
-}
-''' % (multiprocessing.cpu_count(), PASSWORD)
-DEFAULT_METRIQUE_JSON = DEFAULT_METRIQUE_JSON.strip()
-
-DEFAULT_METRIQUED_JSON = '''
-{
-    "api_docs": "%s",
-    "cookie_secret": "%s",
-    "debug": true,
-    "host": "127.0.0.1",
-    "host_LOCAL": "%s",
-    "krb_auth": false,
-    "log2file": true,
-    "logstdout": false,
-    "log_requests": false,
-    "port": 5420,
-    "realm": "metrique",
-    "ssl": false,
-    "ssl_certificate": "%s",
-    "ssl_certificate_key": "%s",
-    "superusers": ["admin", "%s"]
-}
-''' % (API_DOCS_PATH, COOKIE_SECRET, LOCAL_IP,
-       SSL_CERT, SSL_KEY, USER)
-DEFAULT_METRIQUED_JSON = DEFAULT_METRIQUED_JSON.strip()
-
-DEFAULT_MONGODB_JSON = '''
-{
-    "auth": false,
-    "root_password": "%s",
-    "admin_password": "%s",
-    "data_password": "%s",
-    "host": "127.0.0.1",
-    "journal": true,
-    "port": 27017,
-    "ssl": false,
-    "ssl_certificate": "%s",
-    "write_concern": 1
-}
-''' % (PASSWORD, PASSWORD, PASSWORD, SSL_PEM)
-DEFAULT_MONGODB_JSON = DEFAULT_MONGODB_JSON.strip()
-
-DEFAULT_MONGODB_CONF = '''
-fork = true
-nohttpinterface = true
-dbpath = %s
-logpath = %s
-pidfilepath = %s
-
-#auth = true
-noauth = true
-
-bind_ip = 127.0.0.1
-#bind_ip = %s
-
-#sslOnNormalPorts = true
-#sslPEMKeyFile = %s
-
-#replSet = rs0
-#keyFile = %s
-''' % (MONGODB_DIR, MONGODB_LOG, MONGODB_PIDFILE, LOCAL_IP,
-       SSL_PEM, MONGODB_KEYFILE)
-DEFAULT_MONGODB_CONF = DEFAULT_MONGODB_CONF.strip()
-
-DEFAULT_MONGODB_JS = '''
-db = db.getSiblingDB('admin')
-db.addUser({'user': 'root', 'pwd': '%s', 'roles': ['dbAdminAnyDatabase',
-           'userAdminAnyDatabase', 'clusterAdmin', 'readWriteAnyDatabase']});
-db.addUser({'user': 'admin', 'pwd': '%s', 'roles': ['dbAdminAnyDatabase',
-           'userAdminAnyDatabase', 'readWriteAnyDatabase']});
-db.addUser({'user': 'metrique', 'pwd': '%s', 'roles': ['readAnyDatabase']});
-''' % (PASSWORD, PASSWORD, PASSWORD)
-DEFAULT_MONGODB_JS = DEFAULT_MONGODB_JS.strip()
-
-DEFAULT_CELERY_JSON = '''
-{
-    "BROKER_URL": "mongodb://admin:%s@127.0.0.1:27017",
-    "BROKER_URL_LOCAL": "mongodb://admin:%s@%s:27017",
-    "BROKER_USE_SSL": false
-}
-''' % (PASSWORD, PASSWORD, LOCAL_IP)
-DEFAULT_CELERY_JSON = DEFAULT_CELERY_JSON.strip()
-
-DEFAULT_NGINX_CONF = '''
-worker_processes auto;
-daemon on;  # turn off to avoid forking on startup (supervisord)
-# see warnings: http://wiki.nginx.org/CoreModule#daemon
-user %s
-error_log %s;
-pid %s;
-events {
-    worker_connections 1024;
-    use epoll;
-}
-http {
-    charset utf-8;
-    client_max_body_size 0;  # disabled
-    client_body_temp_path  %s 1 2;
-    client_header_buffer_size 256k;
-    large_client_header_buffers 8 1024k;
-
-    proxy_temp_path   %s  1 2;
-    proxy_cache_path  %s  levels=1:2     keys_zone=proxy_one:10m;
-
-    fastcgi_temp_path   %s  1 2;
-    fastcgi_cache_path  %s  levels=1:2   keys_zone=fastcgi_one:10m;
-
-    uwsgi_temp_path   %s  1 2;
-    uwsgi_cache_path  %s  levels=1:2     keys_zone=uwsgi_one:10m;
-
-    scgi_temp_path   %s  1 2;
-    scgi_cache_path  %s  levels=1:2     keys_zone=scgi_one:10m;
-
-    # Enumerate all the Tornado servers here
-    upstream frontends {
-        server 127.0.0.1:5421;
-        server 127.0.0.1:5422;
-        server 127.0.0.1:5423;
-        server 127.0.0.1:5424;
-        #server %s:5421;
-        #server %s:5422;
-        #server %s:5423;
-        #server %s:5424;
-    }
-
-    include /etc/nginx/mime.types;
-    default_type application/octet-stream;
-
-    error_log %s;
-    access_log %s;
-
-    # Timeouts
-    keepalive_timeout 3m;
-    client_header_timeout  3m;
-    client_body_timeout  3m;
-    proxy_connect_timeout 3m;
-    proxy_send_timeout 3m;
-    proxy_read_timeout 3m;
-
-    sendfile on;
-    tcp_nopush on;
-    tcp_nodelay on;
-    gzip on;
-    gzip_min_length 1000;
-    gzip_proxied any;
-    gzip_types text/plain text/css text/xml
-               application/x-javascript application/xml
-               application/atom+xml text/javascript
-               application/json;
-
-    # Only retry if there was a communication error, not a timeout
-    # on the Tornado server (to avoid propagating "queries of death"
-    # to all frontends)
-    proxy_next_upstream error;
-
-    server {
-        listen %s:5420;
-        ssl                 off;
-        ssl_certificate     %s;
-        ssl_certificate_key %s;
-
-        ssl_protocols        SSLv3 TLSv1 TLSv1.1 TLSv1.2;
-        ssl_ciphers RC4:HIGH:!aNULL:!MD5;
-        ssl_prefer_server_ciphers on;
-        ssl_session_cache    shared:SSL:10m;
-        ssl_session_timeout  60m;
-
-        location ^~ /static/ {
-            root %s;
-            if ($query_string) {
-                expires max;
-            }
-        }
-
-        location / {
-            proxy_pass_header Server;
-            proxy_set_header Host $http_host;
-            proxy_redirect off;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Scheme $scheme;
-            proxy_pass http://frontends;
-
-            proxy_set_header        Accept-Encoding   "";
-            proxy_set_header        X-Forwarded-For $proxy_add_x_forwarded_for;
-
-            ### Most PHP, Python, Rails, Java App can use this header ###
-            #proxy_set_header X-Forwarded-Proto https;##
-            #This is better##
-            proxy_set_header        X-Forwarded-Proto $scheme;
-            add_header              Front-End-Https   on;
-
-            ### force timeouts if one of backend is died ##
-            proxy_next_upstream error timeout invalid_header http_500 http_502
-                                                             http_503 http_504;
-        }
-    }
-}
-''' % (USER, NGINX_ERROR_LOG, NGINX_PIDFILE, TEMP_DIR,
-       TEMP_DIR, CACHE_DIR, TEMP_DIR, CACHE_DIR, TEMP_DIR, CACHE_DIR,
-       TEMP_DIR, CACHE_DIR, LOCAL_IP, LOCAL_IP, LOCAL_IP, LOCAL_IP,
-       NGINX_ERROR_LOG, NGINX_ACCESS_LOG, LOCAL_IP, SSL_CERT, SSL_KEY,
-       STATIC_PATH)
-DEFAULT_NGINX_CONF = DEFAULT_NGINX_CONF.strip()
-
-ENVIRONMENT = 'VIRTUAL_ENV="%s", HOME="%s", METRIQUE_GIT="%s"' % (
-    VIRTUAL_ENV, HOME_DIR, GIT_DIR)
-DEFAULT_SUPERVISORD_CONF = '''
-[inet_http_server]
-port=127.0.0.1:9001
-;port=%s:9001
-username=admin
-password=%s
-
-[rpcinterface:supervisor]
-supervisor.rpcinterface_factory = supervisor.rpcinterface:make_main_rpcinterface
-
-[supervisord]
-logfile=%s
-pidfile=%s
-childlogdir=%s
-user=%s
-directory=%s
-environment=%s
-loglevel=debug
-
-[supervisorctl]
-serverurl=http://127.0.0.1:9001
-;serverurl=http://%s:9001
-username=admin
-password=%s
-history_file=%s
-
-[program:mongodb]
-command=python metrique mongodb start --nofork
-process_name=mongodb
-numprocs=1
-priority=10
-startsecs=60
-stopwaitsecs=60
-
-[program:metriqued]
-command=python metrique metriqued start -P542%%(process_num)d --nofork
-process_name=metriqued-%%(process_num)d
-numprocs=4
-numprocs_start=1
-priority=20
-startsecs=60
-startretries=5
-
-[program:nginx]
-command=python metrique nginx start --nofork
-process_name=nginx
-numprocs=1
-priority=30
-startsecs=30
-
-[program:celeryd]
-command=python metrique celeryd start --nofork
-process_name=celeryd
-numprocs=1
-priority=40
-startsecs=30
-autorestart=true
-
-[program:celerybeat]
-command=python metrique celerybeat start --nofork
-process_name=celerybeat
-numprocs=1
-priority=41
-startsecs=30
-autorestart=true
-
-[program:viztriqued]
-command=python viztriqued start --nofork
-directory=path/to/viztrique/git/repo
-process_name=viztriqued
-numprocs=1
-priority=100
-''' % (LOCAL_IP, PASSWORD, SUPERVISORD_LOGFILE, SUPERVISORD_PIDFILE,
-       LOG_DIR, USER, GIT_DIR, ENVIRONMENT,
-       LOCAL_IP, PASSWORD, SUPERVISORD_HISTORYFILE)
-DEFAULT_SUPERVISORD_CONF = DEFAULT_SUPERVISORD_CONF.strip()
+SUPERVISORD_CONF = pjoin(ETC_DIR, 'supervisord.conf')
+SUPERVISORD_PIDFILE = pjoin(PID_DIR, 'supervisord.pid')
+SUPERVISORD_LOGFILE = pjoin(LOG_DIR, 'supervisord.log')
+SUPERVISORD_HISTORYFILE = pjoin(TEMP_DIR, 'supervisord_history')
 
 
 def get_pid(pidfile):
@@ -497,7 +191,7 @@ def makedirs(path, mode=0700):
     return path
 
 
-def remove(path):
+def remove(path, quiet=True):
     if isinstance(path, (list, tuple)):
         [remove(p) for p in path]
     else:
@@ -507,6 +201,8 @@ def remove(path):
                 shutil.rmtree(path)
             else:
                 os.remove(path)
+        elif not quiet:
+            logger.warn('[remove] %s not found' % path)
 
 
 def system(cmd, fork=False, sig=None, sig_func=None):
@@ -563,7 +259,7 @@ def backup(saveas, path):
 
 def backup_clean(args, path, prefix):
     keep = args.keep if args.keep != 0 else 3
-    path = os.path.join(path, prefix) + '*'
+    path = pjoin(path, prefix) + '*'
     files = sorted(glob.glob(path), reverse=True)
     to_remove = files[keep:]
     logger.debug('Removing %i backups' % len(to_remove))
@@ -581,7 +277,7 @@ def terminate(pidfile, sig=signal.SIGTERM):
             logger.warn("%s killed" % pid)
         remove(pidfile)
     else:
-        logger.warn("%s does not exist" % pidfile)
+        logger.warn("[terminate] %s does not exist" % pidfile)
 
 
 def celeryd_terminate(sig=None, frame=None):
@@ -688,7 +384,7 @@ def _metriqued_stop(args):
     running = get_pids(PID_DIR)
     sig = args.signal or signal.SIGTERM
     for pid in running:
-        print "Sending signal (%s) to (%s)" % (sig, pid)
+        logger.info("Sending signal (%s) to (%s)" % (sig, pid))
         os.kill(pid, sig)
 
 
@@ -720,7 +416,7 @@ def _metriqued_start(args):
     else:
         metriqued = MetriqueHTTP(config_file=config_file, port=port)
         metriqued.start(fork=fork)
-    print 'Started: %s' % ', '.join(map(str, pids))
+    logger.info('Started: %s' % ', '.join(map(str, pids)))
 
 
 def metriqued_backup(args):
@@ -730,7 +426,7 @@ def metriqued_backup(args):
     for path in to_backup:
         prefix = 'metriqued.%s' % os.path.basename(path)
         saveas = '__'.join((prefix, HOSTNAME, NOW)) + '.tar.gz'
-        saveas = os.path.join(BACKUP_DIR, saveas)
+        saveas = pjoin(BACKUP_DIR, saveas)
         backup(saveas, path)
         backup_clean(args, BACKUP_DIR, prefix)
         if args.scp_export:
@@ -758,7 +454,7 @@ def metriqued(args):
     elif cmd == 'stop':
         _metriqued_stop(args)
     elif cmd == 'status':
-        print 'RUNNING: %s' % ', '.join(map(str, get_pids(PID_DIR)))
+        logger.info('RUNNING: %s' % ', '.join(map(str, get_pids(PID_DIR))))
     elif args.command == 'firstboot':
         _metriqued_firstboot(args)
     else:
@@ -837,7 +533,7 @@ def mongodb(args):
     elif args.command == 'trash':
         args.command = 'stop'
         mongodb(args)
-        dest = os.path.join(TRASH_DIR, 'mongodb-%s' % NOW)
+        dest = pjoin(TRASH_DIR, 'mongodb-%s' % NOW)
         shutil.move(MONGODB_DIR, dest)
         makedirs(MONGODB_DIR)
         remove(MONGODB_FIRSTBOOT_PATH)
@@ -862,19 +558,32 @@ def _mongodb_is_locked(host, ssl, password):
     return True if locked == 'true' else False
 
 
-def mongodb_rsync(args):
+def _rsync_exec(args, show_stdout=True):
+    ssh_user = args.ssh_user
+    ssh_host = args.ssh_host
+    saveas = re.sub('\W', '_', HOSTNAME)
+    compress = '-z' if not args.nocompress else ''
+    if not args.targets:
+        raise OSError("one or more targets required!")
+    targets = ' '.join(args.targets)
+    if ssh_host:
+        call('rsync -av %s -e ssh %s %s@%s:%s' % (compress, targets, ssh_user,
+                                                  ssh_host, saveas),
+             show_stdout=show_stdout)
+    else:
+        saveas = pjoin(BACKUP_DIR, saveas)
+        call('rsync -av %s %s %s' % (compress, target, saveas),
+             show_stdout=show_stdout)
+
+
+def _mongodb_rsync(args):
     from metriqued.config import mongodb_config
     config = mongodb_config()
     ssl = ' --ssl' if config.ssl else ''
     password = config.admin_password
-    host = args.host or config.host.split(',')[0]  # first host listed
-    target = MONGODB_DIR
-    prefix = 'mongodb'
-    saveas = '__'.join((prefix, HOSTNAME))
-    ssh_user = args.ssh_user
-    ssh_host = args.ssh_host
-    compress = '-z' if not args.nocompress else ''
-    lock_fsync = not args.nolock
+    host = args.mongodb_host
+
+    args.targets.append(MONGODB_DIR)
 
     js_lock = 'db.fsyncLock()'
     js_unlock = 'db.fsyncUnlock()'
@@ -883,22 +592,24 @@ def mongodb_rsync(args):
     running = get_pid(MONGODB_PIDFILE) != 0
     locked = _mongodb_is_locked(host, ssl, password) if running else False
 
-    if lock_fsync and not locked:  # sync and lock
+    if running and not locked:  # sync and lock
         call('mongo %s/admin %s --eval "%s" -u admin -p %s' % (
             host, ssl, js_lock, password))
 
-    if ssh_host:
-        call('rsync -av %s -e ssh %s %s@%s:%s' % (compress, target, ssh_user,
-                                                  ssh_host, saveas),
-             show_stdout=True)
-    else:
-        saveas = os.path.join(BACKUP_DIR, saveas)
-        call('rsync -av %s %s %s' % (compress, target, saveas), show_stdout=True)
+    try:
+        _rsync_exec(args)
+    finally:
+        if running and _mongodb_is_locked(host, ssl, password):
+            # unlock
+            call('mongo %s/admin %s --eval "%s" -u admin -p %s' % (
+                host, ssl, js_unlock, password))
 
-    locked = _mongodb_is_locked(host, ssl, password) if running else False
-    if locked:  # unlock
-        call('mongo %s/admin %s --eval "%s" -u admin -p %s' % (host, ssl,
-                                                               js_unlock, password))
+
+def rsync(args):
+    if args.mongodb_host:
+        _mongodb_rsync(args)
+    else:
+        _rsync_exec(args)
 
 
 def mongodb_backup(args):
@@ -907,7 +618,7 @@ def mongodb_backup(args):
 
     prefix = 'mongodb'
     saveas = '__'.join((prefix, HOSTNAME, NOW))
-    out = os.path.join(BACKUP_DIR, saveas)
+    out = pjoin(BACKUP_DIR, saveas)
 
     host = config.host.split(',')[0]  # get the first host (expected primary)
     port = config.port
@@ -993,7 +704,7 @@ def bump_release(line, reset=False, ga=False):
 
 def get_packages(args):
     global __pkgs__
-    return [os.path.join(SRC_DIR, pkg) for pkg in __pkgs__]
+    return [pjoin(SRC_DIR, pkg) for pkg in __pkgs__]
 
 
 def update_line(args, regex, bump_func):
@@ -1029,7 +740,7 @@ def setup(args, cmd, pip=False):
     else:
         cmd = ' '.join([s.strip() for s in cmd])
     for path in __pkgs__:
-        abspath = os.path.join(SRC_DIR, path)
+        abspath = pjoin(SRC_DIR, path)
         os.chdir(abspath)
         if pip and args.slow:
             logger.info(system('pip %s -e %s' % (cmd, abspath)))
@@ -1051,30 +762,39 @@ def deploy(args):
     + install dep
     + install metrique and friends
     '''
-    # make sure we have the installer basics and their up2date
-    # argparse is needed for py2.6; pip-accel caches compiled binaries
-    # first run for a new virt-env will take forever...
-    # second run should be 90% faster!
     virtenv = getattr(args, 'virtenv')
-    if virtenv:
-        # we can't be in a virtenv when running the virtualenv.main() script
-        #sys.path = [p for p in sys.path if not p.startswith(virtenv)]
-        deactivate()
-        if args.trash:
-            remove(args.virtenv)
-        # virtualenv.main; pass in only the virtenv path
-        sys.argv = sys.argv[0:1] + [virtenv]
-        # run the virtualenv script to install the virtenv
-        virtualenv.main()
-        # activate the newly installed virtenv
-        activate(args)
+    if not virtenv:
+        raise RuntimeError("virtenv required!")
 
+    # we can't be in a virtenv when running the virtualenv.main() script
+    deactivate(virtenv)
+
+    # scratch the existing virtenv directory, if requested
+    if args.trash:
+        remove(virtenv)
+        logger.info(system('%s/metrique mongodb trash' % GIT_DIR))
+
+    # virtualenv.main; pass in only the virtenv path
+    sys.argv = sys.argv[0:1] + [virtenv]
+    # run the virtualenv script to install the virtenv
+    virtualenv.main()
+
+    # activate the newly installed virtenv
+    activate(args)
+
+    # make sure we have some basic defaults configured in the environment
+    sys_firstboot(args)
+
+    # make sure we have the installer basics and their up2date
+    # pip-accel caches compiled binaries
     call('pip install -U pip setuptools')
-    call('pip install pip-accel')
 
-    pip = 'pip' if args.slow else 'pip-accel'
-
-    call('%s install -U argparse' % pip)
+    # install pip-accel and use it instead of pip unless slow install
+    if args.slow:
+        pip = 'pip'
+    else:
+        call('pip install pip-accel')
+        pip = 'pip-accel'
 
     # this required dep is installed separately b/c virtenv
     # path resolution issues; fails due to being unable to find
@@ -1101,7 +821,7 @@ def deploy(args):
     setup(args, cmd, pip=True)
 
     if args.develop:
-        path = os.path.join(virtenv, 'lib/python2.7/site-packages/metrique*')
+        path = pjoin(virtenv, 'lib/python2.7/site-packages/metrique*')
         mods = glob.glob(path)
         remove(mods)
         develop(args)
@@ -1187,6 +907,7 @@ def rpms(args):
     cmd = 'yum install -y %s' % ' '.join(RPMS)
     call(cmd, show_stdout=True)
 
+
 def default_conf(path, template):
     if os.path.exists(path):
         path = '.'.join([path, 'default'])
@@ -1196,6 +917,305 @@ def default_conf(path, template):
 
 
 def sys_firstboot(args=None):
+    DEFAULT_METRIQUE_JSON = '''
+    {
+        "auto_login": false,
+        "batch_size": 5000,
+        "cube_autoregister": false,
+        "debug": true,
+        "host": "127.0.0.1",
+        "log2file": true,
+        "logstdout": false,
+        "max_workers": %s,
+        "password": "%s",
+        "port": 5420,
+        "sql_batch_size": 1000,
+        "ssl": false,
+        "ssl_verify": false
+    }
+    ''' % (multiprocessing.cpu_count(), PASSWORD)
+    DEFAULT_METRIQUE_JSON = DEFAULT_METRIQUE_JSON.strip()
+
+    DEFAULT_METRIQUED_JSON = '''
+    {
+        "api_docs": "%s",
+        "cookie_secret": "%s",
+        "debug": true,
+        "host": "127.0.0.1",
+        "host_LOCAL": "%s",
+        "krb_auth": false,
+        "log2file": true,
+        "logstdout": false,
+        "log_requests": false,
+        "port": 5420,
+        "realm": "metrique",
+        "ssl": false,
+        "ssl_certificate": "%s",
+        "ssl_certificate_key": "%s",
+        "superusers": ["admin", "%s"]
+    }
+    ''' % (API_DOCS_PATH, COOKIE_SECRET, LOCAL_IP,
+        SSL_CERT, SSL_KEY, USER)
+    DEFAULT_METRIQUED_JSON = DEFAULT_METRIQUED_JSON.strip()
+
+    DEFAULT_MONGODB_JSON = '''
+    {
+        "auth": false,
+        "root_password": "%s",
+        "admin_password": "%s",
+        "data_password": "%s",
+        "host": "127.0.0.1",
+        "journal": true,
+        "port": 27017,
+        "ssl": false,
+        "ssl_certificate": "%s",
+        "write_concern": 1
+    }
+    ''' % (PASSWORD, PASSWORD, PASSWORD, SSL_PEM)
+    DEFAULT_MONGODB_JSON = DEFAULT_MONGODB_JSON.strip()
+
+    DEFAULT_MONGODB_CONF = '''
+    fork = true
+    nohttpinterface = true
+    dbpath = %s
+    logpath = %s
+    pidfilepath = %s
+
+    #auth = true
+    noauth = true
+
+    bind_ip = 127.0.0.1
+    #bind_ip = %s
+
+    #sslOnNormalPorts = true
+    #sslPEMKeyFile = %s
+
+    #replSet = rs0
+    #keyFile = %s
+    ''' % (MONGODB_DIR, MONGODB_LOG, MONGODB_PIDFILE, LOCAL_IP,
+        SSL_PEM, MONGODB_KEYFILE)
+    DEFAULT_MONGODB_CONF = DEFAULT_MONGODB_CONF.strip()
+
+    DEFAULT_MONGODB_JS = '''
+    db = db.getSiblingDB('admin')
+    db.addUser({'user': 'root', 'pwd': '%s', 'roles': ['dbAdminAnyDatabase',
+            'userAdminAnyDatabase', 'clusterAdmin', 'readWriteAnyDatabase']});
+    db.addUser({'user': 'admin', 'pwd': '%s', 'roles': ['dbAdminAnyDatabase',
+            'userAdminAnyDatabase', 'readWriteAnyDatabase']});
+    db.addUser({'user': 'metrique', 'pwd': '%s', 'roles': ['readAnyDatabase']});
+    ''' % (PASSWORD, PASSWORD, PASSWORD)
+    DEFAULT_MONGODB_JS = DEFAULT_MONGODB_JS.strip()
+
+    DEFAULT_CELERY_JSON = '''
+    {
+        "BROKER_URL": "mongodb://admin:%s@127.0.0.1:27017",
+        "BROKER_URL_LOCAL": "mongodb://admin:%s@%s:27017",
+        "BROKER_USE_SSL": false
+    }
+    ''' % (PASSWORD, PASSWORD, LOCAL_IP)
+    DEFAULT_CELERY_JSON = DEFAULT_CELERY_JSON.strip()
+
+    DEFAULT_NGINX_CONF = '''
+    worker_processes auto;
+    daemon on;  # turn off to avoid forking on startup (supervisord)
+    # see warnings: http://wiki.nginx.org/CoreModule#daemon
+    user %s
+    error_log %s;
+    pid %s;
+    events {
+        worker_connections 1024;
+        use epoll;
+    }
+    http {
+        charset utf-8;
+        client_max_body_size 0;  # disabled
+        client_body_temp_path  %s 1 2;
+        client_header_buffer_size 256k;
+        large_client_header_buffers 8 1024k;
+
+        proxy_temp_path   %s  1 2;
+        proxy_cache_path  %s  levels=1:2     keys_zone=proxy_one:10m;
+
+        fastcgi_temp_path   %s  1 2;
+        fastcgi_cache_path  %s  levels=1:2   keys_zone=fastcgi_one:10m;
+
+        uwsgi_temp_path   %s  1 2;
+        uwsgi_cache_path  %s  levels=1:2     keys_zone=uwsgi_one:10m;
+
+        scgi_temp_path   %s  1 2;
+        scgi_cache_path  %s  levels=1:2     keys_zone=scgi_one:10m;
+
+        # Enumerate all the Tornado servers here
+        upstream frontends {
+            server 127.0.0.1:5421;
+            server 127.0.0.1:5422;
+            server 127.0.0.1:5423;
+            server 127.0.0.1:5424;
+            #server %s:5421;
+            #server %s:5422;
+            #server %s:5423;
+            #server %s:5424;
+        }
+
+        include /etc/nginx/mime.types;
+        default_type application/octet-stream;
+
+        error_log %s;
+        access_log %s;
+
+        # Timeouts
+        keepalive_timeout 3m;
+        client_header_timeout  3m;
+        client_body_timeout  3m;
+        proxy_connect_timeout 3m;
+        proxy_send_timeout 3m;
+        proxy_read_timeout 3m;
+
+        sendfile on;
+        tcp_nopush on;
+        tcp_nodelay on;
+        gzip on;
+        gzip_min_length 1000;
+        gzip_proxied any;
+        gzip_types text/plain text/css text/xml
+                application/x-javascript application/xml
+                application/atom+xml text/javascript
+                application/json;
+
+        # Only retry if there was a communication error, not a timeout
+        # on the Tornado server (to avoid propagating "queries of death"
+        # to all frontends)
+        proxy_next_upstream error;
+
+        server {
+            listen %s:5420;
+            ssl                 off;
+            ssl_certificate     %s;
+            ssl_certificate_key %s;
+
+            ssl_protocols        SSLv3 TLSv1 TLSv1.1 TLSv1.2;
+            ssl_ciphers RC4:HIGH:!aNULL:!MD5;
+            ssl_prefer_server_ciphers on;
+            ssl_session_cache    shared:SSL:10m;
+            ssl_session_timeout  60m;
+
+            location ^~ /static/ {
+                root %s;
+                if ($query_string) {
+                    expires max;
+                }
+            }
+
+            location / {
+                proxy_pass_header Server;
+                proxy_set_header Host $http_host;
+                proxy_redirect off;
+                proxy_set_header X-Real-IP $remote_addr;
+                proxy_set_header X-Scheme $scheme;
+                proxy_pass http://frontends;
+
+                proxy_set_header        Accept-Encoding   "";
+                proxy_set_header        X-Forwarded-For $proxy_add_x_forwarded_for;
+
+                ### Most PHP, Python, Rails, Java App can use this header ###
+                #proxy_set_header X-Forwarded-Proto https;##
+                #This is better##
+                proxy_set_header        X-Forwarded-Proto $scheme;
+                add_header              Front-End-Https   on;
+
+                ### force timeouts if one of backend is died ##
+                proxy_next_upstream error timeout invalid_header http_500 http_502
+                                                                http_503 http_504;
+            }
+        }
+    }
+    ''' % (USER, NGINX_ERROR_LOG, NGINX_PIDFILE, TEMP_DIR,
+        TEMP_DIR, CACHE_DIR, TEMP_DIR, CACHE_DIR, TEMP_DIR, CACHE_DIR,
+        TEMP_DIR, CACHE_DIR, LOCAL_IP, LOCAL_IP, LOCAL_IP, LOCAL_IP,
+        NGINX_ERROR_LOG, NGINX_ACCESS_LOG, LOCAL_IP, SSL_CERT, SSL_KEY,
+        STATIC_PATH)
+    DEFAULT_NGINX_CONF = DEFAULT_NGINX_CONF.strip()
+
+    ENVIRONMENT = 'VIRTUAL_ENV="%s", HOME="%s", METRIQUE_GIT="%s"' % (
+        VIRTUAL_ENV, HOME_DIR, GIT_DIR)
+    DEFAULT_SUPERVISORD_CONF = '''
+    [inet_http_server]
+    port=127.0.0.1:9001
+    ;port=%s:9001
+    username=admin
+    password=%s
+
+    [rpcinterface:supervisor]
+    supervisor.rpcinterface_factory = supervisor.rpcinterface:make_main_rpcinterface
+
+    [supervisord]
+    logfile=%s
+    pidfile=%s
+    childlogdir=%s
+    user=%s
+    directory=%s
+    environment=%s
+    loglevel=debug
+
+    [supervisorctl]
+    serverurl=http://127.0.0.1:9001
+    ;serverurl=http://%s:9001
+    username=admin
+    password=%s
+    history_file=%s
+
+    [program:mongodb]
+    command=python metrique mongodb start --nofork
+    process_name=mongodb
+    numprocs=1
+    priority=10
+    startsecs=60
+    stopwaitsecs=60
+
+    [program:metriqued]
+    command=python metrique metriqued start -P542%%(process_num)d --nofork
+    process_name=metriqued-%%(process_num)d
+    numprocs=4
+    numprocs_start=1
+    priority=20
+    startsecs=60
+    startretries=5
+
+    [program:nginx]
+    command=python metrique nginx start --nofork
+    process_name=nginx
+    numprocs=1
+    priority=30
+    startsecs=30
+
+    [program:celeryd]
+    command=python metrique celeryd start --nofork
+    process_name=celeryd
+    numprocs=1
+    priority=40
+    startsecs=30
+    autorestart=true
+
+    [program:celerybeat]
+    command=python metrique celerybeat start --nofork
+    process_name=celerybeat
+    numprocs=1
+    priority=41
+    startsecs=30
+    autorestart=true
+
+    [program:viztriqued]
+    command=python viztriqued start --nofork
+    directory=path/to/viztrique/git/repo
+    process_name=viztriqued
+    numprocs=1
+    priority=100
+    ''' % (LOCAL_IP, PASSWORD, SUPERVISORD_LOGFILE, SUPERVISORD_PIDFILE,
+        LOG_DIR, USER, GIT_DIR, ENVIRONMENT,
+        LOCAL_IP, PASSWORD, SUPERVISORD_HISTORYFILE)
+    DEFAULT_SUPERVISORD_CONF = DEFAULT_SUPERVISORD_CONF.strip()
+
+
     if os.path.exists(SYS_FIRSTBOOT_PATH):
         # skip if we have already run this before
         return
@@ -1233,7 +1253,7 @@ def main():
     cli = argparse.ArgumentParser(description='Metrique Manage CLI')
     cli.add_argument('-V', '--virtenv')
 
-    _sub = cli.add_subparsers(description='action')
+    _sub = cli.add_subparsers(description='action', dest='action')
 
     # Automated metrique deployment
     _deploy = _sub.add_parser('deploy')
@@ -1305,14 +1325,14 @@ def main():
     _mongodb.add_argument('-F', '--nofork', action='store_true')
     _mongodb.set_defaults(func=mongodb)
 
-    # MongoDB rsync
-    _mongodb_rsync = _sub.add_parser('mongodb_rsync')
-    _mongodb_rsync.add_argument('host', nargs='?')
-    _mongodb_rsync.add_argument('-Z', '--nocompress', action='store_true')
-    _mongodb_rsync.add_argument('-L', '--nolock', action='store_true')
-    _mongodb_rsync.add_argument('-H', '--ssh-host')
-    _mongodb_rsync.add_argument('-u', '--ssh-user', default='backup')
-    _mongodb_rsync.set_defaults(func=mongodb_rsync)
+    # rsync
+    _rsync = _sub.add_parser('rsync')
+    _rsync.add_argument('targets', type=list, nargs='*')
+    _rsync.add_argument('-m', '--mongodb-host')
+    _rsync.add_argument('-Z', '--nocompress', action='store_true')
+    _rsync.add_argument('-H', '--ssh-host')
+    _rsync.add_argument('-u', '--ssh-user', default='backup')
+    _rsync.set_defaults(func=rsync)
 
     # MongoDB Backup
     _mongodb_backup = _sub.add_parser('mongodb_backup')
@@ -1391,8 +1411,12 @@ def main():
     # parse argv
     args = cli.parse_args()
 
-    # make sure we have some basic defaults configured in the environment
-    sys_firstboot(args)
+    if args.action != 'deploy':
+        # Activate the virtual environment in this python session if
+        # parent env has one set
+        activated = activate(args)
+        if not bool(activated):
+            raise RuntimeError("No virtual environment detected!")
 
     # run command
     args.func(args)
