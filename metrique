@@ -79,7 +79,7 @@ RE_RELEASE = re.compile(r"__release__ = [\"']?((\d+)a?)[\"']?")
 RPM_SYSTEM_RELEASE = "/etc/system-release"
 RPMS = ['git', 'python', 'python-devel', 'python-setuptools', 'python-pip',
         'supervisor', 'vim', 'screen', 'psmisc', 'net-tools', 'rng-tools',
-        'ntp', 'mlocate', 'tar', 'pigz', 'rsync',
+        'mlocate', 'tar', 'pigz', 'rsync', 'chrony',
         'gcc', 'gcc-c++', 'gcc-gfortran', 'freetype-devel', 'libpng-devel',
         'mongodb', 'mongodb-server', 'nginx', 'krb5-devel', 'postgresql',
         'postgresql-devel']
@@ -891,7 +891,11 @@ def mongodb_rsync(args):
                 host, ssl, js_lock, password))
             locked = True
 
-    call('rsync -az -e ssh %s %s@%s:%s' % (target, ssh_user, ssh_host, saveas))
+    if ssh_host:
+        call('rsync -az -e ssh %s %s@%s:%s' % (target, ssh_user, ssh_host, saveas))
+    else:
+        saveas = os.path.join(BACKUP_DIR, saveas)
+        call('rsync -az %s %s' % (target, saveas))
 
     if running and locked:
         # unlock
