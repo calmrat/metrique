@@ -76,6 +76,14 @@ RE_VERSION_Y = re.compile(r"__version__\s+=\s+[\"'](\d+.(\d+).\d+)[\"']")
 RE_VERSION_Z = re.compile(r"__version__\s+=\s+[\"'](\d+.\d+.(\d+))[\"']")
 RE_RELEASE = re.compile(r"__release__ = [\"']?((\d+)a?)[\"']?")
 
+RPM_SYSTEM_RELEASE = "/etc/system-release"
+RPMS = ['git', 'python', 'python-devel', 'python-setuptools', 'python-pip',
+        'supervisor', 'vim', 'screen', 'psmisc', 'net-tools', 'rng-tools',
+        'ntp', 'mlocate', 'tar', 'pigz', 'rsync',
+        'gcc', 'gcc-c++', 'gcc-gfortran', 'freetype-devel', 'libpng-devel',
+        'mongodb', 'mongodb-server', 'nginx', 'krb5-devel', 'postgresql',
+        'postgresql-devel']
+
 HERE = os.getcwd()
 USER = getpass.getuser()
 VIRTUAL_ENV = os.environ.get('VIRTUAL_ENV', '')
@@ -88,11 +96,7 @@ try:
 except Exception:
     LOCAL_IP = '127.0.0.1'
 
-
 GIT_DIR = os.environ.get('METRIQUE_GIT', HERE)
-
-if not os.path.exists(GIT_DIR):
-    raise OSError("can't find metrique git repo path; `export METRIQUE_GIT=...`")
 
 SRC_DIR = os.path.join(GIT_DIR, 'src/')
 
@@ -100,6 +104,24 @@ SRC_DIR = os.path.join(GIT_DIR, 'src/')
 # useful to overide when running 'as user' with root (supervisord)
 HOME_DIR = os.environ.get('HOME', os.path.expanduser('~/'))
 USER_DIR = os.path.join(HOME_DIR, '.metrique')
+
+logger.warn('-'*30)
+logger.warn('Started at  : %s' % NOW)
+logger.warn('Current User: %s' % USER)
+logger.warn('Current CWD : %s' % HERE)
+logger.warn('Virtual Env : %s' % VIRTUAL_ENV)
+logger.warn('Hostname    : %s' % HOSTNAME)
+logger.warn('Local IP    : %s' % LOCAL_IP)
+logger.warn('GIT Repo    : %s' % GIT_DIR)
+logger.warn('Source Path : %s' % SRC_DIR)
+logger.warn('This file   : %s' % __file__)
+logger.warn('Home Path   : %s' % HOME_DIR)
+logger.warn('User Path   : %s' % USER_DIR)
+logger.warn('-'*30)
+
+if not (os.path.exists(SRC_DIR) or
+        os.path.exists(os.path.join(SRC_DIR, '.git'))):
+    raise OSError("can't find metrique src/ path; `export METRIQUE_GIT=...`?")
 
 # set cache dir so pip doesn't have to keep downloading over and over
 PIP_DIR = os.path.join(USER_DIR, '.pip')
@@ -160,19 +182,6 @@ SUPERVISORD_CONF = os.path.join(ETC_DIR, 'supervisord.conf')
 SUPERVISORD_PIDFILE = os.path.join(PID_DIR, 'supervisord.pid')
 SUPERVISORD_LOGFILE = os.path.join(LOG_DIR, 'supervisord.log')
 SUPERVISORD_HISTORYFILE = os.path.join(TEMP_DIR, 'supervisord_history')
-
-logger.warn('-'*30)
-logger.warn('Started at  : %s' % NOW)
-logger.warn('Current User: %s' % USER)
-logger.warn('Current CWD : %s' % HERE)
-logger.warn('Virtual Env : %s' % VIRTUAL_ENV)
-logger.warn('Hostname    : %s' % HOSTNAME)
-logger.warn('Local IP    : %s' % LOCAL_IP)
-logger.warn('GIT Repo    : %s' % GIT_DIR)
-logger.warn('Source Path : %s' % SRC_DIR)
-logger.warn('Home Path   : %s' % HOME_DIR)
-logger.warn('User Path   : %s' % USER_DIR)
-logger.warn('-'*30)
 
 DEFAULT_METRIQUE_JSON = '''
 {
@@ -1167,6 +1176,15 @@ def ssl(args=None):
             pem.write(''.join(key.readlines()))
 
 
+def rpms(args):
+    if not os.path.exists(RPM_SYSTEM_RELEASE):
+        raise OSError(
+            "Non-RPM based host? Can't find %s" % RPM_SYSTEM_RELEASE)
+    if USER != 'root':
+        raise OSError("Must run this command as root, not %s" % USER)
+    cmd = 'yum install -y %s' % ' '.join(RPMS)
+    call(cmd, show_stdout=True)
+
 def default_conf(path, template):
     if os.path.exists(path):
         path = '.'.join([path, 'default'])
@@ -1361,6 +1379,10 @@ def main():
     # SSL creation
     _ssl = _sub.add_parser('ssl')
     _ssl.set_defaults(func=ssl)
+
+    # RPM Dependency Install
+    _rpms = _sub.add_parser('rpms')
+    _rpms.set_defaults(func=rpms)
 
     # parse argv
     args = cli.parse_args()
