@@ -565,8 +565,6 @@ def _rsync_exec(args, show_stdout=True):
     compress = '-z' if not args.nocompress else ''
     if not args.targets:
         raise OSError("one or more targets required!")
-    print args.targets
-    raise
     targets = ' '.join(args.targets)
     if ssh_host:
         call('rsync -av %s -e ssh %s %s@%s:%s' % (compress, targets, ssh_user,
