@@ -27,7 +27,7 @@ import virtualenv
 pjoin = os.path.join
 env = os.environ
 
-virtenv_activated = False
+active_virtualenv = lambda: os.environ.get('VIRTUAL_ENV', '')
 logger = virtualenv.Logger([(0, sys.stdout)])
 call_subprocess = virtualenv.call_subprocess
 
@@ -50,28 +50,29 @@ RPMS = ['git', 'python', 'python-devel', 'python-setuptools', 'python-pip',
         'postgresql-devel']
 
 
-def deactivate(virtenv):
+def deactivate():
+    virtenv = active_virtualenv()
     sys.path = [p for p in sys.path if not p.startswith(virtenv)]
 
 
 def activate(args=None):
-    global virtenv_activated
+    virtenv = getattr(args, 'virtenv') or ''
+    if not virtenv:
+        raise ValueError("virtenv not defined!")
 
-    if virtenv_activated:
-        return
-    elif (hasattr(args, 'virtenv') and args.virtenv):
-        virtenv = args.virtenv
+    if active_virtualenv() == virtenv:
+        return  # already active...
+
+    # deactive active virtual first
+    deactivate()
+
+    activate_this = pjoin(virtenv, 'bin', 'activate_this.py')
+    if os.path.exists(activate_this):
+        execfile(activate_this, dict(__file__=activate_this))
+        env['VIRTUAL_ENV'] = virtenv
+        logger.info('Virtual Env (%s): Activated' % virtenv)
     else:
-        virtenv = env.get('VIRTUAL_ENV', '')
-
-    if virtenv:
-        activate_this = pjoin(virtenv, 'bin', 'activate_this.py')
-        if os.path.exists(activate_this):
-            execfile(activate_this, dict(__file__=activate_this))
-            env['VIRTUAL_ENV'] = virtenv
-            virtenv_activated = True
-            logger.info('Virtual Env (%s): Activated' % virtenv)
-    return virtenv
+        raise OSerror("Invalid virtual env; %s not found" % activate_this)
 
 
 def rand_chars(size=6, chars=string.ascii_uppercase + string.digits):
@@ -762,25 +763,24 @@ def deploy(args):
     + install dep
     + install metrique and friends
     '''
-    virtenv = getattr(args, 'virtenv')
-    if not virtenv:
-        raise RuntimeError("virtenv required!")
+    virtenv = getattr(args, 'virtenv') or ''
 
-    # we can't be in a virtenv when running the virtualenv.main() script
-    deactivate(virtenv)
+    if virtenv:
+        # we can't alrady be in a virtenv when running virtualenv.main()
+        deactivate()
 
-    # scratch the existing virtenv directory, if requested
-    if args.trash:
-        remove(virtenv)
-        logger.info(system('%s/metrique mongodb trash' % GIT_DIR))
+        # scratch the existing virtenv directory, if requested
+        if args.trash:
+            remove(virtenv)
+            logger.info(system('%s/metrique mongodb trash' % GIT_DIR))
 
-    # virtualenv.main; pass in only the virtenv path
-    sys.argv = sys.argv[0:1] + [virtenv]
-    # run the virtualenv script to install the virtenv
-    virtualenv.main()
+        # virtualenv.main; pass in only the virtenv path
+        sys.argv = sys.argv[0:1] + [virtenv]
+        # run the virtualenv script to install the virtenv
+        virtualenv.main()
 
-    # activate the newly installed virtenv
-    activate(args)
+        # activate the newly installed virtenv
+        activate(args)
 
     # make sure we have some basic defaults configured in the environment
     sys_firstboot(args)
@@ -806,7 +806,7 @@ def deploy(args):
     if args.ipython:
         call('%s install -U ipython' % pip)
     if args.test or args.pytest:
-        call('%s install -U pytest' % pip)
+        call('%s install -U pytest coveralls' % pip)
     if args.docs:
         call('%s install -U sphinx' % pip)
         # pip-accel fails to install this package...
@@ -828,8 +828,10 @@ def deploy(args):
 
     # run py.test after install
     if args.test:
-        for pkg in __pkgs__:
-            call('py.test tests/%s' % pkg, cwd=GIT_DIR)
+        running = get_pid(MONGODB_PIDFILE) != 0
+        if not running:
+            call('metrique mongodb start --fast')
+        call('coverage run --source=metrique,metriqued,metriqueu,metriquec -m py.test tests', cwd=GIT_DIR)
 
 
 def bump(args, kind=None, reset=None):
@@ -1414,9 +1416,7 @@ def main():
     if args.action != 'deploy':
         # Activate the virtual environment in this python session if
         # parent env has one set
-        activated = activate(args)
-        if not bool(activated):
-            raise RuntimeError("No virtual environment detected!")
+        activate(args)
 
     # run command
     args.func(args)
