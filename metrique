@@ -56,11 +56,9 @@ def deactivate():
 
 
 def activate(args=None):
-    virtenv = getattr(args, 'virtenv') or ''
+    virtenv = getattr(args, 'virtenv') or active_virtualenv()
     if not virtenv:
         return  # nothing to activate
-    elif active_virtualenv() == virtenv:
-        return  # already active...
     else:
         deactivate()  # deactive active virtual first
 
