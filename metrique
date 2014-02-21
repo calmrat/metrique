@@ -250,6 +250,11 @@ def adjust_options(options, args):
 virtualenv.adjust_options = adjust_options
 
 
+def firstboot(args):
+    # make sure we have some basic defaults configured in the environment
+    sys_firstboot(args)
+
+
 def backup(saveas, path):
     gzip = system('which pigz') or system('which gzip')
     cmd = 'tar -c --use-compress-program=%s -f %s %s' % (gzip, saveas, path)
@@ -917,6 +922,10 @@ def default_conf(path, template):
 
 
 def sys_firstboot(args=None):
+    if os.path.exists(SYS_FIRSTBOOT_PATH) and not args.force:
+        # skip if we have already run this before
+        return
+
     DEFAULT_METRIQUE_JSON = '''
     {
         "auto_login": false,
@@ -1216,10 +1225,6 @@ def sys_firstboot(args=None):
     DEFAULT_SUPERVISORD_CONF = DEFAULT_SUPERVISORD_CONF.strip()
 
 
-    if os.path.exists(SYS_FIRSTBOOT_PATH):
-        # skip if we have already run this before
-        return
-
     # create default dirs in advance
     [makedirs(p) for p in (USER_DIR, PIP_CACHE_DIR, PIP_ACCEL_DIR,
                            PIP_EGGS, TRASH_DIR, LOG_DIR,
@@ -1310,6 +1315,11 @@ def main():
     # Clean-up routines
     _clean = _sub.add_parser('clean')
     _clean.set_defaults(func=clean)
+
+    # Clean-up routines
+    _firstboot = _sub.add_parser('firstboot')
+    _firstboot.add_argument('-f', '--force', action='store_true')
+    _firstboot.set_defaults(func=firstboot)
 
     # MongoDB Server
     _mongodb = _sub.add_parser('mongodb')
