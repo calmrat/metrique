@@ -58,13 +58,11 @@ def deactivate():
 def activate(args=None):
     virtenv = getattr(args, 'virtenv') or ''
     if not virtenv:
-        raise ValueError("virtenv not defined!")
-
-    if active_virtualenv() == virtenv:
+        return  # nothing to activate
+    elif active_virtualenv() == virtenv:
         return  # already active...
-
-    # deactive active virtual first
-    deactivate()
+    else:
+        deactivate()  # deactive active virtual first
 
     activate_this = pjoin(virtenv, 'bin', 'activate_this.py')
     if os.path.exists(activate_this):
