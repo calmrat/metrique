@@ -1,20 +1,13 @@
 language: python
 python:
   - "2.7"
-# install metrique and dependencies to a virtenv
 install:
   - "pip install coveralls"
-#  - "sudo apt-get install libhdf5-serial-dev"
-  - "./metrique -V travis deploy --slow --develop"
+  - "./metrique deploy --slow --develop"
 services: 
   - mongodb
-# NOTE: authentication will be enabled upon adding an 
-# admin user as mongod is started with the --auth parameter.
-#before_script:
 script: 
-  # test coverage badge
   - "coverage run --source=metrique,metriqued,metriqueu,metriquec -m py.test tests"
-# test coverage badge
 after_success:
   - coveralls
 after_failure:
