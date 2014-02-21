@@ -84,57 +84,47 @@ class Generic(pyclient):
 
         '''
         oids = force or self.sql_get_oids()
+        oids = tuple(oids)
 
         max_workers = self.config.max_workers
         sql_batch_size = self.config.sql_batch_size
 
-        saved = []
         if max_workers > 1 and sql_batch_size > 1:
             with ThreadPoolExecutor(max_workers=max_workers) as ex:
                 futures = []
                 delay = 0.2  # stagger the threaded calls a bit
                 for batch in batch_gen(oids, sql_batch_size):
-                    f = ex.submit(self._activity_import, oids=batch,
+                    f = ex.submit(self.activity_get_objects, oids=batch,
                                   cube=cube, owner=owner)
                     futures.append(f)
                     time.sleep(delay)
 
             for future in as_completed(futures):
                 try:
-                    result = future.result()
+                    future.result()
                 except Exception as e:
                     tb = traceback.format_exc()
                     self.logger.error(
                         'Activity Import Error: %s\n%s' % (e, tb))
                     del tb
-                else:
-                    saved.extend(result)
-                    self.logger.info(
-                        '%i objs for %i oids extracted' % (len(saved),
-                                                           len(oids)))
         else:
             for batch in batch_gen(oids, sql_batch_size):
-                result = self._activity_import(oids=batch, cube=cube,
-                                               owner=owner)
-                saved.extend(result)
-        self.result = saved
-        return
+                self.activity_get_objects(oids=batch, cube=cube,
+                                          owner=owner)
+        self.cube_save()
 
-    # FIXME: why are we passing cube and owner in here? it's not currently
-    # being used. Pass it into cube_save?
-    def _activity_import(self, oids, cube, owner):
-        self.logger.debug('Getting Objects + Activity History')
+    def activity_get_objects(self, oids):
+        self.logger.debug('Getting Objects - Activity History')
         docs = self.get_objects(force=oids)
         # dict, has format: oid: [(when, field, removed, added)]
         activities = self.activity_get(oids)
-        self.logger.debug('... processing activity history')
-        updates = []
+        objects = []
         for doc in docs:
             _oid = doc['_oid']
             acts = activities.setdefault(_oid, [])
-            updates.extend(self._activity_import_doc(doc, acts))
-        self.cube_save(updates)
-        return updates
+            objects.extend(self._activity_import_doc(doc, acts))
+        self.logger.debug('... activity get - done')
+        self.objects = objects
 
     def _activity_import_doc(self, time_doc, activities):
         '''
@@ -521,6 +511,7 @@ class Generic(pyclient):
         :param delay: sleep time between queries (avoid DOSing!)
         :param kwargs: accepted, but ignored
         '''
+        self.logger.debug('Fetching Objects - Current Values')
         oids = []
         objects = []
         start = utcnow()
@@ -569,6 +560,7 @@ class Generic(pyclient):
             for batch in batch_gen(oids, self.config.batch_size):
                 objects.extend(self._extract(batch, field_order, start))
         self.objects = objects
+        self.logger.debug('... objects get - done')
         return objects
 
     def get_new_oids(self):
