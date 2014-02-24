@@ -53,6 +53,7 @@ RPMS = ['git', 'python', 'python-devel', 'python-setuptools', 'python-pip',
 def deactivate():
     virtenv = active_virtualenv()
     sys.path = [p for p in sys.path if not p.startswith(virtenv)]
+    logger.info('Virtual Env (%s): Deactivated' % virtenv)
 
 
 def activate(args=None):
@@ -66,9 +67,9 @@ def activate(args=None):
     if os.path.exists(activate_this):
         execfile(activate_this, dict(__file__=activate_this))
         env['VIRTUAL_ENV'] = virtenv
-        logger.info('Virtual Env (%s): Activated' % virtenv)
     else:
         raise OSerror("Invalid virtual env; %s not found" % activate_this)
+    logger.info('Virtual Env (%s): Activated' % active_virtualenv())
 
 
 def rand_chars(size=6, chars=string.ascii_uppercase + string.digits):
@@ -920,7 +921,9 @@ def default_conf(path, template):
 
 
 def sys_firstboot(args=None):
-    if os.path.exists(SYS_FIRSTBOOT_PATH) and not args.force:
+    exists = os.path.exists(SYS_FIRSTBOOT_PATH)
+    forced = hasattr(args, 'force') and not args.force
+    if exists and not forced:
         # skip if we have already run this before
         return
 
@@ -1276,7 +1279,7 @@ def main():
     _deploy.add_argument(
         '--docs', action='store_true', help='install doc utils')
     _deploy.add_argument(
-        '--supervisord', action='store_true', help='install doc utils')
+        '--supervisord', action='store_true', help='install supervisord')
     _deploy.add_argument(
         '--trash', action='store_true', help='fresh install (rm old virtenv)')
     _deploy.set_defaults(func=deploy)
