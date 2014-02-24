@@ -53,16 +53,20 @@ RPMS = ['git', 'python', 'python-devel', 'python-setuptools', 'python-pip',
 def deactivate():
     virtenv = active_virtualenv()
     if virtenv:
-        to_remove = [p for p in sys.path if not p.startswith(virtenv)]
-        sys.path = to_remove
+        to_remove = [p for p in sys.path if p.startswith(virtenv)]
+        if to_remove:
+            sys.path = [p for p in sys.path if p in to_remove]
+            logger.info(' ... paths cleared: %s' % sorted(to_remove))
+        env['VIRTUAL_ENV'] = ''
         logger.info('Virtual Env (%s): Deactivated' % virtenv)
-        logger.info('... %s' % sorted(to_removed))
+    else:
+        logger.info('Deactivate: Virtual Env not detected')
 
 
 def activate(args=None):
-    virtenv = getattr(args, 'virtenv', active_virtualenv())
+    virtenv = getattr(args, 'virtenv') or active_virtualenv()
     if not virtenv:
-        logger.info('Virtual Env Not Activated: None defined')
+        logger.info('Activate: No virtenv defined')
         return  # nothing to activate
     else:
         deactivate()  # deactive active virtual first
