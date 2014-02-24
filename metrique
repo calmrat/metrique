@@ -52,13 +52,17 @@ RPMS = ['git', 'python', 'python-devel', 'python-setuptools', 'python-pip',
 
 def deactivate():
     virtenv = active_virtualenv()
-    sys.path = [p for p in sys.path if not p.startswith(virtenv)]
-    logger.info('Virtual Env (%s): Deactivated' % virtenv)
+    if virtenv:
+        to_remove = [p for p in sys.path if not p.startswith(virtenv)]
+        sys.path = to_remove
+        logger.info('Virtual Env (%s): Deactivated' % virtenv)
+        logger.info('... %s' % sorted(to_removed))
 
 
 def activate(args=None):
-    virtenv = getattr(args, 'virtenv') or active_virtualenv()
+    virtenv = getattr(args, 'virtenv', active_virtualenv())
     if not virtenv:
+        logger.info('Virtual Env Not Activated: None defined')
         return  # nothing to activate
     else:
         deactivate()  # deactive active virtual first
@@ -67,9 +71,9 @@ def activate(args=None):
     if os.path.exists(activate_this):
         execfile(activate_this, dict(__file__=activate_this))
         env['VIRTUAL_ENV'] = virtenv
+        logger.info('Virtual Env (%s): Activated' % active_virtualenv())
     else:
         raise OSerror("Invalid virtual env; %s not found" % activate_this)
-    logger.info('Virtual Env (%s): Activated' % active_virtualenv())
 
 
 def rand_chars(size=6, chars=string.ascii_uppercase + string.digits):
@@ -78,7 +82,7 @@ def rand_chars(size=6, chars=string.ascii_uppercase + string.digits):
 
 
 USER = getpass.getuser()
-VIRTUAL_ENV = env.get('VIRTUAL_ENV', '')
+VIRTUAL_ENV = active_virtualenv()
 NOW = datetime.datetime.utcnow().strftime('%FT%H%M%S')
 
 HOSTNAME = socket.gethostname()
@@ -774,7 +778,6 @@ def deploy(args):
         # scratch the existing virtenv directory, if requested
         if args.trash:
             remove(virtenv)
-            logger.info(system('%s/metrique mongodb trash' % GIT_DIR))
 
         # virtualenv.main; pass in only the virtenv path
         sys.argv = sys.argv[0:1] + [virtenv]
