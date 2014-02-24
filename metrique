@@ -789,7 +789,7 @@ def deploy(args):
 
     # make sure we have the installer basics and their up2date
     # pip-accel caches compiled binaries
-    call('pip install -U pip setuptools')
+    call('pip install -U pip setuptools virtualenv')
 
     # install pip-accel and use it instead of pip unless slow install
     if args.slow:
