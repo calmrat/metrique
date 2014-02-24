@@ -922,7 +922,7 @@ def default_conf(path, template):
 
 def sys_firstboot(args=None):
     exists = os.path.exists(SYS_FIRSTBOOT_PATH)
-    forced = hasattr(args, 'force') and not args.force
+    forced = hasattr(args, 'force') and args.force
     if exists and not forced:
         # skip if we have already run this before
         return
