@@ -90,6 +90,7 @@ class Issue(pyclient):
             _open = repo.get_issues()
             _closed = repo.get_issues(state='closed')
 
+        objects = []
         for i in chain(_open, _closed):
             obj = {
                 '_oid': i.id,
@@ -109,9 +110,9 @@ class Issue(pyclient):
                 'url': i.url,
                 'user': i.user.name,
             }
-            self.objects.append(obj)
+            objects.append(obj)
             break
-        return self.objects
+        return objects
 
     @property
     def proxy(self):

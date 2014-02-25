@@ -80,8 +80,6 @@ class Generic(pyclient):
         :param force:
          - None: import for all ids
          - list of ids: import for ids in the list
-        :param cube:
-
         '''
         oids = force or self.sql_get_oids()
         oids = list(oids)
@@ -94,26 +92,24 @@ class Generic(pyclient):
                 futures = []
                 delay = 0.2  # stagger the threaded calls a bit
                 for batch in batch_gen(oids, sql_batch_size):
-                    f = ex.submit(self.activity_get_objects, oids=batch)
+                    f = ex.submit(self.activity_get_objects, oids=batch,
+                                  save=True)
                     futures.append(f)
                     time.sleep(delay)
 
             for future in as_completed(futures):
                 try:
-                    objs = future.result()
+                    future.result()
                 except Exception as e:
                     tb = traceback.format_exc()
                     self.logger.error(
                         'Activity Import Error: %s\n%s' % (e, tb))
                     del tb
-                else:
-                    self.cube_save(objs)
         else:
             for batch in batch_gen(oids, sql_batch_size):
-                objs = self.activity_get_objects(oids=batch)
-                self.cube_save(objs)
+                self.activity_get_objects(oids=batch, save=True)
 
-    def activity_get_objects(self, oids):
+    def activity_get_objects(self, oids, save=False):
         self.logger.debug('Getting Objects - Activity History')
         docs = self.get_objects(force=oids)
         # dict, has format: oid: [(when, field, removed, added)]
@@ -124,7 +120,9 @@ class Generic(pyclient):
             acts = activities.setdefault(_oid, [])
             objects.extend(self._activity_import_doc(doc, acts))
         self.logger.debug('... activity get - done')
-        self.objects = objects
+        objects = self.normalize(objects)
+        if save:
+            self.cube_save(objects)
         return objects
 
     def _activity_import_doc(self, time_doc, activities):
@@ -478,7 +476,7 @@ class Generic(pyclient):
             '_end': None,
         }
 
-        metrics = []
+        objects = []
         for metric, definition in self.metrics.items():
             if names and metric not in names:
                 continue
@@ -496,9 +494,9 @@ class Generic(pyclient):
                     d[fields[i]] = element
 
                 # append to the local metric result list
-                metrics.append(d)
-        self.objects = metrics
-        return metrics
+                objects.append(d)
+        objects = self.normalize(objects)
+        return objects
 
     def get_objects(self, force=None, last_update=None, parse_timestamp=None,
                     delay=None, **kwargs):
@@ -560,8 +558,8 @@ class Generic(pyclient):
             # size is not set
             for batch in batch_gen(oids, self.config.batch_size):
                 objects.extend(self._extract(batch, field_order, start))
-        self.objects = objects
-        self.logger.debug('... objects get - done')
+        objects = self.normalize(objects)
+        self.logger.debug('... current values objects get - done')
         return objects
 
     def get_new_oids(self):

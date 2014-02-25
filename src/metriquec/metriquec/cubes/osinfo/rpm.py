@@ -95,6 +95,7 @@ class Rpm(pyclient):
         lines = [l.strip().split(':::') for l in output]
         now = dt2ts(datetime.now())
         host = self.ssh_host or socket.gethostname()
+        objects = []
         for line in lines:
             obj = {'host': host, '_start': now}
             for i, item in enumerate(line):
@@ -102,8 +103,8 @@ class Rpm(pyclient):
                     item = None
                 obj[self.fields[i]] = item
             obj['_oid'] = '%s__%s' % (host, obj['nvra'])
-            self.objects.append(obj)
-        return self.objects
+            objects.append(obj)
+        return objects
 
 
 if __name__ == '__main__':

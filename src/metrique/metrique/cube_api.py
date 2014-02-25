@@ -198,8 +198,6 @@ def save(self, objects=None, cube=None, owner=None, start_time=None,
     :param flush: flush objects from memory after save
     :returns None: results are saved in pyclient().result attribute
     '''
-    if objects is None:
-        objects = self.objects
     if not objects:
         self.logger.info("... No objects to save")
         self.result = []

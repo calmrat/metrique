@@ -69,7 +69,6 @@ And finishing with some querying and simple charting of the data.
     valid date format: '%Y-%m-%d %H:%M:%S,%f', '%Y-%m-%d %H:%M:%S', '%Y-%m-%d'
 '''
 
-from collections import MutableSequence
 from copy import copy
 import cPickle
 import gc
@@ -101,11 +100,13 @@ space_re = re.compile('\s+')
 unda_re = re.compile('_')
 
 
-class BaseCube(MutableSequence):
+class BaseClient(object):
     '''
-    Default 'cube' container model. Essentially, this object is made from
-    a list of dicts. The underlying object inherits from python's
-    MutableSequence collection object (aka, list).
+    Low level client API which provides baseline functionality, including
+    methods for loading data from csv and json, loading metrique client
+    cubes, config file loading and logging setup.
+
+    Essentially, cubes are data made from a list of dicts.
 
     All objects are expected to contain a `_oid` key value property. This
     property should be unique per individual "object" defined.
@@ -132,105 +133,161 @@ class BaseCube(MutableSequence):
     Property values are normalized to some extent automatically as well:
         * empty strings -> None
 
+    Additionally, some common operation methods are provided for
+    operations such as loading a HTTP uri and determining currently
+    configured username.
+
+    :cvar name: name of the cube
+    :cvar defaults: cube default property container (cube specific meta-data)
+    :cvar fields: cube fields definitions
+    :cvar saveas: filename to use when saving cube data to disk locally
+    :cvar config: local cube config object
+
+    If cube is specified as a kwarg upon initialization, the specific cube
+    class will be located and returned, assuming its available in sys.path.
+
+    If the cube fails to import, RuntimeError will be raised.
+
+    Example usage::
+
+        >>> import pyclient
+        >>> c = pyclient(cube='git_commit')
+            <type HTTPClient(...)>
+
+        >>> z = pyclient()
+        >>> z.get_cube(cube='git_commit')
+            <type HTTPClient(...)>
+
     '''
-    _objects = []
+    name = None
+    defaults = None
+    fields = None
+    saveas = ''
+    _cache = None
+    config = None
 
-    def __init__(self, name, objects=None):
-        if name:
-            self.name = name
+    def __new__(cls, *args, **kwargs):
+        if 'cube' in kwargs and kwargs['cube']:
+            cls = get_cube(cube=kwargs['cube'], init=False)
+        else:
+            cls = cls
+        return object.__new__(cls)
+
+    def __init__(self, config_file=None, name=None, **kwargs):
+        # don't assign to {} in class def, define here to avoid
+        # multiple pyclient objects linking to a shared dict
+        if self.defaults is None:
+            self.defaults = {}
+        if self.fields is None:
+            self.fields = {}
+        if self._cache is None:
+            self._cache = {}
+        if self.config is None:
+            self.config = {}
+
+        self._config_file = config_file or Config.default_config
+
+        # all defaults are loaded, unless specified in
+        # metrique_config.json
+        self.load_config(**kwargs)
+
+        utc_str = utcnow(as_datetime=True).strftime('%a%b%d%H%m%S')
+        # set name if passed in, but don't overwrite default if not
+        self.name = name or self.name or utc_str
+
+        self.config.logdir = os.path.expanduser(self.config.logdir)
+        if not os.path.exists(self.config.logdir):
+            os.makedirs(self.config.logdir)
+        self.config.logfile = os.path.join(self.config.logdir,
+                                           self.config.logfile)
+
+        # keep logging local to the cube so multiple
+        # cubes can independently log without interferring
+        # with each others logging.
+        self.debug_setup()
+
+####################### data loading api ###################
+    def load_files(self, path, filetype=None, **kwargs):
+        '''Load multiple files from various file types automatically.
+
+        Supports glob paths, eg::
+
+            path = 'data/*.csv'
+
+        Filetypes are autodetected by common extension strings.
+
+        Currently supports loadings from:
+            * csv (pd.read_csv)
+            * json (pd.read_json)
+
+        :param path: path to config json file
+        :param filetype: override filetype autodetection
+        :param kwargs: additional filetype loader method kwargs
+        '''
+        # kwargs are for passing ftype load options (csv.delimiter, etc)
+        # expect the use of globs; eg, file* might result in fileN (file1,
+        # file2, file3), etc
+        datasets = glob.glob(os.path.expanduser(path))
+        objects = None
+        for ds in datasets:
+            filetype = path.split('.')[-1]
+            # buid up a single dataframe by concatting
+            # all globbed files together
+            objects = pd.concat(
+                [self._load_file(ds, filetype, **kwargs)
+                    for ds in datasets]).T.as_dict().values()
+        return objects
+
+    def _load_file(self, path, filetype, **kwargs):
+        if filetype in ['csv', 'txt']:
+            return self._load_csv(path, **kwargs)
+        elif filetype in ['json']:
+            return self._load_json(path, **kwargs)
+        else:
+            raise TypeError("Invalid filetype: %s" % filetype)
+
+    def _load_csv(self, path, **kwargs):
+        # load the file according to filetype
+        return pd.read_csv(path, **kwargs)
+
+    def _load_json(self, path, **kwargs):
+        return pd.read_json(path, **kwargs)
+
+####################### objects manipulation ###################
+    def df(self, objects=None):
+        '''Return a pandas dataframe from objects'''
         if objects:
-            self.objects = objects
-
-    def __delitem__(self, name):
-        del self.objects[name]
-
-    def __getitem__(self, name):
-        return self.objects[name]
-
-    def __setitem__(self, name, obj):
-        self.objects[name] = obj
-
-    def insert(self, name, obj):
-        self.objects.insert(name, obj)
-
-    def __len__(self):
-        return len(self.objects)
-
-    def __iter__(self):
-        return iter(self.objects)
-
-    def __next__(self):
-        yield next(self)
-
-    def next(self):
-        return self.__next__()
-
-    def __getslice__(self, i, j):
-        return self.objects[i:j]
-
-    def __contains__(self, item):
-        return item in self.objects
-
-    def __str__(self):
-        return str(self.objects)
-
-    def __repr__(self):
-        return repr(self.objects)
-
-####################################################################
-    @property
-    def df(self):
-        '''Return a pandas dataframe from the cached objects'''
-        if self.objects:
-            return pd.DataFrame(self.objects)
+            return pd.DataFrame(objects)
         else:
             return pd.DataFrame()
 
     def flush(self):
-        '''Delete locally cached objects from object instance'''
-        del self.objects
+        '''run garbage collection'''
+        k = gc.get_count()
+        result = gc.collect()  # be sure we garbage collect any old object refs
+        self.logger.debug('... %s flushed, %s remain' % (k, result))
 
-    @property
-    def objects(self):
-        '''Return list of locally cached objects'''
-        return self._objects
-
-    @objects.setter
-    def objects(self, objects):
+    def normalize(self, objects):
         '''Convert, validate, normalize and locally cache objects'''
         # convert from other forms to basic list of dicts
         if objects is None:
             objects = []
         elif isinstance(objects, pd.DataFrame):
             objects = objects.T.to_dict().values()
-        elif isinstance(objects, BaseCube):
+        elif isinstance(objects, BaseClient):
             objects = objects.objects
         # model check
-        if not isinstance(objects, (BaseCube, list, tuple)):
+        if not isinstance(objects, (BaseClient, list, tuple)):
             _t = type(objects)
-            raise TypeError("container value must be a list; got %s" % _t)
+            raise TypeError("objects container must be a list; got %s" % _t)
         if objects:
             if not all([type(o) is dict for o in objects]):
                 raise TypeError("object values must be dict")
             if not all([o.get('_oid') is not None for o in objects]):
                 raise ValueError("_oid must be defined for all objs")
-            self._objects = self._normalize(objects)
-        else:
-            self._objects = objects
+            objects = self._normalize(objects)
+        return objects
 
-    @objects.deleter
-    def objects(self):
-        '''Delete locally cached objects and run garbage collection'''
-        del self._objects
-        self._objects = []
-        gc.collect()  # be sure we garbage collect any old object refs
-
-    @property
-    def oids(self):
-        '''Return back a list of _oids for all locally cached objects'''
-        return [o['_oid'] for o in self._objects]
-
-###################### normalization keys/values #################
     def _normalize(self, objects):
         '''
         give all these objects the same _start value (if they
@@ -273,133 +330,9 @@ class BaseCube(MutableSequence):
         obj['_start'] = _start or utcnow()
         return obj
 
-
-class BaseClient(BaseCube):
-    '''
-    Low level client API which provides baseline functionality, including
-    methods for loading data from csv and json, loading metrique client
-    cubes, config file loading and logging setup.
-
-    Additionally, some common operation methods are provided for
-    operations such as loading a HTTP uri and determining currently
-    configured username.
-
-    :cvar name: name of the cube
-    :cvar defaults: cube default property container (cube specific meta-data)
-    :cvar fields: cube fields definitions
-    :cvar saveas: filename to use when saving cube data to disk locally
-    :cvar config: local cube config object
-
-    If cube is specified as a kwarg upon initialization, the specific cube
-    class will be located and returned, assuming its available in sys.path.
-
-    If the cube fails to import, RuntimeError will be raised.
-
-    Example usage::
-
-        >>> import pyclient
-        >>> c = pyclient(cube='git_commit')
-            <type HTTPClient(...)>
-
-        >>> z = pyclient()
-        >>> z.get_cube(cube='git_commit')
-            <type HTTPClient(...)>
-
-    '''
-    name = None
-    defaults = None
-    fields = None
-    saveas = ''
-    _cache = None
-    config = None
-
-    def __new__(cls, *args, **kwargs):
-        if 'cube' in kwargs and kwargs['cube']:
-            cls = get_cube(cube=kwargs['cube'], init=False)
-        else:
-            cls = cls
-        return object.__new__(cls)
-
-    def __init__(self, config_file=None, name=None, objects=None, **kwargs):
-        # don't assign to {} in class def, define here to avoid
-        # multiple pyclient objects linking to a shared dict
-        if self.defaults is None:
-            self.defaults = {}
-        if self.fields is None:
-            self.fields = {}
-        if self._cache is None:
-            self._cache = {}
-        if self.config is None:
-            self.config = {}
-
-        self._config_file = config_file or Config.default_config
-
-        # all defaults are loaded, unless specified in
-        # metrique_config.json
-        self.load_config(**kwargs)
-
-        utc_str = utcnow(as_datetime=True).strftime('%a%b%d%H%m%S')
-        # set name if passed in, but don't overwrite default if not
-        self.name = name or self.name or utc_str
-
-        self.objects = BaseCube(name=self.name, objects=objects)
-
-        self.config.logdir = os.path.expanduser(self.config.logdir)
-        if not os.path.exists(self.config.logdir):
-            os.makedirs(self.config.logdir)
-        self.config.logfile = os.path.join(self.config.logdir,
-                                           self.config.logfile)
-
-        # keep logging local to the cube so multiple
-        # cubes can independently log without interferring
-        # with each others logging.
-        self.debug_setup()
-
-####################### data loading api ###################
-    def load_files(self, path, filetype=None, **kwargs):
-        '''Load multiple files from various file types automatically.
-
-        Supports glob paths, eg::
-
-            path = 'data/*.csv'
-
-        Filetypes are autodetected by common extension strings.
-
-        Currently supports loadings from:
-            * csv (pd.read_csv)
-            * json (pd.read_json)
-
-        :param path: path to config json file
-        :param filetype: override filetype autodetection
-        :param kwargs: additional filetype loader method kwargs
-        '''
-        # kwargs are for passing ftype load options (csv.delimiter, etc)
-        # expect the use of globs; eg, file* might result in fileN (file1,
-        # file2, file3), etc
-        datasets = glob.glob(os.path.expanduser(path))
-        for ds in datasets:
-            filetype = path.split('.')[-1]
-            # buid up a single dataframe by concatting
-            # all globbed files together
-            self.objects = pd.concat(
-                [self._load_file(ds, filetype, **kwargs)
-                    for ds in datasets]).T.as_dict().values()
-        return self.objects
-
-    def _load_file(self, path, filetype, **kwargs):
-        if filetype in ['csv', 'txt']:
-            return self._load_csv(path, **kwargs)
-        elif filetype in ['json']:
-            return self._load_json(path, **kwargs)
-        else:
-            raise TypeError("Invalid filetype: %s" % filetype)
-
-    def _load_csv(self, path, **kwargs):
-        # load the file according to filetype
-        return pd.read_csv(path, **kwargs)
-
-    def _load_json(self, path, **kwargs):
-        return pd.read_json(path, **kwargs)
+    def oids(self, objects):
+        '''Return back a list of _oids for all locally cached objects'''
+        return [o['_oid'] for o in objects]
 
 #################### misc ##################################
     def debug_setup(self):
@@ -708,9 +641,8 @@ class HTTPClient(BaseClient):
         :param args: args to pass to `get_objects`
         :param kwargs: args to pass to `get_objects`
         '''
-        self.get_objects(*args, **kwargs)  # default: stores into self.objects
-        self.cube_save()  # default: saves from self.objects
-        return
+        objs = self.get_objects(*args, **kwargs)
+        self.cube_save(objs)
 
     def get_cmd(self, owner, cube, api_name=None):
         '''Helper method for building api urls, specifically
@@ -825,6 +757,7 @@ class HTTPClient(BaseClient):
 
         urls = self._build_urls(cmd, api_url)
         for url in urls:
+            self.logger.debug("Connecting to %s" % url)
             try:
                 _response = self._get_response(runner, url,
                                                username, password,

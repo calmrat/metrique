@@ -146,7 +146,6 @@ class Repo(pyclient):
         repo_shas = set(x for x in p.split('\n') if x)
         self.logger.debug("Total Commits: %s" % len(repo_shas))
         objects = self._build_commits(repo_shas, uri)
-        self.objects = objects
         return objects
 
 
