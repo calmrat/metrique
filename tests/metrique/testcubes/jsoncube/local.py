@@ -25,7 +25,6 @@ class Local(jsondata_objs):
         for k, v in content.items():
             v.update({'_oid': k})
             objs.append(v)
-        self.objects = objs
         return objs
 
 
