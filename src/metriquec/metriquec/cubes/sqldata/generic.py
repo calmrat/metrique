@@ -125,6 +125,7 @@ class Generic(pyclient):
             objects.extend(self._activity_import_doc(doc, acts))
         self.logger.debug('... activity get - done')
         self.objects = objects
+        return objects
 
     def _activity_import_doc(self, time_doc, activities):
         '''

@@ -3,7 +3,7 @@
 # Author: "Chris Ward <cward@redhat.com>
 
 '''
-CLI for deploying metrique
+Commandline interface for managing metrique deployments
 '''
 
 import datetime
@@ -181,6 +181,279 @@ SUPERVISORD_PIDFILE = pjoin(PID_DIR, 'supervisord.pid')
 SUPERVISORD_LOGFILE = pjoin(LOG_DIR, 'supervisord.log')
 SUPERVISORD_HISTORYFILE = pjoin(TEMP_DIR, 'supervisord_history')
 
+############################## DEFAULT CONFS #################################
+DEFAULT_METRIQUE_JSON = '''{
+    "auto_login": false,
+    "batch_size": 5000,
+    "cube_autoregister": false,
+    "debug": true,
+    "host": "127.0.0.1",
+    "log2file": true,
+    "logstdout": false,
+    "max_workers": %s,
+    "password": "%s",
+    "port": 5420,
+    "sql_batch_size": 1000,
+    "ssl": false,
+    "ssl_verify": false
+}'''
+
+DEFAULT_METRIQUED_JSON = '''{
+    "api_docs": "%s",
+    "cookie_secret": "%s",
+    "debug": true,
+    "host": "127.0.0.1",
+    "host_LOCAL": "%s",
+    "krb_auth": false,
+    "log2file": true,
+    "logstdout": false,
+    "log_requests": false,
+    "port": 5420,
+    "realm": "metrique",
+    "ssl": false,
+    "ssl_certificate": "%s",
+    "ssl_certificate_key": "%s",
+    "superusers": ["admin", "%s"]
+}'''
+
+
+DEFAULT_MONGODB_JSON = '''{
+    "auth": false,
+    "root_password": "%s",
+    "admin_password": "%s",
+    "data_password": "%s",
+    "host": "127.0.0.1",
+    "journal": true,
+    "port": 27017,
+    "ssl": false,
+    "ssl_certificate": "%s",
+    "write_concern": 1
+}'''
+
+DEFAULT_MONGODB_CONF = '''
+#fork = true
+nohttpinterface = true
+dbpath = %s
+logpath = %s
+pidfilepath = %s
+
+#auth = true
+noauth = true
+
+bind_ip = 127.0.0.1
+#bind_ip = %s
+
+#sslOnNormalPorts = true
+#sslPEMKeyFile = %s
+
+#replSet = rs0
+#keyFile = %s'''
+
+DEFAULT_MONGODB_JS = '''
+db = db.getSiblingDB('admin')
+db.addUser({'user': 'root', 'pwd': '%s', 'roles': ['dbAdminAnyDatabase',
+        'userAdminAnyDatabase', 'clusterAdmin', 'readWriteAnyDatabase']});
+db.addUser({'user': 'admin', 'pwd': '%s', 'roles': ['dbAdminAnyDatabase',
+        'userAdminAnyDatabase', 'readWriteAnyDatabase']});
+db.addUser({'user': 'metrique', 'pwd': '%s', 'roles': ['readAnyDatabase']});
+'''
+
+DEFAULT_CELERY_JSON = '''{
+    "BROKER_URL": "mongodb://admin:%s@127.0.0.1:27017",
+    "BROKER_URL_LOCAL": "mongodb://admin:%s@%s:27017",
+    "BROKER_USE_SSL": false
+}'''
+
+DEFAULT_NGINX_CONF = '''
+worker_processes auto;
+daemon off;  # see warnings: http://wiki.nginx.org/CoreModule#daemon
+user %s;
+error_log %s;
+pid %s;
+events {
+    worker_connections 1024;
+    use epoll;
+}
+http {
+    charset utf-8;
+    client_max_body_size 0;  # disabled
+    client_body_temp_path  %s 1 2;
+    client_header_buffer_size 256k;
+    large_client_header_buffers 8 1024k;
+
+    proxy_temp_path   %s  1 2;
+    proxy_cache_path  %s  levels=1:2     keys_zone=proxy_one:10m;
+
+    fastcgi_temp_path   %s  1 2;
+    fastcgi_cache_path  %s  levels=1:2   keys_zone=fastcgi_one:10m;
+
+    uwsgi_temp_path   %s  1 2;
+    uwsgi_cache_path  %s  levels=1:2     keys_zone=uwsgi_one:10m;
+
+    scgi_temp_path   %s  1 2;
+    scgi_cache_path  %s  levels=1:2     keys_zone=scgi_one:10m;
+
+    # Enumerate all the Tornado servers here
+    upstream frontends {
+        server 127.0.0.1:5421;
+        server 127.0.0.1:5422;
+        server 127.0.0.1:5423;
+        server 127.0.0.1:5424;
+        #server %s:5421;
+        #server %s:5422;
+        #server %s:5423;
+        #server %s:5424;
+    }
+
+    include /etc/nginx/mime.types;
+    default_type application/octet-stream;
+
+    error_log %s;
+    access_log %s;
+
+    # Timeouts
+    keepalive_timeout 3m;
+    client_header_timeout  3m;
+    client_body_timeout  3m;
+    proxy_connect_timeout 3m;
+    proxy_send_timeout 3m;
+    proxy_read_timeout 3m;
+
+    sendfile on;
+    tcp_nopush on;
+    tcp_nodelay on;
+    gzip on;
+    gzip_min_length 1000;
+    gzip_proxied any;
+    gzip_types text/plain text/css text/xml
+            application/x-javascript application/xml
+            application/atom+xml text/javascript
+            application/json;
+
+    # Only retry if there was a communication error, not a timeout
+    # on the Tornado server (to avoid propagating "queries of death"
+    # to all frontends)
+    proxy_next_upstream error;
+
+    server {
+        listen 127.0.0.1:5420;
+        #listen %s:5420;
+        ssl                 off;
+        ssl_certificate     %s;
+        ssl_certificate_key %s;
+
+        ssl_protocols        SSLv3 TLSv1 TLSv1.1 TLSv1.2;
+        ssl_ciphers          RC4:HIGH:!aNULL:!MD5;
+        ssl_prefer_server_ciphers on;
+        ssl_session_cache    shared:SSL:10m;
+        ssl_session_timeout  60m;
+
+        location ^~ /static/ {
+            root %s;
+            if ($query_string) {
+                expires max;
+            }
+        }
+
+        location / {
+            proxy_pass_header Server;
+            proxy_set_header Host $http_host;
+            proxy_redirect off;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Scheme $scheme;
+            proxy_pass http://frontends;
+
+            proxy_set_header        Accept-Encoding   "";
+            proxy_set_header        X-Forwarded-For $proxy_add_x_forwarded_for;
+
+            ### Most PHP, Python, Rails, Java App can use this header ###
+            #proxy_set_header X-Forwarded-Proto https;##
+            #This is better##
+            proxy_set_header        X-Forwarded-Proto $scheme;
+            add_header              Front-End-Https   on;
+
+            ### force timeouts if one of backend is died ##
+            proxy_next_upstream error timeout invalid_header http_500 http_502
+                                                             http_503 http_504;
+        }
+    }
+}
+'''
+
+DEFAULT_SUPERVISORD_CONF = '''
+[inet_http_server]
+port=127.0.0.1:9001
+;port=%s:9001
+username=admin
+password=%s
+
+[rpcinterface:supervisor]
+supervisor.rpcinterface_factory = supervisor.rpcinterface:make_main_rpcinterface
+
+[supervisord]
+logfile=%s
+pidfile=%s
+childlogdir=%s
+user=%s
+directory=%s
+environment=%s
+loglevel=debug
+
+[supervisorctl]
+serverurl=http://127.0.0.1:9001
+;serverurl=http://%s:9001
+username=admin
+password=%s
+history_file=%s
+
+[program:mongodb]
+command=./metrique mongodb start --nofork
+process_name=mongodb
+numprocs=1
+priority=10
+startsecs=60
+stopwaitsecs=60
+
+[program:metriqued]
+command=./metrique metriqued start -P542%%(process_num)d --nofork
+process_name=metriqued-%%(process_num)d
+numprocs=4
+numprocs_start=1
+priority=20
+startsecs=60
+startretries=5
+
+[program:nginx]
+command=./metrique nginx start --nofork
+process_name=nginx
+numprocs=1
+priority=30
+startsecs=30
+
+[program:celeryd]
+command=./metrique celeryd start --nofork
+process_name=celeryd
+numprocs=1
+priority=40
+startsecs=30
+autorestart=true
+
+[program:celerybeat]
+command=./metrique celerybeat start --nofork
+process_name=celerybeat
+numprocs=1
+priority=41
+startsecs=30
+autorestart=true
+
+[program:viztriqued]
+command=./viztriqued start --nofork
+directory=path/to/viztrique/git/repo
+process_name=viztriqued
+numprocs=1
+priority=100
+'''
+###############################################################################
 
 def get_pid(pidfile):
     try:
@@ -934,304 +1207,40 @@ def sys_firstboot(args=None):
         # skip if we have already run this before
         return
 
-    DEFAULT_METRIQUE_JSON = '''
-    {
-        "auto_login": false,
-        "batch_size": 5000,
-        "cube_autoregister": false,
-        "debug": true,
-        "host": "127.0.0.1",
-        "log2file": true,
-        "logstdout": false,
-        "max_workers": %s,
-        "password": "%s",
-        "port": 5420,
-        "sql_batch_size": 1000,
-        "ssl": false,
-        "ssl_verify": false
-    }
-    ''' % (multiprocessing.cpu_count(), PASSWORD)
-    DEFAULT_METRIQUE_JSON = DEFAULT_METRIQUE_JSON.strip()
+    global DEFAULT_METRIQUE_JSON, DEFAULT_METRIQUED_JSON, DEFAULT_MONGODB_JSON
+    global DEFAULT_MONGODB_CONF, DEFAULT_MONGODB_JS, DEFAULT_CELERY_JSON
+    global DEFAULT_SUPERVISORD_CONF, DEFAULT_NGINX_CONF
 
-    DEFAULT_METRIQUED_JSON = '''
-    {
-        "api_docs": "%s",
-        "cookie_secret": "%s",
-        "debug": true,
-        "host": "127.0.0.1",
-        "host_LOCAL": "%s",
-        "krb_auth": false,
-        "log2file": true,
-        "logstdout": false,
-        "log_requests": false,
-        "port": 5420,
-        "realm": "metrique",
-        "ssl": false,
-        "ssl_certificate": "%s",
-        "ssl_certificate_key": "%s",
-        "superusers": ["admin", "%s"]
-    }
-    ''' % (API_DOCS_PATH, COOKIE_SECRET, LOCAL_IP,
-        SSL_CERT, SSL_KEY, USER)
-    DEFAULT_METRIQUED_JSON = DEFAULT_METRIQUED_JSON.strip()
+    DEFAULT_METRIQUE_JSON = DEFAULT_METRIQUE_JSON % (
+        multiprocessing.cpu_count(), PASSWORD)
 
-    DEFAULT_MONGODB_JSON = '''
-    {
-        "auth": false,
-        "root_password": "%s",
-        "admin_password": "%s",
-        "data_password": "%s",
-        "host": "127.0.0.1",
-        "journal": true,
-        "port": 27017,
-        "ssl": false,
-        "ssl_certificate": "%s",
-        "write_concern": 1
-    }
-    ''' % (PASSWORD, PASSWORD, PASSWORD, SSL_PEM)
-    DEFAULT_MONGODB_JSON = DEFAULT_MONGODB_JSON.strip()
+    DEFAULT_METRIQUED_JSON = DEFAULT_METRIQUED_JSON  % (
+        API_DOCS_PATH, COOKIE_SECRET, LOCAL_IP, SSL_CERT, SSL_KEY, USER)
 
-    DEFAULT_MONGODB_CONF = '''
-    fork = true
-    nohttpinterface = true
-    dbpath = %s
-    logpath = %s
-    pidfilepath = %s
+    DEFAULT_MONGODB_JSON = DEFAULT_MONGODB_JSON % (
+        PASSWORD, PASSWORD, PASSWORD, SSL_PEM)
 
-    #auth = true
-    noauth = true
+    DEFAULT_MONGODB_CONF = DEFAULT_MONGODB_CONF % (
+        MONGODB_DIR, MONGODB_LOG, MONGODB_PIDFILE, LOCAL_IP, SSL_PEM,
+        MONGODB_KEYFILE)
 
-    bind_ip = 127.0.0.1
-    #bind_ip = %s
+    DEFAULT_MONGODB_JS = DEFAULT_MONGODB_JS % (PASSWORD, PASSWORD, PASSWORD)
 
-    #sslOnNormalPorts = true
-    #sslPEMKeyFile = %s
+    DEFAULT_CELERY_JSON = DEFAULT_CELERY_JSON % (PASSWORD, PASSWORD, LOCAL_IP)
 
-    #replSet = rs0
-    #keyFile = %s
-    ''' % (MONGODB_DIR, MONGODB_LOG, MONGODB_PIDFILE, LOCAL_IP,
-        SSL_PEM, MONGODB_KEYFILE)
-    DEFAULT_MONGODB_CONF = DEFAULT_MONGODB_CONF.strip()
-
-    DEFAULT_MONGODB_JS = '''
-    db = db.getSiblingDB('admin')
-    db.addUser({'user': 'root', 'pwd': '%s', 'roles': ['dbAdminAnyDatabase',
-            'userAdminAnyDatabase', 'clusterAdmin', 'readWriteAnyDatabase']});
-    db.addUser({'user': 'admin', 'pwd': '%s', 'roles': ['dbAdminAnyDatabase',
-            'userAdminAnyDatabase', 'readWriteAnyDatabase']});
-    db.addUser({'user': 'metrique', 'pwd': '%s', 'roles': ['readAnyDatabase']});
-    ''' % (PASSWORD, PASSWORD, PASSWORD)
-    DEFAULT_MONGODB_JS = DEFAULT_MONGODB_JS.strip()
-
-    DEFAULT_CELERY_JSON = '''
-    {
-        "BROKER_URL": "mongodb://admin:%s@127.0.0.1:27017",
-        "BROKER_URL_LOCAL": "mongodb://admin:%s@%s:27017",
-        "BROKER_USE_SSL": false
-    }
-    ''' % (PASSWORD, PASSWORD, LOCAL_IP)
-    DEFAULT_CELERY_JSON = DEFAULT_CELERY_JSON.strip()
-
-    DEFAULT_NGINX_CONF = '''
-    worker_processes auto;
-    daemon on;  # turn off to avoid forking on startup (supervisord)
-    # see warnings: http://wiki.nginx.org/CoreModule#daemon
-    user %s
-    error_log %s;
-    pid %s;
-    events {
-        worker_connections 1024;
-        use epoll;
-    }
-    http {
-        charset utf-8;
-        client_max_body_size 0;  # disabled
-        client_body_temp_path  %s 1 2;
-        client_header_buffer_size 256k;
-        large_client_header_buffers 8 1024k;
-
-        proxy_temp_path   %s  1 2;
-        proxy_cache_path  %s  levels=1:2     keys_zone=proxy_one:10m;
-
-        fastcgi_temp_path   %s  1 2;
-        fastcgi_cache_path  %s  levels=1:2   keys_zone=fastcgi_one:10m;
-
-        uwsgi_temp_path   %s  1 2;
-        uwsgi_cache_path  %s  levels=1:2     keys_zone=uwsgi_one:10m;
-
-        scgi_temp_path   %s  1 2;
-        scgi_cache_path  %s  levels=1:2     keys_zone=scgi_one:10m;
-
-        # Enumerate all the Tornado servers here
-        upstream frontends {
-            server 127.0.0.1:5421;
-            server 127.0.0.1:5422;
-            server 127.0.0.1:5423;
-            server 127.0.0.1:5424;
-            #server %s:5421;
-            #server %s:5422;
-            #server %s:5423;
-            #server %s:5424;
-        }
-
-        include /etc/nginx/mime.types;
-        default_type application/octet-stream;
-
-        error_log %s;
-        access_log %s;
-
-        # Timeouts
-        keepalive_timeout 3m;
-        client_header_timeout  3m;
-        client_body_timeout  3m;
-        proxy_connect_timeout 3m;
-        proxy_send_timeout 3m;
-        proxy_read_timeout 3m;
-
-        sendfile on;
-        tcp_nopush on;
-        tcp_nodelay on;
-        gzip on;
-        gzip_min_length 1000;
-        gzip_proxied any;
-        gzip_types text/plain text/css text/xml
-                application/x-javascript application/xml
-                application/atom+xml text/javascript
-                application/json;
-
-        # Only retry if there was a communication error, not a timeout
-        # on the Tornado server (to avoid propagating "queries of death"
-        # to all frontends)
-        proxy_next_upstream error;
-
-        server {
-            listen %s:5420;
-            ssl                 off;
-            ssl_certificate     %s;
-            ssl_certificate_key %s;
-
-            ssl_protocols        SSLv3 TLSv1 TLSv1.1 TLSv1.2;
-            ssl_ciphers RC4:HIGH:!aNULL:!MD5;
-            ssl_prefer_server_ciphers on;
-            ssl_session_cache    shared:SSL:10m;
-            ssl_session_timeout  60m;
-
-            location ^~ /static/ {
-                root %s;
-                if ($query_string) {
-                    expires max;
-                }
-            }
-
-            location / {
-                proxy_pass_header Server;
-                proxy_set_header Host $http_host;
-                proxy_redirect off;
-                proxy_set_header X-Real-IP $remote_addr;
-                proxy_set_header X-Scheme $scheme;
-                proxy_pass http://frontends;
-
-                proxy_set_header        Accept-Encoding   "";
-                proxy_set_header        X-Forwarded-For $proxy_add_x_forwarded_for;
-
-                ### Most PHP, Python, Rails, Java App can use this header ###
-                #proxy_set_header X-Forwarded-Proto https;##
-                #This is better##
-                proxy_set_header        X-Forwarded-Proto $scheme;
-                add_header              Front-End-Https   on;
-
-                ### force timeouts if one of backend is died ##
-                proxy_next_upstream error timeout invalid_header http_500 http_502
-                                                                http_503 http_504;
-            }
-        }
-    }
-    ''' % (USER, NGINX_ERROR_LOG, NGINX_PIDFILE, TEMP_DIR,
+    DEFAULT_NGINX_CONF = DEFAULT_NGINX_CONF % (
+        USER, NGINX_ERROR_LOG, NGINX_PIDFILE, TEMP_DIR,
         TEMP_DIR, CACHE_DIR, TEMP_DIR, CACHE_DIR, TEMP_DIR, CACHE_DIR,
         TEMP_DIR, CACHE_DIR, LOCAL_IP, LOCAL_IP, LOCAL_IP, LOCAL_IP,
         NGINX_ERROR_LOG, NGINX_ACCESS_LOG, LOCAL_IP, SSL_CERT, SSL_KEY,
         STATIC_PATH)
-    DEFAULT_NGINX_CONF = DEFAULT_NGINX_CONF.strip()
 
     ENVIRONMENT = 'VIRTUAL_ENV="%s", HOME="%s", METRIQUE_GIT="%s"' % (
         VIRTUAL_ENV, HOME_DIR, GIT_DIR)
-    DEFAULT_SUPERVISORD_CONF = '''
-    [inet_http_server]
-    port=127.0.0.1:9001
-    ;port=%s:9001
-    username=admin
-    password=%s
-
-    [rpcinterface:supervisor]
-    supervisor.rpcinterface_factory = supervisor.rpcinterface:make_main_rpcinterface
-
-    [supervisord]
-    logfile=%s
-    pidfile=%s
-    childlogdir=%s
-    user=%s
-    directory=%s
-    environment=%s
-    loglevel=debug
-
-    [supervisorctl]
-    serverurl=http://127.0.0.1:9001
-    ;serverurl=http://%s:9001
-    username=admin
-    password=%s
-    history_file=%s
-
-    [program:mongodb]
-    command=python metrique mongodb start --nofork
-    process_name=mongodb
-    numprocs=1
-    priority=10
-    startsecs=60
-    stopwaitsecs=60
-
-    [program:metriqued]
-    command=python metrique metriqued start -P542%%(process_num)d --nofork
-    process_name=metriqued-%%(process_num)d
-    numprocs=4
-    numprocs_start=1
-    priority=20
-    startsecs=60
-    startretries=5
-
-    [program:nginx]
-    command=python metrique nginx start --nofork
-    process_name=nginx
-    numprocs=1
-    priority=30
-    startsecs=30
-
-    [program:celeryd]
-    command=python metrique celeryd start --nofork
-    process_name=celeryd
-    numprocs=1
-    priority=40
-    startsecs=30
-    autorestart=true
-
-    [program:celerybeat]
-    command=python metrique celerybeat start --nofork
-    process_name=celerybeat
-    numprocs=1
-    priority=41
-    startsecs=30
-    autorestart=true
-
-    [program:viztriqued]
-    command=python viztriqued start --nofork
-    directory=path/to/viztrique/git/repo
-    process_name=viztriqued
-    numprocs=1
-    priority=100
-    ''' % (LOCAL_IP, PASSWORD, SUPERVISORD_LOGFILE, SUPERVISORD_PIDFILE,
-        LOG_DIR, USER, GIT_DIR, ENVIRONMENT,
-        LOCAL_IP, PASSWORD, SUPERVISORD_HISTORYFILE)
-    DEFAULT_SUPERVISORD_CONF = DEFAULT_SUPERVISORD_CONF.strip()
-
+    DEFAULT_SUPERVISORD_CONF = DEFAULT_SUPERVISORD_CONF % (
+        LOCAL_IP, PASSWORD, SUPERVISORD_LOGFILE, SUPERVISORD_PIDFILE,
+        LOG_DIR, USER, GIT_DIR, ENVIRONMENT, LOCAL_IP, PASSWORD,
+        SUPERVISORD_HISTORYFILE)
 
     # create default dirs in advance
     [makedirs(p) for p in (USER_DIR, PIP_CACHE_DIR, PIP_ACCEL_DIR,
