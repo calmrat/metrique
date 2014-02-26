@@ -69,7 +69,7 @@ class Generic(pyclient):
         raise NotImplementedError(
             'The activity_get method is not implemented in this cube.')
 
-    def activity_import(self, force=None, cube=None, owner=None, delay=None):
+    def activity_import(self, force=None, delay=None):
         '''
         Run the activity import for a given cube, if the cube supports it.
 
@@ -84,7 +84,7 @@ class Generic(pyclient):
 
         '''
         oids = force or self.sql_get_oids()
-        oids = tuple(oids)
+        oids = list(oids)
 
         max_workers = self.config.max_workers
         sql_batch_size = self.config.sql_batch_size
@@ -94,8 +94,7 @@ class Generic(pyclient):
                 futures = []
                 delay = 0.2  # stagger the threaded calls a bit
                 for batch in batch_gen(oids, sql_batch_size):
-                    f = ex.submit(self.activity_get_objects, oids=batch,
-                                  cube=cube, owner=owner)
+                    f = ex.submit(self.activity_get_objects, oids=batch)
                     futures.append(f)
                     time.sleep(delay)
 
@@ -109,8 +108,7 @@ class Generic(pyclient):
                     del tb
         else:
             for batch in batch_gen(oids, sql_batch_size):
-                self.activity_get_objects(oids=batch, cube=cube,
-                                          owner=owner)
+                self.activity_get_objects(oids=batch)
         self.cube_save()
 
     def activity_get_objects(self, oids):
@@ -542,7 +540,7 @@ class Generic(pyclient):
             if self.get_property('delta_new_ids', default=True):
                 oids.extend(self.get_new_oids())
 
-        if isinstance(force, list):
+        if isinstance(force, (list, tuple)):
             oids = force
 
         oids = sorted(set(oids))
