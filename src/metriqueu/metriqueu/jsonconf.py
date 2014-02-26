@@ -45,7 +45,7 @@ class JSONConf(MutableMapping):
     default_config_dir = None
 
     def __init__(self, config_file=None, defaults=None, **kwargs):
-        if config_file is None and self.default_config:
+        if not config_file and self.default_config:
             self.config_file = self.default_config
         else:
             self.config_file = config_file
@@ -128,26 +128,31 @@ class JSONConf(MutableMapping):
         ''' load json config file from disk '''
         # We don't want to throw exceptions if the default config file does not
         # exist.
-        silent = self.config_file == self.default_config
-        config_file = self.config_file
-        if not isinstance(config_file, basestring):
+        if not isinstance(self.config_file, basestring):
             raise TypeError(
-                "Unknown config_file type; got: %s" % type(config_file))
+                "Unknown config_file type; got: %s" % type(self.config_file))
+        config_file = os.path.expanduser(self.config_file)
+
+        # if we the config file is set to same as default_config
+        # and default config isn't found, move on; only defaults
+        # set at class initiation will be available
+        silent = bool(config_file == self.default_config)
+
         if not re.search(r'\.json$', config_file, re.I):
             config_file = '.'.join((config_file, 'json'))
 
-        config_file = os.path.expanduser(config_file)
-        _config_file = None
         if not os.path.exists(config_file):
             # if default_config_dir is set and the config_file is
             # relative, attempt to find the conf relative to the path
             if self.default_config_dir and not os.path.isabs(config_file):
                 path = os.path.expanduser(self.default_config_dir)
-                _config_file = os.path.join(path, config_file)
-            if not (os.path.exists(_config_file) or silent):
+                config_file = os.path.join(path, config_file)
+
+        if not os.path.exists(config_file):
+            if not silent:
                 raise IOError('Config file %s does not exist.' % config_file)
             else:
-                config_file = _config_file
+                return
         try:
             with codecs.open(config_file, 'r', 'utf-8') as f:
                 config = json.load(f)

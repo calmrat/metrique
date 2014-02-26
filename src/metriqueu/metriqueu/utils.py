@@ -133,14 +133,13 @@ def ts2dt(ts, milli=False, tz_aware=True):
 
 
 def utcnow(as_datetime=False, tz_aware=False, drop_micro=False):
-    if drop_micro:
-        now = datetime.utcnow().replace(microsecond=0)
+    if tz_aware:
+        now = datetime.now(pytz.UTC)
     else:
         now = datetime.utcnow()
-    if tz_aware:
-        # implise as_datetime=True
-        return pytz.UTC.localize(now)
-    elif as_datetime:
+    if drop_micro:
+        now = now.replace(microsecond=0)
+    if as_datetime:
         return now
     else:
         return dt2ts(now, drop_micro)
