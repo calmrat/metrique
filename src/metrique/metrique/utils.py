@@ -140,10 +140,16 @@ def get_timezone_converter(from_timezone):
         if dt.tzinfo:
             # datetime instance already has tzinfo set
             # WARN if not dt.tzinfo == from_tz?
-            return dt.astimezone(utc)
+            try:
+                dt = dt.astimezone(utc)
+            except ValueError:
+                # date has invalid timezone; replace with expected
+                dt = dt.replace(tzinfo=from_tz)
+                dt = dt.astimezone(utc)
         else:
             # set tzinfo as from_tz then convert to utc
-            return from_tz.localize(dt).astimezone(utc)
+            dt = from_tz.localize(dt).astimezone(utc)
+        return dt
     return timezone_converter
 
 
