@@ -100,16 +100,18 @@ class Generic(pyclient):
 
             for future in as_completed(futures):
                 try:
-                    future.result()
+                    objs = future.result()
                 except Exception as e:
                     tb = traceback.format_exc()
                     self.logger.error(
                         'Activity Import Error: %s\n%s' % (e, tb))
                     del tb
+                else:
+                    self.cube_save(objs)
         else:
             for batch in batch_gen(oids, sql_batch_size):
-                self.activity_get_objects(oids=batch)
-        self.cube_save()
+                objs = self.activity_get_objects(oids=batch)
+                self.cube_save(objs)
 
     def activity_get_objects(self, oids):
         self.logger.debug('Getting Objects - Activity History')
