@@ -152,7 +152,7 @@ class DistinctHdlr(MongoDBBackendHdlr):
                                query=query)
         self.write(result)
 
-    def distinct(self, owner, cube, field, query=None):
+    def distinct(self, owner, cube, field, query=None, date=None):
         '''
         Return back a distinct (unique) list of field values
         across the entire cube dataset
@@ -163,12 +163,14 @@ class DistinctHdlr(MongoDBBackendHdlr):
         :param owner: username of cube owner
         :param field: field to get distinct token values from
         :param query: pql query to run as a pre-filter
+        :param string date: metrique date(range)
 
         If query is provided, rather than running collection.distinct(field)
         directly, run on a find cursor.
         '''
         self.requires_read(owner, cube)
-        if query:
+        if isinstance(query, basestring):
+            query = query_add_date(query, date)
             spec = parse_pql_query(query)
             result = self.timeline(owner, cube).find(spec).distinct(field)
         else:
