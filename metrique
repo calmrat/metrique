@@ -77,7 +77,7 @@ def activate(args=None):
         env['VIRTUAL_ENV'] = virtenv
         logger.info('Virtual Env (%s): Activated' % active_virtualenv())
     else:
-        raise OSerror("Invalid virtual env; %s not found" % activate_this)
+        raise OSError("Invalid virtual env; %s not found" % activate_this)
 
 
 def rand_chars(size=6, chars=string.ascii_uppercase + string.digits):
@@ -106,7 +106,7 @@ SRC_DIR = pjoin(GIT_DIR, 'src/')
 HOME_DIR = env.get('METRIQUE_HOME', os.path.expanduser('~/'))
 USER_DIR = env.get('METRIQUE_USR', pjoin(HOME_DIR, '.metrique'))
 
-logger.warn('-'*30)
+logger.warn('-' * 30)
 logger.warn('Started at  : %s' % NOW)
 logger.warn('Current User: %s' % USER)
 logger.warn('Current CWD : %s' % HERE)
@@ -118,7 +118,7 @@ logger.warn('Source Path : %s' % SRC_DIR)
 logger.warn('This file   : %s' % __file__)
 logger.warn('Home Path   : %s' % HOME_DIR)
 logger.warn('User Path   : %s' % USER_DIR)
-logger.warn('-'*30)
+logger.warn('-' * 30)
 
 if not (os.path.exists(SRC_DIR) or
         os.path.exists(pjoin(SRC_DIR, '.git'))):
@@ -147,8 +147,10 @@ GNUPG_DIR = env.get('METRIQUE_GNUPG', pjoin(USER_DIR, 'gnupg'))
 METRIQUED_JSON = pjoin(ETC_DIR, 'metriqued.json')
 METRIQUE_JSON = pjoin(ETC_DIR, 'metrique.json')
 
-STATIC_PATH = env.get('METRIQUE_STATIC', pjoin(SRC_DIR, 'metriqued/metriqued/static/'))
-API_DOCS_PATH = env.get('METRIQUE_API_DOCS', pjoin(GIT_DIR, 'docs/build/html/'))
+STATIC_PATH = env.get('METRIQUE_STATIC', pjoin(
+    SRC_DIR, 'metriqued/metriqued/static/'))
+API_DOCS_PATH = env.get('METRIQUE_API_DOCS', pjoin(
+    GIT_DIR, 'docs/build/html/'))
 
 SYS_FIRSTBOOT_PATH = pjoin(USER_DIR, '.firstboot_sys')
 METRIQUED_FIRSTBOOT_PATH = pjoin(USER_DIR, '.firstboot_metriqued')
@@ -374,7 +376,8 @@ http {
 
             ### force timeouts if one of backend is died ##
             proxy_next_upstream error timeout invalid_header http_500 http_502
-                                                             http_503 http_504;
+                                                             http_504;
+            # NOTE: consider adding 503, if not raising 503 for locks
         }
     }
 }
@@ -454,6 +457,7 @@ numprocs=1
 priority=100
 '''
 ###############################################################################
+
 
 def get_pid(pidfile):
     try:
@@ -856,7 +860,7 @@ def _rsync_exec(args, show_stdout=True):
              show_stdout=show_stdout)
     else:
         saveas = pjoin(BACKUP_DIR, saveas)
-        call('rsync -av %s %s %s' % (compress, target, saveas),
+        call('rsync -av %s %s %s' % (compress, targets, saveas),
              show_stdout=show_stdout)
 
 
@@ -1113,7 +1117,8 @@ def deploy(args):
         running = get_pid(MONGODB_PIDFILE) != 0
         if not running:
             call('metrique mongodb start --fast')
-        call('coverage run --source=metrique,metriqued,metriqueu,metriquec -m py.test tests', cwd=GIT_DIR)
+        call('coverage run --source=metrique,metriqued,'
+             'metriqueu,metriquec -m py.test tests', cwd=GIT_DIR)
 
 
 def bump(args, kind=None, reset=None):
@@ -1214,7 +1219,7 @@ def sys_firstboot(args=None):
     DEFAULT_METRIQUE_JSON = DEFAULT_METRIQUE_JSON % (
         multiprocessing.cpu_count(), PASSWORD)
 
-    DEFAULT_METRIQUED_JSON = DEFAULT_METRIQUED_JSON  % (
+    DEFAULT_METRIQUED_JSON = DEFAULT_METRIQUED_JSON % (
         API_DOCS_PATH, COOKIE_SECRET, LOCAL_IP, SSL_CERT, SSL_KEY, USER)
 
     DEFAULT_MONGODB_JSON = DEFAULT_MONGODB_JSON % (
