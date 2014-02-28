@@ -526,14 +526,22 @@ class MetriqueHdlr(RequestHandler):
         return self._requires(ok)
 
 ##################### utils ################################
-    def _raise(self, code, msg):
+    def _raise(self, code, msg, headers=None):
         if code == 401:
             _realm = self.metrique_config.realm
             basic_realm = 'Basic realm="%s"' % _realm
             self.set_header('WWW-Authenticate', basic_realm)
-        self.logger.info('[%s] %s: %s ...\n%s' % (self.current_user, code,
+        self.logger.error('[%s] %s: %s ...\n%s' % (self.current_user, code,
                                                   msg, self.request))
+        self.set_status(code, msg)
+        self._error_headers = headers
         raise HTTPError(code, msg)
+
+    def write_error(self, *args, **kwargs):
+        headers = getattr(self, '_error_headers', None)
+        if headers:
+            [self.set_header(name, value) for name, value in headers.items()]
+        super(MetriqueHdlr, self).write_error(*args, **kwargs)
 
 
 class ObsoleteAPIHdlr(MetriqueHdlr):

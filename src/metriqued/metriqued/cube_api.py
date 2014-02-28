@@ -247,6 +247,9 @@ class RenameHdlr(MongoDBBackendHdlr):
         :param new_new: the new name of the cube
         '''
         self.logger.debug("Renaming [%s] %s -> %s" % (owner, cube, new_name))
+        self.requires_admin(owner, cube)
+        if cube == new_name:
+            self._raise(409, "cube is already named %s" % new_name)
         self.cube_exists(owner, cube)
         if self.cube_exists(owner, new_name, raise_if_not=False):
             self._raise(409, "cube already exists (%s)" % new_name)
