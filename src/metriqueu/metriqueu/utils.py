@@ -36,7 +36,10 @@ def clear_stale_pids(pids, pid_dir, prefix='metriqued'):
         if pid not in running:
             pid_file = '%s.%s.pid' % (prefix, pid)
             path = os.path.join(pid_dir, pid_file)
-            os.remove(path)
+            try:
+                os.remove(path)
+            except OSError:
+                pass
     return running
 
 
