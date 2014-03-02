@@ -389,6 +389,10 @@ class SaveObjectsHdlr(MongoDBBackendHdlr):
     '''
     RequestHandler for saving/persisting objects to a cube
     '''
+    _exclude_hash = ['_hash', '_id', '_start', '_end']
+    _include_static = ['_start', '_end', '_oid']
+    _include_ongoing = ['_oid']
+
     @authenticated
     def post(self, owner, cube):
         objects = self.get_argument('objects')
@@ -421,41 +425,65 @@ class SaveObjectsHdlr(MongoDBBackendHdlr):
         :param _cube: mongodb cube collection proxy
         :param obejcts: list of objects to manipulate
         '''
-        hashes = []
-        ids = []
         start = utcnow()
-        exclude = ['_hash', '_id', '_start', '_end']
         for o in objects:
-            keys = set(o.keys())
-            o = o if '_start' in keys else self._obj_start(o, start)
-            o = o if '_end' in keys else self._obj_end(o)
-            o = o if '_hash' in keys else self._obj_hash(o, key='_hash',
-                                                         exclude=exclude)
-            # give it a unique _id based on all contents
-            o = o if '_id' in keys else self._obj_hash(o, key='_id')
+            # _hash is of object contents, excluding metadata
+            o = self._obj_hash(o, key='_hash', exclude=self._exclude_hash)
 
-            if not isinstance(o['_start'], (float, int)):
-                self._raise(400, "_start must be float/int")
-            if not isinstance(o['_end'], (NoneType, float, int)):
-                self._raise(400, "_end must be float/int/None")
+            o = self._obj_end(o)
+            _end = o.get('_end')
+            if not isinstance(_end, (NoneType, float, int)):
+                self._raise(400, "_end must be float/int epoch or None")
 
-            if o['_end'] is not None:
-                ids.append(o['_id'])
-            hashes.append(o['_hash'])
+            o = self._obj_start(o, start)
+            _start = o.get('_start')
+            if not isinstance(_start, (float, int)):
+                self._raise(400, "_start must be defined, as float/int epoch")
 
-        # Filter out object 'current' versions already set
-        docs = _cube.find({'_hash': {'$in': hashes}, '_end': None},
-                          fields={'_hash': 1, '_id': -1})
-        dups = set([doc['_hash'] for doc in docs])
-        objects = [o for o in objects if o['_hash'] not in dups]
+            _oid = o.get('_oid')
+            if not isinstance(_oid, (float, int)):
+                self._raise(400, "_oid must be defined, as float/int")
 
-        if ids:
-            # objects with _end are considered 'complete' and should remain
-            # constant, forever and are expected to always map to the same _id
-            # check for any which already exist and don't save them again
-            docs = _cube.find({'_id': {'$in': ids}})
-            dups = set([doc['_id'] for doc in docs])
-            objects = [o for o in objects if o['_id'] not in dups]
+            # give object a unique, constant (referencable) _id
+            if _end:
+                # if the object at the exact start/end/oid is later
+                # updated, it's possible to save(upsert)
+                o = self._obj_hash(o, key='_id', include=self._include_static)
+            else:
+                # if the object is 'current value' without _end,
+                # id is the hash of only the oid
+                o = self._obj_hash(o, key='_id', include=self._include_ongoing)
+        return objects
+
+    def _snap_current(self, _cube, objects):
+        # End the most recent versions in the db of those objects that
+        # have newer versionsi (newest version must have _end == None,
+        # activity import saves objects for which this might not be true):
+        to_snap_start = dict([(o['_oid'], o['_start']) for o in objects
+                              if o['_end'] is None])
+        if not to_snap_start:
+            return
+
+        snap_oids = to_snap_start.keys()
+        # update all the current versions such that the _end becomes
+        # the new versions _start
+        db_versions = _cube.find(
+            {'_oid': {'$in': snap_oids}, '_end': None},
+            fields={'_id': 1, '_oid': 1})
+        for k, obj in enumerate(db_versions):
+            _oid = obj['_oid']
+            # get the current _id (gen'd against _end:None
+            old_id = obj['_id']
+            spec = {'_id': old_id},
+            # Re-generate _id now that _end is set
+            obj = self._obj_hash(obj, key='_id', include=self._include_static)
+            new_id = obj['_id']
+            update = {'$set': {
+                '_id': new_id,
+                '_end': to_snap_start[_oid]
+            }}
+            _cube.find_and_modify(spec, update=update)
+        self.logger.debug(' ... Updated %s OLD versions' % k)
         return objects
 
     def save_objects(self, owner, cube, objects):
@@ -470,57 +498,40 @@ class SaveObjectsHdlr(MongoDBBackendHdlr):
         self.requires_write(owner, cube)
         _cube = self.timeline(owner, cube, admin=True)
 
-        olen_r = len(objects)
+        olen = len(objects)
         self.logger.debug(
-            '[%s.%s] Recieved %s objects' % (owner, cube, olen_r))
+            '[%s.%s] Recieved %s objects' % (owner, cube, olen))
 
         objects = self.prepare_objects(_cube, objects)
-
-        self.logger.debug(
-            '[%s.%s] SKIPPED %s objs matching their current version in db' % (
-                owner, cube, olen_r - len(objects)))
-
         if not objects:
-            self.logger.debug('[%s.%s] No NEW objects to save' % (owner, cube))
+            self.logger.debug('[%s.%s] No new objects to save' % (
+                owner, cube))
             return []
-        else:
-            self.logger.debug('[%s.%s] Saving %s objects' % (owner, cube,
-                                                             len(objects)))
-            # End the most recent versions in the db of those objects that
-            # have newer versionsi (newest version must have _end == None,
-            # activity import saves objects for which this might not be true):
-            to_snap_start = dict([(o['_oid'], o['_start']) for o in objects
-                                 if o['_end'] is None])
-            if to_snap_start:
-                # update all the current versions such that the _end becomes
-                # the new versions _start
-                # then insert all the new objects as-are
-                db_versions = _cube.find(
-                    {'_oid': {'$in': to_snap_start.keys()}, '_end': None},
-                    fields={'_id': 1, '_oid': 1})
-                snapped = 0
-                for doc in db_versions:
-                    _cube.update(
-                        {'_id': doc['_id']},
-                        {'$set': {'_end': to_snap_start[doc['_oid']]}},
-                        multi=False)
-                    snapped += 1
-                self.logger.debug('[%s.%s] Updated %s OLD versions' %
-                                  (owner, cube, snapped))
-            # Insert all new versions:
-            self.insert_bulk(_cube, objects)
-            self.logger.debug('[%s.%s] Saved %s NEW versions' % (owner, cube,
-                                                                 len(objects)))
-            # return object ids saved
-            return [o['_oid'] for o in objects]
+
+        olen = len(objects)
+        self.logger.debug('[%s.%s] Saving %s new objects' % (
+            owner, cube, olen))
+
+        self._snap_current(objects)
+
+        # save each object; overwrite existing, only if not already saved
+        q = '_id == %s and _hash == %s'
+        [_cube.save(o, upsert=True) for o in objects
+         if not _cube.count(q % (o['_id'], o['_hash']))]
+
+        self.logger.debug('[%s.%s] Saved %s NEW versions' % (
+            owner, cube, len(objects)))
+        return
 
     def _obj_end(self, obj, default=None):
         obj['_end'] = obj.get('_end', default)
         return obj
 
-    def _obj_hash(self, obj, key, exclude=None):
+    def _obj_hash(self, obj, key, exclude=None, include=None):
         o = copy(obj)
-        if exclude:
+        if include:
+            o = dict([(k, v) for k, v in o.item() if k in include])
+        elif exclude:
             [o.pop(k) for k in exclude if k in obj]
         obj[key] = jsonhash(o)
         return obj
