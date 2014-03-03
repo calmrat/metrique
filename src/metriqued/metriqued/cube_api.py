@@ -23,9 +23,7 @@ from tornado.web import authenticated
 
 from metriqued.core_api import MongoDBBackendHdlr
 from metriqued.utils import query_add_date, parse_pql_query
-from metriqueu.utils import utcnow, batch_gen, jsonhash
-
-OBJ_KEYS = set(['_id', '_hash', '_oid', '_start', '_end'])
+from metriqueu.utils import utcnow, jsonhash
 
 
 class DropHdlr(MongoDBBackendHdlr):
@@ -389,34 +387,12 @@ class SaveObjectsHdlr(MongoDBBackendHdlr):
     '''
     RequestHandler for saving/persisting objects to a cube
     '''
-    _exclude_hash = ['_hash', '_id', '_start', '_end']
-    _include_static = ['_start', '_end', '_oid']
-    _include_ongoing = ['_oid']
-
     @authenticated
     def post(self, owner, cube):
         objects = self.get_argument('objects')
         result = self.save_objects(owner=owner, cube=cube,
                                    objects=objects)
         self.write(result)
-
-    def insert_bulk(self, _cube, docs, size=10000):
-        '''
-        Insert a list of objects into a give cube.
-
-        :param _cube: mongodb cube collection proxy
-        :param docs: list of docs to insert
-        :param size: max size of insert batches
-        '''
-        # little reason to batch insert...
-        # http://stackoverflow.com/questions/16753366
-        # and after testing, it seems splitting things
-        # up more slows things down.
-        if size <= 0:
-            _cube.insert(docs, manipulate=False)
-        else:
-            for batch in batch_gen(docs, size):
-                _cube.insert(batch, manipulate=False)
 
     def prepare_objects(self, _cube, objects):
         '''
@@ -426,9 +402,10 @@ class SaveObjectsHdlr(MongoDBBackendHdlr):
         :param obejcts: list of objects to manipulate
         '''
         start = utcnow()
-        for o in objects:
+        _exclude_hash = ['_hash', '_id', '_start', '_end']
+        for o in iter(objects):
             # _hash is of object contents, excluding metadata
-            o = self._obj_hash(o, key='_hash', exclude=self._exclude_hash)
+            o = self._obj_hash(o, key='_hash', exclude=_exclude_hash)
 
             o = self._obj_end(o)
             _end = o.get('_end')
@@ -446,44 +423,13 @@ class SaveObjectsHdlr(MongoDBBackendHdlr):
 
             # give object a unique, constant (referencable) _id
             if _end:
-                # if the object at the exact start/end/oid is later
-                # updated, it's possible to save(upsert)
-                o = self._obj_hash(o, key='_id', include=self._include_static)
+                # if the object at the exact start/oid is later
+                # updated, it's possible to just save(upsert=True)
+                o['_id'] = ':'.join(map(str, (_oid, _start)))
             else:
                 # if the object is 'current value' without _end,
-                # id is the hash of only the oid
-                o = self._obj_hash(o, key='_id', include=self._include_ongoing)
-        return objects
-
-    def _snap_current(self, _cube, objects):
-        # End the most recent versions in the db of those objects that
-        # have newer versionsi (newest version must have _end == None,
-        # activity import saves objects for which this might not be true):
-        to_snap_start = dict([(o['_oid'], o['_start']) for o in objects
-                              if o['_end'] is None])
-        if not to_snap_start:
-            return
-
-        snap_oids = to_snap_start.keys()
-        # update all the current versions such that the _end becomes
-        # the new versions _start
-        db_versions = _cube.find(
-            {'_oid': {'$in': snap_oids}, '_end': None},
-            fields={'_id': 1, '_oid': 1})
-        for k, obj in enumerate(db_versions):
-            _oid = obj['_oid']
-            # get the current _id (gen'd against _end:None
-            old_id = obj['_id']
-            spec = {'_id': old_id},
-            # Re-generate _id now that _end is set
-            obj = self._obj_hash(obj, key='_id', include=self._include_static)
-            new_id = obj['_id']
-            update = {'$set': {
-                '_id': new_id,
-                '_end': to_snap_start[_oid]
-            }}
-            _cube.find_and_modify(spec, update=update)
-        self.logger.debug(' ... Updated %s OLD versions' % k)
+                # ...
+                o['_id'] = _oid
         return objects
 
     def save_objects(self, owner, cube, objects):
@@ -508,20 +454,30 @@ class SaveObjectsHdlr(MongoDBBackendHdlr):
                 owner, cube))
             return []
 
+        _ids, _hashes = zip(*[(o['_id'], o['_hash']) for o in objects])
+        q = {'_id': {'$in': _ids}, '_hash': {'$in': _hashes}}
+        dups = _cube.find(q, fields=['_id', '_hash'], raw=True)
+        dup_k = dups.count()
+        _ids, _hashes = None, None
+        if dups:
+            self.logger.debug('[%s.%s] Skipping Duplicates: %s' % (
+                owner, cube, dup_k))
+            # remove duplicates
+            _ids, _hashes = zip(*[(o['_id'], o['_hash']) for o in dups])
+            _ids, _hashes = set(_ids), set(_hashes)
+            objects = [o for o in objects
+                       if not (o['_id'] in _ids and o['_hash'] in _hashes)]
+
         olen = len(objects)
-        self.logger.debug('[%s.%s] Saving %s new objects' % (
+        self.logger.debug('[%s.%s] Saving %s NEW (non-duplicate) versions' % (
             owner, cube, olen))
 
-        self._snap_current(objects)
-
-        # save each object; overwrite existing, only if not already saved
-        q = '_id == %s and _hash == %s'
-        [_cube.save(o, upsert=True) for o in objects
-         if not _cube.count(q % (o['_id'], o['_hash']))]
-
-        self.logger.debug('[%s.%s] Saved %s NEW versions' % (
-            owner, cube, len(objects)))
-        return
+        # save each object; overwrite existing (same _oid + _start or _oid if
+        # _end = None) or upsert
+        _ids = [_cube.save(o, manipulate=True) for o in objects]
+        self.logger.debug('[%s.%s] %s NEW versions saved' % (
+            owner, cube, olen))
+        return _ids
 
     def _obj_end(self, obj, default=None):
         obj['_end'] = obj.get('_end', default)
@@ -530,9 +486,11 @@ class SaveObjectsHdlr(MongoDBBackendHdlr):
     def _obj_hash(self, obj, key, exclude=None, include=None):
         o = copy(obj)
         if include:
-            o = dict([(k, v) for k, v in o.item() if k in include])
+            include = set(include)
+            o = dict([(k, v) for k, v in o.items() if k in include])
         elif exclude:
-            [o.pop(k) for k in exclude if k in obj]
+            keys = set(obj.keys())
+            [o.pop(k) for k in exclude if k in keys]
         obj[key] = jsonhash(o)
         return obj
 

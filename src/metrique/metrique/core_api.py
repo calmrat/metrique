@@ -632,6 +632,7 @@ class HTTPClient(BaseClient):
                 self.logger.info("Autoregistering %s" % self.name)
                 self.cube_register()
 
+######################### pyclient base API #######################
     @property
     def cube_id(self):
         '''Return the common cube id string; ie, `%(owner)s__%(name)s`'''
