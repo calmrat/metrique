@@ -32,13 +32,20 @@ def clear_stale_pids(pids, pid_dir, prefix='metriqued'):
     'check for and remove any pids which have no corresponding process'
     procs = os.listdir('/proc')
     running = [pid for pid in pids if pid in procs]
+    _running = []
     for pid in pids:
-        if pid not in running:
+        if pid in running:
+            _running.append(pid)
+        else:
             pid_file = '%s.%s.pid' % (prefix, pid)
             path = os.path.join(pid_dir, pid_file)
             if os.path.exists(path):
-                os.remove(path)
-    return running
+                try:
+                    os.remove(path)
+                except OSError:
+                    # FIXME: LOG!
+                    pass
+    return _running
 
 
 def dt2ts(dt, drop_micro=False):

@@ -404,9 +404,6 @@ class SaveObjectsHdlr(MongoDBBackendHdlr):
         start = utcnow()
         _exclude_hash = ['_hash', '_id', '_start', '_end']
         for o in iter(objects):
-            # _hash is of object contents, excluding metadata
-            o = self._obj_hash(o, key='_hash', exclude=_exclude_hash)
-
             o = self._obj_end(o)
             _end = o.get('_end')
             if not isinstance(_end, (NoneType, float, int)):
@@ -430,6 +427,9 @@ class SaveObjectsHdlr(MongoDBBackendHdlr):
                 # if the object is 'current value' without _end,
                 # ...
                 o['_id'] = _oid
+
+            # _hash is of object contents, excluding metadata
+            o = self._obj_hash(o, key='_hash', exclude=_exclude_hash)
         return objects
 
     def save_objects(self, owner, cube, objects):
@@ -442,6 +442,12 @@ class SaveObjectsHdlr(MongoDBBackendHdlr):
         :param obejcts: list of objects to save
         '''
         self.requires_write(owner, cube)
+
+        if not objects:
+            self.logger.debug('[%s.%s] No new objects to save' % (
+                owner, cube))
+            return []
+
         _cube = self.timeline(owner, cube, admin=True)
 
         olen = len(objects)
@@ -449,34 +455,12 @@ class SaveObjectsHdlr(MongoDBBackendHdlr):
             '[%s.%s] Recieved %s objects' % (owner, cube, olen))
 
         objects = self.prepare_objects(_cube, objects)
-        if not objects:
-            self.logger.debug('[%s.%s] No new objects to save' % (
-                owner, cube))
-            return []
-
-        _ids, _hashes = zip(*[(o['_id'], o['_hash']) for o in objects])
-        q = {'_id': {'$in': _ids}, '_hash': {'$in': _hashes}}
-        dups = _cube.find(q, fields=['_id', '_hash'], raw=True)
-        dup_k = dups.count()
-        _ids, _hashes = None, None
-        if dups:
-            self.logger.debug('[%s.%s] Skipping Duplicates: %s' % (
-                owner, cube, dup_k))
-            # remove duplicates
-            _ids, _hashes = zip(*[(o['_id'], o['_hash']) for o in dups])
-            _ids, _hashes = set(_ids), set(_hashes)
-            objects = [o for o in objects
-                       if not (o['_id'] in _ids and o['_hash'] in _hashes)]
-
-        olen = len(objects)
-        self.logger.debug('[%s.%s] Saving %s NEW (non-duplicate) versions' % (
-            owner, cube, olen))
 
         # save each object; overwrite existing (same _oid + _start or _oid if
         # _end = None) or upsert
         _ids = [_cube.save(o, manipulate=True) for o in objects]
-        self.logger.debug('[%s.%s] %s NEW versions saved' % (
-            owner, cube, olen))
+        self.logger.debug('[%s.%s] %s versions saved' % (
+            owner, cube, len(_ids)))
         return _ids
 
     def _obj_end(self, obj, default=None):

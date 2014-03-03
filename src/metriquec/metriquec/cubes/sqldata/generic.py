@@ -69,46 +69,6 @@ class Generic(pyclient):
         raise NotImplementedError(
             'The activity_get method is not implemented in this cube.')
 
-    def activity_import(self, force=None, delay=None):
-        '''
-        Run the activity import for a given cube, if the cube supports it.
-
-        Essentially, recreate object histories from a cubes 'activity
-        history' table row data, and dump those pre-calcultated historical
-        state object copies into the timeline.
-
-        :param force:
-         - None: import for all ids
-         - list of ids: import for ids in the list
-        '''
-        oids = force or self.sql_get_oids()
-        oids = list(oids)
-
-        max_workers = self.config.max_workers
-        sql_batch_size = self.config.sql_batch_size
-
-        if max_workers > 1 and sql_batch_size > 1:
-            with ThreadPoolExecutor(max_workers=max_workers) as ex:
-                futures = []
-                delay = 0.2  # stagger the threaded calls a bit
-                for batch in batch_gen(oids, sql_batch_size):
-                    f = ex.submit(self.activity_get_objects, oids=batch,
-                                  save=True)
-                    futures.append(f)
-                    time.sleep(delay)
-
-            for future in as_completed(futures):
-                try:
-                    future.result()
-                except Exception as e:
-                    tb = traceback.format_exc()
-                    self.logger.error(
-                        'Activity Import Error: %s\n%s' % (e, tb))
-                    del tb
-        else:
-            for batch in batch_gen(oids, sql_batch_size):
-                self.activity_get_objects(oids=batch, save=True)
-
     def activity_get_objects(self, oids, save=False):
         self.logger.debug('Getting Objects - Activity History')
         docs = self.get_objects(force=oids)
@@ -118,12 +78,32 @@ class Generic(pyclient):
         for doc in docs:
             _oid = doc['_oid']
             acts = activities.setdefault(_oid, [])
-            objects.extend(self._activity_import_doc(doc, acts))
+            obj = self._activity_import_doc(doc, acts)
+            objects.extend(obj)
         self.logger.debug('... activity get - done')
         objects = self.normalize(objects)
         if save:
             self.cube_save(objects)
         return objects
+
+    def _log_inconsistency(self, last_doc, last_val, field, removed, added,
+                           when, log_type):
+        incon = {'oid': last_doc['_oid'],
+                 'field': field,
+                 'removed': removed,
+                 'removed_type': str(type(removed)),
+                 'added': added,
+                 'added_type': str(type(added)),
+                 'last_val': last_val,
+                 'last_val_type': str(type(last_val)),
+                 'when': str(ts2dt(when))}
+        if log_type == 'json':
+            self.logger.error(json.dumps(incon, ensure_ascii=False))
+        else:
+            m = u'{oid} {field}: {removed}-> {added} has {last_val}; '
+            m += u'({removed_type}-> {added_type} has {last_val_type})'
+            m += u' ... on {when}'
+            self.logger.error(m.format(**incon))
 
     def _activity_import_doc(self, time_doc, activities):
         '''
@@ -138,19 +118,18 @@ class Generic(pyclient):
         td_start = ts2dt(time_doc['_start'], tz_aware=tz_aware)
         activities = filter(lambda act: (act[0] < td_start and
                                          act[1] in time_doc), activities)
+        incon_log_type = self.config.get('incon_log_type')
+        creation_field = self.get_property('cfield')
         # make sure that activities are sorted by when descending
-        activities.sort(reverse=True)
+        activities.sort(reverse=True, key=lambda o: o[0])
+        new_doc = {}
         for when, field, removed, added in activities:
             when = dt2ts(when)
-            # this doesn't apply anymore in the new version of activity import
-            #removed = dt2ts(removed) if isinstance(removed,
-            #                                       datetime) else removed
-            #added = dt2ts(added) if isinstance(added, datetime) else added
             last_doc = batch_updates.pop()
             # check if this activity happened at the same time as the last one,
             # if it did then we need to group them together
             if last_doc['_end'] == when:
-                new_doc = last_doc
+                new_doc = deepcopy(last_doc)
                 last_doc = batch_updates.pop()
             else:
                 new_doc = deepcopy(last_doc)
@@ -158,6 +137,7 @@ class Generic(pyclient):
                 new_doc['_end'] = when
                 last_doc['_start'] = when
             last_val = last_doc[field]
+
             # FIXME: pass in field and call _type() within _activity_backwards?
             # for added/removed?
             new_val, inconsistent = self._activity_backwards(new_doc[field],
@@ -166,23 +146,11 @@ class Generic(pyclient):
 
             # Check if the object has the correct field value.
             if inconsistent:
-                incon = {'oid': last_doc['_oid'],
-                         'field': field,
-                         'removed': removed,
-                         'removed_type': str(type(removed)),
-                         'added': added,
-                         'added_type': str(type(added)),
-                         'last_val': last_val,
-                         'last_val_type': str(type(last_val)),
-                         'when': str(ts2dt(when))}
-                if self.config.get('incon_log_type') == 'json':
-                    self.logger.error(json.dumps(incon, ensure_ascii=False))
-                else:
-                    m = u'{oid} {field}: {removed}-> {added} has {last_val}; '
-                    m += u'({removed_type}-> {added_type} has {last_val_type})'
-                    m += u' ... on {when}'
-                    self.logger.error(m.format(**incon))
+                self._log_inconsistency(last_doc, last_val, field,
+                                        removed, added, when, incon_log_type)
                 new_doc.setdefault('_corrupted', {})
+                # set curreupted field value to the the value that was added
+                # and continue processing as if that issue didn't exist
                 new_doc['_corrupted'][field] = added
             # Add the objects to the batch
             batch_updates.extend([last_doc, new_doc])
@@ -190,7 +158,6 @@ class Generic(pyclient):
         try:
             # set start to creation time if available
             last_doc = batch_updates[-1]
-            creation_field = self.get_property('cfield')
             if creation_field:
                 creation_ts = dt2ts(last_doc[creation_field])
                 if creation_ts < last_doc['_start']:
@@ -786,40 +753,36 @@ class Generic(pyclient):
         else:
             return ""
 
+    def _type_container(self, value, _type):
+        ' apply type to all values in the list '
+        if value is None:  # don't convert null values
+            return value
+        assert isinstance(value, (list, tuple))
+        for i, item in enumerate(value):
+            item = self._type_single(item, _type)
+            value[i] = item
+        value = sorted(value)
+        return value
+
+    def _type_single(self, value, _type):
+        ' apply type to the single value '
+        # FIXME: convert '' -> None?
+        if None in [_type, value]:  # don't convert null values
+            pass
+        elif isinstance(value, _type):  # or values already of correct type
+            pass
+        else:
+            value = _type(value)
+            if isinstance(value, basestring):
+                # FIXME: docode.locale()
+                value = unicode(value)
+        return value
+
     def _type(self, value, field):
         container = self.get_property('container', field)
         _type = self.get_property('type', field)
-        if None in [_type, value]:
-            # don't convert null values
-            return value
-        elif container:
-            sort = self.get_property('sort', field, 1)
-            # apply type to all values in the list
-            items = []
-            for item in value:
-                if item is None or isinstance(item, _type):
-                    # skip converting null values
-                    # and skip converting if _type is null
-                    pass
-                else:
-                    item = _type(item)
-
-                # normalize strings
-                if isinstance(item, basestring):
-                    item = unicode(item)
-
-                items.append(item)
-            if sort == 1:
-                value = sorted(items)
-            elif sort == -1:
-                value = sorted(items, reverse=True)
-            else:
-                value = items
+        if container:
+            value = self._type_container(value, _type)
         else:
-            # apply type to the single value
-            if not (_type is None or value is None or
-                    isinstance(value, _type)):
-                value = _type(value)
-            if isinstance(value, basestring):
-                value = unicode(value)
+            value = self._type_single(value, _type)
         return value
