@@ -351,21 +351,19 @@ class Generic(pyclient):
         oids = self._delta_force(force, last_update, parse_timestamp)
         self.logger.debug("Updating %s objects" % len(oids))
 
-        lock_id = rand_chars(10)
-        self.set_cookies(lock_id=lock_id)
         if max_workers > 1 and sql_batch_size > 1:
             with ThreadPoolExecutor(max_workers=max_workers) as ex:
                 futures = []
                 delay = 0.2  # stagger the threaded calls a bit
                 for batch in batch_gen(oids, sql_batch_size):
                     f = ex.submit(self.activity_get_objects, oids=batch,
-                                  save=True, lock_id=lock_id)
+                                  save=True)
                     futures.append(f)
                     time.sleep(delay)
 
             for future in as_completed(futures):
                 try:
-                    objs = future.result()
+                    future.result()
                 except Exception as e:
                     tb = traceback.format_exc()
                     self.logger.error(
@@ -373,9 +371,7 @@ class Generic(pyclient):
                     del tb
         else:
             for batch in batch_gen(oids, sql_batch_size):
-                objs = self.activity_get_objects(oids=batch, save=True,
-                                                 lock_id=lock_id)
-        self.unset_cookies(['lock_id'])
+                self.activity_get_objects(oids=batch, save=True)
 
     def _fetchall(self, sql, field_order):
         rows = self.proxy.fetchall(sql)
