@@ -304,6 +304,71 @@ class Generic(pyclient):
         else:
             return []
 
+    def _delta_force(self, force, last_update, parse_timestamp):
+        if force is None:
+            force = self.get_property('force', default=False)
+
+        oids = []
+        if isinstance(force, (list, tuple)):
+            oids = force
+        elif force is True:
+            # get a list of all known object ids
+            table = self.get_property('table')
+            db = self.get_property('db')
+            _id = self.get_property('column')
+            sql = 'SELECT DISTINCT %s.%s FROM %s.%s' % (table, _id, db, table)
+            rows = self.proxy.fetchall(sql)
+            oids = self._extract_row_ids(rows)
+        else:
+            if self.get_property('delta_new_ids', default=True):
+                # get all new (unknown) oids
+                oids.extend(self.get_new_oids())
+            if self.get_property('delta_mtime', default=False):
+                # get only those oids that have changed since last update
+                mtime = self._fetch_mtime(last_update, parse_timestamp)
+                if mtime:
+                    oids.extend(self.get_changed_oids(mtime))
+        return sorted(set(oids))
+
+    def extract_full_history(self, force=None, last_update=None,
+                             parse_timestamp=None):
+        '''
+        Fields change depending on when you run activity_import,
+        such as "last_updated" type fields which don't have activity
+        being tracked, which means we'll always end up with different
+        hash values, so we need to always remove all existing object
+        states and import fresh
+        '''
+        self.logger.debug('Extracting Objects - Full History')
+
+        max_workers = self.config.max_workers
+        sql_batch_size = self.config.sql_batch_size
+
+        oids = self._delta_force(force, last_update, parse_timestamp)
+        self.logger.debug("Updating %s objects" % len(oids))
+
+        if max_workers > 1 and sql_batch_size > 1:
+            with ThreadPoolExecutor(max_workers=max_workers) as ex:
+                futures = []
+                delay = 0.2  # stagger the threaded calls a bit
+                for batch in batch_gen(oids, sql_batch_size):
+                    f = ex.submit(self.activity_get_objects, oids=batch,
+                                  save=True)
+                    futures.append(f)
+                    time.sleep(delay)
+
+            for future in as_completed(futures):
+                try:
+                    future.result()
+                except Exception as e:
+                    tb = traceback.format_exc()
+                    self.logger.error(
+                        'Activity Import Error: %s\n%s' % (e, tb))
+                    del tb
+        else:
+            for batch in batch_gen(oids, sql_batch_size):
+                self.activity_get_objects(oids=batch, save=True)
+
     def _fetchall(self, sql, field_order):
         rows = self.proxy.fetchall(sql)
         if not rows:
@@ -511,39 +576,10 @@ class Generic(pyclient):
         :param kwargs: accepted, but ignored
         '''
         self.logger.debug('Fetching Objects - Current Values')
-        oids = []
         objects = []
         start = utcnow()
 
-        if force is None:
-            force = self.get_property('force', default=False)
-
-        if force is True:
-            # get a list of all known object ids
-            table = self.get_property('table')
-            db = self.get_property('db')
-            _id = self.get_property('column')
-            sql = 'SELECT DISTINCT %s.%s FROM %s.%s' % (table, _id, db,
-                                                        table)
-            rows = self.proxy.fetchall(sql)
-            oids = self._extract_row_ids(rows)
-
-        # [cward] FIXME: is 'delta' flag necessary? just look for
-        # the individual delta flags, no?
-        if force is False and self.get_property('delta', default=True):
-            # include objects updated since last mtime too
-            # apply delta sql clause's if we're not forcing a full run
-            if self.get_property('delta_mtime', default=False):
-                mtime = self._fetch_mtime(last_update, parse_timestamp)
-                if mtime:
-                    oids.extend(self.get_changed_oids(mtime))
-            if self.get_property('delta_new_ids', default=True):
-                oids.extend(self.get_new_oids())
-
-        if isinstance(force, (list, tuple)):
-            oids = force
-
-        oids = sorted(set(oids))
+        oids = self._delta_force(force, last_update, parse_timestamp)
 
         # this is to set the 'index' of sql columns so we can extract
         # out the sql rows and know which column : field

@@ -106,7 +106,7 @@ def deptree(self, field, oids, date=None, level=None, cube=None, owner=None):
     return sorted(result)
 
 
-def distinct(self, field, query=None, cube=None, owner=None):
+def distinct(self, field, query=None, date=None, cube=None, owner=None):
     '''
     Return back a distinct (unique) list of field values
     across the entire cube dataset
@@ -116,7 +116,7 @@ def distinct(self, field, query=None, cube=None, owner=None):
     :param owner: username of cube owner
     '''
     cmd = self.get_cmd(owner, cube, 'distinct')
-    result = self._get(cmd, field=field, query=query)
+    result = self._get(cmd, field=field, query=query, date=date)
     return sorted(result)
 
 

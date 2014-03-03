@@ -565,6 +565,7 @@ class HTTPClient(BaseClient):
                 self.logger.info("Autoregistering %s" % self.name)
                 self.cube_register()
 
+######################### pyclient base API #######################
     @property
     def cube_id(self):
         '''Return the common cube id string; ie, `%(owner)s__%(name)s`'''
@@ -602,22 +603,20 @@ class HTTPClient(BaseClient):
     def cookiejar_load(self):
         '''Loading existing user cookiejar, if it exists'''
         path = '%s.%s' % (self.config.cookiejar, self.config.username)
-        cfd = requests.utils.cookiejar_from_dict
         if os.path.exists(path):
             try:
                 with open(path) as cj:
-                    cookiejar = cfd(cPickle.load(cj))
+                    cookiejar = cPickle.load(cj)
             except Exception:
                 pass
             else:
-                self.session.cookies = cookiejar
+                self.session.cookies.update(cookiejar)
 
     def cookiejar_save(self):
         '''Save current session cookies to cookiejar, if possible'''
         path = '%s.%s' % (self.config.cookiejar, self.config.username)
-        dfc = requests.utils.dict_from_cookiejar
         with open(path, 'w') as f:
-            cPickle.dump(dfc(self.session.cookies), f)
+            cPickle.dump(self.session.cookies, f)
 
     def _delete(self, *args, **kwargs):
         ' requests DELETE; using current session '
@@ -790,6 +789,14 @@ class HTTPClient(BaseClient):
         else:
             msg = 'Failed to connect to metriqued hosts [%s]' % urls
             raise requests.exceptions.ConnectionError(msg)
+
+    def set_cookies(self, **kwargs):
+        self.session.cookies.update(kwargs)
+
+    def unset_cookies(self, keys):
+        for key in keys:
+            if key in self.session.cookies:
+                self.session.cookies.pop(key)
 
     def _save(self, filename, *args, **kwargs):
         ' requests GET of a "file stream" using current session '
