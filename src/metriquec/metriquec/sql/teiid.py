@@ -10,6 +10,7 @@ This module contains a convenience wrapper for connecting
 to TEIID databases using postgres (psycopg2).
 '''
 
+import logging
 import psycopg2
 from psycopg2.extensions import TRANSACTION_STATUS_UNKNOWN
 from psycopg2.extensions import TRANSACTION_STATUS_INERROR
@@ -17,6 +18,8 @@ from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
 import re
 
 from metriquec.sql.basesql import BaseSql
+
+logger = logging.getLogger(__name__)
 
 TRANS_ERROR = [TRANSACTION_STATUS_UNKNOWN, TRANSACTION_STATUS_INERROR]
 
@@ -29,7 +32,7 @@ class TEIID(BaseSql):
     method. To connect,
     '''
     def __init__(self, vdb, host, username, password, port, **kwargs):
-        super(TEIID, self).__init__(**kwargs)
+        super(TEIID, self).__init__()
         self.vdb = vdb
         self.host = host
         self.username = username
@@ -46,7 +49,7 @@ class TEIID(BaseSql):
         '''
         connect_str = "dbname=%s user=%s password=%s host=%s port=%s" % (
             self.vdb, self.username, self.password, self.host, self.port)
-        self.logger.debug('TEIID Config: %s' % re.sub(
+        logger.debug('TEIID Config: %s' % re.sub(
             'password=[^ ]+', 'password=*****', connect_str))
         return connect_str
 
@@ -72,17 +75,17 @@ class TEIID(BaseSql):
             trans_status = self._proxy.get_transaction_status()
             if trans_status in TRANS_ERROR:
                 err_state = True
-                self.logger.error('Transaction Error: %s' % trans_status)
+                logger.warn('Transaction Error: %s' % trans_status)
             elif self._proxy.closed == 1:
                 err_state = True
-                self.logger.error('Connection Error: CLOSED')
-
+                logger.warn('Connection Error: CLOSED')
             if err_state:
                 del self._proxy
+                logger.warn('Re-initializing Proxy ...')
 
         if err_state or not (cached and hasattr(self, '_proxy')):
             proxy = psycopg2.connect(self.connect_str)
-            self.logger.debug(' ... Connected (New)')
+            logger.debug(' ... Connected (New)')
             # Teiid does not support 'set' command at all; so unless we
             # specify ISOLATION_LEVEL_AUTOCOMMIT (zero), psycopg2 will send a
             # SET command the teiid server doesn't understand.

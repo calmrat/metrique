@@ -12,6 +12,9 @@ related api functionality.
 
 from metrique.result import Result
 
+import logging
+logger = logging.getLogger(__name__)
+
 
 def aggregate(self, pipeline, cube=None, owner=None):
     '''

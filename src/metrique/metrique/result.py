@@ -13,14 +13,16 @@ used to load and manipulate cube objects.
 
 from decorator import decorator
 from datetime import datetime, timedelta
-
+import logging
+import numpy as np
 from pandas import DataFrame, Series
 import pandas.tseries.offsets as off
 from pandas.tslib import Timestamp
 import pandas as pd
-import numpy as np
 
 from metriqueu.utils import dt2ts
+
+logger = logging.getLogger(__name__)
 
 NUMPY_NUMERICAL = [np.float16, np.float32, np.float64, np.float128,
                    np.int8, np.int16, np.int32, np.int64]

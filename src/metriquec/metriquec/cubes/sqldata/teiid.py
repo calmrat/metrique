@@ -9,11 +9,14 @@ metriquec.cubes.sqldata.teiid
 This module contains the cube methods for extracting
 data from SQL TEIID data sources.
 '''
+import logging
 
 from metrique.utils import get_cube
 sqldata_generic = get_cube('sqldata_generic')
 
 from metriquec.sql.teiid import TEIID
+
+logger = logging.getLogger(__name__)
 
 
 class Teiid(sqldata_generic):
@@ -28,14 +31,15 @@ class Teiid(sqldata_generic):
     '''
     def __init__(self, sql_host=None, sql_port=None, sql_vdb=None,
                  sql_username=None, sql_password=None, **kwargs):
+
+        super(Teiid, self).__init__(sql_host=sql_host,
+                                    sql_port=sql_port,
+                                    **kwargs)
         try:
             from psycopg2 import DatabaseError
         except ImportError:
             raise ImportError("pip install psycopg2")
 
-        super(Teiid, self).__init__(sql_host=sql_host,
-                                    sql_port=sql_port,
-                                    **kwargs)
         if sql_vdb:
             self.config['sql_vdb'] = sql_vdb
         if sql_username:
@@ -44,6 +48,7 @@ class Teiid(sqldata_generic):
             self.config['sql_password'] = sql_password
 
         self.retry_on_error = DatabaseError
+        logger.debug("New TEIID proxy initialized")
 
     @property
     def proxy(self):
@@ -56,12 +61,9 @@ class Teiid(sqldata_generic):
                         'sql_username', 'sql_password'):
                 if arg not in self.config:
                     raise RuntimeError("%s argument is not set!" % arg)
-
-            self.logger.debug("TEIID proxy (NEW)")
             self._teiid = TEIID(vdb=self.config['sql_vdb'],
                                 host=self.config['sql_host'],
                                 port=self.config['sql_port'],
                                 username=self.config['sql_username'],
-                                password=self.config['sql_password'],
-                                logger=self.logger)
+                                password=self.config['sql_password'])
         return self._teiid

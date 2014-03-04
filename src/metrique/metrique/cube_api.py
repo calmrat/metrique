@@ -11,6 +11,9 @@ This module contains all Cube related api functionality.
 
 from metriqueu.utils import batch_gen
 
+import logging
+logger = logging.getLogger(__name__)
+
 
 def list_all(self, startswith=None):
     '''
@@ -199,13 +202,13 @@ def save(self, objects=None, cube=None, owner=None, start_time=None,
     :returns None: results are saved in pyclient().result attribute
     '''
     if not objects:
-        self.logger.info("... No objects to save")
+        logger.info("... No objects to save")
         self.result = []
     else:
-        self.logger.info("Saving %s objects" % len(objects))
+        logger.info("Saving %s objects" % len(objects))
         # support only list of dicts
         saved = _save_default(self, objects, start_time, owner, cube)
-        self.logger.info("... Saved %s NEW docs" % len(saved))
+        logger.info("... Saved %s NEW docs" % len(saved))
         self.result = saved
         if flush:
             self.flush()

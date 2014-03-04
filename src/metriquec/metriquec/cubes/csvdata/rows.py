@@ -11,6 +11,7 @@ for exctacting data from CSV.
 '''
 
 import itertools
+import logging
 import os
 import pandas as pd
 import re
@@ -18,6 +19,8 @@ import tempfile
 from urllib2 import urlopen
 
 from metrique import pyclient
+
+logger = logging.getLogger(__name__)
 
 
 class Rows(pyclient):
@@ -85,12 +88,12 @@ class Rows(pyclient):
 
         :param uri: uri path (file://, http(s)://) to load csv contents from
         '''
-        self.logger.debug("Loading CSV: %s" % uri)
+        logger.debug("Loading CSV: %s" % uri)
         if re.match('https?://', uri):
             content = ''.join(urlopen(uri).readlines())
             with tempfile.NamedTemporaryFile(delete=False) as tmp:
                 path = tmp.name
-                self.logger.debug(" ... saving to: %s" % path)
+                logger.debug(" ... saving to: %s" % path)
                 tmp.write(content)
         else:
             path = re.sub('^file://', '', uri)

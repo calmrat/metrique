@@ -11,13 +11,14 @@ This module contains all the core metriqued api functionality.
 
 import base64
 from bson import SON
+import cPickle
 from concurrent.futures import ThreadPoolExecutor
 try:
     import kerberos
 except ImportError:
     kerberos = None
+import logging
 from passlib.hash import sha256_crypt
-import cPickle
 import random
 import socket
 import simplejson as json
@@ -27,6 +28,8 @@ from tornado.web import RequestHandler, HTTPError
 from metriqued.utils import parse_pql_query, json_encode
 
 from metriqueu.utils import set_default, utcnow, strip_split
+
+logger = logging.getLogger(__name__)
 
 HOSTNAME = socket.gethostname()
 SAMPLE_SIZE = 1
@@ -99,7 +102,7 @@ class MetriqueHdlr(RequestHandler):
         '''
         if not (owner and cube):
             self._raise(400, "owner and cube required")
-        self.logger.debug('... fields: %s' % fields)
+        logger.debug('... fields: %s' % fields)
         if fields in ['__all__', '~']:
             # None indicates a request should return back whole objs
             _fields = None
@@ -303,8 +306,8 @@ class MetriqueHdlr(RequestHandler):
 
     def _log_request(self):
         request_json = json.dumps(self._request_dict(), indent=1)
-        with ThreadPoolExecutor(1) as ex:
-            return ex.submit(self.logger.log_request, request_json)
+        logger = logging.getLogger(self.metrique_config.log_requests_name)
+        logger.error(request_json)
 
     @gen.coroutine
     def on_finish(self):
@@ -314,7 +317,8 @@ class MetriqueHdlr(RequestHandler):
         Currently implemented routines are as follows:
             * log the request (access) details
         '''
-        yield self._log_request()  # log request details
+        with ThreadPoolExecutor(1) as ex:
+            yield ex.submit(self._log_request)
 
     def write(self, value, binary=False):
         '''
@@ -354,16 +358,16 @@ class MetriqueHdlr(RequestHandler):
         '''
         current_user = self.get_secure_cookie("user")
         if current_user:
-            self.logger.debug('EXISTING AUTH OK: %s' % current_user)
+            logger.debug('EXISTING AUTH OK: %s' % current_user)
             return current_user
         else:
             ok, current_user = self._parse_auth_headers()
             if ok:
                 self.set_secure_cookie("user", current_user)
-                self.logger.debug('NEW AUTH OK: %s' % current_user)
+                logger.debug('NEW AUTH OK: %s' % current_user)
                 return current_user
             else:
-                self.logger.debug('NEW AUTH FAILED: %s' % current_user)
+                logger.debug('NEW AUTH FAILED: %s' % current_user)
                 self.clear_cookie("user")
                 return None
 
@@ -394,7 +398,7 @@ class MetriqueHdlr(RequestHandler):
             passhash = self.get_user_profile(username, keys=['_passhash'],
                                              raise_if_not=False)
             ok = bool(passhash and sha256_crypt.verify(password, passhash))
-        self.logger.error('AUTH BASIC [%s]: %s' % (username, ok))
+        logger.error('AUTH BASIC [%s]: %s' % (username, ok))
         return ok
 
     def _parse_krb_basic_auth(self, username, password):
@@ -407,9 +411,9 @@ class MetriqueHdlr(RequestHandler):
             try:
                 ok = kerberos.checkPassword(username, password, '', realm)
             except kerberos.BasicAuthError as e:
-                self.logger.debug('KRB ERROR [%s]: %s' % (username, e))
+                logger.debug('KRB ERROR [%s]: %s' % (username, e))
                 ok = False
-        self.logger.debug('KRB AUTH [%s]: %s' % (username, ok))
+        logger.debug('KRB AUTH [%s]: %s' % (username, ok))
         return ok
 
     def _parse_auth_headers(self):
@@ -531,8 +535,8 @@ class MetriqueHdlr(RequestHandler):
             _realm = self.metrique_config.realm
             basic_realm = 'Basic realm="%s"' % _realm
             self.set_header('WWW-Authenticate', basic_realm)
-        self.logger.error('[%s] %s: %s ...\n%s' % (self.current_user, code,
-                                                  msg, self.request))
+        logger.error('[%s] %s: %s ...\n%s' % (self.current_user, code,
+                                              msg, self.request))
         self.set_status(code, msg)
         self._error_headers = headers
         raise HTTPError(code, msg)
@@ -671,17 +675,15 @@ class MongoDBBackendHdlr(MetriqueHdlr):
             result = profile
         return result
 
-    def initialize(self, metrique_config, mongodb_config, logger):
+    def initialize(self, metrique_config, mongodb_config):
         '''
         Initializer method which is run upon creation of each tornado request
 
         :param metrique_config: metriqued configuration object
         :param mongodb_config: mongodb configuration object
-        :param logger: logger object
         '''
         self.metrique_config = metrique_config
         self.mongodb_config = mongodb_config
-        self.logger = logger
 
     def sample_cube(self, owner, cube, sample_size=None, query=None):
         '''
@@ -772,7 +774,7 @@ class PingHdlr(MongoDBBackendHdlr):
         if auth and not user:
             self._raise(401, "authentication required")
         else:
-            self.logger.debug(
+            logger.debug(
                 'got ping from %s @ %s' % (user, utcnow(as_datetime=True)))
             response = {
                 'action': 'ping',

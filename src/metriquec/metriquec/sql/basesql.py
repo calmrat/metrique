@@ -13,6 +13,8 @@ and authentication wrapper for connecting to databases.
 import logging
 import re
 
+logger = logging.getLogger(__name__)
+
 
 class BaseSql(object):
     '''
@@ -25,12 +27,7 @@ class BaseSql(object):
     this class to add connection and authentication methods
     required to obtain a cursor for querying.
     '''
-
-    def __init__(self, logger=None):
-        if not logger:
-            self.logger = logging.getLogger(__name__)
-        else:
-            self.logger = logger
+    def __init__(self):
         self._auto_reconnect_attempted = False
 
     def get_proxy(self, **kwargs):
@@ -56,11 +53,11 @@ class BaseSql(object):
         :param sql: sql string to execute
         :param cached: flag for using a chaced proxy or not
         '''
-        self.logger.debug('Fetching rows...')
+        logger.debug('Fetching rows...')
         proxy = self.get_proxy(cached=cached)
         k = proxy.cursor()
         sql = re.sub('\s+', ' ', sql).strip().encode('utf-8')
-        self.logger.info('SQL:\n %s' % sql.decode('utf-8'))
+        logger.debug('SQL:\n %s' % sql.decode('utf-8'))
         rows = None
         try:
             k.execute(sql)
@@ -68,9 +65,9 @@ class BaseSql(object):
         except Exception as e:
             if re.search('Transaction is not active', str(e)):
                 if not self._auto_reconnect_attempted:
-                    self.logger.error('Transaction failure; reconnecting')
+                    logger.warn('Transaction failure; reconnecting')
                     self.fetchall(sql, cached=False)
-            self.logger.error('%s\n%s\n%s' % ('*' * 100, e, sql))
+            logger.error('%s\n%s\n%s' % ('*' * 100, e, sql))
             raise
         else:
             if self._auto_reconnect_attempted:
@@ -80,5 +77,5 @@ class BaseSql(object):
         finally:
             k.close()
             del k
-        self.logger.debug('... fetched (%i)' % len(rows))
+        logger.debug('... fetched (%i)' % len(rows))
         return rows

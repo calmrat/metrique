@@ -9,9 +9,12 @@ metrique.result
 This module contains all user management related api functionality.
 '''
 
+import logging
 import os
 
 from metriqueu.utils import set_default
+
+logger = logging.getLogger(__name__)
 
 
 def aboutme(self, username=None):

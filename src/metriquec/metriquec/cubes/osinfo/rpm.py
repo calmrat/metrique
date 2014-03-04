@@ -16,6 +16,7 @@ for extracting installed RPM details on a RPM based system.
 
 from datetime import datetime
 import getpass
+import logging
 import shlex
 import socket
 import subprocess
@@ -23,6 +24,7 @@ import subprocess
 from metrique import pyclient
 from metriqueu.utils import dt2ts
 
+logger = logging.getLogger(__name__)
 FIELDS = ["name", "version", "release", "arch", "nvra", "license",
           "os", "packager", "platform", "sourcepackage", "sourcerpm",
           "summary"]
@@ -51,7 +53,7 @@ class Rpm(pyclient):
     def _ssh_cmd(self, fmt):
         import paramiko
         cmd = "rpm -qa --queryformat '%s'" % fmt
-        self.logger.debug('[%s] Running: %s' % (self.ssh_host, cmd))
+        logger.debug('[%s] Running: %s' % (self.ssh_host, cmd))
         ssh = paramiko.SSHClient()
         ssh.load_system_host_keys()
         ssh.connect(
@@ -62,7 +64,7 @@ class Rpm(pyclient):
 
     def _local_cmd(self, fmt):
         cmd = "rpm -qa --queryformat '%s\n'" % fmt
-        self.logger.debug('[LOCAL] Running: %s' % cmd)
+        logger.debug('[LOCAL] Running: %s' % cmd)
         cmd = shlex.split(cmd)
         return subprocess.check_output(cmd)
 

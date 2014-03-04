@@ -12,6 +12,7 @@ This module contains all Cube related api functionality.
 from copy import copy
 from datetime import datetime
 import gzip
+import logging
 import os
 import re
 import shlex
@@ -24,6 +25,8 @@ from tornado.web import authenticated
 from metriqued.core_api import MongoDBBackendHdlr
 from metriqued.utils import query_add_date, parse_pql_query
 from metriqueu.utils import utcnow, jsonhash
+
+logger = logging.getLogger(__name__)
 
 
 class DropHdlr(MongoDBBackendHdlr):
@@ -103,7 +106,7 @@ class ExportHdlr(MongoDBBackendHdlr):
         _pass = '--password %s' % conf['admin_password'] if auth else ''
         cmd = ' '.join([x, db, collection, out, ssl, authdb, user, _pass])
         _cmd = re.sub('password.*$', 'password *****', cmd)
-        self.logger.debug('Running: %s' % _cmd)
+        logger.debug('Running: %s' % _cmd)
         try:
             subprocess.check_call(shlex.split(cmd.encode('ascii')),
                                   stdout=open(os.devnull, 'wb'),
@@ -244,7 +247,7 @@ class RenameHdlr(MongoDBBackendHdlr):
         :param cube: cube name
         :param new_new: the new name of the cube
         '''
-        self.logger.debug("Renaming [%s] %s -> %s" % (owner, cube, new_name))
+        logger.debug("Renaming [%s] %s -> %s" % (owner, cube, new_name))
         self.requires_admin(owner, cube)
         if cube == new_name:
             self._raise(409, "cube is already named %s" % new_name)
@@ -415,9 +418,6 @@ class SaveObjectsHdlr(MongoDBBackendHdlr):
                 self._raise(400, "_start must be defined, as float/int epoch")
 
             _oid = o.get('_oid')
-            if not isinstance(_oid, (float, int)):
-                self._raise(400, "_oid must be defined, as float/int")
-
             # give object a unique, constant (referencable) _id
             if _end:
                 # if the object at the exact start/oid is later
@@ -426,7 +426,7 @@ class SaveObjectsHdlr(MongoDBBackendHdlr):
             else:
                 # if the object is 'current value' without _end,
                 # ...
-                o['_id'] = _oid
+                o['_id'] = str(_oid)
 
             # _hash is of object contents, excluding metadata
             o = self._obj_hash(o, key='_hash', exclude=_exclude_hash)
@@ -444,14 +444,14 @@ class SaveObjectsHdlr(MongoDBBackendHdlr):
         self.requires_write(owner, cube)
 
         if not objects:
-            self.logger.debug('[%s.%s] No new objects to save' % (
+            logger.debug('[%s.%s] No new objects to save' % (
                 owner, cube))
             return []
 
         _cube = self.timeline(owner, cube, admin=True)
 
         olen = len(objects)
-        self.logger.debug(
+        logger.debug(
             '[%s.%s] Recieved %s objects' % (owner, cube, olen))
 
         objects = self.prepare_objects(_cube, objects)
@@ -459,7 +459,7 @@ class SaveObjectsHdlr(MongoDBBackendHdlr):
         # save each object; overwrite existing (same _oid + _start or _oid if
         # _end = None) or upsert
         _ids = [_cube.save(o, manipulate=True) for o in objects]
-        self.logger.debug('[%s.%s] %s versions saved' % (
+        logger.debug('[%s.%s] %s versions saved' % (
             owner, cube, len(_ids)))
         return _ids
 

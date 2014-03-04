@@ -10,12 +10,15 @@ This module contains the generic metrique cube used
 for exctacting data from JSON data.
 '''
 
+import logging
 try:
     import simplejson as json
 except ImportError:
     import json
 
 from metrique import pyclient
+
+logger = logging.getLogger(__name__)
 
 
 # FIXME: USE pandas read_json!

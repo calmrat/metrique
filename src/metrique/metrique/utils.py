@@ -12,12 +12,15 @@ metrique sub-modules
 
 from datetime import datetime
 from dateutil.parser import parse as dt_parse
+import logging
 import os
 import pytz
 import simplejson as json
 import sys
 
 from metriqueu.utils import dt2ts
+
+logger = logging.getLogger(__name__)
 
 json_encoder = json.JSONEncoder()
 

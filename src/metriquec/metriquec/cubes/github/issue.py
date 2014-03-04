@@ -13,9 +13,12 @@ for exctacting issue data from a github repo.
 
 from dateutil.parser import parse as dt_parse
 from itertools import chain
+import logging
 
 from metrique import pyclient
 from metriqueu.utils import dt2ts
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_REPO = 'kejbaly2/metrique'
 

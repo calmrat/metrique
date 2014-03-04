@@ -9,6 +9,7 @@ metriqued.query_api
 This module contains all the query metriqued api functionality.
 '''
 
+import logging
 from operator import itemgetter
 import pql
 import random
@@ -20,6 +21,8 @@ from metriqued.utils import date_pql_string, query_add_date
 from metriqued.core_api import MongoDBBackendHdlr
 
 from metriqueu.utils import set_default, dt2ts
+
+logger = logging.getLogger(__name__)
 
 
 class AggregateHdlr(MongoDBBackendHdlr):
@@ -78,7 +81,8 @@ class CountHdlr(MongoDBBackendHdlr):
 
         query = query or ''
         query = query_add_date(query, date)
-        self.logger.info('pql query: %s' % query)
+        # FIXME: logging move to parse_pql_query, after
+        # logging refactor
         spec = parse_pql_query(query)
         _cube = self.timeline(owner, cube)
         docs = _cube.find(spec=spec)
@@ -235,7 +239,6 @@ class FindHdlr(MongoDBBackendHdlr):
 
         query = query or ''
         query = query_add_date(query, date)
-        self.logger.info('pql query: %s' % query)
         spec = parse_pql_query(query)
 
         _cube = self.timeline(owner, cube)
@@ -258,7 +261,7 @@ class FindHdlr(MongoDBBackendHdlr):
         '''
         merge versions with unchanging fields of interest
         '''
-        self.logger.debug("merging doc version...")
+        logger.debug("merging doc version...")
         # contains a dummy document to avoid some condition
         # checks in merge_doc
         ret = [{'_oid': None}]
@@ -282,7 +285,7 @@ class FindHdlr(MongoDBBackendHdlr):
                           skip=skip, limit=limit)
         docs = sorted(docs, key=itemgetter('_oid', '_start', '_end'))
         [merge_doc(doc) for doc in docs]
-        self.logger.debug('... done')
+        logger.debug('... done')
         return ret[1:]
 
 
@@ -328,7 +331,7 @@ class HistoryHdlr(MongoDBBackendHdlr):
                  'starts': {'$push': '$_start'},
                  'ends': {'$push': '$_end'}}
                 }]
-        self.logger.debug('Aggregation: %s' % agg)
+        logger.debug('Aggregation: %s' % agg)
         data = _cube.aggregate(agg)['result']
 
         # accumulate the counts

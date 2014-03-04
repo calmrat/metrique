@@ -17,12 +17,15 @@ except ImportError:
 from datetime import datetime
 from dateutil.parser import parse as dt_parse
 from functools import partial
+import logging
 import requests
 import re
 import simplejson as json
 
 from metrique import pyclient
 from metriqueu.utils import dt2ts
+
+logger = logging.getLogger(__name__)
 
 MAX_WORKERS = 25
 SSL_VERIFY = True
@@ -101,12 +104,12 @@ class Build(pyclient):
         self.api_path = api_path
         args = 'tree=jobs[name,builds[number]]'
         _uri_jobs = '%s/%s?%s' % (uri, self.api_path, args)
-        self.logger.info("Getting Jenkins Job details (%s)" % _uri_jobs)
+        logger.info("Getting Jenkins Job details (%s)" % _uri_jobs)
         # get all known jobs
         content = rget(_uri_jobs).content
         content = json.loads(content, strict=False)
         jobs = content['jobs']
-        self.logger.info("... %i jobs found." % len(jobs))
+        logger.info("... %i jobs found." % len(jobs))
 
         if self.config.max_workers > 1:
             objects = self._extract_async(uri, jobs, force)
@@ -117,7 +120,7 @@ class Build(pyclient):
     def _extract(self, uri, jobs):
         for k, job in enumerate(jobs, 1):
             job_name = job['name']
-            self.logger.debug(
+            logger.debug(
                 '%s: %s of %s with %s builds' % (job_name, k,
                                                  len(jobs),
                                                  len(job['builds'])))
@@ -130,7 +133,7 @@ class Build(pyclient):
             builds = []
             for k, job in enumerate(jobs, 1):
                 job_name = job['name']
-                self.logger.debug(
+                logger.debug(
                     '%s: %s of %s with %s builds' % (job_name, k,
                                                      len(jobs),
                                                      len(job['builds'])))
@@ -144,7 +147,7 @@ class Build(pyclient):
                     try:
                         builds.append(future.result())
                     except Exception as e:
-                        self.logger.error(
+                        logger.error(
                             '(%s) Failed to save: %s' % (e, job_name))
         return builds
 
@@ -158,14 +161,14 @@ class Build(pyclient):
 
         job_uri = '%s%s/%s?%s' % (uri, _job_path,
                                   self.api_path, _args)
-        self.logger.debug('Loading (%s)' % job_uri)
+        logger.debug('Loading (%s)' % job_uri)
         try:
             _page = rget(job_uri).content
             build_content = json.loads(_page,
                                        strict=False,
                                        object_hook=obj_hook)
         except Exception as e:
-            self.logger.error('OOPS! (%s) %s' % (job_uri, e))
+            logger.error('OOPS! (%s) %s' % (job_uri, e))
             build_content = {'load_error': e}
 
         _build['_oid'] = _oid
@@ -177,14 +180,14 @@ class Build(pyclient):
         report_uri = '%s%s/testReport/%s?%s' % (uri,
                                                 _job_path, self.api_path,
                                                 _args)
-        self.logger.debug('Loading (%s)' % report_uri)
+        logger.debug('Loading (%s)' % report_uri)
         try:
             _page = rget(report_uri).content
             report_content = json.loads(_page,
                                         strict=False,
                                         object_hook=obj_hook)
         except Exception as e:
-            self.logger.error('OOPS! (%s) %s' % (report_uri, e))
+            logger.error('OOPS! (%s) %s' % (report_uri, e))
             report_content = {'load_error': e}
 
         _build['report_uri'] = report_uri

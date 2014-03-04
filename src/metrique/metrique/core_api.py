@@ -88,12 +88,8 @@ from metrique.config import Config
 from metrique.utils import json_encode, get_cube
 from metriqueu.utils import utcnow
 
-# setup default root logger, but remove default StreamHandler (stderr)
-# Handlers will be added upon __init__()
-logging.basicConfig()
-root_logger = logging.getLogger()
-[root_logger.removeHandler(hdlr) for hdlr in root_logger.handlers]
-BASIC_FORMAT = "%(name)s:%(asctime)s:%(message)s"
+logger = logging.getLogger(__name__)
+
 FILETYPES = {'csv': pd.read_csv, 'json': pd.read_json}
 fields_re = re.compile('[\W]+')
 space_re = re.compile('\s+')
@@ -191,6 +187,9 @@ class BaseClient(object):
         # metrique_config.json
         self.load_config(**kwargs)
 
+        # cube class defined name
+        self._cube = type(self).name
+
         utc_str = utcnow(as_datetime=True).strftime('%a%b%d%H%m%S')
         # set name if passed in, but don't overwrite default if not
         self.name = name or self.name or utc_str
@@ -265,7 +264,7 @@ class BaseClient(object):
         '''run garbage collection'''
         k = gc.get_count()
         result = gc.collect()  # be sure we garbage collect any old object refs
-        self.logger.debug('... %s flushed, %s remain' % (k, result))
+        logger.debug('Garbage Flush: %s flushed, %s remain' % (k, result))
 
     def normalize(self, objects):
         '''Convert, validate, normalize and locally cache objects'''
@@ -360,30 +359,20 @@ class BaseClient(object):
         level = self.config.debug
         logstdout = self.config.logstdout
         logfile = self.config.logfile
-        basic_format = logging.Formatter(BASIC_FORMAT)
+        log_format = "%(name)s.%(process)s:%(asctime)s:%(message)s"
+        log_format = logging.Formatter(log_format, "%Y%m%dT%H%M%S")
 
-        if level == 2:
-            self._logger_name = None
-            logger = logging.getLogger()
-            logger = self._debug_set_level(logger, level)
-
-        self._logger_name = '%s.%s' % ('metrique', self.name)
-        logger = logging.getLogger(self._logger_name)
-        logger.propagate = 0
-
-        logger.handlers = []  # reset handlers
+        logger = logging.getLogger()
+        logger.handlers = []
         if logstdout:
             hdlr = logging.StreamHandler()
-            hdlr.setFormatter(basic_format)
+            hdlr.setFormatter(log_format)
             logger.addHandler(hdlr)
-
         if self.config.log2file and logfile:
             hdlr = logging.FileHandler(logfile)
-            hdlr.setFormatter(basic_format)
+            hdlr.setFormatter(log_format)
             logger.addHandler(hdlr)
-
-        logger = self._debug_set_level(logger, level)
-        self.logger = logger
+        self._debug_set_level(logger, level)
 
     def _debug_set_level(self, logger, level):
         if level in [-1, False]:
@@ -562,7 +551,7 @@ class HTTPClient(BaseClient):
 
         if self.logged_in and cube_autoregister:
             if not self.cube_id in self.cube_list_all():
-                self.logger.info("Autoregistering %s" % self.name)
+                logger.info("Autoregistering %s" % self.name)
                 self.cube_register()
 
 ######################### pyclient base API #######################
@@ -678,8 +667,7 @@ class HTTPClient(BaseClient):
                          sort=[(field, -1)], one=True, raw=True)
         if last:
             last = last.get(field)
-        self.logger.debug(
-            "last %s.%s: %s" % (self.name, field, last))
+        logger.debug("last %s.%s: %s" % (self.name, field, last))
         return last
 
     def _get_response(self, runner, _url, username, password,
@@ -703,7 +691,7 @@ class HTTPClient(BaseClient):
             content = _response.content
             code = _response.status_code
             content = '[%s] %s\n%s\n%s' % (code, _url, str(e), content)
-            self.logger.error(content)
+            logger.error(content)
             raise
         return _response
 
@@ -756,18 +744,18 @@ class HTTPClient(BaseClient):
 
         urls = self._build_urls(cmd, api_url)
         for url in urls:
-            self.logger.debug("Connecting to %s" % url)
+            logger.debug("Connecting to %s" % url)
             try:
                 _response = self._get_response(runner, url,
                                                username, password,
                                                allow_redirects,
                                                stream)
             except requests.exceptions.ConnectionError:
-                self.logger.error("Failed to connect to %s" % url)
+                logger.error("Failed to connect to %s" % url)
                 # try the next url available
                 continue
             else:
-                self.logger.debug("Got response from %s" % url)
+                logger.debug("Got response from %s" % url)
 
             if full_response:
                 return _response
@@ -784,7 +772,7 @@ class HTTPClient(BaseClient):
                 except Exception as e:
                     m = getattr(e, 'message')
                     content = '%s\n%s\n%s' % (url, m, _response.content)
-                    self.logger.error(content)
+                    logger.error(content)
                     raise
         else:
             msg = 'Failed to connect to metriqued hosts [%s]' % urls

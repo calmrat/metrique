@@ -9,6 +9,7 @@ metriqued.user_api
 This module contains all the user related api functionality.
 '''
 
+import logging
 from passlib.hash import sha256_crypt
 import re
 import time
@@ -17,6 +18,8 @@ from tornado.web import authenticated
 from metriqued.core_api import MongoDBBackendHdlr
 
 from metriqueu.utils import utcnow
+
+logger = logging.getLogger(__name__)
 
 INVALID_USERNAME_RE = re.compile('[^a-z]', re.I)
 
@@ -86,7 +89,7 @@ class LoginHdlr(MongoDBBackendHdlr):
             self.clear_cookie("user")
             self.set_secure_cookie("user", username)
         result = 'OK' if ok else 'FAILED'
-        self.logger.debug("Auth %s ... [%s]" % (result, username))
+        logger.debug("Auth %s ... [%s]" % (result, username))
         self.write(ok)
 
 
@@ -148,7 +151,7 @@ class RegisterHdlr(MongoDBBackendHdlr):
                '_passhash': passhash,
                }
         self.user_profile(admin=True).save(doc, safe=True)
-        self.logger.info("new user added (%s)" % (username))
+        logger.info("new user added (%s)" % (username))
         return True
 
 
@@ -185,7 +188,7 @@ class RemoveHdlr(MongoDBBackendHdlr):
             cube = cube.get('_id')
             self.mongodb_config.db_timeline_admin[cube].drop()
         # FIXME: # remove the user from cube acls?
-        self.logger.info("user removed (%s)" % username)
+        logger.info("user removed (%s)" % username)
         return True
 
 
@@ -235,7 +238,7 @@ class UpdatePasswordHdlr(MongoDBBackendHdlr):
         else:
             new_passhash = sha256_crypt.encrypt(new_password)
         self.update_user_profile(username, 'set', '_passhash', new_passhash)
-        self.logger.debug(
+        logger.debug(
             "password updated (%s) by %s" % (username, self.current_user))
         return True
 
@@ -270,7 +273,7 @@ class UpdateProfileHdlr(MongoDBBackendHdlr):
                         "gnupg must be a dict with keys pubkey/fingerprint")
         else:
             backup = self.get_user_profile(username)
-            self.logger.debug('GPG PubKey Import: %s' % gnupg)
+            logger.debug('GPG PubKey Import: %s' % gnupg)
             self.gnupg_pubkey_import(gnupg['pubkey'])
             self.update_user_profile(username, 'set', 'gnupg', gnupg)
         current = self.get_user_profile(username)
@@ -314,6 +317,6 @@ class UpdatePropertiesHdlr(MongoDBBackendHdlr):
         # a dict to apply not just a single key/value
         self.update_user_profile(username, 'set', 'cube_quota', cube_quota)
         current = self.get_user_profile(username)
-        self.logger.debug(
+        logger.debug(
             "user properties updated (%s): %s" % (username, current))
         return {'now': current, 'previous': backup}

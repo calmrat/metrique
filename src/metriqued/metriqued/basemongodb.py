@@ -28,6 +28,8 @@ READ_PREFERENCE = {
     'NEAREST': ReadPreference.NEAREST,
 }
 
+logger = logging.getLogger(__name__)
+
 
 class BaseMongoDB(object):
     '''
@@ -56,10 +58,6 @@ class BaseMongoDB(object):
                  port=None, ssl=None, ssl_keyfile=None, tz_aware=True,
                  ssl_certfile=None, write_concern=1, journal=False,
                  fsync=False, replica_set=None, read_preference=None):
-        pid = os.getpid()
-        # FIXME: this is ugly, don't hardcode here.
-        self.logger = logging.getLogger('metriqued.%i.mongodb' % pid)
-
         if ssl_keyfile:
             ssl_keyfile = os.path.expanduser(ssl_keyfile)
         if ssl_certfile:
@@ -111,8 +109,8 @@ class BaseMongoDB(object):
             try:
                 return self._load_db_proxy()
             except ConnectionFailure as e:
-                self.logger.warn("[%i] MongoDB Failed to connect (%s): %s" % (
-                                 retries, self.host, e))
+                logger.warn("[%i] MongoDB Failed to connect (%s): %s" % (
+                            retries, self.host, e))
                 retries -= 1
                 self._db_proxy = None
         else:
@@ -123,13 +121,13 @@ class BaseMongoDB(object):
         return self.db[collection]
 
     def _load_mongo_client(self, **kwargs):
-        self.logger.debug('Loading new MongoClient connection')
+        logger.debug('Loading new MongoClient connection')
         self._proxy = MongoClient(self.host, self.port, tz_aware=self.tz_aware,
                                   w=self.write_concern, j=self.journal,
                                   fsync=self.fsync, **kwargs)
 
     def _load_mongo_replica_client(self, **kwargs):
-            self.logger.debug('Loading new MongoReplicaSetClient connection')
+            logger.debug('Loading new MongoReplicaSetClient connection')
             read_preference = READ_PREFERENCE[self.read_preference]
             self._proxy = MongoReplicaSetClient(
                 self.host, self.port, tz_aware=self.tz_aware,

@@ -9,12 +9,15 @@ metriqued.uitls
 This module contains various shared utils used by metriqued and friends.
 '''
 
-import pql
 from bson.timestamp import Timestamp
+import logging
+import pql
 import re
 import simplejson as json
 
 from metriqueu.utils import dt2ts
+
+logger = logging.getLogger(__name__)
 
 json_encoder = json.JSONEncoder()
 
@@ -104,6 +107,7 @@ def parse_pql_query(query):
 
     :param query: pql query
     '''
+    logger.debug('pql query: %s' % query)
     if not query:
         return {}
     if not isinstance(query, basestring):
@@ -113,6 +117,7 @@ def parse_pql_query(query):
         spec = pql_parser.parse(query)
     except Exception as e:
         raise SyntaxError("Invalid Query (%s)" % str(e))
+    logger.debug('mongo spec: %s' % query)
     return spec
 
 

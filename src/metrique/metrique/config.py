@@ -18,11 +18,14 @@ To customize local client configuration, add/update
 `~/.metrique/etc/metrique.json` (default).
 '''
 
+import logging
 import multiprocessing
 import os
 import re
 
 from metriqueu.jsonconf import JSONConf
+
+logger = logging.getLogger(__name__)
 
 # if HOME environment variable is set, use that
 # useful when running 'as user' with root (supervisord)

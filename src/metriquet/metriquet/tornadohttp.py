@@ -24,13 +24,7 @@ from tornado.web import Application
 
 from metriqueu.jsonconf import JSONConf
 
-# setup default root logger, but remove default StreamHandler (stderr)
-# Handlers will be added upon __init__()
-logging.basicConfig()
-root_logger = logging.getLogger()
-[root_logger.removeHandler(hdlr) for hdlr in root_logger.handlers]
-BASIC_FORMAT = "%(name)s.%(process)s:%(asctime)s:%(message)s"
-LOG_FORMAT = logging.Formatter(BASIC_FORMAT, "%Y%m%dT%H%M%S")
+logger = logging.getLogger(__name__)
 
 BASENAME = 'tornado'
 
@@ -124,7 +118,7 @@ class TornadoConfig(JSONConf):
             'log_rotate': False,
             'log_rotate_bytes': 134217728,  # 128M 'maxBytes' before rotate
             'log_requests_file': log_requests_file,
-            'log_requests_level': 100,
+            'log_requests_name': 'access',
             'login_url': LOGIN_URL,
             'pid_name': self.name,
             'piddir': PID_DIR,
@@ -158,104 +152,69 @@ class TornadoHTTPServer(object):
     def __init__(self, config_file=None, **kwargs):
         self.config = TornadoConfig(config_file=config_file, **kwargs)
 
-    def _log_handler_get_level(self, level):
-        level = level or self.config.debug
-        if level in [-1, False]:
-            level = logging.WARN
-        elif level is True or level >= 1:
-            level = logging.DEBUG
-        elif level in [0, None]:
-            level = logging.INFO
-        else:
-            level = int(level)
-        return level
-
-    def _log_stream_handler(self, level=None, fmt=LOG_FORMAT):
-        hdlr = logging.StreamHandler()
-        hdlr.setFormatter(fmt)
-        hdlr.setLevel(self._log_handler_get_level(level))
-        return hdlr
-
-    def _log_file_handler(self, level=None, logdir=None, logfile=None,
-                          rotate=None, rotate_bytes=None, rotate_keep=None,
-                          fmt=LOG_FORMAT):
-        logdir = logdir or self.config.logdir
-        logdir = os.path.expanduser(logdir)
+    def _log_file_handler(self, logfile=None):
+        logdir = os.path.expanduser(self.config.logdir)
         logfile = logfile or self.config.logfile
         logfile = os.path.join(logdir, logfile)
-        rotate = rotate or self.config.log_rotate
-        rotate_bytes = rotate_bytes or self.config.log_rotate_bytes
-        rotate_keep = rotate_keep or self.config.log_keep
+        rotate = self.config.log_rotate
+        rotate_bytes = self.config.log_rotate_bytes
+        rotate_keep = self.config.log_keep
 
         if rotate:
             hdlr = logging.handlers.RotatingFileHandler(
                 logfile, backupCount=rotate_keep, maxBytes=rotate_bytes)
         else:
             hdlr = logging.FileHandler(logfile)
-        hdlr.setFormatter(fmt)
-        hdlr.setLevel(self._log_handler_get_level(level))
         return hdlr
 
-    def _setup_logger(self, logger_name, level=None, logstdout=None,
-                      log2file=None, logdir=None, logfile=None, rotate=None,
-                      rotate_bytes=None, rotate_keep=None, fmt=None):
-        logstdout = logstdout or self.config.logstdout
-        stdout_hdlr = self._log_stream_handler(level) if logstdout else None
-
-        file_hdlr = None
-        log2file = log2file or self.config.log2file
-        if log2file:
-            file_hdlr = self._log_file_handler(level, logdir, logfile, rotate,
-                                               rotate_bytes, rotate_keep)
-
-        logger = logging.getLogger(logger_name)
-
-        # clear existing handlers
-        [logger.removeHandler(hdlr) for hdlr in logger.handlers]
-
-        if stdout_hdlr:
-            logger.addHandler(stdout_hdlr)
-        if file_hdlr:
-            logger.addHandler(file_hdlr)
-
-        logger.setLevel(self._log_handler_get_level(level))
-        logger.propagate = 0
+    def _debug_set_level(self, logger, level):
+        if level in [-1, False]:
+            logger.setLevel(logging.WARN)
+        elif level in [0, None]:
+            logger.setLevel(logging.INFO)
+        elif level in [True, 1, 2]:
+            logger.setLevel(logging.DEBUG)
         return logger
 
     def setup_logger(self):
         '''Setup application logging
 
         The following loggers will be available:
-            * self.logger - main
+            * logger - main
 
         By default, .debug, .info, .warn, etc methods are available in
         the main logger.
 
         Additionally, the following methods are also available via .logger:
-            * self.logger.request_logger
+            * logger.request_logger
 
         The base logger name is the value of the class attribute `name`.
         '''
-        # override root logger so all app logging goes to one place
-        self._setup_logger(logger_name=None)
+        level = self.config.debug
+        logstdout = self.config.logstdout
+        logfile = self.config.logfile
+        log_format = "%(name)s.%(process)s:%(asctime)s:%(message)s"
+        log_format = logging.Formatter(log_format, "%Y%m%dT%H%M%S")
+
+        logger = logging.getLogger()
+        logger.handlers = []
+        if logstdout:
+            hdlr = logging.StreamHandler()
+            hdlr.setFormatter(log_format)
+            logger.addHandler(hdlr)
+        if self.config.log2file and logfile:
+            hdlr = self._log_file_handler()
+            hdlr.setFormatter(log_format)
+            logger.addHandler(hdlr)
+        self._debug_set_level(logger, level)
 
         # prepare 'request' logger for storing request details
-        logfile = self.config.log_requests_file
-        logger_name = '%s.requests' % self.name
-        requests_level = self.config.log_requests_level
-
-        # this app's main logger
-        app_logger = self._setup_logger(logger_name=self.name)
-
-        self.request_logger = self._setup_logger(logger_name=logger_name,
-                                                 logfile=logfile,
-                                                 level=requests_level)
-        # add request handler output alias
-        app_logger.log_request = partial(self.request_logger.log,
-                                         requests_level)
-        # set expected self.logger instance attr and return
-        self.logger = app_logger
-        return self.logger
+        r_logfile = self.config.log_requests_file
+        logger = logging.getLogger(self.config.log_requests_name)
+        hdlr = self._log_file_handler(logfile=r_logfile)
+        logger.addHandler(hdlr)
+        logger.propagate = 0
+        logger.setLevel(logging.ERROR)
 
     @property
     def pid(self):
@@ -271,7 +230,7 @@ class TornadoHTTPServer(object):
 
     def _prepare_web_app(self):
         ''' Config and Views'''
-        self.logger.debug("tornado web app setup")
+        logger.debug("tornado web app setup")
 
         self._web_app = Application(
             gzip=self.config.gzip,
@@ -309,7 +268,7 @@ class TornadoHTTPServer(object):
                 _file.write(str(self.pid))
         signal.signal(signal.SIGTERM, self._inst_terminate_handler)
         signal.signal(signal.SIGINT, self._inst_kill_handler)
-        self.logger.debug("PID stored (%s)" % self.pid)
+        logger.debug("PID stored (%s)" % self.pid)
 
     def remove_pid(self, quiet=False):
         '''Remove existing pid file on disk, if available'''
@@ -318,29 +277,29 @@ class TornadoHTTPServer(object):
             os.remove(self.pid_file)
         except OSError as error:
             if not quiet:
-                self.logger.error(
+                logger.error(
                     'pid file not removed (%s); %s' % (self.pid_file, error))
         else:
             if not quiet:
-                self.logger.debug("removed PID file: %s" % self.pid_file)
+                logger.debug("removed PID file: %s" % self.pid_file)
 
     def _init_basic_server(self):
-        self.logger.debug('======= %s =======' % self.name)
-        self.logger.debug(' Conf: %s' % self.config.config_file)
-        self.logger.debug(' Host: %s' % self.uri)
-        self.logger.debug('  SSL: %s' % self.config.ssl)
+        logger.debug('======= %s =======' % self.name)
+        logger.debug(' Conf: %s' % self.config.config_file)
+        logger.debug(' Host: %s' % self.uri)
+        logger.debug('  SSL: %s' % self.config.ssl)
 
         host, port = self.config.host, self.config.port
         try:
             self.server.listen(port=port, address=host)
         except Exception as e:
-            self.logger.error(
+            logger.error(
                 'Failed to connect to %s:%s (%s)' % (host, port, e))
         IOLoop.instance().start()
 
     def spawn_instance(self):
         '''Spawn a new tornado server instance'''
-        self.logger.debug("spawning tornado %s..." % self.uri)
+        logger.debug("spawning tornado %s..." % self.uri)
         self.set_pid()
         self._init_basic_server()
 
@@ -384,11 +343,11 @@ class TornadoHTTPServer(object):
         self.remove_pid(quiet=True)
 
     def _inst_terminate_handler(self, sig, frame):
-        self.logger.debug("[INST] (%s) recieved KILL (9) signal" % self.pid)
+        logger.debug("[INST] (%s) recieved KILL (9) signal" % self.pid)
         self._inst_stop(sig, 0)
 
     def _inst_kill_handler(self, sig, frame):
-        self.logger.debug("[INST] (%s) recieved TERM (15) signal" % self.pid)
+        logger.debug("[INST] (%s) recieved TERM (15) signal" % self.pid)
         self._inst_stop(sig)
 
     def _inst_delayed_stop(self, delay=None):
@@ -397,11 +356,11 @@ class TornadoHTTPServer(object):
                 delay = 0
             else:
                 delay = 5
-        self.logger.debug("stop ioloop called (%s)... " % self.pid)
+        logger.debug("stop ioloop called (%s)... " % self.pid)
         TIMEOUT = float(delay) + time.time()
-        self.logger.debug("Shutting down in T-%i seconds ..." % delay)
+        logger.debug("Shutting down in T-%i seconds ..." % delay)
         IOLoop.instance().add_timeout(TIMEOUT, self._stop_ioloop)
 
     def _stop_ioloop(self):
         IOLoop.instance().stop()
-        self.logger.debug("IOLoop stopped")
+        logger.debug("IOLoop stopped")

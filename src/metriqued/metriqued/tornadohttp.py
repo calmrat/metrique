@@ -21,6 +21,8 @@ from metriquet.tornadohttp import TornadoHTTPServer
 from metriqued.config import metriqued_config, mongodb_config
 from metriqued import core_api, cube_api, query_api, user_api
 
+logger = logging.getLogger(__name__)
+
 USER_DIR = os.path.expanduser('~/.metrique')
 ETC_DIR = os.path.join(USER_DIR, 'etc')
 METRIQUED_JSON = os.path.join(ETC_DIR, 'metriqued.json')
@@ -87,26 +89,25 @@ class MetriqueHTTP(TornadoHTTPServer):
         # results in a .logger and .request_logger attrs
         self.setup_logger()
 
-        self.logger.debug('======= metrique =======')
-        self.logger.debug(' pid:  %s' % self.pid)
-        self.logger.debug(' Conf: %s' % self.config.config_file)
-        self.logger.debug(' Host: %s' % self.uri)
-        self.logger.debug('  SSL: %s' % self.config.ssl)
-        self.logger.debug('======= mongodb ========')
-        self.logger.debug(' Conf: %s' % self.dbconf.config_file)
-        self.logger.debug(' Host: %s' % self.dbconf.host)
-        self.logger.debug('  SSL: %s' % self.dbconf.ssl)
-        self.logger.debug(' Port: %s' % self.dbconf.port)
+        logger.debug('======= metrique =======')
+        logger.debug(' pid:  %s' % self.pid)
+        logger.debug(' Conf: %s' % self.config.config_file)
+        logger.debug(' Host: %s' % self.uri)
+        logger.debug('  SSL: %s' % self.config.ssl)
+        logger.debug('======= mongodb ========')
+        logger.debug(' Conf: %s' % self.dbconf.config_file)
+        logger.debug(' Host: %s' % self.dbconf.host)
+        logger.debug('  SSL: %s' % self.dbconf.ssl)
+        logger.debug(' Port: %s' % self.dbconf.port)
 
         self._mongodb_check()
         self._prepare_handlers()
-        self._setup_mongodb_logging()
+        self._setup_mongodb_request_logging()
 
     def _prepare_handlers(self):
         # pass in metrique and mongodb config to all handlers (init)
         init = dict(metrique_config=self.config,
-                    mongodb_config=self.dbconf,
-                    logger=self.logger)
+                    mongodb_config=self.dbconf)
 
         api_docs = self.config.api_docs
         base_handlers = [
@@ -155,23 +156,22 @@ class MetriqueHTTP(TornadoHTTPServer):
     def _mongodb_check(self):
         # Fail to start if we can't communicate with mongo
         host = self.dbconf.host
-        self.logger.debug('testing mongodb connection status (%s) ...' % host)
+        logger.debug('testing mongodb connection status (%s) ...' % host)
         try:
             assert self.dbconf.db_metrique_admin.db
             assert self.dbconf.db_timeline_admin.db
             assert self.dbconf.db_metrique_data.db
             assert self.dbconf.db_timeline_data.db
-            self.logger.debug('... mongodb connection ok')
+            logger.debug('... mongodb connection ok')
         except Exception:
-            self.logger.error(
+            logger.error(
                 'failed to communicate with mongodb')
             raise
 
-    def _setup_mongodb_logging(self):
+    def _setup_mongodb_request_logging(self):
         if self.config.log2mongodb:
-            # override existing requests logger to pass request info to mongo
-            level = self.config.log_mongodb_level
+            logger = logging.getLogger(self.config.log_requests_name)
+            # FIXME: make handler-reset optional?
+            logger.handlers = []  # remove existing (file) handler
             hdlr = MongoDBHandler(collection=self.dbconf.c_logs_admin)
-            hdlr.setLevel(level)
-            hdlr.propagate = 0
-            self.request_logger.addHandler(hdlr)
+            logger.addHandler(hdlr)

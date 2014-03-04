@@ -12,11 +12,14 @@ for exctacting data from a git repository.
 .. note:: This cube requires python 2.7+
 '''
 
+import logging
 import os
 import re
 import subprocess
 
 from metrique import pyclient
+
+logger = logging.getLogger(__name__)
 
 related_re = re.compile('Related: (.+)$', re.I)
 resolves_re = re.compile('Resolves: (.+)$', re.I)
@@ -49,28 +52,36 @@ class Repo(pyclient):
         :param uri: git repo uri
         :param pull: whether to pull after cloning (or loading cache)
         '''
-        from gittle.gittle import Gittle
+        try:
+            from gittle.gittle import Gittle
+        except ImportError:
+            raise ImportError("pip install gittle")
         # FIXME: use gittle to clone repos; bare=True
+
         # make the uri safe for filesystems
         _uri = "".join(x for x in uri if x.isalnum())
         repo_path = os.path.join(self.cache_dir, _uri)
         self.repo_path = repo_path = os.path.expanduser(repo_path)
-        self.logger.debug('GIT URI: %s' % uri)
+        logger.debug('GIT URI: %s' % uri)
         if pull:
+            logger.info('git repo tmp path %s' % repo_path)
             if not os.path.exists(repo_path):
-                self.logger.info('Cloning git repo to %s' % repo_path)
+                logger.info(' ... cloning git repo')
                 cmd = 'git clone %s %s' % (uri, repo_path)
-                rc = subprocess.call(cmd.split())
+                rc = subprocess.call(cmd.split(), stderr=subprocess.PIPE,
+                                     stdout=subprocess.PIPE)
                 if rc != 0:
-                    raise IOError("Failed to clone repo")
+                    raise IOError("Failed to clone repo (%s)" % cmd)
+                logger.info(' ... clone complete')
             else:
                 os.chdir(repo_path)
-                self.logger.info(' ... Fetching git repo (%s)' % repo_path)
+                logger.info(' ... fetching git repo (%s)' % repo_path)
                 cmd = 'git pull'
-                rc = subprocess.call(cmd.split())
+                rc = subprocess.call(cmd.split(), stderr=subprocess.PIPE,
+                                     stdout=subprocess.PIPE)
                 if rc != 0:
-                    raise RuntimeError('Failed to pull repo')
-                self.logger.debug(' ... Fetch complete')
+                    raise RuntimeError('Failed to pull repo (%s)' % cmd)
+                logger.debug(' ... ... fetch complete')
         return Gittle(repo_path)
 
     def _build_commits(self, delta_shas, uri):
@@ -138,13 +149,14 @@ class Repo(pyclient):
             * resolves
             * related
         '''
-        self.logger.debug("Extracting GIT repo: %s" % uri)
+        logger.debug("Extracting GIT repo: %s" % uri)
         self.repo = self.get_repo(uri, fetch)
         cmd = 'git rev-list --all'
-        p = subprocess.Popen(cmd.split(), stdout=subprocess.PIPE)
+        p = subprocess.Popen(cmd.split(), stderr=subprocess.PIPE,
+                             stdout=subprocess.PIPE)
         p = p.communicate()[0]
         repo_shas = set(x for x in p.split('\n') if x)
-        self.logger.debug("Total Commits: %s" % len(repo_shas))
+        logger.debug("Total Commits: %s" % len(repo_shas))
         objects = self._build_commits(repo_shas, uri)
         return objects
 
