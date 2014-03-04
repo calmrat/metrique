@@ -12,12 +12,15 @@ data from generic SQL data sources.
 
 from copy import deepcopy, copy
 try:
-    from concurrent.futures import ThreadPoolExecutor, as_completed
+    from concurrent.futures import as_completed
+    from concurrent.futures import ProcessPoolExecutor
 except ImportError:
-    from futures import ThreadPoolExecutor, as_completed
+    from futures import as_completed
+    from futures import ProcessPoolExecutor
 from collections import defaultdict
 from dateutil.parser import parse as dt_parse
 from functools import partial
+import logging
 import pytz
 import re
 import simplejson as json
@@ -27,7 +30,29 @@ import traceback
 from metrique import pyclient
 from metriqueu.utils import batch_gen, ts2dt, dt2ts, utcnow
 
+logger = logging.getLogger(__name__)
+
+# FIXME: why not utf-8?
 DEFAULT_ENCODING = 'latin-1'
+
+
+def get_full_history(cube, oids, save=True, cube_name=None, **kwargs):
+    m = pyclient(cube=cube, name=cube_name, **kwargs)
+    objects = m.activity_get_objects(oids=oids)
+    if save:
+        m.cube_save(objects)
+    return objects
+
+
+def get_objects(cube, oids, field_order, start, save=True, cube_name=None,
+                **kwargs):
+    start = start
+    m = pyclient(cube=cube, name=cube_name, **kwargs)
+    objects = m._extract(oids=oids, field_order=field_order,
+                         start=start)
+    if save:
+        m.cube_save(objects)
+    return objects
 
 
 class Generic(pyclient):
@@ -69,8 +94,8 @@ class Generic(pyclient):
         raise NotImplementedError(
             'The activity_get method is not implemented in this cube.')
 
-    def activity_get_objects(self, oids, save=False):
-        self.logger.debug('Getting Objects - Activity History')
+    def activity_get_objects(self, oids):
+        logger.debug('Getting Objects - Activity History')
         docs = self.get_objects(force=oids)
         # dict, has format: oid: [(when, field, removed, added)]
         activities = self.activity_get(oids)
@@ -80,30 +105,9 @@ class Generic(pyclient):
             acts = activities.setdefault(_oid, [])
             obj = self._activity_import_doc(doc, acts)
             objects.extend(obj)
-        self.logger.debug('... activity get - done')
+        logger.debug('... activity get - done')
         objects = self.normalize(objects)
-        if save:
-            self.cube_save(objects)
         return objects
-
-    def _log_inconsistency(self, last_doc, last_val, field, removed, added,
-                           when, log_type):
-        incon = {'oid': last_doc['_oid'],
-                 'field': field,
-                 'removed': removed,
-                 'removed_type': str(type(removed)),
-                 'added': added,
-                 'added_type': str(type(added)),
-                 'last_val': last_val,
-                 'last_val_type': str(type(last_val)),
-                 'when': str(ts2dt(when))}
-        if log_type == 'json':
-            self.logger.error(json.dumps(incon, ensure_ascii=False))
-        else:
-            m = u'{oid} {field}: {removed}-> {added} has {last_val}; '
-            m += u'({removed_type}-> {added_type} has {last_val_type})'
-            m += u' ... on {when}'
-            self.logger.error(m.format(**incon))
 
     def _activity_import_doc(self, time_doc, activities):
         '''
@@ -166,7 +170,7 @@ class Generic(pyclient):
                     # we have only one version, that we did not change
                     return []
         except Exception as e:
-            self.logger.error('Error updating creation time; %s' % e)
+            logger.error('Error updating creation time; %s' % e)
         return batch_updates
 
     def _activity_backwards(self, val, removed, added):
@@ -185,7 +189,7 @@ class Generic(pyclient):
         return val, inconsistent
 
     def _build_rows(self, rows):
-        self.logger.debug('Building dict_rows from sql_rows(%i)' % len(rows))
+        logger.debug('Building dict_rows from sql_rows(%i)' % len(rows))
         _rows = {}
         for row in rows:
             _rows.setdefault(row['_oid'], []).append(row)
@@ -197,14 +201,14 @@ class Generic(pyclient):
         Normalize null values to be type(None).
         '''
         objects = []
-        self.logger.debug('Building objects from rows(%i)' % len(rows))
+        logger.debug('Building objects from rows(%i)' % len(rows))
         for col_rows in rows.itervalues():
             if len(col_rows) > 1:
                 obj = self._normalize_object(col_rows)
                 objects.append(obj)
             else:
                 objects.append(col_rows[0])
-        self.logger.debug('... done')
+        logger.debug('... done')
         return objects
 
     def _convert(self, value, field):
@@ -219,17 +223,17 @@ class Generic(pyclient):
             value = value
         return value
 
-    def _extract(self, id_delta, field_order, start):
+    def _extract(self, oids, field_order, start):
         objects = []
         retries = self.config.sql_retries
-        sql = self._gen_sql(id_delta, field_order)
+        sql = self._gen_sql(oids, field_order)
         while 1:
             try:
                 rows = self._fetchall(sql, field_order)
-                self.logger.info('Fetch OK')
+                logger.info('Fetch OK')
             except self.retry_on_error:
                 tb = traceback.format_exc()
-                self.logger.error('Fetch Failed: %s' % tb)
+                logger.error('Fetch Failed: %s' % tb)
                 del tb
                 if retries == 0:
                     raise
@@ -241,29 +245,8 @@ class Generic(pyclient):
                 # apply the start time to _start
                 objects = [self._obj_start(o, start) for o in objects]
                 break
+        objects = self.normalize(objects)
         return objects
-
-    def _extract_threaded(self, id_delta, field_order, start, delay=None):
-        batch_size = self.config.sql_batch_size
-        if delay is None:
-            delay = 0.2  # stagger the threaded calls a bit
-        with ThreadPoolExecutor(max_workers=self.config.max_workers) as ex:
-            futures = []
-            for batch in batch_gen(id_delta, batch_size):
-                f = ex.submit(self._extract, batch, field_order, start)
-                futures.append(f)
-                time.sleep(delay)
-        objs = []
-        for future in as_completed(futures):
-            try:
-                result = future.result()
-            except Exception as e:
-                tb = traceback.format_exc()
-                self.logger.error('Extract Error: %s\n%s' % (e, tb))
-                del tb
-            else:
-                objs.extend(result)
-        return objs
 
     def _extract_row_ids(self, rows):
         if rows:
@@ -297,8 +280,8 @@ class Generic(pyclient):
                     oids.extend(self.get_changed_oids(mtime))
         return sorted(set(oids))
 
-    def extract_full_history(self, force=None, last_update=None,
-                             parse_timestamp=None):
+    def get_full_history(self, force=None, last_update=None,
+                         parse_timestamp=None, save=False):
         '''
         Fields change depending on when you run activity_import,
         such as "last_updated" type fields which don't have activity
@@ -306,35 +289,42 @@ class Generic(pyclient):
         hash values, so we need to always remove all existing object
         states and import fresh
         '''
-        self.logger.debug('Extracting Objects - Full History')
-
-        max_workers = self.config.max_workers
-        sql_batch_size = self.config.sql_batch_size
+        logger.debug('Extracting Objects - Full History')
 
         oids = self._delta_force(force, last_update, parse_timestamp)
-        self.logger.debug("Updating %s objects" % len(oids))
+        logger.debug("Updating %s objects" % len(oids))
 
-        if max_workers > 1 and sql_batch_size > 1:
-            with ThreadPoolExecutor(max_workers=max_workers) as ex:
+        sql_batch_size = self.config.sql_batch_size
+        max_workers = self.config.max_workers
+        objects = []
+        if max_workers > 1:
+            with ProcessPoolExecutor(max_workers=max_workers) as ex:
                 futures = []
-                delay = 0.2  # stagger the threaded calls a bit
+                kwargs = self.config
+                kwargs.pop('cube', None)  # ends up in config; ignore it
                 for batch in batch_gen(oids, sql_batch_size):
-                    f = ex.submit(self.activity_get_objects, oids=batch,
-                                  save=True)
+                    f = ex.submit(get_full_history, cube=self._cube,
+                                  oids=batch, save=save, cube_name=self.name,
+                                  **kwargs)
                     futures.append(f)
-                    time.sleep(delay)
 
             for future in as_completed(futures):
                 try:
-                    future.result()
+                    objs = future.result()
                 except Exception as e:
                     tb = traceback.format_exc()
-                    self.logger.error(
+                    logger.error(
                         'Activity Import Error: %s\n%s' % (e, tb))
                     del tb
+                else:
+                    objects.extend(objs)
         else:
             for batch in batch_gen(oids, sql_batch_size):
-                self.activity_get_objects(oids=batch, save=True)
+                objs = self.activity_get_objects(oids=batch)
+                objects.extend(objs)
+                if save:
+                    self.cube_save(objects)
+        return objects
 
     def _fetchall(self, sql, field_order):
         rows = self.proxy.fetchall(sql)
@@ -364,12 +354,12 @@ class Generic(pyclient):
                 _row.append(column)
             rows[k] = _row
 
-        self.logger.debug('Preparing row data...')
+        logger.debug('Preparing row data...')
         k = len(rows)
         t0 = time.time()
         objects = [self._prep_object(row, field_order) for row in rows]
         t1 = time.time()
-        self.logger.debug('... Rows prepared %i docs (%i/sec)' % (
+        logger.debug('... Rows prepared %i docs (%i/sec)' % (
             k, float(k) / (t1 - t0)))
         return objects
 
@@ -384,7 +374,7 @@ class Generic(pyclient):
             mtime = self.get_last_field('_start')
         # convert timestamp to datetime object
         mtime = ts2dt(mtime)
-        self.logger.info("Last update mtime: %s" % mtime)
+        logger.info("Last update mtime: %s" % mtime)
 
         if mtime:
             if parse_timestamp is None:
@@ -418,7 +408,7 @@ class Generic(pyclient):
     def _gen_sql(self, id_delta, field_order):
         '''
         '''
-        self.logger.debug('Generating SQL...')
+        logger.debug('Generating SQL...')
         db = self.get_property('db')
         table = self.get_property('table')
         selects = self._get_sql_selects(field_order)
@@ -442,7 +432,7 @@ class Generic(pyclient):
 
         sql += self._sql_sort(table)
         sql = self._sql_distinct(sql)
-        self.logger.debug('... done')
+        logger.debug('... done')
         return sql
 
     def _get_id_delta_sql(self, table, id_delta):
@@ -531,7 +521,7 @@ class Generic(pyclient):
         return objects
 
     def get_objects(self, force=None, last_update=None, parse_timestamp=None,
-                    delay=None, **kwargs):
+                    save=False):
         '''
         Extract routine for SQL based cubes.
 
@@ -539,30 +529,51 @@ class Generic(pyclient):
             for querying for all objects (True) or only those passed in as list
         :param last_update: manual override for 'changed since date'
         :param parse_timestamp: flag to convert timestamp timezones in-line
-        :param delay: sleep time between queries (avoid DOSing!)
-        :param kwargs: accepted, but ignored
         '''
-        self.logger.debug('Fetching Objects - Current Values')
+        logger.debug('Fetching Objects - Current Values')
         objects = []
         start = utcnow()
 
+        # determine which oids will we query
         oids = self._delta_force(force, last_update, parse_timestamp)
 
-        # this is to set the 'index' of sql columns so we can extract
+        # set the 'index' of sql columns so we can extract
         # out the sql rows and know which column : field
         field_order = tuple(self.fields)
 
         max_workers = self.config.max_workers
+        batch_size = self.config.sql_batch_size
         if max_workers > 1:
-            objects.extend(self._extract_threaded(oids, field_order,
-                           start, delay))
+            with ProcessPoolExecutor(max_workers=max_workers) as ex:
+                futures = []
+                kwargs = self.config
+                kwargs.pop('cube', None)  # ends up in config; ignore it
+                for batch in batch_gen(oids, batch_size):
+                    f = ex.submit(get_objects, cube=self._cube, oids=batch,
+                                  field_order=field_order, start=start,
+                                  save=save, cube_name=self.name,
+                                  **kwargs)
+                    futures.append(f)
+            objects = []
+            for future in as_completed(futures):
+                try:
+                    objs = future.result()
+                except Exception as e:
+                    tb = traceback.format_exc()
+                    logger.error('Extract Error: %s\n%s' % (e, tb))
+                    del tb
+                else:
+                    objects.extend(objs)
         else:
             # respect the global batch size, even if sql batch
             # size is not set
-            for batch in batch_gen(oids, self.config.batch_size):
-                objects.extend(self._extract(batch, field_order, start))
-        objects = self.normalize(objects)
-        self.logger.debug('... current values objects get - done')
+            for batch in batch_gen(oids, batch_size):
+                objs = self._extract(oids=batch, field_order=field_order,
+                                     start=start)
+                objects.extend(objs)
+                if save:
+                    self.cube_save(objects)
+        logger.debug('... current values objects get - done')
         return objects
 
     def get_new_oids(self):
@@ -671,6 +682,25 @@ class Generic(pyclient):
                         _lj = i
                     left_joins.append(_lj)
         return ' '.join(left_joins)
+
+    def _log_inconsistency(self, last_doc, last_val, field, removed, added,
+                           when, log_type):
+        incon = {'oid': last_doc['_oid'],
+                 'field': field,
+                 'removed': removed,
+                 'removed_type': str(type(removed)),
+                 'added': added,
+                 'added_type': str(type(added)),
+                 'last_val': last_val,
+                 'last_val_type': str(type(last_val)),
+                 'when': str(ts2dt(when))}
+        if log_type == 'json':
+            logger.error(json.dumps(incon, ensure_ascii=False))
+        else:
+            m = u'{oid} {field}: {removed}-> {added} has {last_val}; '
+            m += u'({removed_type}-> {added_type} has {last_val_type})'
+            m += u' ... on {when}'
+            logger.error(m.format(**incon))
 
     def _normalize_object(self, rows):
         o = rows.pop(0)
