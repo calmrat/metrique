@@ -38,21 +38,15 @@ DEFAULT_ENCODING = 'latin-1'
 
 def get_full_history(cube, oids, save=True, cube_name=None, **kwargs):
     m = pyclient(cube=cube, name=cube_name, **kwargs)
-    objects = m.activity_get_objects(oids=oids)
-    if save:
-        m.cube_save(objects)
-    return objects
+    return m._activity_get_objects(oids=oids, save=save)
 
 
 def get_objects(cube, oids, field_order, start, save=True, cube_name=None,
                 **kwargs):
     start = start
     m = pyclient(cube=cube, name=cube_name, **kwargs)
-    objects = m._extract(oids=oids, field_order=field_order,
-                         start=start)
-    if save:
-        m.cube_save(objects)
-    return objects
+    return m._get_objects(oids=oids, field_order=field_order,
+                          start=start, save=save)
 
 
 class Generic(pyclient):
@@ -94,7 +88,7 @@ class Generic(pyclient):
         raise NotImplementedError(
             'The activity_get method is not implemented in this cube.')
 
-    def activity_get_objects(self, oids):
+    def _activity_get_objects(self, oids, save=False):
         logger.debug('Getting Objects - Activity History')
         docs = self.get_objects(force=oids)
         # dict, has format: oid: [(when, field, removed, added)]
@@ -107,7 +101,10 @@ class Generic(pyclient):
             objects.extend(obj)
         logger.debug('... activity get - done')
         objects = self.normalize(objects)
-        return objects
+        if save:
+            return self.cube_save(objects)
+        else:
+            return objects
 
     def _activity_import_doc(self, time_doc, activities):
         '''
@@ -223,11 +220,11 @@ class Generic(pyclient):
             value = value
         return value
 
-    def _extract(self, oids, field_order, start):
+    def _get_objects(self, oids, field_order, start, save=False):
         objects = []
         retries = self.config.sql_retries
         sql = self._gen_sql(oids, field_order)
-        while 1:
+        while retries >= 0:
             try:
                 rows = self._fetchall(sql, field_order)
                 logger.info('Fetch OK')
@@ -245,7 +242,11 @@ class Generic(pyclient):
                 # apply the start time to _start
                 objects = [self._obj_start(o, start) for o in objects]
                 break
-        return objects
+        objects = self.normalize(objects)
+        if save:
+            return self.cube_save(objects)
+        else:
+            return objects
 
     def _extract_row_ids(self, rows):
         if rows:
@@ -310,19 +311,16 @@ class Generic(pyclient):
             for future in as_completed(futures):
                 try:
                     objs = future.result()
+                    objects.extend(objs)
                 except Exception as e:
                     tb = traceback.format_exc()
                     logger.error(
                         'Activity Import Error: %s\n%s' % (e, tb))
                     del tb
-                else:
-                    objects.extend(objs)
         else:
             for batch in batch_gen(oids, sql_batch_size):
-                objs = self.activity_get_objects(oids=batch)
+                objs = self._activity_get_objects(oids=batch, save=save)
                 objects.extend(objs)
-                if save:
-                    self.cube_save(objects)
         return objects
 
     def _fetchall(self, sql, field_order):
@@ -546,7 +544,7 @@ class Generic(pyclient):
             with ProcessPoolExecutor(max_workers=max_workers) as ex:
                 futures = []
                 kwargs = self.config
-                kwargs.pop('cube', None)  # ends up in config; ignore it
+                kwargs.pop('cube', None)  # if in self.config, ignore it
                 for batch in batch_gen(oids, batch_size):
                     f = ex.submit(get_objects, cube=self._cube, oids=batch,
                                   field_order=field_order, start=start,
@@ -557,23 +555,19 @@ class Generic(pyclient):
             for future in as_completed(futures):
                 try:
                     objs = future.result()
+                    objects.extend(objs)
                 except Exception as e:
                     tb = traceback.format_exc()
                     logger.error('Extract Error: %s\n%s' % (e, tb))
                     del tb
-                else:
-                    objects.extend(objs)
         else:
             # respect the global batch size, even if sql batch
             # size is not set
             for batch in batch_gen(oids, batch_size):
-                objs = self._extract(oids=batch, field_order=field_order,
-                                     start=start)
+                objs = self._get_objects(oids=batch, field_order=field_order,
+                                         start=start, save=save)
                 objects.extend(objs)
-                if save:
-                    self.cube_save(objects)
         logger.debug('... current values objects get - done')
-        objects = self.normalize(objects)
         return objects
 
     def get_new_oids(self):

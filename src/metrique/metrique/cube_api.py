@@ -185,10 +185,6 @@ def _save_default(self, objects, start_time, owner, cube, update):
     return saved
 
 
-# FIXME: get rid of start_time? we add this by default during normalization
-# we don't want server to work unnecessarily hard on this... force
-# it to happen client side or metriqued will use the datetime of when
-# the request object was
 def save(self, objects=None, cube=None, owner=None, start_time=None,
          flush=True, update=False):
     '''
@@ -202,19 +198,18 @@ def save(self, objects=None, cube=None, owner=None, start_time=None,
                        per object, serverside
     :param flush: flush objects from memory after save
     :param update: rotate _end:None's before saving new objects
-    :returns None: results are saved in pyclient().result attribute
+    :returns result: _ids saved
     '''
     if not objects:
         logger.info("... No objects to save")
-        self.result = []
+        result = []
     else:
         logger.info("Saving %s objects" % len(objects))
-        saved = _save_default(self, objects, start_time, owner, cube, update)
-        logger.info("... Saved %s NEW docs" % len(saved))
-        self.result = saved
+        result = _save_default(self, objects, start_time, owner, cube, update)
+        logger.info("... Saved %s NEW docs" % len(result))
         if flush:
             self.flush()
-    return
+    return result
 
 
 def rename(self, new_name, cube=None, owner=None):
