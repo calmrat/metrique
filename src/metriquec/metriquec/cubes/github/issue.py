@@ -115,6 +115,7 @@ class Issue(pyclient):
             }
             objects.append(obj)
             break
+        objects = self.normalize(objects)
         return objects
 
     @property

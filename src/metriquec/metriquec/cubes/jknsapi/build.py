@@ -115,6 +115,7 @@ class Build(pyclient):
             objects = self._extract_async(uri, jobs, force)
         else:
             objects = self._extract(uri, jobs, force)
+        objects = self.normalize(objects)
         return objects
 
     def _extract(self, uri, jobs):

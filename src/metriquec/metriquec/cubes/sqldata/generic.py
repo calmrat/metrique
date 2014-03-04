@@ -245,7 +245,6 @@ class Generic(pyclient):
                 # apply the start time to _start
                 objects = [self._obj_start(o, start) for o in objects]
                 break
-        objects = self.normalize(objects)
         return objects
 
     def _extract_row_ids(self, rows):
@@ -574,6 +573,7 @@ class Generic(pyclient):
                 if save:
                     self.cube_save(objects)
         logger.debug('... current values objects get - done')
+        objects = self.normalize(objects)
         return objects
 
     def get_new_oids(self):

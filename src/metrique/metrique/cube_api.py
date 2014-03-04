@@ -167,17 +167,19 @@ def drop_index(self, index_or_name, cube=None, owner=None):
 
 
 ######## SAVE/REMOVE ########
-def _save_default(self, objects, start_time, owner, cube):
+def _save_default(self, objects, start_time, owner, cube, update):
     batch_size = self.config.batch_size
     cmd = self.get_cmd(owner, cube, 'save')
     olen = len(objects) if objects else None
     if (batch_size <= 0) or (olen <= batch_size):
-        saved = self._post(cmd, objects=objects, start_time=start_time)
+        saved = self._post(cmd, objects=objects, start_time=start_time,
+                           update=update)
     else:
         saved = []
         k = 0
         for batch in batch_gen(objects, batch_size):
-            _saved = self._post(cmd, objects=batch, start_time=start_time)
+            _saved = self._post(cmd, objects=batch, start_time=start_time,
+                                update=update)
             saved.extend(_saved)
             k += len(batch)
     return saved
@@ -188,7 +190,7 @@ def _save_default(self, objects, start_time, owner, cube):
 # it to happen client side or metriqued will use the datetime of when
 # the request object was
 def save(self, objects=None, cube=None, owner=None, start_time=None,
-         flush=True):
+         flush=True, update=False):
     '''
     Save a list of objects the given metrique.cube.
     Returns back a list of object ids (_id|_oid) saved.
@@ -199,6 +201,7 @@ def save(self, objects=None, cube=None, owner=None, start_time=None,
     :param start_time: ISO format datetime to apply as _start
                        per object, serverside
     :param flush: flush objects from memory after save
+    :param update: rotate _end:None's before saving new objects
     :returns None: results are saved in pyclient().result attribute
     '''
     if not objects:
@@ -206,8 +209,7 @@ def save(self, objects=None, cube=None, owner=None, start_time=None,
         self.result = []
     else:
         logger.info("Saving %s objects" % len(objects))
-        # support only list of dicts
-        saved = _save_default(self, objects, start_time, owner, cube)
+        saved = _save_default(self, objects, start_time, owner, cube, update)
         logger.info("... Saved %s NEW docs" % len(saved))
         self.result = saved
         if flush:

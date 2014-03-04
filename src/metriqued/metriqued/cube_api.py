@@ -393,11 +393,12 @@ class SaveObjectsHdlr(MongoDBBackendHdlr):
     @authenticated
     def post(self, owner, cube):
         objects = self.get_argument('objects')
+        update = self.get_argument('update')
         result = self.save_objects(owner=owner, cube=cube,
-                                   objects=objects)
+                                   objects=objects, update=update)
         self.write(result)
 
-    def prepare_objects(self, _cube, objects):
+    def _prepare_objects(self, _cube, objects, update=False):
         '''
         Validate and normalize objects.
 
@@ -406,10 +407,11 @@ class SaveObjectsHdlr(MongoDBBackendHdlr):
         '''
         start = utcnow()
         _exclude_hash = ['_hash', '_id', '_start', '_end']
+        _end_types_ok = NoneType if update else (NoneType, float, int)
         for o in iter(objects):
             o = self._obj_end(o)
             _end = o.get('_end')
-            if not isinstance(_end, (NoneType, float, int)):
+            if not isinstance(_end, _end_types_ok):
                 self._raise(400, "_end must be float/int epoch or None")
 
             o = self._obj_start(o, start)
@@ -419,20 +421,73 @@ class SaveObjectsHdlr(MongoDBBackendHdlr):
 
             _oid = o.get('_oid')
             # give object a unique, constant (referencable) _id
-            if _end:
-                # if the object at the exact start/oid is later
-                # updated, it's possible to just save(upsert=True)
-                o['_id'] = ':'.join(map(str, (_oid, _start)))
-            else:
-                # if the object is 'current value' without _end,
-                # ...
-                o['_id'] = str(_oid)
+            o['_id'] = self._id_hash_gen(_oid, _start, _end)
 
             # _hash is of object contents, excluding metadata
             o = self._obj_hash(o, key='_hash', exclude=_exclude_hash)
         return objects
 
-    def save_objects(self, owner, cube, objects):
+    def _id_hash_gen(self, _oid, _start, _end):
+        if _end:
+            # if the object at the exact start/oid is later
+            # updated, it's possible to just save(upsert=True)
+            return ':'.join(map(str, (_oid, _start)))
+        else:
+            # if the object is 'current value' without _end,
+            # ...
+            return str(_oid)
+
+    @staticmethod
+    def _get_start(_id, objs):
+        for o in objs:
+            if o['_id'] == _id:
+                return copy(o['_start'])
+
+    def _update_objects(self, _cube, objects):
+        # update only works with objects where _end:None
+        objects = [o for o in objects if o['_end'] is None]
+        if not objects:
+            return
+
+        rotate_objects = []
+
+        # any case where _hash is same, skip
+        # otherwise, rotate obj with end:None to end:now and save
+        _hashes = [o['_hash'] for o in objects]
+        spec = {'_hash': {"$in": _hashes}, '_end': None}
+        dup_hashes, dup_ids = zip(
+            *[(o['_hash'], o['_id']) for o in _cube.find(spec,
+                                                         fields=['_id', '_hash'])])
+        dup_hashes = set(dup_hashes) if dup_hashes else set([])
+
+        if dup_hashes:
+            olen = len(objects)
+            objects = [o for o in objects if o['_hash'] not in dup_hashes]
+            diff = olen - len(objects)
+            logger.debug('Skipped %s duplicates' % diff)
+
+        if not objects:
+            return dup_ids
+
+        # get current obj where _end:None
+        _ids = [o['_id'] for o in objects]
+        _objs = _cube.find({'_id': {'$in': _ids}, '_end': None}) or []
+        k = _objs.count()
+        if k >= 1:
+            logger.debug('Attempting to rotate %s versions' % k)
+            for o in _objs:
+                # _end of existing obj where _end:None should get new's _start
+                _end = self._get_start(o['_id'], objects)
+                o['_id'] = self._id_hash_gen(o['_oid'], o['_start'], _end)
+                o['_end'] = _end
+                rotate_objects.append(o)
+            logger.debug(
+                'Inserting %s rotated versions' % len(rotate_objects))
+            if rotate_objects:
+                _cube.insert(rotate_objects)
+        return dup_ids
+
+    def save_objects(self, owner, cube, objects, update=False):
         '''
         Get a list of dictionary objects from client and insert
         or save them to the timeline.
@@ -450,11 +505,16 @@ class SaveObjectsHdlr(MongoDBBackendHdlr):
 
         _cube = self.timeline(owner, cube, admin=True)
 
-        olen = len(objects)
         logger.debug(
-            '[%s.%s] Recieved %s objects' % (owner, cube, olen))
+            '[%s.%s] Recieved %s objects' % (owner, cube, len(objects)))
 
-        objects = self.prepare_objects(_cube, objects)
+        objects = self._prepare_objects(_cube, objects, update)
+
+        if update:
+            # only save the objects we actually needed to update
+            # others are dups
+            dup_ids = self._update_objects(_cube, objects)
+            objects = [o for o in objects if o['_id'] not in dup_ids]
 
         # save each object; overwrite existing (same _oid + _start or _oid if
         # _end = None) or upsert

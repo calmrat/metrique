@@ -106,6 +106,7 @@ class Rpm(pyclient):
                 obj[self.fields[i]] = item
             obj['_oid'] = '%s__%s' % (host, obj['nvra'])
             objects.append(obj)
+        objects = self.normalize(objects)
         return objects
 
 
