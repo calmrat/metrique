@@ -117,7 +117,7 @@ def parse_pql_query(query):
         spec = pql_parser.parse(query)
     except Exception as e:
         raise SyntaxError("Invalid Query (%s)" % str(e))
-    logger.debug('mongo spec: %s' % query)
+    logger.debug('mongo spec: %s' % spec)
     return spec
 
 

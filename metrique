@@ -1054,7 +1054,7 @@ def deploy(args):
     + install dep
     + install metrique and friends
     '''
-    virtenv = getattr(args, 'virtenv', '')
+    virtenv = getattr(args, 'virtenv') or ''
 
     if virtenv:
         # we can't alrady be in a virtenv when running virtualenv.main()
