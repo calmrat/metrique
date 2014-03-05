@@ -448,13 +448,6 @@ numprocs=1
 priority=41
 startsecs=30
 autorestart=true
-
-[program:viztriqued]
-command=./viztriqued start --nofork
-directory=path/to/viztrique/git/repo
-process_name=viztriqued
-numprocs=1
-priority=100
 '''
 ###############################################################################
 
@@ -570,7 +563,6 @@ def terminate(pidfile, sig=signal.SIGTERM):
 
 def celeryd_terminate(sig=None, frame=None):
     terminate(CELERYD_PIDFILE)
-    sys.exit(2)
 
 
 def celeryd_loop(args):
@@ -603,7 +595,6 @@ def celeryd(args):
 
 def celerybeat_terminate(sig=None, frame=None):
     terminate(CELERYBEAT_PIDFILE)
-    sys.exit(2)
 
 
 def celerybeat_run(args):
@@ -630,7 +621,6 @@ def celerybeat(args):
 
 def supervisord_terminate(sig=None, frame=None):
     terminate(SUPERVISORD_PIDFILE)
-    sys.exit(2)
 
 
 def supervisord_run(args):
@@ -667,10 +657,10 @@ def _metriqued_firstboot(args):
     metriqued(args)
 
 
-def _metriqued_stop(args):
+def metriqued_terminate(args=None):
     from metriqueu.utils import get_pids
     running = get_pids(PID_DIR)
-    sig = args.signal or signal.SIGTERM
+    sig = getattr(args, 'signal', signal.SIGTERM)
     for pid in running:
         logger.info("Sending signal (%s) to (%s)" % (sig, pid))
         os.kill(pid, sig)
@@ -740,7 +730,7 @@ def metriqued(args):
     if cmd == 'start':
         _metriqued_start(args)
     elif cmd == 'stop':
-        _metriqued_stop(args)
+        metriqued_terminate()
     elif cmd == 'status':
         logger.info('RUNNING: %s' % ', '.join(map(str, get_pids(PID_DIR))))
     elif args.command == 'firstboot':
@@ -751,7 +741,6 @@ def metriqued(args):
 
 def nginx_terminate(sig=None, frame=None):
     terminate(NGINX_PIDFILE)
-    sys.exit(2)
 
 
 def nginx(args):
@@ -796,7 +785,6 @@ def mongodb_passwd(args):
 
 def mongodb_terminate(sig=None, frame=None):
     terminate(MONGODB_PIDFILE)
-    sys.exit(2)
 
 
 def mongodb(args):
@@ -936,9 +924,25 @@ def mongodb_backup(args):
 
 
 def clean(args):
-    # http://stackoverflow.com/a/785534/1289080
-    os.system('find . -name "*.pyc" -exec rm -f {} \;')
+    supervisord_terminate()
+    celerybeat_terminate()
+    celeryd_terminate()
+    nginx_terminate()
+    metriqued_terminate()
+    mongodb_terminate()
 
+    dest = pjoin(TRASH_DIR, 'metrique-%s' % NOW)
+    for f in [ETC_DIR, PID_DIR, LOG_DIR, CACHE_DIR,
+              TEMP_DIR, CELERY_DIR, MONGODB_DIR]:
+        _dest = os.path.join(dest, os.path.basename(f))
+        try:
+            shutil.move(f, dest)
+        except OSError as e:
+            logger.error(e)
+            continue
+    remove(SYS_FIRSTBOOT_PATH)
+    remove(MONGODB_FIRSTBOOT_PATH)
+    remove(METRIQUED_FIRSTBOOT_PATH)
 
 def bump_version(regex, line, i, reset, **kwargs):
     # if we're bumping version, reset release to 1
@@ -1050,7 +1054,7 @@ def deploy(args):
     + install dep
     + install metrique and friends
     '''
-    virtenv = getattr(args, 'virtenv') or ''
+    virtenv = getattr(args, 'virtenv', '')
 
     if virtenv:
         # we can't alrady be in a virtenv when running virtualenv.main()
@@ -1336,6 +1340,7 @@ def main():
 
     # Clean-up routines
     _clean = _sub.add_parser('clean')
+    _clean.add_argument('-t', '--trash', action='store_true')
     _clean.set_defaults(func=clean)
 
     # Clean-up routines

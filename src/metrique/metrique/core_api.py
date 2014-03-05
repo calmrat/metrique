@@ -628,7 +628,7 @@ class HTTPClient(BaseClient):
         :param kwargs: args to pass to `get_objects`
         '''
         objs = self.get_objects(*args, **kwargs)
-        self.cube_save(objs)
+        return self.cube_save(objs)
 
     def get_cmd(self, owner, cube, api_name=None):
         '''Helper method for building api urls, specifically
