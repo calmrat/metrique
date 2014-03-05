@@ -273,12 +273,10 @@ class BaseClient(object):
             objects = []
         elif isinstance(objects, pd.DataFrame):
             objects = objects.T.to_dict().values()
-        elif isinstance(objects, BaseClient):
-            objects = objects.objects
-        # model check
-        if not isinstance(objects, (BaseClient, list, tuple)):
-            _t = type(objects)
-            raise TypeError("objects container must be a list; got %s" % _t)
+        elif isinstance(objects, tuple):
+            objects = list(objects)
+        else:
+            assert isinstance(objects, list)
         if objects:
             if not all([type(o) is dict for o in objects]):
                 raise TypeError("object values must be dict")

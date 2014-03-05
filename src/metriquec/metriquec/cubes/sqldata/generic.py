@@ -72,6 +72,8 @@ class Generic(pyclient):
             self.config['sql_port'] = sql_port
         self.retry_on_error = None
 
+        self._setup_inconsistency_log()
+
     def activity_get(self, ids=None):
         '''
         Returns a dictionary of `id: [(when, field, removed, added)]`
@@ -307,16 +309,15 @@ class Generic(pyclient):
                                   oids=batch, save=save, cube_name=self.name,
                                   **kwargs)
                     futures.append(f)
-
-            for future in as_completed(futures):
-                try:
-                    objs = future.result()
-                    objects.extend(objs)
-                except Exception as e:
-                    tb = traceback.format_exc()
-                    logger.error(
-                        'Activity Import Error: %s\n%s' % (e, tb))
-                    del tb
+                for future in as_completed(futures):
+                    try:
+                        objs = future.result()
+                        objects.extend(objs)
+                    except Exception as e:
+                        tb = traceback.format_exc()
+                        logger.error(
+                            'Activity Import Error: %s\n%s' % (e, tb))
+                        del tb, e
         else:
             for batch in batch_gen(oids, sql_batch_size):
                 objs = self._activity_get_objects(oids=batch, save=save)
@@ -551,15 +552,15 @@ class Generic(pyclient):
                                   save=save, cube_name=self.name,
                                   **kwargs)
                     futures.append(f)
-            objects = []
-            for future in as_completed(futures):
-                try:
-                    objs = future.result()
-                    objects.extend(objs)
-                except Exception as e:
-                    tb = traceback.format_exc()
-                    logger.error('Extract Error: %s\n%s' % (e, tb))
-                    del tb
+                objects = []
+                for future in as_completed(futures):
+                    try:
+                        objs = future.result()
+                        objects.extend(objs)
+                    except Exception as e:
+                        tb = traceback.format_exc()
+                        logger.error('Extract Error: %s\n%s' % (e, tb))
+                        del tb, e
         else:
             # respect the global batch size, even if sql batch
             # size is not set
@@ -689,12 +690,12 @@ class Generic(pyclient):
                  'last_val_type': str(type(last_val)),
                  'when': str(ts2dt(when))}
         if log_type == 'json':
-            logger.error(json.dumps(incon, ensure_ascii=False))
+            self.log_inconsistency(json.dumps(incon, ensure_ascii=False))
         else:
             m = u'{oid} {field}: {removed}-> {added} has {last_val}; '
             m += u'({removed_type}-> {added_type} has {last_val_type})'
             m += u' ... on {when}'
-            logger.error(m.format(**incon))
+            self.log_inconsistency(m.format(**incon))
 
     def _normalize_object(self, rows):
         o = rows.pop(0)
@@ -752,6 +753,21 @@ class Generic(pyclient):
                 # _oid field doesn't require normalization
                 if field != '_oid':
                     yield field, tokens
+
+    def _setup_inconsistency_log(self):
+        _logfile = self.config.logfile.split('.log')[0]
+        basename = _logfile + '.inconsistencies'
+        logfile = basename + '.log'
+
+        logger_name = 'incon'
+        logger = logging.getLogger(logger_name)
+        hdlr = logging.FileHandler(logfile)
+        log_format = logging.Formatter("%(message)s")
+        hdlr.setFormatter(log_format)
+        logger.addHandler(hdlr)
+        logger.setLevel(logging.ERROR)
+        logger.propagate = 0
+        self.log_inconsistency = logger.error
 
     def sql_get_oids(self):
         '''
