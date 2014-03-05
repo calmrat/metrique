@@ -49,8 +49,7 @@ def test_api():
 
         assert _cube.cube_register()
 
-        _cube.extract()
-        result = _cube.result
+        result = _cube.extract()
         assert result is not None
 
         # we should get back some results
