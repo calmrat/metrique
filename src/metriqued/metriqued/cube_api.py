@@ -341,7 +341,7 @@ class RegisterHdlr(MongoDBBackendHdlr):
         # run core index
         _cube = self.timeline(owner, cube, admin=True)
         # ensure basic indices:
-        _cube.ensure_index('_hash')
+        _cube.ensure_index([('_hash', 1), ('_end', 1)])
         _cube.ensure_index('_oid')
         _cube.ensure_index('_start')  # used in core_api.get_cube_last_start
         _cube.ensure_index('_end')  # default for non-historical queries
@@ -455,10 +455,15 @@ class SaveObjectsHdlr(MongoDBBackendHdlr):
         # otherwise, rotate obj with end:None to end:now and save
         _hashes = [o['_hash'] for o in objects]
         spec = {'_hash': {"$in": _hashes}, '_end': None}
-        dup_hashes, dup_ids = zip(
-            *[(o['_hash'], o['_id']) for o in _cube.find(spec,
-                                                         fields=['_id', '_hash'])])
-        dup_hashes = set(dup_hashes) if dup_hashes else set([])
+        try:
+            dup_hashes, dup_ids = zip(
+                *[(o['_hash'], o['_id']) for o in _cube.find(
+                    spec, fields=['_id', '_hash'])])
+        except ValueError:
+            dup_hashes, dup_ids = [], []
+        else:
+            dup_hashes = set(dup_hashes) if dup_hashes else set([])
+            dup_ids = set(dup_ids) if dup_ids else set([])
 
         if dup_hashes:
             olen = len(objects)

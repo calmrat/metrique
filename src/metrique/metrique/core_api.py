@@ -552,6 +552,9 @@ class HTTPClient(BaseClient):
                 logger.info("Autoregistering %s" % self.name)
                 self.cube_register()
 
+    def keys(self, samplesize=1):
+        return self.cube_sample_fields(sample_size=samplesize)
+
 ######################### pyclient base API #######################
     @property
     def cube_id(self):
@@ -620,15 +623,14 @@ class HTTPClient(BaseClient):
         '''
         raise NotImplementedError
 
-    def extract(self, *args, **kwargs):
+    def extract(self, update=False, *args, **kwargs):
         '''Wrapper of get_objects -> cube_save. Generate all objects
         then save/persist them to external metriqued host
 
         :param args: args to pass to `get_objects`
         :param kwargs: args to pass to `get_objects`
         '''
-        objs = self.get_objects(*args, **kwargs)
-        return self.cube_save(objs)
+        return self.get_objects(save=True, *args, **kwargs)
 
     def get_cmd(self, owner, cube, api_name=None):
         '''Helper method for building api urls, specifically
