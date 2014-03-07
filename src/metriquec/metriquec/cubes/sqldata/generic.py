@@ -263,7 +263,7 @@ class Generic(pyclient):
             force = self.get_property('force', default=False)
 
         oids = []
-        if isinstance(force, (list, tuple)):
+        if isinstance(force, (list, tuple, set)):
             oids = force
         elif force is True:
             # get a list of all known object ids
