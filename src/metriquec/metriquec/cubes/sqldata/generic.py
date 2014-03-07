@@ -316,7 +316,8 @@ class Generic(pyclient):
                     except Exception as e:
                         tb = traceback.format_exc()
                         logger.error(
-                            'Activity Import Error: %s\n%s' % (e, tb))
+                            'Activity Import Error: %s\n%s\n%s' % (
+                                e, tb, batch))
                         del tb, e
         else:
             for batch in batch_gen(oids, sql_batch_size):
