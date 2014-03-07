@@ -393,12 +393,12 @@ class SaveObjectsHdlr(MongoDBBackendHdlr):
     @authenticated
     def post(self, owner, cube):
         objects = self.get_argument('objects')
-        update = self.get_argument('update')
+        autosnap = self.get_argument('autosnap')
         result = self.save_objects(owner=owner, cube=cube,
-                                   objects=objects, update=update)
+                                   objects=objects, autosnap=autosnap)
         self.write(result)
 
-    def _prepare_objects(self, _cube, objects, update=False):
+    def _prepare_objects(self, _cube, objects, autosnap=True):
         '''
         Validate and normalize objects.
 
@@ -407,7 +407,7 @@ class SaveObjectsHdlr(MongoDBBackendHdlr):
         '''
         start = utcnow()
         _exclude_hash = ['_hash', '_id', '_start', '_end']
-        _end_types_ok = NoneType if update else (NoneType, float, int)
+        _end_types_ok = NoneType if autosnap else (NoneType, float, int)
         for o in iter(objects):
             o = self._obj_end(o)
             _end = o.get('_end')
@@ -443,7 +443,7 @@ class SaveObjectsHdlr(MongoDBBackendHdlr):
             if o['_id'] == _id:
                 return copy(o['_start'])
 
-    def _update_objects(self, _cube, objects):
+    def _snap_objects(self, _cube, objects):
         # update only works with objects where _end:None
         objects = [o for o in objects if o['_end'] is None]
         if not objects:
@@ -492,7 +492,7 @@ class SaveObjectsHdlr(MongoDBBackendHdlr):
                 _cube.insert(rotate_objects)
         return dup_ids
 
-    def save_objects(self, owner, cube, objects, update=False):
+    def save_objects(self, owner, cube, objects, autosnap=True):
         '''
         Get a list of dictionary objects from client and insert
         or save them to the timeline.
@@ -513,12 +513,12 @@ class SaveObjectsHdlr(MongoDBBackendHdlr):
         logger.debug(
             '[%s.%s] Recieved %s objects' % (owner, cube, len(objects)))
 
-        objects = self._prepare_objects(_cube, objects, update)
+        objects = self._prepare_objects(_cube, objects, autosnap)
 
-        if update:
+        if autosnap:
             # only save the objects we actually needed to update
             # others are dups
-            dup_ids = self._update_objects(_cube, objects)
+            dup_ids = self._snap_objects(_cube, objects)
             objects = [o for o in objects if o['_id'] not in dup_ids]
 
         # save each object; overwrite existing (same _oid + _start or _oid if

@@ -167,26 +167,26 @@ def drop_index(self, index_or_name, cube=None, owner=None):
 
 
 ######## SAVE/REMOVE ########
-def _save_default(self, objects, start_time, owner, cube, update):
+def _save_default(self, objects, start_time, owner, cube, autosnap):
     batch_size = self.config.batch_size
     cmd = self.get_cmd(owner, cube, 'save')
     olen = len(objects) if objects else None
     if (batch_size <= 0) or (olen <= batch_size):
         saved = self._post(cmd, objects=objects, start_time=start_time,
-                           update=update)
+                           autosnap=autosnap)
     else:
         saved = []
         k = 0
         for batch in batch_gen(objects, batch_size):
             _saved = self._post(cmd, objects=batch, start_time=start_time,
-                                update=update)
+                                autosnap=autosnap)
             saved.extend(_saved)
             k += len(batch)
     return saved
 
 
 def save(self, objects=None, cube=None, owner=None, start_time=None,
-         flush=True, update=False):
+         flush=True, autosnap=True):
     '''
     Save a list of objects the given metrique.cube.
     Returns back a list of object ids (_id|_oid) saved.
@@ -197,7 +197,7 @@ def save(self, objects=None, cube=None, owner=None, start_time=None,
     :param start_time: ISO format datetime to apply as _start
                        per object, serverside
     :param flush: flush objects from memory after save
-    :param update: rotate _end:None's before saving new objects
+    :param autosnap: rotate _end:None's before saving new objects
     :returns result: _ids saved
     '''
     if not objects:
@@ -205,7 +205,8 @@ def save(self, objects=None, cube=None, owner=None, start_time=None,
         result = []
     else:
         logger.info("Saving %s objects" % len(objects))
-        result = _save_default(self, objects, start_time, owner, cube, update)
+        result = _save_default(self, objects, start_time, owner, cube,
+                               autosnap)
         logger.info("... Saved %s NEW docs" % len(result))
         if flush:
             self.flush()
