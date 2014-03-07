@@ -635,6 +635,8 @@ def supervisord(args):
         terminate(SUPERVISORD_PIDFILE)
     elif args.command == "clean":
         remove(SUPERVISORD_PIDFILE)
+    elif args.command == "reload":
+        terminate(SUPERVISORD_PIDFILE, signal.SIGHUP)
     else:
         raise ValueError("unknown command %s" % args.command)
 
@@ -1434,7 +1436,8 @@ def main():
 
     # supervisord server
     _supervisord = _sub.add_parser('supervisord')
-    _supervisord.add_argument('command', choices=['start', 'stop', 'clean'])
+    _supervisord.add_argument('command', choices=['start', 'stop', 
+                                                  'clean', 'reload'])
     _supervisord.set_defaults(func=supervisord)
 
     # SSL creation
