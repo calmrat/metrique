@@ -36,7 +36,8 @@ class Rows(pyclient):
     """
     name = 'csvdata_rows'
 
-    def get_objects(self, uri, _oid=None, _start=None, **kwargs):
+    def get_objects(self, uri, _oid=None, _start=None, save=False,
+                    autosnap=True, **kwargs):
         '''
         Load and transform csv data into a list of dictionaries.
 
