@@ -36,17 +36,18 @@ logger = logging.getLogger(__name__)
 DEFAULT_ENCODING = 'latin-1'
 
 
-def get_full_history(cube, oids, save=True, cube_name=None, **kwargs):
+def get_full_history(cube, oids, save=True, cube_name=None, 
+                     autosnap=False, **kwargs):
     m = pyclient(cube=cube, name=cube_name, **kwargs)
-    return m._activity_get_objects(oids=oids, save=save)
+    return m._activity_get_objects(oids=oids, save=save, autosnap=autosnap)
 
 
 def get_objects(cube, oids, field_order, start, save=True, cube_name=None,
-                **kwargs):
+                autosnap=True, **kwargs):
     start = start
     m = pyclient(cube=cube, name=cube_name, **kwargs)
     return m._get_objects(oids=oids, field_order=field_order,
-                          start=start, save=save)
+                          start=start, save=save, autosnap=autosnap)
 
 
 class Generic(pyclient):
@@ -90,7 +91,7 @@ class Generic(pyclient):
         raise NotImplementedError(
             'The activity_get method is not implemented in this cube.')
 
-    def _activity_get_objects(self, oids, save=False):
+    def _activity_get_objects(self, oids, save=False, autosnap=False):
         logger.debug('Getting Objects - Activity History')
         docs = self.get_objects(force=oids)
         # dict, has format: oid: [(when, field, removed, added)]
@@ -104,7 +105,7 @@ class Generic(pyclient):
         logger.debug('... activity get - done')
         objects = self.normalize(objects)
         if save:
-            return self.cube_save(objects)
+            return self.cube_save(objects, autosnap=autosnap)
         else:
             return objects
 
@@ -222,7 +223,8 @@ class Generic(pyclient):
             value = value
         return value
 
-    def _get_objects(self, oids, field_order, start, save=False):
+    def _get_objects(self, oids, field_order, start, save=False, 
+                     autosnap=True):
         objects = []
         retries = self.config.sql_retries
         sql = self._gen_sql(oids, field_order)
@@ -246,7 +248,7 @@ class Generic(pyclient):
                 break
         objects = self.normalize(objects)
         if save:
-            return self.cube_save(objects)
+            return self.cube_save(objects, autosnap=autosnap)
         else:
             return objects
 
@@ -283,7 +285,7 @@ class Generic(pyclient):
         return sorted(set(oids))
 
     def get_full_history(self, force=None, last_update=None,
-                         parse_timestamp=None, save=False):
+                         parse_timestamp=None, save=False, autosnap=False):
         '''
         Fields change depending on when you run activity_import,
         such as "last_updated" type fields which don't have activity
@@ -307,7 +309,7 @@ class Generic(pyclient):
                 for batch in batch_gen(oids, sql_batch_size):
                     f = ex.submit(get_full_history, cube=self._cube,
                                   oids=batch, save=save, cube_name=self.name,
-                                  **kwargs)
+                                  autosnap=autosnap, **kwargs)
                     futures.append(f)
                 for future in as_completed(futures):
                     try:
@@ -321,7 +323,8 @@ class Generic(pyclient):
                         del tb, e
         else:
             for batch in batch_gen(oids, sql_batch_size):
-                objs = self._activity_get_objects(oids=batch, save=save)
+                objs = self._activity_get_objects(oids=batch, save=save,
+                                                  autosnap=autosnap)
                 objects.extend(objs)
         return objects
 
@@ -520,7 +523,7 @@ class Generic(pyclient):
         return objects
 
     def get_objects(self, force=None, last_update=None, parse_timestamp=None,
-                    save=False):
+                    save=False, autosnap=True):
         '''
         Extract routine for SQL based cubes.
 
@@ -551,7 +554,7 @@ class Generic(pyclient):
                     f = ex.submit(get_objects, cube=self._cube, oids=batch,
                                   field_order=field_order, start=start,
                                   save=save, cube_name=self.name,
-                                  **kwargs)
+                                  autosnap=autosnap, **kwargs)
                     futures.append(f)
                 objects = []
                 for future in as_completed(futures):
@@ -567,7 +570,8 @@ class Generic(pyclient):
             # size is not set
             for batch in batch_gen(oids, batch_size):
                 objs = self._get_objects(oids=batch, field_order=field_order,
-                                         start=start, save=save)
+                                         start=start, save=save, 
+                                         autosnap=autosnap)
                 objects.extend(objs)
         logger.debug('... current values objects get - done')
         return objects
