@@ -616,21 +616,27 @@ class HTTPClient(BaseClient):
         ' requests GET; using current session '
         return self._run(self.session.get, *args, **kwargs)
 
-    def get_objects():
+    def get_objects(self, objects=None, save=False):
         '''Main API method for sub-classed cubes to override for the
         generation of the objects which are to (potentially) be added
         to the cube (assuming no duplicates)
-        '''
-        raise NotImplementedError
 
-    def extract(self, update=False, *args, **kwargs):
+        Basic functionality is to normalize and potentially save objects
+        '''
+        objects = objects or []
+        objects = self.normalize(objects)
+        if save:
+            self.cube_save(objects)
+        return objects
+
+    def extract(self, update=False, save=True, *args, **kwargs):
         '''Wrapper of get_objects -> cube_save. Generate all objects
         then save/persist them to external metriqued host
 
         :param args: args to pass to `get_objects`
         :param kwargs: args to pass to `get_objects`
         '''
-        return self.get_objects(save=True, *args, **kwargs)
+        return self.get_objects(save=save, *args, **kwargs)
 
     def get_cmd(self, owner, cube, api_name=None):
         '''Helper method for building api urls, specifically
