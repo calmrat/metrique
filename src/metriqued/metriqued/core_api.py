@@ -518,14 +518,17 @@ class MetriqueHdlr(RequestHandler):
         :param owner: username of cube owner
         :param cube: cube name
         '''
+        self.cube_exists(owner, cube, raise_if_not=True)
         ok = self.can_admin(owner, cube)
         return self._requires(ok)
 
     def requires_read(self, owner, cube):
+        self.cube_exists(owner, cube, raise_if_not=True)
         ok = bool(self.can_admin(owner, cube) or self.can_read(owner, cube))
         return self._requires(ok)
 
     def requires_write(self, owner, cube):
+        self.cube_exists(owner, cube, raise_if_not=True)
         ok = bool(self.can_admin(owner, cube) or self.can_write(owner, cube))
         return self._requires(ok)
 

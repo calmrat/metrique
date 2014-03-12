@@ -207,7 +207,6 @@ def save(self, objects=None, cube=None, owner=None, start_time=None,
         logger.info("Saving %s objects" % len(objects))
         result = _save_default(self, objects, start_time, owner, cube,
                                autosnap)
-        logger.info("... Saved %s NEW docs" % len(result))
         if flush:
             self.flush()
     return result

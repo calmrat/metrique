@@ -616,7 +616,7 @@ class HTTPClient(BaseClient):
         ' requests GET; using current session '
         return self._run(self.session.get, *args, **kwargs)
 
-    def get_objects(self, objects=None, save=False):
+    def get_objects(self, objects=None, save=False, autosnap=True):
         '''Main API method for sub-classed cubes to override for the
         generation of the objects which are to (potentially) be added
         to the cube (assuming no duplicates)
@@ -626,7 +626,7 @@ class HTTPClient(BaseClient):
         objects = objects or []
         objects = self.normalize(objects)
         if save:
-            self.cube_save(objects)
+            self.cube_save(objects, autosnap=autosnap)
         return objects
 
     def extract(self, update=False, save=True, *args, **kwargs):
@@ -635,6 +635,8 @@ class HTTPClient(BaseClient):
 
         :param args: args to pass to `get_objects`
         :param kwargs: args to pass to `get_objects`
+
+        This method is obsolete; use get_objects() instead.
         '''
         return self.get_objects(save=save, *args, **kwargs)
 

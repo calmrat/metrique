@@ -78,7 +78,8 @@ class Rows(pyclient):
             [o.update({'_oid': k.next()}) for o in objects]
         else:
             objects = self.set_column(objects, '_oid', _oid)
-        objects = self.normalize(objects)
+        objects = super(Rows, self).get_objects(objects, save=save,
+                                                autosnap=autosnap)
         return objects
 
     def save_uri(self, uri):
