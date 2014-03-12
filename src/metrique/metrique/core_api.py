@@ -528,7 +528,8 @@ class HTTPClient(BaseClient):
     regtest_remove = regression_test.regtest_remove
     regtest_list = regression_test.regtest_list
 
-    def __init__(self, owner=None, login=None, cube_register=None, **kwargs):
+    def __init__(self, owner=None, login=None, cube_autoregister=None,
+                 **kwargs):
         super(HTTPClient, self).__init__(**kwargs)
         self.owner = owner or self.config.username
         # load a new requests session; for the cookies.
@@ -538,11 +539,10 @@ class HTTPClient(BaseClient):
         # and in load_session, first run 'logout' etc
         self.logged_in = False
 
-        cube_autoregister = cube_register or self.config.cube_autoregister
+        cube_autoregister = cube_autoregister or self.config.cube_autoregister
 
-        if login is None:
-            # login is needed if cube_autoregister is true
-            login = self.config.auto_login or cube_autoregister
+        # login is needed if cube_autoregister is true
+        login = login or cube_autoregister or self.config.auto_login
 
         if login:
             self.user_login(self.config.username, self.config.password)

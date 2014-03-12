@@ -315,7 +315,7 @@ class RegisterHdlr(MongoDBBackendHdlr):
         # FIXME: move to remaining = self.check_user_cube_quota(...)
         quota, own = self.get_user_profile(owner, keys=['cube_quota',
                                                         'own'])
-        if quota is None:
+        if quota is None or self.is_superuser():
             remaining = True
         else:
             own = len(own) if own else 0
