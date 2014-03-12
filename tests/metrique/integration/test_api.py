@@ -28,12 +28,12 @@ config = dict(username=username,
               debug=True)
 
 
-@testutils.runner
-def test_admin():
-    m = pyclient(**config)
-    m.user_remove(username, quiet=True)  # to be sure it doesn't exist already
-    assert m.user_register(username, password)
-    m.user_remove(username, quiet=True)  # to be sure it doesn't exist already
+#@testutils.runner
+#def test_admin():
+#    m = pyclient(**config)
+#    m.user_remove(username, quiet=True)  # to be sure it doesn't exist already
+#    assert m.user_register(username, password)
+#    m.user_remove(username, quiet=True)  # to be sure it doesn't exist already
 
 
 @testutils.runner
@@ -51,6 +51,7 @@ def test_api():
 
         result = _cube.extract()
         assert result is not None
+        assert len(result) > 0
 
         # we should get back some results
         df = _cube.find(fields='~', date='~')
@@ -97,34 +98,34 @@ def test_api():
     assert _cube.user_remove()
 
 
-@testutils.runner
-def test_user_api():
-    fingerprint = '894EE1CEEA61DC3D7D20327C4200AD1F2F22F46C'
-
-    m = pyclient(name='test_user',
-                 gnupg_dir=GNUPG_DIR,
-                 gnupg_fingerprint=fingerprint,
-                 **config)
-
-    assert m.config.gnupg_fingerprint == fingerprint
-
-    assert m.user_register(username, password)
-    # should except if trying to register again
-    try:
-        m.user_register(username, password)
-    except:
-        pass
-
-    aboutme = m.aboutme()
-    assert aboutme is not None
-
-    assert m.config.gnupg_pubkey is not None
-    pubkey = m.config.gnupg_pubkey
-    gnupg = {'pubkey': pubkey, 'fingerprint': fingerprint}
-    result = m.user_update_profile(gnupg=gnupg)
-    assert result['previous'] == aboutme
-    assert 'gnupg' in result['now']
-    assert result['now']['gnupg']['fingerprint'] == fingerprint
-    assert result['now']['gnupg']['pubkey'] == pubkey
-
-    assert m.user_remove()
+#@testutils.runner
+#def test_user_api():
+#    fingerprint = '894EE1CEEA61DC3D7D20327C4200AD1F2F22F46C'
+#
+#    m = pyclient(name='test_user',
+#                 gnupg_dir=GNUPG_DIR,
+#                 gnupg_fingerprint=fingerprint,
+#                 **config)
+#
+#    assert m.config.gnupg_fingerprint == fingerprint
+#
+#    assert m.user_register(username, password)
+#    # should except if trying to register again
+#    try:
+#        m.user_register(username, password)
+#    except:
+#        pass
+#
+#    aboutme = m.aboutme()
+#    assert aboutme is not None
+#
+#    assert m.config.gnupg_pubkey is not None
+#    pubkey = m.config.gnupg_pubkey
+#    gnupg = {'pubkey': pubkey, 'fingerprint': fingerprint}
+#    result = m.user_update_profile(gnupg=gnupg)
+#    assert result['previous'] == aboutme
+#    assert 'gnupg' in result['now']
+#    assert result['now']['gnupg']['fingerprint'] == fingerprint
+#    assert result['now']['gnupg']['pubkey'] == pubkey
+#
+#    assert m.user_remove()

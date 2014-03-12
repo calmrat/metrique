@@ -18,14 +18,18 @@ JSON_FILE = os.path.join(here, test_file_path)
 class Local(jsondata_objs):
     name = 'tests_jsondata'
 
-    def get_objects(self, uri=JSON_FILE, **kwargs):
+    def get_objects(self, uri=JSON_FILE, save=False, autosnap=False,
+                    **kwargs):
         content = self.load(uri)
         # the content needs to be re-grouped
-        objs = []
+        objects = []
         for k, v in content.items():
             v.update({'_oid': k})
-            objs.append(v)
-        return objs
+            objects.append(v)
+        objects = self.normalize(objects)
+        if save:
+            self.cube_save(objects, autosnap=autosnap)
+        return objects
 
 
 if __name__ == '__main__':

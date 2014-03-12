@@ -209,9 +209,11 @@ def test_utcnow():
 
     now_date = dt.utcnow().replace(microsecond=0)
     now_date_utc = dt.now(utc).replace(microsecond=0)
-    now_time = lambda x: int(calendar.timegm(x.utctimetuple()))
+    now_time = int(calendar.timegm(now_date.utctimetuple()))
 
     # FIXME: millisecond resolution?
-    assert utcnow(drop_micro=True) == now_time(now_date)
+    assert utcnow(drop_micro=True) == now_time
     assert utcnow(as_datetime=True, drop_micro=True) == now_date
-    assert utcnow(tz_aware=True, drop_micro=True) == now_date_utc
+    _ = utcnow(as_datetime=True, tz_aware=True, drop_micro=True)
+    assert _ == now_date_utc
+    assert utcnow(tz_aware=True, drop_micro=True) == now_time

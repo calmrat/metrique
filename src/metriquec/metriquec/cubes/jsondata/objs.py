@@ -30,7 +30,7 @@ class Objs(pyclient):
 
     def get_objects(self, uri, **kwargs):
         objects = self.load(uri)
-        objects = self.normalize(objects)
+        objects = super(Objs, self).get_objects(objects, **kwargs)
         return objects
 
     def load(self, path, strict=False):

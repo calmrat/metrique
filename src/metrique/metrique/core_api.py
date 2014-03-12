@@ -629,7 +629,7 @@ class HTTPClient(BaseClient):
             self.cube_save(objects, autosnap=autosnap)
         return objects
 
-    def extract(self, update=False, save=True, *args, **kwargs):
+    def extract(self, autosnap=True, save=True, *args, **kwargs):
         '''Wrapper of get_objects -> cube_save. Generate all objects
         then save/persist them to external metriqued host
 
@@ -638,7 +638,7 @@ class HTTPClient(BaseClient):
 
         This method is obsolete; use get_objects() instead.
         '''
-        return self.get_objects(save=save, *args, **kwargs)
+        return self.get_objects(save=save, autosnap=autosnap, *args, **kwargs)
 
     def get_cmd(self, owner, cube, api_name=None):
         '''Helper method for building api urls, specifically
