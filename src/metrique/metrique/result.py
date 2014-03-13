@@ -200,10 +200,14 @@ class Result(DataFrame):
 
         freq = dict(daily='D', weekly='W', monthly='M', quarterly='3M',
                     yearly='12M')
-        offset = dict(daily=off.Day(), weekly=off.Week(),
+        offset = dict(daily=off.Day(n=0), weekly=off.Week(),
                       monthly=off.MonthEnd(), quarterly=off.QuarterEnd(),
                       yearly=off.YearEnd())
-        ret = list(pd.date_range(start + offset[scale], end, freq=freq[scale]))
+        # for some reason, weekly date range gives one week less:
+        end_ = end + off.Week() if scale == 'weekly' else end
+        ret = list(pd.date_range(start + offset[scale], end_,
+                                 freq=freq[scale]))
+        ret = [dt for dt in ret if dt <= end]
         ret = [start] + ret if ret and start < ret[0] else ret
         ret = ret + [end] if ret and end > ret[-1] else ret
         ret = filter(lambda ts: self.check_in_bounds(ts), ret)
