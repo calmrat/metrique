@@ -190,9 +190,8 @@ class BaseClient(object):
         # cube class defined name
         self._cube = type(self).name
 
-        utc_str = utcnow(as_datetime=True).strftime('%a%b%d%H%m%S')
         # set name if passed in, but don't overwrite default if not
-        self.name = name or self.name or utc_str
+        self.name = name or self.name
 
         self.config.logdir = os.path.expanduser(self.config.logdir)
         if not os.path.exists(self.config.logdir):
