@@ -152,8 +152,9 @@ class DistinctHdlr(MongoDBBackendHdlr):
     def get(self, owner, cube):
         field = self.get_argument('field')
         query = self.get_argument('query')
+        date = self.get_argument('date')
         result = self.distinct(owner=owner, cube=cube, field=field,
-                               query=query)
+                               query=query, date=date)
         self.write(result)
 
     def distinct(self, owner, cube, field, query=None, date=None):

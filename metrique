@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 # Author: "Chris Ward <cward@redhat.com>
 
@@ -67,6 +67,9 @@ def activate(args=None):
     virtenv = getattr(args, 'virtenv') or active_virtualenv()
     if not virtenv:
         logger.info('Activate: No virtenv defined')
+        return  # nothing to activate
+    elif virtenv == active_virtualenv():
+        logger.info('Virtual Env already active')
         return  # nothing to activate
     else:
         deactivate()  # deactive active virtual first
@@ -1436,7 +1439,7 @@ def main():
 
     # supervisord server
     _supervisord = _sub.add_parser('supervisord')
-    _supervisord.add_argument('command', choices=['start', 'stop', 
+    _supervisord.add_argument('command', choices=['start', 'stop',
                                                   'clean', 'reload'])
     _supervisord.set_defaults(func=supervisord)
 

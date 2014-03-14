@@ -530,7 +530,8 @@ class HTTPClient(BaseClient):
 
     def __init__(self, owner=None, login=None, cube_autoregister=None,
                  **kwargs):
-        super(HTTPClient, self).__init__(**kwargs)
+        super(HTTPClient, self).__init__(cube_autoregister=cube_autoregister,
+                                         **kwargs)
         self.owner = owner or self.config.username
         # load a new requests session; for the cookies.
         self._load_session()

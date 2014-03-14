@@ -6,6 +6,8 @@ from calendar import timegm
 from datetime import datetime
 from dateutil.parser import parse as dt_parse
 from hashlib import sha1
+import locale
+import math
 import os
 import pytz
 import re
@@ -119,8 +121,8 @@ def ts2dt(ts, milli=False, tz_aware=True):
     ''' convert timestamp int's (seconds) to datetime objects '''
     # anything already a datetime will still be returned
     # tz_aware, if set to true
-    if not ts:
-        return ts  # its not a timestamp, throw it back
+    if not ts or math.isnan(ts):
+        return None  # its not a timestamp
     elif isinstance(ts, datetime):
         pass
     elif milli:
@@ -162,3 +164,14 @@ def strip_split(item):
         raise TypeError('Expected a list/tuple')
     else:  # nothing to do here...
         return item
+
+
+def to_encoding(ustring, encoding=None):
+    encoding = encoding or locale.getpreferredencoding()
+    if isinstance(ustring, basestring):
+        if not isinstance(ustring, unicode):
+            return unicode(ustring, encoding, 'replace')
+        else:
+            return ustring.encode(encoding, 'replace')
+    else:
+        raise ValueError('basestring type required')
