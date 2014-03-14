@@ -17,8 +17,29 @@ try:
     from pymongo import MongoClient, MongoReplicaSetClient
 except ImportError:
     raise ImportError("Pymongo 2.6+ required!")
-from pymongo.errors import ConnectionFailure
+#from pymongo.errors import ConnectionFailure
 from pymongo.read_preferences import ReadPreference
+
+from metriqueu.jsonconf import JSONConf
+
+logger = logging.getLogger(__name__)
+
+# if HOME environment variable is set, use that
+# useful when running 'as user' with root (supervisord)
+HOME = os.environ.get('HOME')
+if HOME:
+    USER_DIR = os.path.join(HOME, '.metrique')
+else:
+    USER_DIR = os.path.expanduser('~/.metrique')
+ETC_DIR = os.path.join(USER_DIR, 'etc')
+
+MONGODB_CONFIG = os.path.join(ETC_DIR, 'mongodb.json')
+
+# FIXME: create the in mongodb firstboot!
+# FIXME: make 'firstboot' a method of this class
+SSL_CERT = os.path.join(ETC_DIR, 'metrique.cert')
+SSL_KEY = os.path.join(ETC_DIR, 'metrique.key')
+SSL_PEM = os.path.join(ETC_DIR, 'metrique.pem')
 
 READ_PREFERENCE = {
     'PRIMARY_PREFERRED': ReadPreference.PRIMARY,
@@ -28,128 +49,155 @@ READ_PREFERENCE = {
     'NEAREST': ReadPreference.NEAREST,
 }
 
-logger = logging.getLogger(__name__)
+
+class MongoDBConfig(JSONConf):
+    '''
+    mongodb default config class.
+
+    This configuration class defines the following overrideable defaults.
+
+    :param auth: enable mongodb authentication
+    :param password: admin user password
+    :param user: admin username
+    :param fsync: sync writes to disk before return?
+    :param host: mongodb host(s) to connect to
+    :param journal: enable write journal before return?
+    :param port: mongodb port to connect to
+    :param read_preference: default - NEAREST
+    :param replica_set: name of replica set, if any
+    :param ssl: enable ssl
+    :param ssl_certificate: path to ssl certificate file
+    :param ssl_certificate_key: path to ssl certificate key file
+    :param tz_aware: return back tz_aware dates?
+    :param write_concern: what level of write assurance before returning
+    '''
+    default_config = MONGODB_CONFIG
+    name = 'mongodb'
+
+    # FIXME: move metrique specific configs back to metriqued.config
+    # eg, 'collection logs'... that's it. and below
+    #@property
+    #def c_logs_admin(self):
+    #    '''Wrapper for a read/write 'logs' collection proxy'''
+
+    def __init__(self, config_file=None, **kwargs):
+        config = {
+            'auth': False,
+            'autoconnect': True,
+            'password': None,
+            'user': None,
+            'collection_logs': 'logs',
+            'fsync': False,
+            'host': '127.0.0.1',
+            'journal': True,
+            'port': 27017,
+            'read_preference': 'NEAREST',
+            'replica_set': None,
+            'ssl': False,
+            'ssl_certificate': SSL_PEM,
+            'ssl_certificate_key': None,
+            'tz_aware': True,
+            'write_concern': 1,  # primary; add X for X replicas
+        }
+        # apply defaults
+        self.config.update(config)
+        # update the config with the args from the config_file
+        super(MongoDBConfig, self).__init__(config_file=config_file)
+        # anything passed in explicitly gets precedence
+        self.config.update(kwargs)
 
 
-class BaseMongoDB(object):
+class MongoDBClient(object):
     '''
     Generic wrapper for MongoDB connection configuration and handling.
-
-    Automatically handles connection and authentication against admin db.
 
     Connections are cached and reused, until destruction or connection
     error is encountered.
 
     Requires Mongodb 2.4+ and pymongo 2.6+!
-
-    Supports the following connection types:
-        + SSL and non-SSL (key/cert and combined)
-        + auth na non-auth
-        + primary / replicaset
-
-    Connections options avaiable:
-        + journal (True)
-        + write_concern (1)
-        + fsync (False)
-        + read_preference (SECONDARY_PREFERRED)
-        + tz_aware datetimes (True)
     '''
-    def __init__(self, host, user=None, password=None, auth=False,
-                 port=None, ssl=None, ssl_keyfile=None, tz_aware=True,
-                 ssl_certfile=None, write_concern=1, journal=False,
-                 fsync=False, replica_set=None, read_preference=None):
-        if ssl_keyfile:
-            ssl_keyfile = os.path.expanduser(ssl_keyfile)
-        if ssl_certfile:
-            ssl_certfile = os.path.expanduser(ssl_certfile)
+    def __init__(self, config_file=None, **kwargs):
+        self.set_config(config_file, **kwargs)
 
-        self.auth = auth
-        self.host = host
-        self.user = user
-        self.password = password
-
-        self.replica_set = replica_set
-        self.read_preference = read_preference or 'SECONDARY_PREFERRED'
-
-        self.ssl = ssl
-        self.ssl_keyfile = ssl_keyfile
-        self.ssl_certfile = ssl_certfile
-        self.port = port
-        self.write_concern = write_concern
-        self.fsync = fsync
-        self.journal = journal
-        self.tz_aware = tz_aware
-
-    def _auth_db(self):
-        '''
-        by default the default user only has read-only access to db
-        '''
-        if not self.auth:
-            pass
-        elif not self.password:
-            raise ValueError("no mongo authentication password provided")
-        else:
-            admin_db = self._proxy['admin']
-            if not admin_db.authenticate(self.user, self.password):
-                raise RuntimeError(
-                    "MongoDB failed to authenticate user (%s)" % self.user)
-        return self._proxy
+    def alive(self):
+        try:
+            return self._proxy.alive()
+        except AttributeError:
+            return False
 
     def close(self):
         '''Close the existing cached mongodb proxy connection'''
-        if hasattr(self, '_proxy'):
+        try:
             self._proxy.close()
+        except AttributeError:
+            pass
+        finally:
+            if hasattr(self, '_proxy'):
+                del self._proxy
 
     @property
-    def db(self):
-        '''Load a mongodb database and authenticate, if necessary'''
-        retries = 3
-        # return the connected, authenticated database object
-        while retries:
-            try:
-                return self._load_db_proxy()
-            except ConnectionFailure as e:
-                logger.warn("[%i] MongoDB Failed to connect (%s): %s" % (
-                            retries, self.host, e))
-                retries -= 1
-                self._db_proxy = None
+    def proxy(self):
+        if not (hasattr(self, '_proxy') and self._proxy):
+            if self.c.autoconnect:
+                return self.get_proxy(force=True)
+            else:
+                raise RuntimeError("Not connected to any mongodb instance!")
         else:
-            raise ConnectionFailure(
-                "MongoDB Failed to connect (%s): %s" % (self.host, e))
+            return self._proxy
 
-    def __getitem__(self, collection):
-        return self.db[collection]
+    def set_config(self, config_file, **kwargs):
+        self.c = self.config = MongoDBConfig(config_file, **kwargs)
 
-    def _load_mongo_client(self, **kwargs):
-        logger.debug('Loading new MongoClient connection')
-        self._proxy = MongoClient(self.host, self.port, tz_aware=self.tz_aware,
-                                  w=self.write_concern, j=self.journal,
-                                  fsync=self.fsync, **kwargs)
-
-    def _load_mongo_replica_client(self, **kwargs):
-            logger.debug('Loading new MongoReplicaSetClient connection')
-            read_preference = READ_PREFERENCE[self.read_preference]
-            self._proxy = MongoReplicaSetClient(
-                self.host, self.port, tz_aware=self.tz_aware,
-                w=self.write_concern, j=self.journal,
-                fsync=self.fsync, replicaSet=self.replica_set,
-                read_preference=read_preference, **kwargs)
-
-    def _load_db_proxy(self):
-        if not (hasattr(self, '_db_proxy') and self._db_proxy):
+    def get_proxy(self, force=False):
+        if force or not (hasattr(self, '_proxy') and self._proxy):
             kwargs = {}
-            if self.ssl:
-                if self.ssl_keyfile:
+            if self.c.ssl:
+                if self.c.ssl_keyfile:
                     # include ssl keyfile only if its defined
                     # otherwise, certfile must be crt+key pem combined
-                    kwargs.update({'ssl_keyfile': self.ssl_keyfile})
+                    kwargs.update({'ssl_keyfile': self.c.ssl_keyfile})
 
                 # include ssl options only if it's enabled
-                kwargs.update(dict(ssl=self.ssl,
-                                   ssl_certfile=self.ssl_certfile))
-            if self.replica_set:
+                kwargs.update(dict(ssl=self.c.ssl,
+                                   ssl_certfile=self.c.ssl_certfile))
+            if self.c.replica_set:
                 self._load_mongo_replica_client(**kwargs)
             else:
                 self._load_mongo_client(**kwargs)
-            self._db_proxy = self._auth_db()
-        return self._db_proxy
+            _proxy = self._auth_db()
+        else:
+            _proxy = self._proxy
+        return _proxy
+
+    def _auth_db(self):
+        if self.c.auth:
+            if not self['admin'].authenticate(self.c.user, self.c.password):
+                raise RuntimeError(
+                    "MongoDB failed to authenticate user (%s)" % self.c.user)
+        return self._proxy
+
+    def __getitem__(self, key):
+        return self.proxy[key]
+
+    def __getattr__(self, attr):
+        return getattr(self.proxy, attr)
+
+    def _load_mongo_client(self, **kwargs):
+        logger.debug('Loading new MongoClient connection')
+        self._proxy = MongoClient(
+            self.c.host, self.c.port, tz_aware=self.c.tz_aware,
+            w=self.c.write_concern, j=self.c.journal, fsync=self.c.fsync,
+            **kwargs)
+        return self._proxy
+
+    def _load_mongo_replica_client(self, **kwargs):
+        logger.debug('Loading new MongoReplicaSetClient connection')
+        read_preference = READ_PREFERENCE[self.c.read_preference]
+        self._proxy = MongoReplicaSetClient(
+            self.c.host, self.c.port, tz_aware=self.c.tz_aware,
+            w=self.c.write_concern, j=self.c.journal,
+            fsync=self.c.fsync, replicaSet=self.c.replica_set,
+            read_preference=read_preference, **kwargs)
+        return self._proxy
+
+    #    return self.db_metrique_admin[self.collection_logs]
