@@ -11,15 +11,10 @@ data from generic SQL data sources.
 '''
 
 from copy import deepcopy, copy
-try:
-    from concurrent.futures import as_completed
-    from concurrent.futures import ProcessPoolExecutor
-except ImportError:
-    from futures import as_completed
-    from futures import ProcessPoolExecutor
 from collections import defaultdict
 from dateutil.parser import parse as dt_parse
 from functools import partial
+from joblib import Parallel, delayed
 import logging
 import pytz
 import re
@@ -106,7 +101,7 @@ class Generic(pyclient):
         if flush:
             return self.flush(autosnap=autosnap)
         else:
-            return self
+            return self.objects.values()
 
     def _activity_import_doc(self, time_doc, activities):
         '''
@@ -244,7 +239,7 @@ class Generic(pyclient):
         if flush:
             return self.flush(autosnap=autosnap)
         else:
-            return self
+            return self.objects.values()
 
     def _extract_row_ids(self, rows):
         if rows:
@@ -292,40 +287,24 @@ class Generic(pyclient):
         oids = self._delta_force(force, last_update, parse_timestamp)
         logger.debug("Updating %s objects" % len(oids))
 
-        sql_batch_size = self.config.sql_batch_size
+        batch_size = self.config.sql_batch_size
         max_workers = self.config.max_workers
-        _ids = []
-        if max_workers > 1:
-            with ProcessPoolExecutor(max_workers=max_workers) as ex:
-                futures = []
-                kwargs = self.config
-                kwargs.pop('cube', None)  # ends up in config; ignore it
-                for batch in batch_gen(oids, sql_batch_size):
-                    f = ex.submit(get_full_history, cube=self._cube,
-                                  oids=batch, flush=flush,
-                                  cube_name=self.name, autosnap=autosnap,
-                                  **kwargs)
-                    futures.append(f)
-                for future in as_completed(futures):
-                    try:
-                        __ids = future.result()
-                        if flush:
-                            _ids.extend(__ids)
-                    except Exception as e:
-                        tb = traceback.format_exc()
-                        logger.error(
-                            'Activity Import Error: %s\n%s\n%s' % (
-                                e, tb, batch))
-                        del tb, e
-        else:
-            for batch in batch_gen(oids, sql_batch_size):
-                __ids = self._activity_get_objects(oids=batch, flush=flush,
-                                                   autosnap=autosnap)
-                if flush:
-                    _ids.extend(__ids)
+        kwargs = self.config
+        kwargs.pop('cube', None)  # ends up in config; ignore it
+        runner = Parallel(n_jobs=max_workers)
+        func = delayed(get_full_history)
+        result = runner(func(
+            cube=self._cube, oids=batch, flush=flush,
+            cube_name=self.name, autosnap=autosnap, **kwargs)
+            for batch in batch_gen(oids, batch_size))
+
+        # merge list of lists (batched) into single list
+        result = [i for l in result for i in l]
+
         if flush:
-            return _ids
+            return result
         else:
+            [self.objects.add(obj) for obj in result]
             return self
 
     def _fetchall(self, sql, field_order):
@@ -541,39 +520,25 @@ class Generic(pyclient):
         # out the sql rows and know which column : field
         field_order = tuple(self.fields)
 
-        max_workers = self.config.max_workers
         batch_size = self.config.sql_batch_size
-        _ids = []
-        if max_workers > 1:
-            with ProcessPoolExecutor(max_workers=max_workers) as ex:
-                futures = []
-                kwargs = self.config
-                kwargs.pop('cube', None)  # if in self.config, ignore it
-                for batch in batch_gen(oids, batch_size):
-                    f = ex.submit(get_objects, cube=self._cube, oids=batch,
-                                  field_order=field_order,
-                                  flush=flush, cube_name=self.name,
-                                  autosnap=autosnap, **kwargs)
-                    futures.append(f)
-                for future in as_completed(futures):
-                    try:
-                        __ids = future.result()
-                        if flush:
-                            _ids.extend(__ids)
-                    except Exception as e:
-                        tb = traceback.format_exc()
-                        logger.error('Extract Error: %s\n%s' % (e, tb))
-                        del tb, e
-        else:
-            for batch in batch_gen(oids, batch_size):
-                __ids = self._get_objects(oids=batch, field_order=field_order,
-                                          flush=flush, autosnap=autosnap)
-                if flush:
-                    _ids.extend(__ids)
+        max_workers = self.config.max_workers
+        kwargs = self.config
+        kwargs.pop('cube', None)  # ends up in config; ignore it
+        runner = Parallel(n_jobs=max_workers)
+        func = delayed(get_objects)
+        result = runner(func(
+            cube=self._cube, oids=batch, flush=flush, field_order=field_order,
+            cube_name=self.name, autosnap=autosnap, **kwargs)
+            for batch in batch_gen(oids, batch_size))
+
+        # merge list of lists (batched) into single list
+        result = [i for l in result for i in l]
+
         logger.debug('... current values objects get - done')
         if flush:
-            return _ids
+            return result
         else:
+            [self.objects.add(obj) for obj in result]
             return self
 
     def get_new_oids(self):
