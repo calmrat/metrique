@@ -15,6 +15,7 @@ for exctacting data from a git repository.
 import logging
 import os
 import re
+import tempfile
 import subprocess
 
 from metrique import pyclient
@@ -27,7 +28,7 @@ signed_off_by_re = re.compile('Signed-off-by: (.+)', re.I)
 acked_by_re = re.compile('Acked-by: (.+)', re.I)
 hash_re = re.compile('[0-9a-f]{40}', re.I)
 
-CACHE_DIR = '~/.metrique/cache'
+TMP_DIR = os.environ['METRIQUE_TMP'] or tempfile.gettempdir()
 
 
 class Repo(pyclient):
@@ -41,8 +42,7 @@ class Repo(pyclient):
 
     def __init__(self, cache_dir=None, **kwargs):
         super(Repo, self).__init__(**kwargs)
-        cache_dir = cache_dir or CACHE_DIR
-        self.cache_dir = os.path.expanduser(cache_dir)
+        self.cache_dir = os.path.expanduser(cache_dir or TMP_DIR)
 
     def get_repo(self, uri, pull=True):
         '''
@@ -134,32 +134,33 @@ class Repo(pyclient):
         # pull objects out of indexed dict and into an array
         return commits
 
-    def get_objects(self, uri, fetch=True, **kwargs):
-        '''
-        Walk through repo commits to generate a list of repo commit
-        objects.
-
-        Each object has the following properties:
-            * repo uri
-            * general commit info (see gittle.utils.git.commit_info)
-            * files added, removed fnames
-            * lines added, removed
-            * acked_by
-            * signed_off_by
-            * resolves
-            * related
-        '''
-        logger.debug("Extracting GIT repo: %s" % uri)
-        self.repo = self.get_repo(uri, fetch)
-        cmd = 'git rev-list --all'
-        p = subprocess.Popen(cmd.split(), stderr=subprocess.PIPE,
-                             stdout=subprocess.PIPE)
-        p = p.communicate()[0]
-        repo_shas = set(x for x in p.split('\n') if x)
-        logger.debug("Total Commits: %s" % len(repo_shas))
-        objects = self._build_commits(repo_shas, uri)
-        objects = self.normalize(objects)
-        return objects
+# FIXME: MOVE THIS TO separate gitrepo.commits cube
+#    def get_objects(self, uri, fetch=True, **kwargs):
+#        '''
+#        Walk through repo commits to generate a list of repo commit
+#        objects.
+#
+#        Each object has the following properties:
+#            * repo uri
+#            * general commit info (see gittle.utils.git.commit_info)
+#            * files added, removed fnames
+#            * lines added, removed
+#            * acked_by
+#            * signed_off_by
+#            * resolves
+#            * related
+#        '''
+#        logger.debug("Extracting GIT repo: %s" % uri)
+#        self.repo = self.get_repo(uri, fetch)
+#        cmd = 'git rev-list --all'
+#        p = subprocess.Popen(cmd.split(), stderr=subprocess.PIPE,
+#                             stdout=subprocess.PIPE)
+#        p = p.communicate()[0]
+#        repo_shas = set(x for x in p.split('\n') if x)
+#        logger.debug("Total Commits: %s" % len(repo_shas))
+#        self.objects = self._build_commits(repo_shas, uri)
+#        super(Repo, self).get_objects(**kwargs)
+#        return self
 
 
 if __name__ == '__main__':

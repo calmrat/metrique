@@ -12,10 +12,23 @@ hdlr = logging.StreamHandler()
 hdlr.setFormatter(log_format)
 logger.addHandler(hdlr)
 
+import os
+# if HOME environment variable is set, use that
+# useful when running 'as user' with root (supervisord)
+home = os.environ['METRIQUE_HOME'] = os.environ.get(
+    'METRIQUE_HOME', os.path.expanduser('~/'))
+prefix = os.environ['METRIQUE_PREFIX'] = os.environ.get(
+    'METRIQUE_PREFIX', os.path.join(home, '.metrique'))
+etc = os.environ['METRIQUE_ETC'] = os.environ.get(
+    'METRIQUE_ETC', os.path.join(prefix, 'etc'))
+tmp = os.environ['METRIQUE_TMP'] = os.environ.get(
+    'METRIQUE_TMP', os.path.join(prefix, 'tmp'))
+# FIXME: set all other paths too....
+
 # FIXME: good idea?
 #import locale
 #locale.setlocale(locale.LC_ALL, '')
 
 # ATTENTION: this is the main interface for clients!
-from metrique.core_api import pyclient
+from metrique.mongodb_api import MongoDBClient as pyclient
 pyclient  # touch it to avoid pep8 error 'imported but unused'
