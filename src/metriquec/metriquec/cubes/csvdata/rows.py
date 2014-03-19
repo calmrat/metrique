@@ -12,13 +12,9 @@ for exctacting data from CSV.
 
 import itertools
 import logging
-import os
-import pandas as pd
-import re
-import tempfile
-from urllib2 import urlopen
 
 from metrique import pyclient
+from metriqueu.utils import utcnow
 
 logger = logging.getLogger(__name__)
 
@@ -36,8 +32,7 @@ class Rows(pyclient):
     """
     name = 'csvdata_rows'
 
-    def get_objects(self, uri, _oid=None, _start=None, save=False,
-                    autosnap=True, **kwargs):
+    def get_objects(self, uri, _oid=None, _start=None, _end=None, **kwargs):
         '''
         Load and transform csv data into a list of dictionaries.
 
@@ -48,6 +43,8 @@ class Rows(pyclient):
             column or func to apply to map _oid in all resulting objects
         :param _start:
             column or func to apply to map _start in all resulting objects
+        :param _end:
+            column or func to apply to map _end in all resulting objects
         :param kwargs: kwargs to pass to pandas.read_csv method
 
         _start and _oid arguments can be a column name or a function
@@ -60,66 +57,30 @@ class Rows(pyclient):
         and the result of the function will be assigned to the _start
         or _oid, respectively.
         '''
-        path = self.save_uri(uri)
-        objects = pd.read_csv(path, **kwargs)
-        # convert to list of dicts
-        objects = objects.T.to_dict().values()
+        objects = self.load(path=uri, filetype='csv')
 
-        # set uri property for all objects
-        objects = self.set_column(objects, 'uri', uri, static=True)
+        k = itertools.count(1)
+        now = utcnow()
+        __oid = lambda o: k.next()
+        __start = lambda o: now
+        __end = lambda o: None
 
-        if _start:
-            # set _start based on column values if specified
-            objects = self.set_column(objects, '_start', _start, static=True)
+        _oid = _oid or __oid
+        _start = _start or __start
+        _end = _end or __end
 
-        if not _oid:
-            # map to row index count by default
-            k = itertools.count(1)
-            [o.update({'_oid': k.next()}) for o in objects]
-        else:
-            objects = self.set_column(objects, '_oid', _oid)
-        objects = super(Rows, self).get_objects(objects, save=save,
-                                                autosnap=autosnap)
-        return objects
+        for v in (_oid, _start, _end):
+            if v is None or not (type(v) is type or hasattr(v, '__call__')):
+                raise ValueError(
+                    "(_oid, _start, _end) must be a callables!" % v)
 
-    def save_uri(self, uri):
-        '''
-        Load csv from a given uri and save it to a temp file
-        or load the csv file directly, if already on disk.
+        for obj in objects:
+            obj['_oid'] = _oid(obj)
+            obj['_end'] = _end(obj)
+            obj['_start'] = _start(obj)
+            self.objects.add(obj)
 
-        Supports: http(s) or from file
-
-        :param uri: uri path (file://, http(s)://) to load csv contents from
-        '''
-        logger.debug("Loading CSV: %s" % uri)
-        if re.match('https?://', uri):
-            content = ''.join(urlopen(uri).readlines())
-            with tempfile.NamedTemporaryFile(delete=False) as tmp:
-                path = tmp.name
-                logger.debug(" ... saving to: %s" % path)
-                tmp.write(content)
-        else:
-            path = re.sub('^file://', '', uri)
-            path = os.path.expanduser(path)
-        return path
-
-    def set_column(self, objects, key, value, static=False):
-        '''
-        Save an additional column/field to all objects in memory
-
-        :param objects: objects (rows) to manipulate
-        :param key: key name that will be assigned to each object
-        :param value: value that will be assigned to each object
-        :param static: flag if value should applied to key per object 'as-is'
-        '''
-        if type(value) is type or hasattr(value, '__call__'):
-            # class or function; use the resulting object after init/exec
-            [o.update({key: value(o)}) for o in objects]
-        elif static:
-            [o.update({key: value}) for o in objects]
-        else:
-            [o.update({key: o[value]}) for o in objects]
-        return objects
+        return super(Rows, self).get_objects(**kwargs)
 
 
 if __name__ == '__main__':

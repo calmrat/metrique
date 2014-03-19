@@ -69,31 +69,187 @@ And finishing with some querying and simple charting of the data.
     valid date format: '%Y-%m-%d %H:%M:%S,%f', '%Y-%m-%d %H:%M:%S', '%Y-%m-%d'
 '''
 
+from collections import Mapping, MutableMapping
 from copy import copy
-import cPickle
-import gc
-from functools import partial
 import glob
 import logging
 import os
 import pandas as pd
 import re
-import requests
-import simplejson as json
+import shutil
 import urllib
 
-from metrique import query_api, user_api, cube_api
-from metrique import regtest as regression_test
 from metrique.config import Config
-from metrique.utils import json_encode, get_cube
-from metriqueu.utils import utcnow
+from metrique.utils import get_cube
+from metriqueu.utils import utcnow, jsonhash, dt2ts
 
 logger = logging.getLogger(__name__)
 
 FILETYPES = {'csv': pd.read_csv, 'json': pd.read_json}
-fields_re = re.compile('[\W]+')
-space_re = re.compile('\s+')
-unda_re = re.compile('_')
+
+FIELDS_RE = re.compile('[\W]+')
+SPACE_RE = re.compile('\s+')
+UNDA_RE = re.compile('_')
+
+HASH_EXCLUDE_KEYS = ['_hash', '_id', '_start', '_end', '_uuid']
+IMMUTABLE_OBJ_KEYS = set(['_hash', '_id', '_oid', '_uuid'])
+TIMESTAMP_OBJ_KEYS = set(['_end', '_start'])
+
+
+class MetriqueObject(Mapping):
+    def __init__(self, _oid, strict=False, touch=False, **kwargs):
+        self._strict = strict
+        self._touch = touch
+        self.store = {
+            '_oid': _oid,
+            '_id': None,
+            '_hash': None,
+            '_uuid': None,
+            '_start': None,
+            '_end': None,
+        }
+        self._update(kwargs)
+        self._re_hash()
+
+    def _update(self, obj):
+        for key, value in obj.iteritems():
+            key = self.__keytransform__(key)
+            if key in IMMUTABLE_OBJ_KEYS:
+                if self._strict:
+                    raise KeyError("%s is immutable" % key)
+                else:
+                    logger.debug("%s is immutable; not setting" % key)
+                    return
+            if key in TIMESTAMP_OBJ_KEYS:
+                # ensure normalized timestamp
+                value = dt2ts(value)
+            if value == '' or value != value:
+                # Normalize empty strings and NaN objects to None
+                # NaN objects do not equal themselves...
+                value = None
+            self.store[key] = value
+
+    def __getitem__(self, key):
+        return self.store[self.__keytransform__(key)]
+
+    def __iter__(self):
+        return iter(self.store)
+
+    def __len__(self):
+        return len(self.store)
+
+    def __repr__(self):
+        return repr(self.store)
+
+    def __hash__(self):
+        return hash(self['_id'])
+
+    def __keytransform__(self, key):
+        key = key.lower()
+        key = SPACE_RE.sub('_', key)
+        key = FIELDS_RE.sub('',  key)
+        key = UNDA_RE.sub('_',  key)
+        return key
+
+    def _gen_id(self):
+        _oid = self.store.get('_oid')
+        if self.store['_end']:
+            _start = self.store.get('_start')
+            # if the object at the exact start/oid is later
+            # updated, it's possible to just save(upsert=True)
+            _id = ':'.join(map(str, (_oid, _start)))
+        else:
+            # if the object is 'current value' without _end,
+            # use just str of _oid
+            _id = str(_oid)
+        return _id
+
+    def _gen_hash(self):
+        o = copy(self.store)
+        keys = set(o.keys())
+        [o.pop(k) for k in HASH_EXCLUDE_KEYS if k in keys]
+        return jsonhash(o)
+
+    def _gen_uuid(self):
+        o = copy(self.store)
+        o.pop('_uuid', None)
+        return jsonhash(o)
+
+    def _validate_start_end(self):
+        _start = self.get('_start')
+        if _start is None:
+            raise ValueError("_start (%s) must be set!" % _start)
+        _end = self.get('_end')
+        if _end and _end < _start:
+            raise ValueError(
+                "_end (%s) is before _start (%s)!" % (_end, _start))
+
+    def _re_hash(self):
+        # object is 'current value' continuous
+        # so update _start to reflect the time when
+        # object's current state was (re)set
+        if not self.store.get('_start') or self._touch:
+            self.store['_start'] = utcnow()
+        self._validate_start_end()
+        # _id depends on _hash, and _uuid depends on _id and _hash
+        # so first, _hash, then _id, then _uuid
+        self.store['_hash'] = self._gen_hash()
+        self.store['_id'] = self._gen_id()
+        self.store['_uuid'] = self._gen_uuid()
+
+
+class MetriqueContainer(MutableMapping):
+    def __init__(self, objects=None):
+        self.store = {}
+        if objects is None:
+            pass
+        elif isinstance(objects, (list, tuple)):
+            [self.add(x) for x in objects]
+        elif isinstance(objects, (dict, Mapping)):
+            self.store.update(objects)
+        else:
+            raise ValueError(
+                "objects must be a list, tuple, dict or pandas.DataFrame")
+
+    def add(self, item):
+        item = self._convert(item)
+        _id = item['_id']
+        self.store[_id] = item
+
+    def __getitem__(self, key):
+        return self.store[key]
+
+    def __setitem__(self, key, value):
+        self.store[key] = value
+
+    def __delitem__(self, key):
+        del self.store[key]
+
+    def __iter__(self):
+        return iter(self.store)
+
+    def __len__(self):
+        return len(self.store)
+
+    def __contains__(self, item):
+        return item in self.store
+
+    def __repr__(self):
+        return repr(self.store)
+
+    def _convert(self, item):
+        if isinstance(item, MetriqueObject):
+            pass
+        elif isinstance(item, (Mapping, dict)):
+            item = MetriqueObject(**item)
+        else:
+            raise TypeError(
+                "object values must be dict-like; got %s" % type(item))
+        return item
+
+    def df(self):
+        '''Return a pandas dataframe from objects'''
+        return pd.DataFrame(tuple(self.store))
 
 
 class BaseClient(object):
@@ -136,7 +292,6 @@ class BaseClient(object):
     :cvar name: name of the cube
     :cvar defaults: cube default property container (cube specific meta-data)
     :cvar fields: cube fields definitions
-    :cvar saveas: filename to use when saving cube data to disk locally
     :cvar config: local cube config object
 
     If cube is specified as a kwarg upon initialization, the specific cube
@@ -158,9 +313,8 @@ class BaseClient(object):
     name = None
     defaults = None
     fields = None
-    saveas = ''
-    _cache = None
     config = None
+    _objects = None
 
     def __new__(cls, *args, **kwargs):
         if 'cube' in kwargs and kwargs['cube']:
@@ -176,8 +330,6 @@ class BaseClient(object):
             self.defaults = {}
         if self.fields is None:
             self.fields = {}
-        if self._cache is None:
-            self._cache = {}
         if self.config is None:
             self.config = {}
 
@@ -185,7 +337,7 @@ class BaseClient(object):
 
         # all defaults are loaded, unless specified in
         # metrique_config.json
-        self.load_config(**kwargs)
+        self.set_config(**kwargs)
 
         # cube class defined name
         self._cube = type(self).name
@@ -204,8 +356,23 @@ class BaseClient(object):
         # with each others logging.
         self.debug_setup()
 
+        self._objects = MetriqueContainer()
+
+    @property
+    def objects(self):
+        return self._objects
+
+    @objects.setter
+    def objects(self, value):
+        self._objects = MetriqueContainer(value)
+
+    @objects.deleter
+    def objects(self):
+        # replacing existing container with a new, empty one
+        self._objects = MetriqueContainer()
+
 ####################### data loading api ###################
-    def load_files(self, path, filetype=None, **kwargs):
+    def load(self, path, filetype=None, as_dict=True, **kwargs):
         '''Load multiple files from various file types automatically.
 
         Supports glob paths, eg::
@@ -225,110 +392,53 @@ class BaseClient(object):
         # kwargs are for passing ftype load options (csv.delimiter, etc)
         # expect the use of globs; eg, file* might result in fileN (file1,
         # file2, file3), etc
-        datasets = glob.glob(os.path.expanduser(path))
-        objects = None
-        for ds in datasets:
-            filetype = path.split('.')[-1]
+        if re.match('https?://', path):
+            _path, headers = self.urlretrieve(path)
+            logger.debug('Saved %s to tmp file: %s' % (path, _path))
+            try:
+                df = self._load_file(_path, filetype, as_dict=False, **kwargs)
+            finally:
+                shutil.remove(_path)
+        else:
+            path = re.sub('^file://', '', path)
+            path = os.path.expanduser(path)
+            datasets = glob.glob(os.path.expanduser(path))
             # buid up a single dataframe by concatting
             # all globbed files together
-            objects = pd.concat(
-                [self._load_file(ds, filetype, **kwargs)
-                    for ds in datasets]).T.as_dict().values()
-        return objects
+            df = [self._load_file(ds, filetype, as_dict=False, **kwargs)
+                  for ds in datasets]
+            if df:
+                df = pd.concat(df)
 
-    def _load_file(self, path, filetype, **kwargs):
+        if df.empty:
+            raise ValueError("not data extracted!")
+
+        if as_dict:
+            return df.T.to_dict().values()
+        else:
+            return df
+
+    def _load_file(self, path, filetype, as_dict=True, **kwargs):
+        if not filetype:
+            # try to get file extension
+            filetype = path.split('.')[-1]
         if filetype in ['csv', 'txt']:
-            return self._load_csv(path, **kwargs)
+            result = self._load_csv(path, as_dict=as_dict, **kwargs)
         elif filetype in ['json']:
-            return self._load_json(path, **kwargs)
+            result = self._load_json(path, as_dict=as_dict, **kwargs)
         else:
             raise TypeError("Invalid filetype: %s" % filetype)
+        if as_dict:
+            return result.T.as_dict.values()
+        else:
+            return result
 
-    def _load_csv(self, path, **kwargs):
+    def _load_csv(self, path, as_dict=True, **kwargs):
         # load the file according to filetype
         return pd.read_csv(path, **kwargs)
 
-    def _load_json(self, path, **kwargs):
+    def _load_json(self, path, as_dict=True, **kwargs):
         return pd.read_json(path, **kwargs)
-
-####################### objects manipulation ###################
-    def df(self, objects=None):
-        '''Return a pandas dataframe from objects'''
-        if objects:
-            return pd.DataFrame(objects)
-        else:
-            return pd.DataFrame()
-
-    def flush(self):
-        '''run garbage collection'''
-        k = gc.get_count()
-        result = gc.collect()  # be sure we garbage collect any old object refs
-        logger.debug('Garbage Flush: %s flushed, %s remain' % (k, result))
-
-    def normalize(self, objects):
-        '''Convert, validate, normalize and locally cache objects'''
-        # convert from other forms to basic list of dicts
-        if objects is None:
-            objects = []
-        elif isinstance(objects, pd.DataFrame):
-            objects = objects.T.to_dict().values()
-        elif isinstance(objects, tuple):
-            objects = list(objects)
-        else:
-            assert isinstance(objects, list)
-        if objects:
-            if not all([type(o) is dict for o in objects]):
-                raise TypeError("object values must be dict")
-            if not all([o.get('_oid') is not None for o in objects]):
-                raise ValueError("_oid must be defined for all objs")
-            objects = self._normalize(objects)
-        return objects
-
-    def _normalize(self, objects):
-        '''
-        give all these objects the same _start value (if they
-        don't already have one), and more...
-        '''
-        start = utcnow()
-        for i, o in enumerate(objects):
-            # normalize fields (alphanumeric characters only, lowercase)
-            o = self._obj_fields(o)
-            # convert empty strings to None (null)
-            o = self._obj_nones(o)
-            # add object meta data the metriqued requires be set per object
-            o = self._obj_end(o)
-            o = self._obj_start(o, start)
-            objects[i] = o
-        return objects
-
-    def _normalize_fields(self, k):
-        k = k.lower()
-        k = space_re.sub('_', k)
-        k = fields_re.sub('',  k)
-        k = unda_re.sub('_',  k)
-        return k
-
-    def _obj_fields(self, obj):
-        ''' periods and dollar signs are not allowed! '''
-        # replace spaces, lowercase keys, remove non-alphanumeric
-        # WARNING: only lowers the top level though, at this time!
-        return dict((self._normalize_fields(k), v) for k, v in obj.iteritems())
-
-    def _obj_nones(self, obj):
-        return dict([(k, None) if v == '' else (k, v) for k, v in obj.items()])
-
-    def _obj_end(self, obj, default=None):
-        obj['_end'] = obj.get('_end', default)
-        return obj
-
-    def _obj_start(self, obj, default=None):
-        _start = obj.get('_start', default)
-        obj['_start'] = _start or utcnow()
-        return obj
-
-    def oids(self, objects):
-        '''Return back a list of _oids for all locally cached objects'''
-        return [o['_oid'] for o in objects]
 
 #################### misc ##################################
     def debug_setup(self):
@@ -416,7 +526,7 @@ class BaseClient(object):
             except (TypeError, KeyError):
                 return default
 
-    def load_config(self, config=None, **kwargs):
+    def set_config(self, config=None, **kwargs):
         '''Try to load a config file and handle when its not available
 
         :param config: config file or :class:`metriqueu.jsonconf.JSONConf`
@@ -430,384 +540,10 @@ class BaseClient(object):
         self.config.update(kwargs)
 
 #################### Helper API ############################
-    def urlretrieve(self, uri, saveas):
+    def urlretrieve(self, uri, saveas=None):
         '''urllib.urlretrieve wrapper'''
         return urllib.urlretrieve(uri, saveas)
 
     def whoami(self, auth=False):
         '''Local api call to check the username of running user'''
         return self.config['username']
-
-
-class HTTPClient(BaseClient):
-    '''
-    This is the main client bindings for metrique http
-    rest api.
-
-    The is a base class that clients are expected to
-    subclass to build metrique cubes which are designed
-    to interact with remote metriqued hosts.
-
-    Currently, the following API methods are exported:
-
-    **User**
-        + aboutme: request user profile information
-        + login: main interface for authenticating against metriqued
-        + passwd: update user password
-        + update_profile: update other profile details
-        + register: register a new user account
-        + remove: (admin) remove an existing user account
-        + set_properties: (admin) set non-profile (system) user properties
-
-    **Cube**
-        + list_all: list all remote cubes current user has read access to
-        + stats: provide statistics and other information about a remote cube
-        + sample_fields: sample remote cube object fields names
-        + drop: drop (delete) a remote cube
-        + export: return back a complete export of a given remote cube
-        + register: register a new remote cube
-        + update_role: update remote cube access control details
-        + save: save/persist objects to the remote cube (expects list of dicts)
-        + rename: rename a remote cube
-        + remove: remove (delete) objects from the remote cube
-        + index_list: list all indexes currently available for a remote cube
-        + index: create a new index for a remote cube
-        + index_drop: remove (delete) an index from a remote cube
-
-    **Query**
-        + find: run pql (mongodb) query remotely
-        + history: aggregate historical counts for objects matching a query
-        + deptree: find all child ids for a given parent id
-        + count: count the number of results matching a query
-        + distinct: get a list of unique object property values
-        + sample: query for a psuedo-random set of objects
-        + aggregate: run pql (mongodb) aggregate query remotely
-
-    **Regtest**
-        + regtest: run a regression test
-        + create: create a regression test
-        + remove: remove a regression test
-        + list: list available regression tests
-    '''
-    # frequently 'typed' commands have shorter aliases too
-    user_aboutme = aboutme = user_api.aboutme
-    user_login = login = user_api.login
-    user_logout = logout = user_api.logout
-    user_passwd = passwd = user_api.update_passwd
-    user_update_profile = user_api.update_profile
-    user_register = user_api.register
-    user_remove = user_api.remove
-    user_set_properties = user_api.update_properties
-
-    cube_list_all = cube_api.list_all
-    cube_stats = cube_api.stats
-    cube_sample_fields = cube_api.sample_fields
-    cube_drop = cube_api.drop
-    cube_export = cube_api.export
-    cube_register = cube_api.register
-    cube_update_role = cube_api.update_role
-
-    cube_save = cube_api.save
-    cube_rename = cube_api.rename
-    cube_remove = cube_api.remove
-    cube_index_list = cube_api.list_index
-    cube_index = cube_api.ensure_index
-    cube_index_drop = cube_api.drop_index
-
-    query_find = find = query_api.find
-    query_history = history = query_api.history
-    query_deptree = deptree = query_api.deptree
-    query_count = count = query_api.count
-    query_distinct = distinct = query_api.distinct
-    query_sample = sample = query_api.sample
-    query_aggregate = aggregate = query_api.aggregate
-
-    regtest = regression_test.regtest
-    regtest_create = regression_test.regtest_create
-    regtest_remove = regression_test.regtest_remove
-    regtest_list = regression_test.regtest_list
-
-    def __init__(self, owner=None, login=None, cube_autoregister=None,
-                 **kwargs):
-        super(HTTPClient, self).__init__(cube_autoregister=cube_autoregister,
-                                         **kwargs)
-        self.owner = owner or self.config.username
-        # load a new requests session; for the cookies.
-        self._load_session()
-
-        # FIXME: move all the setup below here into _load_session()
-        # and in load_session, first run 'logout' etc
-        self.logged_in = False
-
-        cube_autoregister = cube_autoregister or self.config.cube_autoregister
-
-        # login is needed if cube_autoregister is true
-        login = login or cube_autoregister or self.config.auto_login
-
-        if login:
-            self.user_login(self.config.username, self.config.password)
-
-        if self.logged_in and cube_autoregister:
-            if not self.cube_id in self.cube_list_all():
-                logger.info("Autoregistering %s" % self.name)
-                self.cube_register()
-
-    def keys(self, samplesize=1):
-        return self.cube_sample_fields(sample_size=samplesize)
-
-######################### pyclient base API #######################
-    @property
-    def cube_id(self):
-        '''Return the common cube id string; ie, `%(owner)s__%(name)s`'''
-        return '__'.join((self.owner, self.name))
-
-    def _build_runner(self, kind, kwargs):
-        '''Generic caller for HTTP
-            A) POST; use data, not params
-            B) otherwise; use params
-        '''
-        kwargs_json = self._kwargs_json(**kwargs)
-        if kind == self.session.post:
-            # use data instead of params
-            runner = partial(kind, data=kwargs_json)
-        else:
-            runner = partial(kind, params=kwargs_json)
-        return runner
-
-    def _build_urls(self, cmd, api_url):
-        ' generic path joininer for http api commands '
-        cmd = cmd or ''
-        join = os.path.join
-        if api_url:
-            urls = [join(api_uri, cmd) for api_uri in self.config.api_uris]
-        else:
-            urls = [join(uri, cmd) for uri in self.config.uris]
-        return urls
-
-    def cookiejar_clear(self):
-        '''Delete existing user cookiejar, if it exists'''
-        path = '%s.%s' % (self.config.cookiejar, self.config.username)
-        if os.path.exists(path):
-            os.remove(path)
-
-    def cookiejar_load(self):
-        '''Loading existing user cookiejar, if it exists'''
-        path = '%s.%s' % (self.config.cookiejar, self.config.username)
-        if os.path.exists(path):
-            try:
-                with open(path) as cj:
-                    cookiejar = cPickle.load(cj)
-            except Exception:
-                pass
-            else:
-                self.session.cookies.update(cookiejar)
-
-    def cookiejar_save(self):
-        '''Save current session cookies to cookiejar, if possible'''
-        path = '%s.%s' % (self.config.cookiejar, self.config.username)
-        with open(path, 'w') as f:
-            cPickle.dump(self.session.cookies, f)
-
-    def _delete(self, *args, **kwargs):
-        ' requests DELETE; using current session '
-        return self._run(self.session.delete, *args, **kwargs)
-
-    def _get(self, *args, **kwargs):
-        ' requests GET; using current session '
-        return self._run(self.session.get, *args, **kwargs)
-
-    def get_objects(self, objects=None, save=False, autosnap=True):
-        '''Main API method for sub-classed cubes to override for the
-        generation of the objects which are to (potentially) be added
-        to the cube (assuming no duplicates)
-
-        Basic functionality is to normalize and potentially save objects
-        '''
-        objects = objects or []
-        objects = self.normalize(objects)
-        if save:
-            self.cube_save(objects, autosnap=autosnap)
-        return objects
-
-    def extract(self, autosnap=True, save=True, *args, **kwargs):
-        '''Wrapper of get_objects -> cube_save. Generate all objects
-        then save/persist them to external metriqued host
-
-        :param args: args to pass to `get_objects`
-        :param kwargs: args to pass to `get_objects`
-
-        This method is obsolete; use get_objects() instead.
-        '''
-        return self.get_objects(save=save, autosnap=autosnap, *args, **kwargs)
-
-    def get_cmd(self, owner, cube, api_name=None):
-        '''Helper method for building api urls, specifically
-        for the case where the api call always requires
-        owner and cube; api_name is usually provided,
-        if there is a 'command name'; but it's optional.
-
-        :param owner: cube owner name
-        :param cube: cube name
-        :param api_name: relative api path
-        '''
-        owner = owner or self.owner
-        if not owner:
-            raise ValueError('owner required!')
-        cube = cube or self.name
-        if not cube:
-            raise ValueError('cube required!')
-        if api_name:
-            return os.path.join(owner, cube, api_name)
-        else:
-            return os.path.join(owner, cube)
-
-    def get_last_field(self, field):
-        '''Shortcut for querying to get the last field value for
-        a given owner, cube.
-
-        :param field: field name to query
-        '''
-        # FIXME: these "get_*" methods are assuming owner/cube
-        # are "None" defaults; ie, that the current instance
-        # has self.name set... maybe we should be explicit?
-        # pass owner, cube?
-        last = self.find(query=None, fields=[field],
-                         sort=[(field, -1)], one=True, raw=True)
-        if last:
-            last = last.get(field)
-        logger.debug("last %s.%s: %s" % (self.name, field, last))
-        return last
-
-    def _get_response(self, runner, _url, username, password,
-                      allow_redirects=True, stream=False):
-        ' wrapper for running a metrique api request; get/post/etc '
-        # avoids bug in requests-2.0.1 - pass a dict no RequestsCookieJar
-        # eg, see: https://github.com/kennethreitz/requests/issues/1744
-        dfc = requests.utils.dict_from_cookiejar
-        _response = runner(_url, auth=(username, password),
-                           cookies=dfc(self.session.cookies),
-                           verify=self.config.ssl_verify,
-                           allow_redirects=allow_redirects,
-                           stream=stream)
-
-        self.session.cookies = _response.cookies
-        self.cookiejar_save()
-
-        try:
-            _response.raise_for_status()
-        except Exception as e:
-            content = _response.content
-            code = _response.status_code
-            content = '[%s] %s\n%s\n%s' % (code, _url, str(e), content)
-            logger.error(content)
-            raise
-        return _response
-
-    def _kwargs_json(self, **kwargs):
-        ' encode all arguments/parameters as JSON '
-        return dict([(k,
-                      json.dumps(v, default=json_encode, ensure_ascii=False))
-                    for k, v in kwargs.items()])
-
-    def _load_session(self):
-        ' load a fresh new requests session; mainly, reset cookies '
-        self.session = requests.Session()
-        self.cookiejar_load()
-
-    def ping(self, auth=False):
-        '''Base api call; all metriqued servers will be expected
-        to have this method available. auth=True is a quick way to
-        test clients credentials.
-
-        :param auth: (bool) login/authenticate before pinging?
-
-        Example Usage::
-
-            >>> from metrique import pyclient
-            >>> m = pyclient()
-            >>> m.ping()
-                {'action': 'ping', 'metriqued': '127.0.0.1'}
-            >>> m.ping(auth=True)
-                {'action': 'ping', 'metriqued': '127.0.0.1',
-                 'current_user': 'cward'}
-        '''
-        return self._get('ping', auth=auth)
-
-    def _post(self, *args, **kwargs):
-        ' requests POST; using current session '
-        return self._run(self.session.post, *args, **kwargs)
-
-    def _run(self, kind, cmd, api_url=True,
-             allow_redirects=True, full_response=False,
-             stream=False, filename=None, **kwargs):
-        '''
-        wrapper for handling all requests; authentication,
-        preparing arguments, calling request, handling
-        exceptions, returning results.
-        '''
-        username = self.config.username
-        password = self.config.password
-
-        runner = self._build_runner(kind, kwargs)
-
-        urls = self._build_urls(cmd, api_url)
-        for url in urls:
-            logger.debug("Connecting to %s" % url)
-            try:
-                _response = self._get_response(runner, url,
-                                               username, password,
-                                               allow_redirects,
-                                               stream)
-            except requests.exceptions.ConnectionError:
-                logger.error("Failed to connect to %s" % url)
-                # try the next url available
-                continue
-            else:
-                logger.debug("Got response from %s" % url)
-
-            if full_response:
-                return _response
-            elif stream:
-                with open(filename, 'wb') as handle:
-                    for block in _response.iter_content(1024):
-                        if not block:
-                            break
-                        handle.write(block)
-                return filename
-            else:
-                try:
-                    return json.loads(_response.content)
-                except Exception as e:
-                    m = getattr(e, 'message')
-                    content = '%s\n%s\n%s' % (url, m, _response.content)
-                    logger.error(content)
-                    raise
-        else:
-            msg = 'Failed to connect to metriqued hosts [%s]' % urls
-            raise requests.exceptions.ConnectionError(msg)
-
-    def set_cookies(self, **kwargs):
-        self.session.cookies.update(kwargs)
-
-    def unset_cookies(self, keys):
-        for key in keys:
-            if key in self.session.cookies:
-                self.session.cookies.pop(key)
-
-    def _save(self, filename, *args, **kwargs):
-        ' requests GET of a "file stream" using current session '
-        return self._run(self.session.get, stream=True, filename=filename,
-                         *args, **kwargs)
-
-    def whoami(self, auth=False):
-        '''Request user profile status of currently authenticated user
-        :param auth: (bool) login/authenticate before querying?
-        '''
-        if auth:
-            self.user_login()
-        return super(HTTPClient, self).whoami()
-
-
-# import alias
-# ATTENTION: this is the main interface for clients!
-pyclient = HTTPClient

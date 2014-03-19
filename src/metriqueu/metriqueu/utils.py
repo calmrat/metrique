@@ -12,6 +12,8 @@ import os
 import pytz
 import re
 
+SHA1_HEXDIGEST = lambda o: sha1(repr(o)).hexdigest()
+
 
 def batch_gen(data, batch_size):
     '''
@@ -50,18 +52,22 @@ def clear_stale_pids(pids, pid_dir, prefix='metriqued'):
     return _running
 
 
-def dt2ts(dt, drop_micro=False):
+def dt2ts(dt, drop_micro=False, strict=False):
     ''' convert datetime objects to timestamp seconds (float) '''
     # the equals check to 'NaT' is hack to avoid adding pandas as a dependency
-    if repr(dt) == 'NaT':
-        return None
-    elif not dt:
-        return dt
-    elif isinstance(dt, (int, long, float, complex)):  # its a ts already
+    if repr(dt) == 'NaT' or not dt:
+        if strict:
+            raise ValueError("invalid datetime '%s'" % dt)
+        else:
+            return None
+    elif isinstance(dt, (int, long, float)):  # its a ts already
         ts = dt
     elif isinstance(dt, basestring):  # convert to datetime first
         ts = dt2ts(dt_parse(dt))
     else:
+        # FIXME: microseconds/milliseconds are being dropped!
+        # see: http://stackoverflow.com/questions/7031031
+        # for possible solution?
         ts = timegm(dt.timetuple())
     if drop_micro:
         return float(int(ts))
@@ -82,10 +88,12 @@ def get_pids(pid_dir, prefix='metriqued', clear_stale=True):
     return map(int, pids)
 
 
-def jsonhash(obj, root=True, exclude=None):
+def jsonhash(obj, root=True, exclude=None, hash_func=None):
     '''
     calculate the objects hash based on all field values
     '''
+    if not hash_func:
+        hash_func = SHA1_HEXDIGEST
     if isinstance(obj, dict):
         obj = obj.copy()  # don't affect the ref'd obj passed in
         keys = set(obj.keys())
@@ -98,10 +106,14 @@ def jsonhash(obj, root=True, exclude=None):
         result = sorted(
             (k, jsonhash(v, False)) for k, v in obj.items())
     elif isinstance(obj, list):
+        # FIXME: should obj be sorted for consistent hashes?
+        # when the object is the same, just different list order?
         result = tuple(jsonhash(e, False) for e in obj)
     else:
         result = obj
-    return sha1(repr(result)).hexdigest() if root else result
+    if root:
+        result = hash_func(repr(result))
+    return result
 
 
 def set_default(key, default, null_ok=False, err_msg=None):
