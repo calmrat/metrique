@@ -36,18 +36,17 @@ logger = logging.getLogger(__name__)
 DEFAULT_ENCODING = 'latin-1'
 
 
-def get_full_history(cube, oids, save=True, cube_name=None, 
-                     autosnap=False, **kwargs):
+def get_full_history(cube, oids, flush=False, cube_name=None, autosnap=False,
+                     **kwargs):
     m = pyclient(cube=cube, name=cube_name, **kwargs)
-    return m._activity_get_objects(oids=oids, save=save, autosnap=autosnap)
+    return m._activity_get_objects(oids=oids, flush=flush, autosnap=autosnap)
 
 
-def get_objects(cube, oids, field_order, start, save=True, cube_name=None,
+def get_objects(cube, oids, field_order, flush=False, cube_name=None,
                 autosnap=True, **kwargs):
-    start = start
     m = pyclient(cube=cube, name=cube_name, **kwargs)
     return m._get_objects(oids=oids, field_order=field_order,
-                          start=start, save=save, autosnap=autosnap)
+                          flush=flush, autosnap=autosnap)
 
 
 class Generic(pyclient):
@@ -59,7 +58,7 @@ class Generic(pyclient):
     subclass this basecube to implement db specific connection
     methods, etc.
 
-    .proxy must be defined, in order to know how
+    .sql_proxy must be defined, in order to know how
     to get a connection object to the target sql db.
 
     :param sql_host: teiid hostname
@@ -91,23 +90,23 @@ class Generic(pyclient):
         raise NotImplementedError(
             'The activity_get method is not implemented in this cube.')
 
-    def _activity_get_objects(self, oids, save=False, autosnap=False):
+    def _activity_get_objects(self, oids, flush=False, autosnap=False):
         logger.debug('Getting Objects - Activity History')
-        docs = self.get_objects(force=oids)
+        self.get_objects(force=oids, flush=False)
         # dict, has format: oid: [(when, field, removed, added)]
         activities = self.activity_get(oids)
-        objects = []
-        for doc in docs:
+        objects = self.objects.values()
+        for doc in objects:
+            doc = doc.as_dict(pop=['_uuid', '_id', '_hash'])
             _oid = doc['_oid']
             acts = activities.setdefault(_oid, [])
-            obj = self._activity_import_doc(doc, acts)
-            objects.extend(obj)
+            objs = self._activity_import_doc(doc, acts)
+            self.objects.extend(objs)
         logger.debug('... activity get - done')
-        objects = self.normalize(objects)
-        if save:
-            return self.cube_save(objects, autosnap=autosnap)
+        if flush:
+            return self.flush(autosnap=autosnap)
         else:
-            return objects
+            return self
 
     def _activity_import_doc(self, time_doc, activities):
         '''
@@ -223,9 +222,7 @@ class Generic(pyclient):
             value = value
         return value
 
-    def _get_objects(self, oids, field_order, start, save=False, 
-                     autosnap=True):
-        objects = []
+    def _get_objects(self, oids, field_order, flush=False, autosnap=True):
         retries = self.config.sql_retries
         sql = self._gen_sql(oids, field_order)
         while retries >= 0:
@@ -242,15 +239,12 @@ class Generic(pyclient):
                     retries -= 1
             else:
                 rows = self._build_rows(rows)
-                objects = self._build_objects(rows)
-                # apply the start time to _start
-                objects = [self._obj_start(o, start) for o in objects]
+                self.objects = self._build_objects(rows)
                 break
-        objects = self.normalize(objects)
-        if save:
-            return self.cube_save(objects, autosnap=autosnap)
+        if flush:
+            return self.flush(autosnap=autosnap)
         else:
-            return objects
+            return self
 
     def _extract_row_ids(self, rows):
         if rows:
@@ -271,7 +265,7 @@ class Generic(pyclient):
             db = self.get_property('db')
             _id = self.get_property('column')
             sql = 'SELECT DISTINCT %s.%s FROM %s.%s' % (table, _id, db, table)
-            rows = self.proxy.fetchall(sql)
+            rows = self.sql_proxy.fetchall(sql)
             oids = self._extract_row_ids(rows)
         else:
             if self.get_property('delta_new_ids', default=True):
@@ -285,7 +279,7 @@ class Generic(pyclient):
         return sorted(set(oids))
 
     def get_full_history(self, force=None, last_update=None,
-                         parse_timestamp=None, save=False, autosnap=False):
+                         parse_timestamp=None, flush=False, autosnap=False):
         '''
         Fields change depending on when you run activity_import,
         such as "last_updated" type fields which don't have activity
@@ -300,7 +294,7 @@ class Generic(pyclient):
 
         sql_batch_size = self.config.sql_batch_size
         max_workers = self.config.max_workers
-        objects = []
+        _ids = []
         if max_workers > 1:
             with ProcessPoolExecutor(max_workers=max_workers) as ex:
                 futures = []
@@ -308,13 +302,15 @@ class Generic(pyclient):
                 kwargs.pop('cube', None)  # ends up in config; ignore it
                 for batch in batch_gen(oids, sql_batch_size):
                     f = ex.submit(get_full_history, cube=self._cube,
-                                  oids=batch, save=save, cube_name=self.name,
-                                  autosnap=autosnap, **kwargs)
+                                  oids=batch, flush=flush,
+                                  cube_name=self.name, autosnap=autosnap,
+                                  **kwargs)
                     futures.append(f)
                 for future in as_completed(futures):
                     try:
-                        objs = future.result()
-                        objects.extend(objs)
+                        __ids = future.result()
+                        if flush:
+                            _ids.extend(__ids)
                     except Exception as e:
                         tb = traceback.format_exc()
                         logger.error(
@@ -323,13 +319,17 @@ class Generic(pyclient):
                         del tb, e
         else:
             for batch in batch_gen(oids, sql_batch_size):
-                objs = self._activity_get_objects(oids=batch, save=save,
-                                                  autosnap=autosnap)
-                objects.extend(objs)
-        return objects
+                __ids = self._activity_get_objects(oids=batch, flush=flush,
+                                                   autosnap=autosnap)
+                if flush:
+                    _ids.extend(__ids)
+        if flush:
+            return _ids
+        else:
+            return self
 
     def _fetchall(self, sql, field_order):
-        rows = self.proxy.fetchall(sql)
+        rows = self.sql_proxy.fetchall(sql)
         if not rows:
             return []
 
@@ -483,7 +483,7 @@ class Generic(pyclient):
         sql = """SELECT DISTINCT %s.%s FROM %s.%s
             WHERE %s""" % (table, _id, db, table,
                            ' OR '.join(filters))
-        rows = self.proxy.fetchall(sql) or []
+        rows = self.sql_proxy.fetchall(sql) or []
         return [x[0] for x in rows]
 
     def get_metrics(self, names=None):
@@ -507,7 +507,7 @@ class Generic(pyclient):
             sql = definition['sql']
             fields = definition['fields']
             _oid = definition['_oid']
-            rows = self.proxy.fetchall(sql)
+            rows = self.sql_proxy.fetchall(sql)
             for row in rows:
                 d = copy(obj)
 
@@ -523,7 +523,7 @@ class Generic(pyclient):
         return objects
 
     def get_objects(self, force=None, last_update=None, parse_timestamp=None,
-                    save=False, autosnap=True):
+                    flush=False, autosnap=True):
         '''
         Extract routine for SQL based cubes.
 
@@ -533,8 +533,6 @@ class Generic(pyclient):
         :param parse_timestamp: flag to convert timestamp timezones in-line
         '''
         logger.debug('Fetching Objects - Current Values')
-        objects = []
-        start = utcnow()
 
         # determine which oids will we query
         oids = self._delta_force(force, last_update, parse_timestamp)
@@ -545,6 +543,7 @@ class Generic(pyclient):
 
         max_workers = self.config.max_workers
         batch_size = self.config.sql_batch_size
+        _ids = []
         if max_workers > 1:
             with ProcessPoolExecutor(max_workers=max_workers) as ex:
                 futures = []
@@ -552,29 +551,30 @@ class Generic(pyclient):
                 kwargs.pop('cube', None)  # if in self.config, ignore it
                 for batch in batch_gen(oids, batch_size):
                     f = ex.submit(get_objects, cube=self._cube, oids=batch,
-                                  field_order=field_order, start=start,
-                                  save=save, cube_name=self.name,
+                                  field_order=field_order,
+                                  flush=flush, cube_name=self.name,
                                   autosnap=autosnap, **kwargs)
                     futures.append(f)
-                objects = []
                 for future in as_completed(futures):
                     try:
-                        objs = future.result()
-                        objects.extend(objs)
+                        __ids = future.result()
+                        if flush:
+                            _ids.extend(__ids)
                     except Exception as e:
                         tb = traceback.format_exc()
                         logger.error('Extract Error: %s\n%s' % (e, tb))
                         del tb, e
         else:
-            # respect the global batch size, even if sql batch
-            # size is not set
             for batch in batch_gen(oids, batch_size):
-                objs = self._get_objects(oids=batch, field_order=field_order,
-                                         start=start, save=save, 
-                                         autosnap=autosnap)
-                objects.extend(objs)
+                __ids = self._get_objects(oids=batch, field_order=field_order,
+                                          flush=flush, autosnap=autosnap)
+                if flush:
+                    _ids.extend(__ids)
         logger.debug('... current values objects get - done')
-        return objects
+        if flush:
+            return _ids
+        else:
+            return self
 
     def get_new_oids(self):
         '''
@@ -600,7 +600,7 @@ class Generic(pyclient):
                 where = "%s.%s > '%s'" % (table, _id, last_id)
             sql = 'SELECT DISTINCT %s.%s FROM %s.%s WHERE %s' % (
                 table, _id, db, table, where)
-            rows = self.proxy.fetchall(sql)
+            rows = self.sql_proxy.fetchall(sql)
             ids = self._extract_row_ids(rows)
         else:
             ids = []
@@ -734,8 +734,8 @@ class Generic(pyclient):
         return value
 
     @property
-    def proxy(self):
-        raise NotImplementedError("proxy is not defined")
+    def sql_proxy(self):
+        raise NotImplementedError("sql_proxy is not defined")
 
     def _prep_object(self, row, field_order):
         '''
@@ -782,7 +782,7 @@ class Generic(pyclient):
         _id = self.get_property('column')
         db = self.get_property('db')
         sql = 'SELECT DISTINCT %s.%s FROM %s.%s' % (table, _id, db, table)
-        return sorted([r[0] for r in self.proxy.fetchall(sql)])
+        return sorted([r[0] for r in self.sql_proxy.fetchall(sql)])
 
     def _sql_distinct(self, sql):
         # whether to query for distinct rows only or not; default, no

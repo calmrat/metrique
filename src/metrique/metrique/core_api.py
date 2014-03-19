@@ -197,6 +197,12 @@ class MetriqueObject(Mapping):
         self.store['_id'] = self._gen_id()
         self.store['_uuid'] = self._gen_uuid()
 
+    def as_dict(self, pop=None):
+        store = copy(self.store)
+        if pop:
+            [store.pop(key, None) for key in pop]
+        return store
+
 
 class MetriqueContainer(MutableMapping):
     def __init__(self, objects=None):
@@ -210,11 +216,6 @@ class MetriqueContainer(MutableMapping):
         else:
             raise ValueError(
                 "objects must be a list, tuple, dict or pandas.DataFrame")
-
-    def add(self, item):
-        item = self._convert(item)
-        _id = item['_id']
-        self.store[_id] = item
 
     def __getitem__(self, key):
         return self.store[key]
@@ -246,6 +247,14 @@ class MetriqueContainer(MutableMapping):
             raise TypeError(
                 "object values must be dict-like; got %s" % type(item))
         return item
+
+    def add(self, item):
+        item = self._convert(item)
+        _id = item['_id']
+        self.store[_id] = item
+
+    def extend(self, items):
+        [self.add(i) for i in items]
 
     def df(self):
         '''Return a pandas dataframe from objects'''

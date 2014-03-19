@@ -110,9 +110,6 @@ class MongoDBConfig(JSONConf):
         self.config.update(kwargs)
 
 
-#    def keys(self, samplesize=1):
-#        return self.cube_sample_fields(sample_size=samplesize)
-
 class MongoDBClient(BaseClient):
     '''
     This is the main client bindings for metrique http
@@ -156,12 +153,26 @@ class MongoDBClient(BaseClient):
         + remove: remove a regression test
         + list: list available regression tests
     '''
+
+    default_fields = '~'
+
     def __init__(self, mongodb_config=None, *args, **kwargs):
         super(MongoDBClient, self).__init__(*args, **kwargs)
 
         self.dbconfig = MongoDBConfig(mongodb_config)
         self._password = self.dbconfig.password
         self._owner = self.dbconfig.username
+
+    def __getitem__(self, query):
+        return self.find(query=query, fields=self.default_fields,
+                         date='~', merge_versions=False,
+                         sort=[('_start', -1)])
+
+    def keys(self, sample_size=1):
+        return self.sample_fields(sample_size=sample_size)
+
+    def values(self, sample_size=1):
+        return self.sample_docs(sample_size=sample_size)
 
 ######################### DB API ##################################
     def get_db(self, owner=None):
@@ -565,9 +576,25 @@ class MongoDBClient(BaseClient):
         result = _cube.find(spec).count()
         return result
 
+    def _parse_fields(self, fields):
+        _fields = {'_id': 0, '_start': 1, '_end': 1, '_oid': 1}
+        if fields in [None, False]:
+            pass
+        elif fields in ['~', True]:
+            _fields = None
+        elif isinstance(fields, dict):
+            _fields.update(fields)
+        elif isinstance(fields, basestring):
+            _fields.update({s.strip(): 1 for s in fields.split(',')})
+        elif isinstance(fields, (list, tuple)):
+            _fields.update({s.strip(): 1 for s in fields})
+        else:
+            raise ValueError("invalid fields value")
+        return _fields
+
     def find(self, query=None, fields=None, date=None, sort=None, one=False,
              raw=False, explain=False, merge_versions=True, skip=0,
-             limit=0, cube=None, owner=None):
+             limit=0, as_cursor=False, cube=None, owner=None):
         '''
         Run a pql mongodb based query on the given cube.
 
@@ -588,15 +615,22 @@ class MongoDBClient(BaseClient):
         '''
         _cube = self.get_collection(owner, cube)
         spec = parse_pql_query(query, date)
-        find = _cube.find_one if one else _cube.find
-        fields = fields or {'_id': 0, '_start': 1, '_end': 1, '_oid': 1}
-        result = find(spec, fields=fields, sort=sort, one=one,
-                      explain=explain, skip=skip, limit=limit)
+        fields = self._parse_fields(fields)
 
         if merge_versions and not one:
-            result = self._merge_versions(result)
+            fields = fields or {}
+            fields.update({'_start': 1, '_end': 1, '_oid': 1})
 
-        if raw or explain:
+        find = _cube.find_one if one else _cube.find
+        result = find(spec, fields=fields, sort=sort, explain=explain,
+                      skip=skip, limit=limit)
+
+        if one or explain or as_cursor:
+            return result
+        result = list(result)
+        if merge_versions:
+            result = self._merge_versions(result)
+        if raw:
             return result
         else:
             return Result(result, date)

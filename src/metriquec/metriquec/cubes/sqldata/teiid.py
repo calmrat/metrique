@@ -51,7 +51,7 @@ class Teiid(sqldata_generic):
         logger.debug("New TEIID proxy initialized")
 
     @property
-    def proxy(self):
+    def sql_proxy(self):
         '''
         Connect, authenticate and cache TEIID db connection and return it
         to caller.
