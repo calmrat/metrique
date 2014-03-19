@@ -454,12 +454,11 @@ class MongoDBClient(BaseClient):
         batch_size = batch_size or self.config.batch_size
         _cube = self.get_collection(owner, cube)
         _ids = []
-        # FIXME: joblib? parallel?
         for batch in batch_gen(self.objects.values(), batch_size):
             _ = self._flush(_cube=_cube, objects=batch, autosnap=autosnap,
                             cube=cube, owner=owner)
             _ids.extend(_)
-        return _ids
+        return sorted(_ids)
 
     def _flush(self, _cube, objects, autosnap=True, cube=None, owner=None):
         olen = len(objects)
