@@ -13,18 +13,14 @@ __provides__ = ['metrique']
 __desc__ = 'Metrique - Client Libraries'
 __scripts__ = []
 __requires__ = [
-    'gnupg (==1.2.5)',
     'metriqueu (>=%s)' % __version__,
     'pandas (==0.13.0)',
     'plotrique (>=%s)' % __version__,
-    'requests (==2.2.0)',
 ]
 __irequires__ = [
-    'gnupg==1.2.5',
     'metriqueu>=%s' % __version__,
     'pandas==0.13.0',
     'plotrique>=%s' % __version__,
-    'requests==2.2.0',
 ]
 pip_src = 'https://pypi.python.org/packages/source'
 __deplinks__ = []

@@ -9,6 +9,8 @@ metrique.regtest
 This module regression test api related functionality
 '''
 
+raise NotImplemented("FIXME")
+
 import logging
 import simplejson as json
 import os
@@ -112,8 +114,8 @@ def regtest_create(self, name, oids):
     _file = os.path.expanduser('~/.metrique/regtests/%s' % name)
     if os.path.exists(_file):
         logger.warn('A regtest with the given name already exists. '
-                         'It must be removed before the same name can be '
-                         'used again.')
+                    'It must be removed before the same name can be '
+                    'used again.')
         return
     with open(_file, 'w') as f:
         json.dump(fetch_objects(self, oids), f)

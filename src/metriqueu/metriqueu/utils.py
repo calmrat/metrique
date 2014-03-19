@@ -7,7 +7,6 @@ from datetime import datetime
 from dateutil.parser import parse as dt_parse
 from hashlib import sha1
 import locale
-import math
 import os
 import pytz
 import re
@@ -133,7 +132,7 @@ def ts2dt(ts, milli=False, tz_aware=True):
     ''' convert timestamp int's (seconds) to datetime objects '''
     # anything already a datetime will still be returned
     # tz_aware, if set to true
-    if not ts or math.isnan(ts):
+    if not ts or ts != ts:
         return None  # its not a timestamp
     elif isinstance(ts, datetime):
         pass
@@ -167,15 +166,13 @@ def utcnow(as_datetime=False, tz_aware=False, drop_micro=False):
         return dt2ts(now, drop_micro)
 
 
-def strip_split(item):
+def csv2list(item):
     if isinstance(item, basestring):
-        return [s.strip() for s in item.split(',')]
-    elif item is None:
-        return []
-    elif not isinstance(item, (list, tuple)):
-        raise TypeError('Expected a list/tuple')
-    else:  # nothing to do here...
-        return item
+        items = item.split(',')
+    else:
+        raise TypeError('Expected a csv string')
+    items = [s.strip() for s in items]
+    return items
 
 
 def to_encoding(ustring, encoding=None):

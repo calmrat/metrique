@@ -9,55 +9,73 @@ other words, test the 'cube_api' functionality of metrique client
 and metrique server.
 '''
 
-from . import testutils
 import os
 from metrique import pyclient
 from metrique.result import Result
 
+from pymongo.errors import OperationFailure
+
 cwd = os.path.dirname(os.path.abspath(__file__))
 TESTS_ROOT = '/'.join(cwd.split('/')[0:-1])
-GNUPG_DIR = os.path.join(cwd, 'gnupg')
 
 paths = [TESTS_ROOT]
 pkgs = ['testcubes']
 
-username = password = 'admin'
+username = password = 'test_user'
 
 config = dict(username=username,
               password=password,
-              debug=True)
+              debug=2)
+
+objects = [
+    {'_oid': 1, 'test': 'yipee'}
+]
 
 
-@testutils.runner
-def test_admin():
-    m = pyclient(**config)
-    m.user_remove(username, quiet=True)  # to be sure it doesn't exist already
-    assert m.user_register(username, password)
-    m.user_remove(username, quiet=True)  # to be sure it doesn't exist already
-
-
-@testutils.runner
 def test_api():
     m = pyclient(**config)
-    m.user_remove(username, quiet=True)  # to be sure it doesn't exist already
+    m.user_remove(username, clear_db=True)
     assert m.user_register(username, password)
     cubes = ['csvcube_local', 'jsoncube_local']
     for cube in cubes:
         _cube = m.get_cube(cube=cube, pkgs=pkgs, cube_paths=paths, init=True)
-        _cube.cookiejar_clear()
-        _cube.cube_drop(quiet=True)  # to be sure it doesn't exist already...
+        _cube.drop()
 
-        assert _cube.cube_register()
+        assert _cube.count(date='~') == 0
 
-        result = _cube.extract()
+        # first, just pull objects into memory
+        result = _cube.get_objects().objects
         assert result is not None
         assert len(result) > 0
+
+        assert _cube.count(date='~') == 0
+
+        # second, flush to backend db
+        _ids = _cube.get_objects(flush=True)
+        assert _ids is not None
+        assert len(_ids) > 0
+
+        k = len(_ids)
+
+        assert _cube.count(date='~') == k
+        assert _cube.count() == k
+
+        # a second flush of the same data should not result in
+        # new objects being saved
+        result = _cube.get_objects(flush=True)
+        assert _cube.count(date='~') == k
+        assert _cube.count() == k
+
+        # FIXME: change some of the data and flush again
+        # then update k so remaining count checks are consistent
+        #k = len(result)
 
         # we should get back some results
         df = _cube.find(fields='~', date='~')
         assert df is not None
         # default obj type returned should be metrique.result.Result
         assert isinstance(df, Result)
+        assert not df.empty
 
         # raw should return back a list of dicts
         raw = _cube.find(raw=True, fields='~', date='~')
@@ -65,67 +83,41 @@ def test_api():
         assert len(raw) > 0
         assert isinstance(raw[0], dict)
 
-        k = len(result)
-        assert k == _cube.count(date='~')
-
-        # a second extract of the same data should not result
-        # new objects being saved
-        result = _cube.extract()
-        assert k == _cube.count(date='~')
-
         # rename cube
-        name = _cube.name[:]
+        name = _cube.name
         new_name = 'renamed_%s' % name
-        assert _cube.cube_rename(new_name=new_name)
+        assert _cube.rename(new_name=new_name, drop_target=True)
+
+        # can't rename if name already exists...
+        try:
+            assert _cube.rename(new_name=new_name)
+        except OperationFailure:
+            pass
+
         assert _cube.name == new_name
+        assert _cube.name in _cube.ls()
         ## count should remain the same in renamed cube
-        assert k == _cube.count(date='~')
-        assert _cube.cube_rename(new_name=name)
+        assert _cube.count(date='~') == k
         # drop the cube
-        assert _cube.cube_drop()
-        assert _cube.cube_id not in _cube.cube_list_all()
+        assert _cube.drop()
+        assert _cube.name not in _cube.ls()
 
-    # with the last cube, do a few more things...
-    # re-register
-    _cube = m.get_cube(cube=cubes[0], pkgs=pkgs, cube_paths=paths, init=True)
-    assert _cube.cube_register()
-    name = '%s__%s' % (username, _cube.name)
-    assert name in _cube.cube_list_all()
-    # drop the cube
-    assert _cube.cube_drop()
-    assert name not in _cube.cube_list_all()
-    # then drop the user
-    assert _cube.user_remove()
+    assert _cube.user_remove(username, clear_db=True)
 
 
-@testutils.runner
 def test_user_api():
-    fingerprint = '894EE1CEEA61DC3D7D20327C4200AD1F2F22F46C'
+    m = pyclient(name='test_user', owner='test_user', **config)
 
-    m = pyclient(name='test_user',
-                 gnupg_dir=GNUPG_DIR,
-                 gnupg_fingerprint=fingerprint,
-                 **config)
-
-    assert m.config.gnupg_fingerprint == fingerprint
+    m.user_remove(username, clear_db=True)
 
     assert m.user_register(username, password)
-    # should except if trying to register again
-    try:
-        m.user_register(username, password)
-    except:
-        pass
 
-    aboutme = m.aboutme()
-    assert aboutme is not None
+    # FIXME: what if user tries registering multiple times?
+    #assert m.user_register(username, password)
 
-    assert m.config.gnupg_pubkey is not None
-    pubkey = m.config.gnupg_pubkey
-    gnupg = {'pubkey': pubkey, 'fingerprint': fingerprint}
-    result = m.user_update_profile(gnupg=gnupg)
-    assert result['previous'] == aboutme
-    assert 'gnupg' in result['now']
-    assert result['now']['gnupg']['fingerprint'] == fingerprint
-    assert result['now']['gnupg']['pubkey'] == pubkey
+    m.objects = objects
+    _ids = m.flush()
+    assert _ids is not None
+    assert len(_ids) == 1
 
-    assert m.user_remove()
+    assert m.user_remove(username, clear_db=True)

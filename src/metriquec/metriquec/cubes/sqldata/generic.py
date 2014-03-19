@@ -14,7 +14,13 @@ from copy import deepcopy, copy
 from collections import defaultdict
 from dateutil.parser import parse as dt_parse
 from functools import partial
-from joblib import Parallel, delayed
+
+try:
+    from joblib import Parallel, delayed
+    HAS_JOBLIB = True
+except ImportError:
+    HAS_JOBLIB = False
+
 import logging
 import pytz
 import re
@@ -291,15 +297,22 @@ class Generic(pyclient):
         max_workers = self.config.max_workers
         kwargs = self.config
         kwargs.pop('cube', None)  # ends up in config; ignore it
-        runner = Parallel(n_jobs=max_workers)
-        func = delayed(get_full_history)
-        result = runner(func(
-            cube=self._cube, oids=batch, flush=flush,
-            cube_name=self.name, autosnap=autosnap, **kwargs)
-            for batch in batch_gen(oids, batch_size))
-
-        # merge list of lists (batched) into single list
-        result = [i for l in result for i in l]
+        if HAS_JOBLIB:
+            runner = Parallel(n_jobs=max_workers)
+            func = delayed(get_full_history)
+            result = runner(func(
+                cube=self._cube, oids=batch, flush=flush,
+                cube_name=self.name, autosnap=autosnap, **kwargs)
+                for batch in batch_gen(oids, batch_size))
+            # merge list of lists (batched) into single list
+            result = [i for l in result for i in l]
+        else:
+            result = []
+            for batch in batch_gen(oids, batch_size):
+                _ = get_objects(
+                    cube=self._cube, oids=batch, flush=flush,
+                    cube_name=self.name, autosnap=autosnap, **kwargs)
+                result.extend(_)
 
         if flush:
             return result
@@ -525,14 +538,23 @@ class Generic(pyclient):
         kwargs = self.config
         kwargs.pop('cube', None)  # ends up in config; ignore it
         runner = Parallel(n_jobs=max_workers)
-        func = delayed(get_objects)
-        result = runner(func(
-            cube=self._cube, oids=batch, flush=flush, field_order=field_order,
-            cube_name=self.name, autosnap=autosnap, **kwargs)
-            for batch in batch_gen(oids, batch_size))
-
-        # merge list of lists (batched) into single list
-        result = [i for l in result for i in l]
+        if HAS_JOBLIB:
+            func = delayed(get_objects)
+            result = runner(func(
+                cube=self._cube, oids=batch, flush=flush,
+                field_order=field_order, cube_name=self.name,
+                autosnap=autosnap, **kwargs)
+                for batch in batch_gen(oids, batch_size))
+            # merge list of lists (batched) into single list
+            result = [i for l in result for i in l]
+        else:
+            result = []
+            for batch in batch_gen(oids, batch_size):
+                _ = get_objects(
+                    cube=self._cube, oids=batch, flush=flush,
+                    field_order=field_order, cube_name=self.name,
+                    autosnap=autosnap, **kwargs)
+                result.extend(_)
 
         logger.debug('... current values objects get - done')
         if flush:
