@@ -108,9 +108,9 @@ def test_jsonhash():
     dct_diff = copy(dct)
     del dct_diff['z']
 
-    DCT = '9537205dc75418549068c0c14766645479ce2ec3'
-    DCT_SORTED_Z = '38179f7d2a5422efcfb078ecb5dc3354514d1bdc'
-    DCT_DIFF = 'dd8374c81577b1295b13aa9c86d2791e3a315399'
+    DCT = 'a1ddd970e7d0a6a38e2799c503da41cc85f79a8b'
+    DCT_SORTED_Z = '8683dda62f0986d570713be610e967b706d6a161'
+    DCT_DIFF = '4610d85fbd7f6cdf72ab6bf4db4d05cf893eb407'
 
     assert dct != dct_sorted_z
 
@@ -156,20 +156,20 @@ def test_set_default():
         assert e == 'oops'
 
 
-def test_strip_split():
+def test_csv2list():
     ' args: item '
-    from metriqueu.utils import strip_split
+    from metriqueu.utils import csv2list
 
     a_lst = ['a', 'b', 'c', 'd', 'e']
     a_str = 'a, b,     c,    d , e'
-    assert strip_split(a_str) == a_lst
-    assert strip_split(None) == []
-    assert strip_split(a_lst) == a_lst
+    assert csv2list(a_str) == a_lst
 
-    try:
-        strip_split({})
-    except TypeError:
-        pass
+    for i in [None, a_lst, {}, 1, 1.0]:
+        # try some non-string input values
+        try:
+            csv2list(i)
+        except TypeError:
+            pass
 
 
 def test_ts2dt():

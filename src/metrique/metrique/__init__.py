@@ -19,11 +19,14 @@ home = os.environ['METRIQUE_HOME'] = os.environ.get(
     'METRIQUE_HOME', os.path.expanduser('~/'))
 prefix = os.environ['METRIQUE_PREFIX'] = os.environ.get(
     'METRIQUE_PREFIX', os.path.join(home, '.metrique'))
-etc = os.environ['METRIQUE_ETC'] = os.environ.get(
+os.environ['METRIQUE_ETC'] = os.environ.get(
     'METRIQUE_ETC', os.path.join(prefix, 'etc'))
-tmp = os.environ['METRIQUE_TMP'] = os.environ.get(
+os.environ['METRIQUE_LOGS'] = os.environ.get(
+    'METRIQUE_LOGS', os.path.join(prefix, 'logs'))
+os.environ['METRIQUE_TMP'] = os.environ.get(
     'METRIQUE_TMP', os.path.join(prefix, 'tmp'))
-# FIXME: set all other paths too....
+os.environ['METRIQUE_CACHE'] = os.environ.get(
+    'METRIQUE_CACHE', os.path.join(prefix, 'cache'))
 
 # FIXME: good idea?
 #import locale

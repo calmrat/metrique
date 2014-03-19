@@ -10,7 +10,7 @@ csvdata_rows = get_cube('csvdata_rows')
 cwd = os.path.dirname(os.path.abspath(__file__))
 here = '/'.join(cwd.split('/')[0:-2])
 DEFAULT_URI = os.path.join(here, 'us-idx-eod.csv')
-DEFAULT_ID = 'symbol'
+DEFAULT_ID = lambda o: o['symbol']
 
 
 class Local(csvdata_rows):

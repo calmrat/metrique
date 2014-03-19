@@ -213,6 +213,8 @@ class MetriqueContainer(MutableMapping):
             [self.add(x) for x in objects]
         elif isinstance(objects, (dict, Mapping)):
             self.store.update(objects)
+        elif isinstance(objects, MetriqueContainer):
+            self.store = objects
         else:
             raise ValueError(
                 "objects must be a list, tuple, dict or pandas.DataFrame")
@@ -354,12 +356,6 @@ class BaseClient(object):
         # set name if passed in, but don't overwrite default if not
         self.name = name or self.name
 
-        self.config.logdir = os.path.expanduser(self.config.logdir)
-        if not os.path.exists(self.config.logdir):
-            os.makedirs(self.config.logdir)
-        self.config.logfile = os.path.join(self.config.logdir,
-                                           self.config.logfile)
-
         # keep logging local to the cube so multiple
         # cubes can independently log without interferring
         # with each others logging.
@@ -381,7 +377,7 @@ class BaseClient(object):
         self._objects = MetriqueContainer()
 
 ####################### data loading api ###################
-    def load(self, path, filetype=None, as_dict=True, **kwargs):
+    def load(self, path, filetype=None, as_dict=True, raw=False, **kwargs):
         '''Load multiple files from various file types automatically.
 
         Supports glob paths, eg::
@@ -422,6 +418,9 @@ class BaseClient(object):
         if df.empty:
             raise ValueError("not data extracted!")
 
+        if raw:
+            return df.to_dict()
+        # FIXME: rename to transform
         if as_dict:
             return df.T.to_dict().values()
         else:
@@ -474,9 +473,14 @@ class BaseClient(object):
         '''
         level = self.config.debug
         logstdout = self.config.logstdout
-        logfile = self.config.logfile
         log_format = "%(name)s.%(process)s:%(asctime)s:%(message)s"
         log_format = logging.Formatter(log_format, "%Y%m%dT%H%M%S")
+
+        logfile = self.config.logfile
+        logdir = os.environ.get("METRIQUE_LOGS")
+        if not os.path.exists(logdir):
+            os.makedirs(logdir)
+        logfile = os.path.join(logdir, logfile)
 
         logger = logging.getLogger()
         logger.handlers = []

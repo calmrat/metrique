@@ -32,15 +32,9 @@ from metriqueu.utils import dt2ts, batch_gen
 
 logger = logging.getLogger(__name__)
 
-ETC = os.environ.get('METRIQUE_ETC', '')
-
-MONGODB_CONFIG = os.path.join(ETC, 'mongodb.json')
-
-# FIXME: create the in mongodb firstboot!
-# FIXME: make 'firstboot' a method of this class
-SSL_CERT = os.path.join(ETC, 'metrique.cert')
-SSL_KEY = os.path.join(ETC, 'metrique.key')
-SSL_PEM = os.path.join(ETC, 'metrique.pem')
+ETC_DIR = os.environ.get('METRIQUE_ETC')
+DEFAULT_CONFIG = os.path.join(ETC_DIR, 'mongodb.json')
+SSL_PEM = os.path.join(ETC_DIR, 'metrique.pem')
 
 READ_PREFERENCE = {
     'PRIMARY_PREFERRED': ReadPreference.PRIMARY,
@@ -53,7 +47,7 @@ READ_PREFERENCE = {
 VALID_CUBE_SHARE_ROLES = ['read', 'readWrite', 'dbAdminRole', 'userAdminRole']
 CUBE_OWNER_ROLES = ['readWrite', 'dbAdminRole', 'userAdminRole']
 RESTRICTED_COLLECTION_NAMES = ['admin', 'local', 'system']
-INVALID_USERNAME_RE = re.compile('[^a-zA-Z]')
+INVALID_USERNAME_RE = re.compile('[^a-zA-Z_]')
 
 
 class MongoDBConfig(JSONConf):
@@ -63,8 +57,8 @@ class MongoDBConfig(JSONConf):
     This configuration class defines the following overrideable defaults.
 
     :param auth: enable mongodb authentication
-    :param password: admin user password
-    :param user: admin username
+    :param password: mongodb password
+    :param username: mongodb username
     :param fsync: sync writes to disk before return?
     :param host: mongodb host(s) to connect to
     :param journal: enable write journal before return?
@@ -72,12 +66,13 @@ class MongoDBConfig(JSONConf):
     :param read_preference: default - NEAREST
     :param replica_set: name of replica set, if any
     :param ssl: enable ssl
-    :param ssl_certificate: path to ssl certificate file
+    :param ssl_certificate: path to ssl certificate file (or combined .pem)
     :param ssl_certificate_key: path to ssl certificate key file
     :param tz_aware: return back tz_aware dates?
     :param write_concern: what level of write assurance before returning
     '''
-    default_config = MONGODB_CONFIG
+    default_config = DEFAULT_CONFIG
+    default_config_dir = ETC_DIR
     name = 'mongodb'
     # FIXME: move metrique specific configs back to metriqued.config
     # eg, 'collection logs'... that's it. and below
@@ -146,22 +141,16 @@ class MongoDBClient(BaseClient):
         + distinct: get a list of unique object property values
         + sample: query for a psuedo-random set of objects
         + aggregate: run pql (mongodb) aggregate query remotely
-
-    **Regtest**
-        + regtest: run a regression test
-        + create: create a regression test
-        + remove: remove a regression test
-        + list: list available regression tests
     '''
 
     default_fields = '~'
 
-    def __init__(self, mongodb_config=None, *args, **kwargs):
-        super(MongoDBClient, self).__init__(*args, **kwargs)
+    def __init__(self, mongodb_config=None, **kwargs):
+        super(MongoDBClient, self).__init__(**kwargs)
 
         self.dbconfig = MongoDBConfig(mongodb_config)
         self._password = self.dbconfig.password
-        self._owner = self.dbconfig.username
+        self._owner = kwargs.get('owner', self.dbconfig.username)
 
     def __getitem__(self, query):
         return self.find(query=query, fields=self.default_fields,
@@ -177,10 +166,15 @@ class MongoDBClient(BaseClient):
 ######################### DB API ##################################
     def get_db(self, owner=None):
         owner = owner or self._owner
+        if not owner:
+            raise RuntimeError("[%s] Invalid db!" % owner)
         return self.proxy[owner]
 
     def get_collection(self, owner=None, cube=None):
+        owner = owner or self._owner
         cube = cube or self.name
+        if not (owner and cube):
+            raise RuntimeError("[%s.%s] Invalid cube!" % (owner, cube))
         return self.get_db(owner)[cube]
 
     @property
@@ -219,7 +213,7 @@ class MongoDBClient(BaseClient):
         if ok:
             return proxy
         raise RuntimeError(
-            "MongoDB failed to authenticate user (%s)" % self.dbconfig.user)
+            "MongoDB failed to authenticate user (%s)" % username)
 
     def _load_mongo_client(self, **kwargs):
         logger.debug('Loading new MongoClient connection')
@@ -242,39 +236,24 @@ class MongoDBClient(BaseClient):
 
     #    return self.db_metrique_admin[self.collection_logs]
 ######################### User API ################################
-    def register(self, username=None, password=None):
-        '''
-        Register new user.
-
-        :param user: Name of the user you're managing
-        :param password: Password (plain text), if any of user
-        '''
-        password = password or self._password
-        username = username or self._owner
-        logger.info('Registering new user %s' % username)
-        username = self._validate_username(username)
-        password = self._validate_password(password)
-        result = self.proxy[username].add_user(username, password,
-                                               roles=CUBE_OWNER_ROLES)
-        return result
-
     def _validate_password(self, password):
         is_str = isinstance(password, basestring)
-        not_null = password is not None
         char_8_plus = len(password) >= 8
-        ok = all(is_str, not_null, char_8_plus)
+        ok = all((is_str, char_8_plus))
         if not ok:
-            raise ValueError("Invalid password")
+            raise ValueError("Invalid password; must be len(string) >= 8")
+        return password
 
     def _validate_username(self, username):
         if not isinstance(username, basestring):
             raise TypeError("username must be a string")
         elif INVALID_USERNAME_RE.search(username):
             raise ValueError(
-                "Invalid username; ascii alpha [a-z] characters only!")
+                "Invalid username '%s'; "
+                "lowercase, ascii alpha [a-z_] characters only!" % username)
         elif username in RESTRICTED_COLLECTION_NAMES:
             raise ValueError(
-                "Restricted username; ascii alpha [a-z] characters only!")
+                "username '%s' is not permitted" % username)
         else:
             return username.lower()
 
@@ -289,6 +268,38 @@ class MongoDBClient(BaseClient):
                 roles, VALID_CUBE_SHARE_ROLES))
         return sorted(roles)
 
+    # FIXME: add 'user_update_roles()...
+    def user_register(self, username=None, password=None):
+        '''
+        Register new user.
+
+        :param user: Name of the user you're managing
+        :param password: Password (plain text), if any of user
+        '''
+        if username and not password:
+            raise RuntimeError('must specify password!')
+        password = password or self._password
+        username = username or self._owner
+        username = self._validate_username(username)
+        password = self._validate_password(password)
+        logger.info('Registering new user %s' % username)
+        self.proxy[username].add_user(username, password,
+                                      roles=CUBE_OWNER_ROLES)
+        spec = parse_pql_query('user == "%s"' % username)
+        result = self.proxy[username].system.users.find(spec).count
+        return bool(result)
+
+    def user_remove(self, username, clear_db=False):
+        username = username or self._owner
+        username = self._validate_username(username)
+        logger.info('Removing user %s' % username)
+        self.proxy[username].remove_user(username)
+        if clear_db:
+            self.proxy.drop_database(username)
+        spec = parse_pql_query('user == "%s"' % username)
+        result = not bool(self.proxy[username].system.users.find(spec).count())
+        return result
+
 ######################### Cube API ################################
     def ls(self, startswith=None, owner=None):
         '''
@@ -298,7 +309,7 @@ class MongoDBClient(BaseClient):
         :returns list: sorted list of cube names
         '''
         db = self.get_db(owner)
-        cubes = db.collection_names()
+        cubes = db.collection_names(include_system_collections=False)
         startswith = unicode(startswith or '')
         cubes = [name for name in cubes if name.startswith(startswith)]
         RCN = RESTRICTED_COLLECTION_NAMES
@@ -331,7 +342,8 @@ class MongoDBClient(BaseClient):
         '''
         _cube = self.get_collection(owner, cube)
         logger.info('[%s] Dropping cube' % _cube)
-        result = _cube.drop()
+        _cube.drop()
+        result = not bool(self.name in self.db.collection_names())
         return result
 
     def index_list(self, cube=None, owner=None):
@@ -380,7 +392,7 @@ class MongoDBClient(BaseClient):
 
     ######## SAVE/REMOVE ########
 
-    def rename(self, new_name, cube=None, owner=None):
+    def rename(self, new_name, drop_target=False, cube=None, owner=None):
         '''
         Rename a cube.
 
@@ -390,8 +402,9 @@ class MongoDBClient(BaseClient):
         '''
         _cube = self.get_collection(owner, cube)
         logger.info('[%s] Renaming cube -> %s' % (_cube, new_name))
-        result = _cube.rename(new_name)
-        if cube == self.name and result:
+        _cube.rename(new_name, dropTarget=drop_target)
+        result = bool(new_name in self.db.collection_names())
+        if cube is None and result:
             self.name = new_name
         return result
 
@@ -436,7 +449,8 @@ class MongoDBClient(BaseClient):
         result = _cube.remove(spec)
         return result
 
-    def flush(self, autosnap=True, batch_size=None, cube=None, owner=None):
+    def flush(self, autosnap=True, batch_size=None,
+              cube=None, owner=None):
         '''
         Persist a list of objects to MongoDB.
 
@@ -450,7 +464,6 @@ class MongoDBClient(BaseClient):
         :param autosnap: rotate _end:None's before saving new objects
         :returns result: _ids saved
         '''
-
         batch_size = batch_size or self.config.batch_size
         _cube = self.get_collection(owner, cube)
         _ids = []

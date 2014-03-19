@@ -57,7 +57,6 @@ def test_get_cube():
 
     # expected to be available (built-ins)
     get_cube('csvdata_rows')
-    get_cube('jsondata_objs')
     get_cube('sqldata_generic')
     get_cube('sqldata_teiid')
 
