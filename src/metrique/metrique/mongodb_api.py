@@ -79,17 +79,17 @@ class MongoDBConfig(JSONConf):
     def __init__(self, config_file=None, **kwargs):
         config = {
             'auth': False,
-            'password': None,
-            'username': getpass.getuser(),
             'fsync': False,
             'host': '127.0.0.1',
             'journal': True,
+            'password': None,
             'port': 27017,
             'read_preference': 'NEAREST',
             'replica_set': None,
             'ssl': False,
             'ssl_certificate': SSL_PEM,
             'tz_aware': True,
+            'username': getpass.getuser(),
             'write_concern': 1,  # primary; add X for X replicas
         }
         # apply defaults
@@ -491,7 +491,7 @@ class MongoDBClient(BaseClient):
             # save each object; overwrite existing
             # (same _oid + _start or _oid if _end = None) or upsert
             logger.debug('[%s] Saving %s versions' % (_cube, len(objects)))
-            _ids = {_cube.save(dict(o), manipulate=True) for o in objects}
+            _ids = [_cube.save(o, manipulate=True) for o in objects]
             # pop those we're already flushed out of the instance container
             failed = olen - len(_ids)
             if failed > 0:
