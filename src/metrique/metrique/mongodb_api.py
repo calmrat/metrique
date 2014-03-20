@@ -21,6 +21,7 @@ import re
 try:
     from pymongo import MongoClient, MongoReplicaSetClient
     from pymongo.read_preferences import ReadPreference
+    from pymongo.errors import OperationFailure
 except ImportError:
     raise ImportError("Pymongo 2.6+ required!")
 
@@ -74,11 +75,6 @@ class MongoDBConfig(JSONConf):
     default_config = DEFAULT_CONFIG
     default_config_dir = ETC_DIR
     name = 'mongodb'
-    # FIXME: move metrique specific configs back to metriqued.config
-    # eg, 'collection logs'... that's it. and below
-    #@property
-    #def c_logs_admin(self):
-    #    '''Wrapper for a read/write 'logs' collection proxy'''
 
     def __init__(self, config_file=None, **kwargs):
         config = {
@@ -147,10 +143,7 @@ class MongoDBClient(BaseClient):
 
     def __init__(self, mongodb_config=None, **kwargs):
         super(MongoDBClient, self).__init__(**kwargs)
-
-        self.dbconfig = MongoDBConfig(mongodb_config)
-        self._password = self.dbconfig.password
-        self._owner = kwargs.get('owner', self.dbconfig.username)
+        self.mongodb_config = MongoDBConfig(mongodb_config)
 
     def __getitem__(self, query):
         return self.find(query=query, fields=self.default_fields,
@@ -165,13 +158,16 @@ class MongoDBClient(BaseClient):
 
 ######################### DB API ##################################
     def get_db(self, owner=None):
-        owner = owner or self._owner
+        owner = owner or self.mongodb_config.username
         if not owner:
             raise RuntimeError("[%s] Invalid db!" % owner)
-        return self.proxy[owner]
+        try:
+            return self.proxy[owner]
+        except OperationFailure as e:
+            raise RuntimeError("unable to get db! (%s)" % e)
 
     def get_collection(self, owner=None, cube=None):
-        owner = owner or self._owner
+        owner = owner or self.mongodb_config.username
         cube = cube or self.name
         if not (owner and cube):
             raise RuntimeError("[%s.%s] Invalid cube!" % (owner, cube))
@@ -179,35 +175,36 @@ class MongoDBClient(BaseClient):
 
     @property
     def db(self):
-        return self.proxy[self.dbconfig.username]
+        return self.proxy[self.mongodb_config.username]
 
     @property
     def proxy(self):
         _proxy = getattr(self, '_proxy', None)
         if not _proxy:
             kwargs = {}
-            if self.dbconfig.ssl:
-                if self.dbconfig.ssl_keyfile:
+            if self.mongodb_config.ssl:
+                if self.mongodb_config.ssl_keyfile:
                     # include ssl keyfile only if its defined
                     # otherwise, certfile must be crt+key pem combined
-                    kwargs.update({'ssl_keyfile': self.dbconfig.ssl_keyfile})
+                    kwargs.update(
+                        {'ssl_keyfile': self.mongodb_config.ssl_keyfile})
                 # include ssl options only if it's enabled
                 kwargs.update(
-                    dict(ssl=self.dbconfig.ssl,
-                         ssl_certfile=self.dbconfig.ssl_certfile))
-            if self.dbconfig.replica_set:
+                    dict(ssl=self.mongodb_config.ssl,
+                         ssl_certfile=self.mongodb_config.ssl_certfile))
+            if self.mongodb_config.replica_set:
                 _proxy = self._load_mongo_replica_client(**kwargs)
             else:
                 _proxy = self._load_mongo_client(**kwargs)
-            if self.dbconfig.auth:
+            if self.mongodb_config.auth:
                 _proxy = self._authenticate(_proxy)
             self._proxy = _proxy
         return _proxy
 
     def _authenticate(self, proxy, username=None, password=None):
-        username = username or self.dbconfig.username
-        password = password or self.dbconfig.password
-        ok = proxy['admin'].authenticate(username, password)
+        username = username or self.mongodb_config.username
+        password = password or self.mongodb_config.password
+        ok = proxy[username].authenticate(username, password)
         if ok:
             return proxy
         raise RuntimeError(
@@ -216,24 +213,30 @@ class MongoDBClient(BaseClient):
     def _load_mongo_client(self, **kwargs):
         logger.debug('Loading new MongoClient connection')
         _proxy = MongoClient(
-            self.dbconfig.host, self.dbconfig.port,
-            tz_aware=self.dbconfig.tz_aware, w=self.dbconfig.write_concern,
-            j=self.dbconfig.journal, fsync=self.dbconfig.fsync, **kwargs)
+            self.mongodb_config.host, self.mongodb_config.port,
+            tz_aware=self.mongodb_config.tz_aware,
+            w=self.mongodb_config.write_concern, j=self.mongodb_config.journal,
+            fsync=self.mongodb_config.fsync, **kwargs)
         return _proxy
 
     def _load_mongo_replica_client(self, **kwargs):
         logger.debug('Loading new MongoReplicaSetClient connection')
-        read_preference = READ_PREFERENCE[self.dbconfig.read_preference]
+        read_preference = READ_PREFERENCE[self.mongodb_config.read_preference]
         _proxy = MongoReplicaSetClient(
-            self.dbconfig.host, self.dbconfig.port,
-            tz_aware=self.dbconfig.tz_aware, w=self.dbconfig.write_concern,
-            j=self.dbconfig.journal, fsync=self.dbconfig.fsync,
-            replicaSet=self.dbconfig.replica_set,
+            self.mongodb_config.host, self.mongodb_config.port,
+            tz_aware=self.mongodb_config.tz_aware,
+            w=self.mongodb_config.write_concern,
+            j=self.mongodb_config.journal, fsync=self.mongodb_config.fsync,
+            replicaSet=self.mongodb_config.replica_set,
             read_preference=read_preference, **kwargs)
         return _proxy
 
     #    return self.db_metrique_admin[self.collection_logs]
 ######################### User API ################################
+    def whoami(self, auth=False):
+        '''Local api call to check the username of running user'''
+        return self.mongodb_config['username']
+
     def _validate_password(self, password):
         is_str = isinstance(password, basestring)
         char_8_plus = len(password) >= 8
@@ -276,8 +279,8 @@ class MongoDBClient(BaseClient):
         '''
         if username and not password:
             raise RuntimeError('must specify password!')
-        password = password or self._password
-        username = username or self._owner
+        password = password or self.mongodb_config.password
+        username = username or self.mongodb_config.username
         username = self._validate_username(username)
         password = self._validate_password(password)
         logger.info('Registering new user %s' % username)
@@ -288,7 +291,7 @@ class MongoDBClient(BaseClient):
         return bool(result)
 
     def user_remove(self, username, clear_db=False):
-        username = username or self._owner
+        username = username or self.mongodb_config.username
         username = self._validate_username(username)
         logger.info('Removing user %s' % username)
         self.proxy[username].remove_user(username)
@@ -476,7 +479,7 @@ class MongoDBClient(BaseClient):
         if olen == 0:
             logger.info("No objects to flush!")
             return []
-        logger.info("Flushing %s objects" % olen)
+        logger.info("[%s] Flushing %s objects" % (_cube, olen))
 
         objects = self._filter_dups(_cube, objects)
 
@@ -487,14 +490,17 @@ class MongoDBClient(BaseClient):
         if objects:
             # save each object; overwrite existing
             # (same _oid + _start or _oid if _end = None) or upsert
-            logger.debug('Saving %s versions' % len(objects))
+            logger.debug('[%s] Saving %s versions' % (_cube, len(objects)))
             _ids = {_cube.save(dict(o), manipulate=True) for o in objects}
             # pop those we're already flushed out of the instance container
             failed = olen - len(_ids)
             if failed > 0:
                 logger.warn("%s objects failed to flush!" % failed)
-            [self.objects.pop(_id) for _id in _ids]
-            logger.debug("%s objects remaining" % len(self.objects))
+            # new 'snapshoted' objects are included in _ids, but they
+            # aren't in self.objects, so ignore them
+            [self.objects.pop(_id) for _id in _ids if _id in self.objects]
+            logger.debug(
+                "[%s] %s objects remaining" % (_cube, len(self.objects)))
             return _ids
         return []
 
@@ -538,13 +544,15 @@ class MongoDBClient(BaseClient):
         _ids = [o['_id'] for o in objects if o['_end'] is None]
 
         if not _ids:
-            logger.debug('0 of %s objects need to be rotated' % olen)
+            logger.debug(
+                '[%s] 0 of %s objects need to be rotated' % (_cube, olen))
             return objects
 
         spec = parse_pql_query('_id in %s' % _ids, date=None)
         _objs = _cube.find(spec, {'_hash': 0, '_uuid': 0})
         k = _objs.count()
-        logger.debug('%s of %s objects need to be rotated' % (k, olen))
+        logger.debug(
+            '[%s] %s of %s objects need to be rotated' % (_cube, k, olen))
         if k == 0:  # nothing to rotate...
             return objects
         for o in _objs:

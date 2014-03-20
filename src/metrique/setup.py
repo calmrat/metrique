@@ -15,12 +15,10 @@ __scripts__ = []
 __requires__ = [
     'metriqueu (>=%s)' % __version__,
     'pandas (==0.13.0)',
-    'plotrique (>=%s)' % __version__,
 ]
 __irequires__ = [
     'metriqueu>=%s' % __version__,
     'pandas==0.13.0',
-    'plotrique>=%s' % __version__,
 ]
 pip_src = 'https://pypi.python.org/packages/source'
 __deplinks__ = []

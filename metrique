@@ -11,7 +11,7 @@ from functools import partial
 import getpass
 import glob
 import importlib
-import multiprocessing
+import logging
 import os
 import random
 import re
@@ -22,17 +22,21 @@ import socket
 import string
 import subprocess
 import sys
+import time
 import virtualenv
+
+log_format = "%(message)s"
+logging.basicConfig(format=log_format)
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
 
 pjoin = os.path.join
 env = os.environ
 
 active_virtualenv = lambda: os.environ.get('VIRTUAL_ENV', '')
-logger = virtualenv.Logger([(0, sys.stdout)])
 call_subprocess = virtualenv.call_subprocess
 
-__pkgs__ = ['metrique', 'metriqued', 'metriquec', 'metriqueu',
-            'metriquet', 'plotrique']
+__pkgs__ = ['metrique', 'metriquec', 'metriqueu', 'metriquet', 'plotrique']
 __actions__ = ['build', 'sdist', 'install', 'develop', 'register',
                'bump', 'status']
 __bumps__ = ['x', 'y', 'z', 'r']
@@ -40,14 +44,6 @@ RE_VERSION_X = re.compile(r"__version__\s+=\s+[\"']((\d+).\d+.\d+)[\"']")
 RE_VERSION_Y = re.compile(r"__version__\s+=\s+[\"'](\d+.(\d+).\d+)[\"']")
 RE_VERSION_Z = re.compile(r"__version__\s+=\s+[\"'](\d+.\d+.(\d+))[\"']")
 RE_RELEASE = re.compile(r"__release__ = [\"']?((\d+)a?)[\"']?")
-
-RPM_SYSTEM_RELEASE = "/etc/system-release"
-RPMS = ['git', 'python', 'python-devel', 'python-setuptools', 'python-pip',
-        'supervisor', 'vim', 'screen', 'psmisc', 'net-tools', 'rng-tools',
-        'mlocate', 'tar', 'pigz', 'rsync', 'chrony',
-        'gcc', 'gcc-c++', 'gcc-gfortran', 'freetype-devel', 'libpng-devel',
-        'mongodb', 'mongodb-server', 'nginx', 'krb5-devel', 'postgresql',
-        'postgresql-devel']
 
 
 def deactivate():
@@ -58,9 +54,9 @@ def deactivate():
             sys.path = [p for p in sys.path if p in to_remove]
             logger.info(' ... paths cleared: %s' % sorted(to_remove))
         env['VIRTUAL_ENV'] = ''
-        logger.info('Virtual Env (%s): Deactivated' % virtenv)
+        logger.debug('Virtual Env (%s): Deactivated' % virtenv)
     else:
-        logger.info('Deactivate: Virtual Env not detected')
+        logger.debug('Deactivate: Virtual Env not detected')
 
 
 def activate(args=None):
@@ -69,7 +65,7 @@ def activate(args=None):
         logger.info('Activate: No virtenv defined')
         return  # nothing to activate
     elif virtenv == active_virtualenv():
-        logger.info('Virtual Env already active')
+        logger.debug('Virtual Env already active')
         return  # nothing to activate
     else:
         deactivate()  # deactive active virtual first
@@ -109,20 +105,6 @@ SRC_DIR = pjoin(GIT_DIR, 'src/')
 HOME_DIR = env.get('METRIQUE_HOME', os.path.expanduser('~/'))
 USER_DIR = env.get('METRIQUE_USR', pjoin(HOME_DIR, '.metrique'))
 
-logger.warn('-' * 30)
-logger.warn('Started at  : %s' % NOW)
-logger.warn('Current User: %s' % USER)
-logger.warn('Current CWD : %s' % HERE)
-logger.warn('Virtual Env : %s' % VIRTUAL_ENV)
-logger.warn('Hostname    : %s' % HOSTNAME)
-logger.warn('Local IP    : %s' % LOCAL_IP)
-logger.warn('GIT Repo    : %s' % GIT_DIR)
-logger.warn('Source Path : %s' % SRC_DIR)
-logger.warn('This file   : %s' % __file__)
-logger.warn('Home Path   : %s' % HOME_DIR)
-logger.warn('User Path   : %s' % USER_DIR)
-logger.warn('-' * 30)
-
 if not (os.path.exists(SRC_DIR) or
         os.path.exists(pjoin(SRC_DIR, '.git'))):
     raise OSError("can't find metrique src/ path; `export METRIQUE_GIT=...`?")
@@ -137,26 +119,23 @@ env['PIP_ACCEL_CACHE'] = env.get('PIP_ACCEL_CACHE', PIP_ACCEL_DIR)
 env['PYTHON_EGG_CACHE'] = env.get('PYTHON_EGG_CACHE', PIP_EGGS)
 
 TRASH_DIR = env.get('METRIQUE_TRASH', pjoin(USER_DIR, 'trash'))
-LOG_DIR = env.get('METRIQUE_LOG', pjoin(USER_DIR, 'logs'))
+LOGS_DIR = env.get('METRIQUE_LOGS', pjoin(USER_DIR, 'logs'))
 ETC_DIR = env.get('METRIQUE_ETC', pjoin(USER_DIR, 'etc'))
-PID_DIR = env.get('METRIQUE_PID', pjoin(USER_DIR, 'pids'))
+PIDS_DIR = env.get('METRIQUE_PIDS', pjoin(USER_DIR, 'pids'))
 BACKUP_DIR = env.get('METRIQUE_BACKUP', pjoin(USER_DIR, 'backup'))
-TEMP_DIR = env.get('METRIQUE_TEMP', pjoin(USER_DIR, 'tmp'))
+TMP_DIR = env.get('METRIQUE_TMP', pjoin(USER_DIR, 'tmp'))
 CACHE_DIR = env.get('METRIQUE_CACHE', pjoin(USER_DIR, 'cache'))
 MONGODB_DIR = env.get('METRIQUE_MONGODB', pjoin(USER_DIR, 'mongodb'))
 CELERY_DIR = env.get('METRIQUE_CELERY', pjoin(USER_DIR, 'celery'))
-GNUPG_DIR = env.get('METRIQUE_GNUPG', pjoin(USER_DIR, 'gnupg'))
+STATIC_DIR = env.get('METRIQUE_STATIC', pjoin(USER_DIR, 'static'))
 
-METRIQUED_JSON = pjoin(ETC_DIR, 'metriqued.json')
+METRIQUE_FIRSTBOOT_PATH = pjoin(USER_DIR, '.firstboot_metrique')
 METRIQUE_JSON = pjoin(ETC_DIR, 'metrique.json')
 
-STATIC_PATH = env.get('METRIQUE_STATIC', pjoin(
-    SRC_DIR, 'metriqued/metriqued/static/'))
 API_DOCS_PATH = env.get('METRIQUE_API_DOCS', pjoin(
     GIT_DIR, 'docs/build/html/'))
 
 SYS_FIRSTBOOT_PATH = pjoin(USER_DIR, '.firstboot_sys')
-METRIQUED_FIRSTBOOT_PATH = pjoin(USER_DIR, '.firstboot_metriqued')
 
 SSL_CERT = pjoin(ETC_DIR, 'metrique.crt')
 SSL_KEY = pjoin(ETC_DIR, 'metrique.key')
@@ -164,69 +143,50 @@ SSL_PEM = pjoin(ETC_DIR, 'metrique.pem')
 
 MONGODB_FIRSTBOOT_PATH = pjoin(USER_DIR, '.firstboot_mongodb')
 MONGODB_CONF = pjoin(ETC_DIR, 'mongodb.conf')
-MONGODB_PIDFILE = pjoin(PID_DIR, 'mongodb.pid')
+MONGODB_PIDFILE = pjoin(PIDS_DIR, 'mongodb.pid')
 MONGODB_LOCKFILE = pjoin(MONGODB_DIR, 'mongod.lock')
-MONGODB_LOG = pjoin(LOG_DIR, 'mongodb.log')
+MONGODB_LOG = pjoin(LOGS_DIR, 'mongodb.log')
 MONGODB_JSON = pjoin(ETC_DIR, 'mongodb.json')
 MONGODB_JS = pjoin(ETC_DIR, 'mongodb.js')
 MONGODB_KEYFILE = pjoin(ETC_DIR, 'mongodb.key')
 
+CELERY_FIRSTBOOT_PATH = pjoin(USER_DIR, '.firstboot_celery')
 CELERY_JSON = pjoin(ETC_DIR, 'celery.json')
-CELERYD_PIDFILE = pjoin(PID_DIR, 'celeryd.pid')
-CELERYBEAT_PIDFILE = pjoin(PID_DIR, 'celerybeat.pid')
-CELERY_LOGFILE = pjoin(LOG_DIR, 'celeryd.log')
+CELERYD_PIDFILE = pjoin(PIDS_DIR, 'celeryd.pid')
+CELERYBEAT_PIDFILE = pjoin(PIDS_DIR, 'celerybeat.pid')
+CELERY_LOGFILE = pjoin(LOGS_DIR, 'celeryd.log')
 
+NGINX_FIRSTBOOT_PATH = pjoin(USER_DIR, '.firstboot_nginx')
 NGINX_CONF = pjoin(ETC_DIR, 'nginx.conf')
-NGINX_ACCESS_LOG = pjoin(LOG_DIR, 'nginx_access.log')
-NGINX_ERROR_LOG = pjoin(LOG_DIR, 'nginx_error.log')
-NGINX_PIDFILE = pjoin(PID_DIR, 'nginx.pid')
+NGINX_ACCESS_LOG = pjoin(LOGS_DIR, 'nginx_access.log')
+NGINX_ERROR_LOG = pjoin(LOGS_DIR, 'nginx_error.log')
+NGINX_PIDFILE = pjoin(PIDS_DIR, 'nginx.pid')
 
+SUPERVISORD_FIRSTBOOT_PATH = pjoin(USER_DIR, '.firstboot_supervisord')
 SUPERVISORD_CONF = pjoin(ETC_DIR, 'supervisord.conf')
-SUPERVISORD_PIDFILE = pjoin(PID_DIR, 'supervisord.pid')
-SUPERVISORD_LOGFILE = pjoin(LOG_DIR, 'supervisord.log')
-SUPERVISORD_HISTORYFILE = pjoin(TEMP_DIR, 'supervisord_history')
+SUPERVISORD_PIDFILE = pjoin(PIDS_DIR, 'supervisord.pid')
+SUPERVISORD_LOGFILE = pjoin(LOGS_DIR, 'supervisord.log')
+SUPERVISORD_HISTORYFILE = pjoin(TMP_DIR, 'supervisord_history')
 
 ############################## DEFAULT CONFS #################################
 DEFAULT_METRIQUE_JSON = '''{
-    "auto_login": false,
     "batch_size": 5000,
-    "cube_autoregister": false,
     "debug": true,
     "host": "127.0.0.1",
     "log2file": true,
     "logstdout": false,
-    "max_workers": %s,
-    "password": "%s",
+    "max_workers": 4,
     "port": 5420,
     "sql_batch_size": 1000,
     "ssl": false,
     "ssl_verify": false
 }'''
 
-DEFAULT_METRIQUED_JSON = '''{
-    "api_docs": "%s",
-    "cookie_secret": "%s",
-    "debug": true,
-    "host": "127.0.0.1",
-    "host_LOCAL": "%s",
-    "krb_auth": false,
-    "log2file": true,
-    "logstdout": false,
-    "log_requests": false,
-    "port": 5420,
-    "realm": "metrique",
-    "ssl": false,
-    "ssl_certificate": "%s",
-    "ssl_certificate_key": "%s",
-    "superusers": ["admin", "%s"]
-}'''
-
 
 DEFAULT_MONGODB_JSON = '''{
     "auth": false,
-    "root_password": "%s",
-    "admin_password": "%s",
-    "data_password": "%s",
+    "username": "admin",
+    "password": "%s",
     "host": "127.0.0.1",
     "journal": true,
     "port": 27017,
@@ -256,11 +216,8 @@ bind_ip = 127.0.0.1
 
 DEFAULT_MONGODB_JS = '''
 db = db.getSiblingDB('admin')
-db.addUser({'user': 'root', 'pwd': '%s', 'roles': ['dbAdminAnyDatabase',
-        'userAdminAnyDatabase', 'clusterAdmin', 'readWriteAnyDatabase']});
 db.addUser({'user': 'admin', 'pwd': '%s', 'roles': ['dbAdminAnyDatabase',
-        'userAdminAnyDatabase', 'readWriteAnyDatabase']});
-db.addUser({'user': 'metrique', 'pwd': '%s', 'roles': ['readAnyDatabase']});
+        'userAdminAnyDatabase', 'clusterAdmin', 'readWriteAnyDatabase']});
 '''
 
 DEFAULT_CELERY_JSON = '''{
@@ -420,15 +377,6 @@ priority=10
 startsecs=60
 stopwaitsecs=60
 
-[program:metriqued]
-command=./metrique metriqued start -P542%%(process_num)d --nofork
-process_name=metriqued-%%(process_num)d
-numprocs=4
-numprocs_start=1
-priority=20
-startsecs=60
-startretries=5
-
 [program:nginx]
 command=./metrique nginx start --nofork
 process_name=nginx
@@ -470,18 +418,36 @@ def makedirs(path, mode=0700):
     return path
 
 
-def remove(path, quiet=True):
+def move(path, dest, quiet=True):
     if isinstance(path, (list, tuple)):
-        [remove(p) for p in path]
+        [move(p) for p in path]
     else:
         assert isinstance(path, basestring)
         if os.path.exists(path):
-            if os.path.isdir(path):
-                shutil.rmtree(path)
-            else:
-                os.remove(path)
+            shutil.move(path, dest)
         elif not quiet:
-            logger.warn('[remove] %s not found' % path)
+            logger.warn('[move] %s not found' % path)
+
+
+def remove(path, quiet=True):
+    path = glob.glob(path)
+    if isinstance(path, (list, tuple)):
+        if len(path) == 1:
+            path = path[0]
+        else:
+            return [remove(p) for p in path]
+
+    assert isinstance(path, basestring)
+    if not quiet:
+        logger.warn('[remove] deleting %s' % path)
+    if os.path.exists(path):
+        if os.path.isdir(path):
+            shutil.rmtree(path)
+        else:
+            os.remove(path)
+    elif not quiet:
+        logger.warn('[remove] %s not found' % path)
+    return path
 
 
 def system(cmd, fork=False, sig=None, sig_func=None):
@@ -517,6 +483,7 @@ def call(cmd, cwd=None, show_stdout=True, fork=False, pidfile=None,
         pid = os.fork()
         if pid == 0:
             run(cmd, cwd, show_stdout)
+            sys.exit(2)
         elif pidfile:
             with open(pidfile, 'w') as f:
                 f.write(str(pid))
@@ -529,10 +496,15 @@ def adjust_options(options, args):
     options.no_site_packages = True
 virtualenv.adjust_options = adjust_options
 
-
 def firstboot(args):
     # make sure we have some basic defaults configured in the environment
-    sys_firstboot(args)
+    force = getattr(args, 'force', False)
+    sys_firstboot(force)
+    mongodb_firstboot(force)
+    metrique_firstboot(force)
+    celery_firstboot(force)
+    supervisord_firstboot(force)
+    nginx_firstboot(force)
 
 
 def backup(saveas, path):
@@ -556,12 +528,12 @@ def terminate(pidfile, sig=signal.SIGTERM):
         try:
             os.kill(pid, sig)
         except OSError:
-            logger.warn("%s not found" % pid)
+            logger.debug("%s not found" % pid)
         else:
-            logger.warn("%s killed" % pid)
+            logger.debug("%s killed" % pid)
         remove(pidfile)
     else:
-        logger.warn("[terminate] %s does not exist" % pidfile)
+        logger.debug("[terminate] %s does not exist" % pidfile)
 
 
 def celeryd_terminate(sig=None, frame=None):
@@ -650,100 +622,6 @@ def _metrique_user_register():
     m.user_register()
 
 
-def _metriqued_firstboot(args):
-    if os.path.exists(METRIQUED_FIRSTBOOT_PATH):
-        return
-    args.command = 'start'
-    metriqued(args)
-    _metrique_user_register()
-    with open(METRIQUED_FIRSTBOOT_PATH, 'w') as f:
-        f.write(NOW)
-    args.command = 'stop'
-    metriqued(args)
-
-
-def metriqued_terminate(args=None):
-    from metriqueu.utils import get_pids
-    running = get_pids(PID_DIR)
-    sig = getattr(args, 'signal', signal.SIGTERM)
-    for pid in running:
-        logger.info("Sending signal (%s) to (%s)" % (sig, pid))
-        os.kill(pid, sig)
-
-
-def _metriqued_start(args):
-    # A) there are no instances currently running
-    # B) there are instances running; add additional
-    from metriqued.tornadohttp import MetriqueHTTP
-    from metriqueu.utils import get_pids
-
-    config_file = args.server_config_file
-    pids = []
-    port = args.port
-    fork = not args.nofork
-    instances = args.instances or 0
-
-    if instances > 1:
-        # we want to start more than one instance, we must fork
-        for k in range(instances):
-            pid = os.fork()
-            if pid == 0:
-                running_k = len(get_pids(PID_DIR))
-                port = port + running_k
-                metriqued = MetriqueHTTP(config_file=config_file, port=port)
-                metriqued.start()
-                sys.exit()
-            else:
-                pids.append(pid)
-            port += 1
-    else:
-        metriqued = MetriqueHTTP(config_file=config_file, port=port)
-        metriqued.start(fork=fork)
-    logger.info('Started: %s' % ', '.join(map(str, pids)))
-
-
-def metriqued_backup(args):
-    hosts_dir = '/etc/hosts'
-    to_backup = [ETC_DIR, hosts_dir]
-
-    for path in to_backup:
-        prefix = 'metriqued.%s' % os.path.basename(path)
-        saveas = '__'.join((prefix, HOSTNAME, NOW)) + '.tar.gz'
-        saveas = pjoin(BACKUP_DIR, saveas)
-        backup(saveas, path)
-        backup_clean(args, BACKUP_DIR, prefix)
-        if args.scp_export:
-            user = args.scp_user
-            host = args.scp_host
-            out_dir = args.scp_out_dir
-            cmd = 'scp %s %s@%s:%s' % (saveas, user, host, out_dir)
-            call(cmd)
-
-
-def metriqued(args):
-    '''
-    START, STOP, RESTART, RELOAD,
-    '''
-    # needed by metriqued_* commands
-    from metriqueu.utils import get_pids
-
-    cmd = args.command
-
-    if not args.instances:
-        args.instances = 1
-
-    if cmd == 'start':
-        _metriqued_start(args)
-    elif cmd == 'stop':
-        metriqued_terminate()
-    elif cmd == 'status':
-        logger.info('RUNNING: %s' % ', '.join(map(str, get_pids(PID_DIR))))
-    elif args.command == 'firstboot':
-        _metriqued_firstboot(args)
-    else:
-        raise SystemExit('bad command "%s"... Try --help' % cmd)
-
-
 def nginx_terminate(sig=None, frame=None):
     terminate(NGINX_PIDFILE)
 
@@ -767,135 +645,50 @@ def nginx(args):
         raise ValueError("unknown command %s" % args.command)
 
 
-def mongodb_firstboot(args):
-    if os.path.exists(MONGODB_FIRSTBOOT_PATH):
-        return
-    ssl = ' --ssl' if args.ssl else ''
-    call('mongo %s/admin %s %s' % (args.host, ssl, MONGODB_JS))
-    with open(MONGODB_FIRSTBOOT_PATH, 'w') as f:
-        f.write(NOW)
-
-
-def mongodb_passwd(args):
-    if not (args.user and args.password):
-        raise ValueError("Invalid user: %s" % args.user)
-    from metriqued.config import mongodb_config
-    config = mongodb_config()
-    ssl = ' --ssl' if config.ssl or args.ssl else ''
-    old_pw = config.admin_password
-    script = "db.changeUserPassword('%s', '%s')" % (args.user, args.password)
-    call('mongo %s/admin %s --eval "%s" -u admin -p %s' % (args.host, ssl,
-                                                           script, old_pw))
-
-
 def mongodb_terminate(sig=None, frame=None):
     terminate(MONGODB_PIDFILE)
 
 
-def mongodb(args):
-    _fork = not args.nofork
-    fork = '--fork' if _fork else ''
-
-    if args.command == 'start':
-        cmd = 'mongod -f %s %s' % (MONGODB_CONF, fork)
-        cmd += ' --noprealloc --nojournal' if args.fast else ''
-        call(cmd, fork=_fork, sig=signal.SIGTERM, sig_func=mongodb_terminate)
-    elif args.command == 'stop':
-        terminate(MONGODB_PIDFILE)
-        args.command = 'clean'
-        mongodb(args)
-    elif args.command == 'restart':
-        for cmd in ('stop', 'start'):
-            args.command = cmd
-            mongodb(args)
-    elif args.command == 'clean':
-        remove(MONGODB_LOCKFILE)
-        remove(MONGODB_PIDFILE)
-    elif args.command == 'trash':
-        args.command = 'stop'
-        mongodb(args)
-        dest = pjoin(TRASH_DIR, 'mongodb-%s' % NOW)
-        shutil.move(MONGODB_DIR, dest)
-        makedirs(MONGODB_DIR)
-        remove(MONGODB_FIRSTBOOT_PATH)
-    elif args.command == 'firstboot':
-        mongodb_firstboot(args)
-    elif args.command == 'status':
-        call('mongod %s --sysinfo' % args.host)
-    elif args.command == 'keyfile':
-        call('openssl rand -base64 741 -out %s' % MONGODB_KEYFILE)
-        os.chmod(MONGODB_KEYFILE, 0600)
-    elif args.command == 'passwd':
-        mongodb_passwd(args)
-    else:
-        raise ValueError("unknown command %s" % args.command)
+def mongodb_start(fork=False, fast=True):
+    fork = '--fork' if fork else ''
+    if os.path.exists(MONGODB_PIDFILE):
+        logger.info('MongoDB pid found not starting...')
+        return False
+    cmd = 'mongod -f %s %s' % (MONGODB_CONF, fork)
+    cmd += ' --noprealloc --nojournal' if fast else ''
+    call(cmd, fork=fork, sig=signal.SIGTERM, sig_func=mongodb_terminate)
 
 
-def _mongodb_is_locked(host, ssl, password):
-    js_islocked = 'printjson(db.currentOp().fsyncLock)'
-    locked = system(
-        'mongo %s/admin %s --eval "%s" -u admin -p %s --quiet' % (
-            host, ssl, js_islocked, password))
-    return True if locked == 'true' else False
+def mongodb_stop():
+    terminate(MONGODB_PIDFILE)
+    mongodb_clean()
 
 
-def _rsync_exec(args, show_stdout=True):
-    ssh_user = args.ssh_user
-    ssh_host = args.ssh_host
-    saveas = re.sub('\W', '_', HOSTNAME)
-    compress = '-z' if not args.nocompress else ''
-    if not args.targets:
-        raise OSError("one or more targets required!")
-    targets = ' '.join(args.targets)
-    if ssh_host:
-        call('rsync -av %s -e ssh %s %s@%s:%s' % (compress, targets, ssh_user,
-                                                  ssh_host, saveas),
-             show_stdout=show_stdout)
-    else:
-        saveas = pjoin(BACKUP_DIR, saveas)
-        call('rsync -av %s %s %s' % (compress, targets, saveas),
-             show_stdout=show_stdout)
+def mongodb_clean():
+    remove(MONGODB_LOCKFILE)
+    remove(MONGODB_PIDFILE)
 
 
-def _mongodb_rsync(args):
-    from metriqued.config import mongodb_config
-    config = mongodb_config()
-    ssl = ' --ssl' if config.ssl else ''
-    password = config.admin_password
-    host = args.mongodb_host
-
-    args.targets.append(MONGODB_DIR)
-
-    js_lock = 'db.fsyncLock()'
-    js_unlock = 'db.fsyncUnlock()'
-
-    # if mongodb is running, we'll need to sync and lock the db first
-    running = get_pid(MONGODB_PIDFILE) != 0
-    locked = _mongodb_is_locked(host, ssl, password) if running else False
-
-    if running and not locked:  # sync and lock
-        call('mongo %s/admin %s --eval "%s" -u admin -p %s' % (
-            host, ssl, js_lock, password))
-
-    try:
-        _rsync_exec(args)
-    finally:
-        if running and _mongodb_is_locked(host, ssl, password):
-            # unlock
-            call('mongo %s/admin %s --eval "%s" -u admin -p %s' % (
-                host, ssl, js_unlock, password))
+def mongodb_trash():
+    mongodb_stop()
+    dest = pjoin(TRASH_DIR, 'mongodb-%s' % NOW)
+    move(MONGODB_DIR, dest)
+    move(MONGODB_CONF, dest)
+    move(MONGODB_JSON, dest)
+    move(MONGODB_JS, dest)
+    move(MONGODB_KEYFILE, dest)
+    remove(MONGODB_FIRSTBOOT_PATH)
+    makedirs(MONGODB_DIR)
 
 
-def rsync(args):
-    if args.mongodb_host:
-        _mongodb_rsync(args)
-    else:
-        _rsync_exec(args)
+def mongodb_gen_keyfile():
+    call('openssl rand -base64 741 -out %s' % MONGODB_KEYFILE)
+    os.chmod(MONGODB_KEYFILE, 0600)
 
 
 def mongodb_backup(args):
-    from metriqued.config import mongodb_config
-    config = mongodb_config()
+    from metrique.mongodb_api import MongoDBConfig
+    config = MongoDBConfig()
 
     prefix = 'mongodb'
     saveas = '__'.join((prefix, HOSTNAME, NOW))
@@ -928,26 +721,64 @@ def mongodb_backup(args):
         call(cmd)
 
 
-def clean(args):
+def mongodb(args):
+    fork = not args.nofork
+    fast = args.fast
+    ssl = args.ssl
+    host = args.host
+
+    if args.command == 'start':
+        mongodb_start(fork, fast)
+    elif args.command == 'stop':
+        mongodb_stop()
+    elif args.command == 'restart':
+        mongodb_stop()
+        mongodb_start(fork, fast)
+    elif args.command == 'clean':
+        mongodb_clean()
+    elif args.command == 'trash':
+        mongodb_trash()
+    else:
+        raise ValueError("unknown command %s" % args.command)
+
+
+def rsync(args):
+    ssh_user = args.ssh_user
+    ssh_host = args.ssh_host
+    saveas = re.sub('\W', '_', HOSTNAME)
+    compress = '-z' if not args.nocompress else ''
+    if not args.targets:
+        raise OSError("one or more targets required!")
+    targets = ' '.join(args.targets)
+    if ssh_host:
+        call('rsync -av %s -e ssh %s %s@%s:%s' % (compress, targets, ssh_user,
+                                                  ssh_host, saveas),
+             show_stdout=show_stdout)
+    else:
+        saveas = pjoin(BACKUP_DIR, saveas)
+        call('rsync -av %s %s %s' % (compress, targets, saveas),
+             show_stdout=True)
+
+
+def trash(args):
     supervisord_terminate()
     celerybeat_terminate()
     celeryd_terminate()
     nginx_terminate()
-    metriqued_terminate()
     mongodb_terminate()
 
     dest = pjoin(TRASH_DIR, 'metrique-%s' % NOW)
-    for f in [ETC_DIR, PID_DIR, LOG_DIR, CACHE_DIR,
-              TEMP_DIR, CELERY_DIR, MONGODB_DIR]:
+    for f in [ETC_DIR, PIDS_DIR, LOGS_DIR, CACHE_DIR,
+              TMP_DIR, CELERY_DIR, MONGODB_DIR]:
         _dest = os.path.join(dest, os.path.basename(f))
         try:
             shutil.move(f, dest)
-        except OSError as e:
+        except (IOError, OSError) as e:
             logger.error(e)
             continue
-    remove(SYS_FIRSTBOOT_PATH)
-    remove(MONGODB_FIRSTBOOT_PATH)
-    remove(METRIQUED_FIRSTBOOT_PATH)
+    firstboot_glob = os.path.join(USER_DIR, '.firstboot*')
+    remove(firstboot_glob)
+
 
 def bump_version(regex, line, i, reset, **kwargs):
     # if we're bumping version, reset release to 1
@@ -1078,7 +909,7 @@ def deploy(args):
         activate(args)
 
     # make sure we have some basic defaults configured in the environment
-    sys_firstboot(args)
+    firstboot(args)
 
     # make sure we have the installer basics and their up2date
     # pip-accel caches compiled binaries
@@ -1108,6 +939,8 @@ def deploy(args):
         call('pip install -U sphinx_bootstrap_theme')
     if args.supervisord:
         call('%s install -U supervisor' % pip)
+    if args.joblib:
+        call('%s install -U joblib' % pip)
 
     cmd = 'install'
     no_pre = getattr(args, 'no_pre', False)
@@ -1126,8 +959,8 @@ def deploy(args):
         running = get_pid(MONGODB_PIDFILE) != 0
         if not running:
             call('metrique mongodb start --fast')
-        call('coverage run --source=metrique,metriqued,'
-             'metriqueu,metriquec -m py.test tests', cwd=GIT_DIR)
+        call('coverage run --source=metrique,'
+             'metriqueu,metriquec,metriquet -m py.test tests', cwd=GIT_DIR)
 
 
 def bump(args, kind=None, reset=None):
@@ -1196,16 +1029,6 @@ def ssl(args=None):
             pem.write(''.join(key.readlines()))
 
 
-def rpms(args):
-    if not os.path.exists(RPM_SYSTEM_RELEASE):
-        raise OSError(
-            "Non-RPM based host? Can't find %s" % RPM_SYSTEM_RELEASE)
-    if USER != 'root':
-        raise OSError("Must run this command as root, not %s" % USER)
-    cmd = 'yum install -y %s' % ' '.join(RPMS)
-    call(cmd, show_stdout=True)
-
-
 def default_conf(path, template):
     if os.path.exists(path):
         path = '.'.join([path, 'default'])
@@ -1214,70 +1037,113 @@ def default_conf(path, template):
     logger.info("Installed %s ..." % path)
 
 
-def sys_firstboot(args=None):
-    exists = os.path.exists(SYS_FIRSTBOOT_PATH)
-    forced = hasattr(args, 'force') and args.force
-    if exists and not forced:
+def mongodb_firstboot(force):
+    exists = os.path.exists(MONGODB_FIRSTBOOT_PATH)
+    if exists and not force:
         # skip if we have already run this before
         return
+    makedirs(MONGODB_DIR)
+    mongodb_gen_keyfile()
 
-    global DEFAULT_METRIQUE_JSON, DEFAULT_METRIQUED_JSON, DEFAULT_MONGODB_JSON
-    global DEFAULT_MONGODB_CONF, DEFAULT_MONGODB_JS, DEFAULT_CELERY_JSON
-    global DEFAULT_SUPERVISORD_CONF, DEFAULT_NGINX_CONF
-
-    DEFAULT_METRIQUE_JSON = DEFAULT_METRIQUE_JSON % (
-        multiprocessing.cpu_count(), PASSWORD)
-
-    DEFAULT_METRIQUED_JSON = DEFAULT_METRIQUED_JSON % (
-        API_DOCS_PATH, COOKIE_SECRET, LOCAL_IP, SSL_CERT, SSL_KEY, USER)
-
-    DEFAULT_MONGODB_JSON = DEFAULT_MONGODB_JSON % (
-        PASSWORD, PASSWORD, PASSWORD, SSL_PEM)
-
+    global DEFAULT_MONGODB_JSON, DEFAULT_MONGODB_CONF, DEFAULT_MONGODB_JS
+    DEFAULT_MONGODB_JSON = DEFAULT_MONGODB_JSON % (PASSWORD, SSL_PEM)
     DEFAULT_MONGODB_CONF = DEFAULT_MONGODB_CONF % (
         MONGODB_DIR, MONGODB_LOG, MONGODB_PIDFILE, LOCAL_IP, SSL_PEM,
         MONGODB_KEYFILE)
+    DEFAULT_MONGODB_JS = DEFAULT_MONGODB_JS % (PASSWORD)
 
-    DEFAULT_MONGODB_JS = DEFAULT_MONGODB_JS % (PASSWORD, PASSWORD, PASSWORD)
+    default_conf(MONGODB_JSON, DEFAULT_MONGODB_JSON)
+    default_conf(MONGODB_CONF, DEFAULT_MONGODB_CONF)
+    default_conf(MONGODB_JS, DEFAULT_MONGODB_JS)
 
+    started = mongodb_start(fork=True, fast=True)
+    logger.debug('MongoDB forking, sleeping for a moment...')
+    time.sleep(1)
+
+    try:
+        call('mongo 127.0.0.1/admin %s' % (MONGODB_JS))
+    finally:
+        if started:
+            mongodb_stop()
+    with open(MONGODB_FIRSTBOOT_PATH, 'w') as f:
+        f.write(NOW)
+
+
+def metrique_firstboot(force=False):
+    exists = os.path.exists(METRIQUE_FIRSTBOOT_PATH)
+    if exists and not force:
+        # skip if we have already run this before
+        return
+
+    global DEFAULT_METRIQUE_JSON
+
+    #DEFAULT_METRIQUE_JSON = DEFAULT_METRIQUE_JSON
+
+    default_conf(METRIQUE_JSON, DEFAULT_METRIQUE_JSON)
+
+
+def celery_firstboot(force=False):
+    exists = os.path.exists(CELERY_FIRSTBOOT_PATH)
+    if exists and not force:
+        # skip if we have already run this before
+        return
+    makedirs(CELERY_DIR)
+    global DEFAULT_CELERY_JSON
     DEFAULT_CELERY_JSON = DEFAULT_CELERY_JSON % (PASSWORD, PASSWORD, LOCAL_IP)
+    default_conf(CELERY_JSON, DEFAULT_CELERY_JSON)
 
-    DEFAULT_NGINX_CONF = DEFAULT_NGINX_CONF % (
-        USER, NGINX_ERROR_LOG, NGINX_PIDFILE, TEMP_DIR,
-        TEMP_DIR, CACHE_DIR, TEMP_DIR, CACHE_DIR, TEMP_DIR, CACHE_DIR,
-        TEMP_DIR, CACHE_DIR, LOCAL_IP, LOCAL_IP, LOCAL_IP, LOCAL_IP,
-        NGINX_ERROR_LOG, NGINX_ACCESS_LOG, LOCAL_IP, SSL_CERT, SSL_KEY,
-        STATIC_PATH)
 
-    ENVIRONMENT = 'VIRTUAL_ENV="%s", HOME="%s", METRIQUE_GIT="%s"' % (
+def supervisord_firstboot(force=False):
+    exists = os.path.exists(SUPERVISORD_FIRSTBOOT_PATH)
+    if exists and not force:
+        # skip if we have already run this before
+        return
+
+    global DEFAULT_SUPERVISORD_CONF
+    ENVIRONMENT = 'VIRTUAL_ENV="%s", METRIQUE_HOME="%s", METRIQUE_GIT="%s"' % (
         VIRTUAL_ENV, HOME_DIR, GIT_DIR)
     DEFAULT_SUPERVISORD_CONF = DEFAULT_SUPERVISORD_CONF % (
         LOCAL_IP, PASSWORD, SUPERVISORD_LOGFILE, SUPERVISORD_PIDFILE,
-        LOG_DIR, USER, GIT_DIR, ENVIRONMENT, LOCAL_IP, PASSWORD,
+        LOGS_DIR, USER, GIT_DIR, ENVIRONMENT, LOCAL_IP, PASSWORD,
         SUPERVISORD_HISTORYFILE)
+
+    default_conf(SUPERVISORD_CONF, DEFAULT_SUPERVISORD_CONF)
+
+
+def nginx_firstboot(force=False):
+    exists = os.path.exists(NGINX_FIRSTBOOT_PATH)
+    if exists and not force:
+        # skip if we have already run this before
+        return
+
+    global DEFAULT_NGINX_CONF
+    DEFAULT_NGINX_CONF = DEFAULT_NGINX_CONF % (
+        USER, NGINX_ERROR_LOG, NGINX_PIDFILE, TMP_DIR,
+        TMP_DIR, CACHE_DIR, TMP_DIR, CACHE_DIR, TMP_DIR, CACHE_DIR,
+        TMP_DIR, CACHE_DIR, LOCAL_IP, LOCAL_IP, LOCAL_IP, LOCAL_IP,
+        NGINX_ERROR_LOG, NGINX_ACCESS_LOG, LOCAL_IP, SSL_CERT, SSL_KEY,
+        STATIC_DIR)
+
+    default_conf(NGINX_CONF, DEFAULT_NGINX_CONF)
+
+
+def sys_firstboot(force=False):
+    exists = os.path.exists(SYS_FIRSTBOOT_PATH)
+    if exists and not force:
+        # skip if we have already run this before
+        return
 
     # create default dirs in advance
     [makedirs(p) for p in (USER_DIR, PIP_CACHE_DIR, PIP_ACCEL_DIR,
-                           PIP_EGGS, TRASH_DIR, LOG_DIR,
-                           ETC_DIR, BACKUP_DIR, MONGODB_DIR,
-                           CELERY_DIR, TEMP_DIR, CACHE_DIR,
-                           GNUPG_DIR, PID_DIR)]
+                           PIP_EGGS, TRASH_DIR, LOGS_DIR,
+                           ETC_DIR, BACKUP_DIR, TMP_DIR, CACHE_DIR,
+                           STATIC_DIR, PIDS_DIR)]
 
     # make sure the the default user python eggs dir is secure
     os.chmod(PIP_EGGS, 0700)
 
     # generate self-signed ssl certs
     ssl()
-
-    # install default configuration files
-    default_conf(METRIQUE_JSON, DEFAULT_METRIQUE_JSON)
-    default_conf(METRIQUED_JSON, DEFAULT_METRIQUED_JSON)
-    default_conf(MONGODB_JSON, DEFAULT_MONGODB_JSON)
-    default_conf(MONGODB_CONF, DEFAULT_MONGODB_CONF)
-    default_conf(MONGODB_JS, DEFAULT_MONGODB_JS)
-    default_conf(CELERY_JSON, DEFAULT_CELERY_JSON)
-    default_conf(NGINX_CONF, DEFAULT_NGINX_CONF)
-    default_conf(SUPERVISORD_CONF, DEFAULT_SUPERVISORD_CONF)
 
     with open(SYS_FIRSTBOOT_PATH, 'w') as f:
         f.write(NOW)
@@ -1288,6 +1154,7 @@ def main():
 
     cli = argparse.ArgumentParser(description='Metrique Manage CLI')
     cli.add_argument('-V', '--virtenv')
+    cli.add_argument('-v', '--verbose')
 
     _sub = cli.add_subparsers(description='action', dest='action')
 
@@ -1310,6 +1177,8 @@ def main():
         '--docs', action='store_true', help='install doc utils')
     _deploy.add_argument(
         '--supervisord', action='store_true', help='install supervisord')
+    _deploy.add_argument(
+        '--joblib', action='store_true', help='install joblib')
     _deploy.add_argument(
         '--trash', action='store_true', help='fresh install (rm old virtenv)')
     _deploy.set_defaults(func=deploy)
@@ -1343,29 +1212,14 @@ def main():
     _status = _sub.add_parser('status')
     _status.set_defaults(func=status)
 
-    # Clean-up routines
-    _clean = _sub.add_parser('clean')
-    _clean.add_argument('-t', '--trash', action='store_true')
-    _clean.set_defaults(func=clean)
+    # Trash existing metrique installation
+    _trash = _sub.add_parser('trash')
+    _trash.set_defaults(func=trash)
 
     # Clean-up routines
     _firstboot = _sub.add_parser('firstboot')
     _firstboot.add_argument('-f', '--force', action='store_true')
     _firstboot.set_defaults(func=firstboot)
-
-    # MongoDB Server
-    _mongodb = _sub.add_parser('mongodb')
-    _mongodb.add_argument('command',
-                          choices=['start', 'stop', 'restart',
-                                   'clean', 'trash', 'status',
-                                   'keyfile', 'firstboot', 'passwd'])
-    _mongodb.add_argument('-H', '--host', default='127.0.0.1')
-    _mongodb.add_argument('-f', '--fast', action='store_true')
-    _mongodb.add_argument('-s', '--ssl', action='store_true')
-    _mongodb.add_argument('-u', '--user')
-    _mongodb.add_argument('-p', '--password')
-    _mongodb.add_argument('-F', '--nofork', action='store_true')
-    _mongodb.set_defaults(func=mongodb)
 
     # rsync
     _rsync = _sub.add_parser('rsync')
@@ -1375,6 +1229,19 @@ def main():
     _rsync.add_argument('-H', '--ssh-host')
     _rsync.add_argument('-u', '--ssh-user', default='backup')
     _rsync.set_defaults(func=rsync)
+
+    # MongoDB Server
+    _mongodb = _sub.add_parser('mongodb')
+    _mongodb.add_argument('command',
+                          choices=['start', 'stop', 'restart',
+                                   'clean', 'trash', 'status'])
+    _mongodb.add_argument('-H', '--host', default='127.0.0.1')
+    _mongodb.add_argument('-f', '--fast', action='store_true')
+    _mongodb.add_argument('-s', '--ssl', action='store_true')
+    _mongodb.add_argument('-u', '--user')
+    _mongodb.add_argument('-p', '--password')
+    _mongodb.add_argument('-F', '--nofork', action='store_true')
+    _mongodb.set_defaults(func=mongodb)
 
     # MongoDB Backup
     _mongodb_backup = _sub.add_parser('mongodb_backup')
@@ -1391,31 +1258,8 @@ def main():
     _nginx.add_argument('command',
                         choices=['start', 'stop', 'reload',
                                  'restart', 'test'])
-    _nginx.add_argument('-m', '--metriqued-config-file',
-                        default=METRIQUED_JSON)
     _nginx.add_argument('-F', '--nofork', action='store_true')
     _nginx.set_defaults(func=nginx)
-
-    # metriqued Server
-    _metriqued = _sub.add_parser('metriqued')
-    _metriqued.add_argument('command', choices=['start', 'stop', 'status',
-                                                'firstboot'])
-    _metriqued.add_argument('-c', '--server-config-file',
-                            default=METRIQUED_JSON)
-    _metriqued.add_argument('-P', '--port', type=int, default=5420)
-    _metriqued.add_argument('-i', '--instances', type=int)
-    _metriqued.add_argument('-s', '--signal', type=int)
-    _metriqued.add_argument('-F', '--nofork', action='store_true')
-    _metriqued.set_defaults(func=metriqued)
-
-    # metriqued Backup
-    _metriqued_backup = _sub.add_parser('metriqued_backup')
-    _metriqued_backup.add_argument('-k', '--keep', type=int, default=3)
-    _metriqued_backup.add_argument('-x', '--scp-export', action='store_true')
-    _metriqued_backup.add_argument('-H', '--scp-host')
-    _metriqued_backup.add_argument('-u', '--scp-user', default='backup')
-    _metriqued_backup.add_argument('-O', '--scp-out-dir')
-    _metriqued_backup.set_defaults(func=metriqued_backup)
 
     # celeryd task run
     _celeryd_task = _sub.add_parser('celeryd_task')
@@ -1447,12 +1291,25 @@ def main():
     _ssl = _sub.add_parser('ssl')
     _ssl.set_defaults(func=ssl)
 
-    # RPM Dependency Install
-    _rpms = _sub.add_parser('rpms')
-    _rpms.set_defaults(func=rpms)
-
     # parse argv
     args = cli.parse_args()
+
+    if args.verbose:
+        logger.setLevel(logging.DEBUG)
+
+    logger.debug('-' * 30)
+    logger.debug('Started at  : %s' % NOW)
+    logger.debug('Current User: %s' % USER)
+    logger.debug('Current CWD : %s' % HERE)
+    logger.debug('Virtual Env : %s' % VIRTUAL_ENV)
+    logger.debug('Hostname    : %s' % HOSTNAME)
+    logger.debug('Local IP    : %s' % LOCAL_IP)
+    logger.debug('GIT Repo    : %s' % GIT_DIR)
+    logger.debug('Source Path : %s' % SRC_DIR)
+    logger.debug('This file   : %s' % __file__)
+    logger.debug('Home Path   : %s' % HOME_DIR)
+    logger.debug('User Path   : %s' % USER_DIR)
+    logger.debug('-' * 30)
 
     if args.action != 'deploy':
         # Activate the virtual environment in this python session if

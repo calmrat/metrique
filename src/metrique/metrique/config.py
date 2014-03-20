@@ -44,7 +44,6 @@ class Config(JSONConf):
     :param cube_pkgs: list of package names where to search for cubes ('cubes')
     :param cube_paths: Additional paths to search for client cubes (None)
     :param debug: turn on debug mode logging (level: INFO)
-    :param logdir: path to where log files are stored (~/.metrique/logs)
     :param logfile: filename for logs ('metrique.log')
     :param log2file: boolean - log output to file? (False)
     :param logstout: boolean - log output to stdout? (True)
