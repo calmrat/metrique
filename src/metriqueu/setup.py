@@ -14,7 +14,6 @@ __desc__ = 'Metrique - Shared Utility Libraries'
 __scripts__ = ['../../metrique']
 __requires__ = [
     'decorator (==3.4.0)',
-    'futures (==2.1.6)',
     #'joblib (== 0.8.0)',  # recommended, but not required
     'pql (==0.4.2)',
     'python_dateutil (==2.2.0)',
@@ -23,7 +22,6 @@ __requires__ = [
 ]
 __irequires__ = [
     'decorator==3.4.0',
-    'futures==2.1.6',
     #'joblib== 0.8.0',
     'pql==0.4.2',
     'python_dateutil==2.2.0',

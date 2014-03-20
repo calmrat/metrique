@@ -446,6 +446,10 @@ class BaseClient(object):
     def _load_json(self, path, as_dict=True, **kwargs):
         return pd.read_json(path, **kwargs)
 
+    def urlretrieve(self, uri, saveas=None):
+        '''urllib.urlretrieve wrapper'''
+        return urllib.urlretrieve(uri, saveas)
+
 #################### misc ##################################
     def debug_setup(self):
         '''
@@ -549,12 +553,3 @@ class BaseClient(object):
             self._config_file = config or self._config_file
             self.config = Config(config_file=self._config_file)
         self.config.update(kwargs)
-
-#################### Helper API ############################
-    def urlretrieve(self, uri, saveas=None):
-        '''urllib.urlretrieve wrapper'''
-        return urllib.urlretrieve(uri, saveas)
-
-    def whoami(self, auth=False):
-        '''Local api call to check the username of running user'''
-        return self.config['username']

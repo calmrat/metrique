@@ -12,8 +12,6 @@ __pkgs__ = ['metriquec', 'metriquec.sql',
             'metriquec.cubes',
             'metriquec.cubes.csvdata',
             'metriquec.cubes.gitdata',
-            'metriquec.cubes.jknsapi',
-            'metriquec.cubes.jsondata',
             'metriquec.cubes.sqldata',
             ]
 __provides__ = ['metriquec']
@@ -24,13 +22,11 @@ __requires__ = [
     'metrique (>=%s)' % __version__,
     'celery (>=3.1.8)',
     'psycopg2 (>=2.5.2)',
-    'gittle (>=0.2.2)',
 ]
 __irequires__ = [
     'metrique>=%s' % __version__,
     'celery>=3.1.8',
     'psycopg2>=2.5.2',
-    'gittle>=0.2.2',
 ]
 pip_src = 'https://pypi.python.org/packages/source'
 __deplinks__ = []
