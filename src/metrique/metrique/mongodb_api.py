@@ -89,7 +89,6 @@ class MongoDBConfig(JSONConf):
             'replica_set': None,
             'ssl': False,
             'ssl_certificate': SSL_PEM,
-            'ssl_certificate_key': None,
             'tz_aware': True,
             'write_concern': 1,  # primary; add X for X replicas
         }
@@ -183,15 +182,11 @@ class MongoDBClient(BaseClient):
         if not _proxy:
             kwargs = {}
             if self.mongodb_config.ssl:
-                if self.mongodb_config.ssl_keyfile:
-                    # include ssl keyfile only if its defined
-                    # otherwise, certfile must be crt+key pem combined
-                    kwargs.update(
-                        {'ssl_keyfile': self.mongodb_config.ssl_keyfile})
                 # include ssl options only if it's enabled
+                # certfile is a combined key+cert
                 kwargs.update(
                     dict(ssl=self.mongodb_config.ssl,
-                         ssl_certfile=self.mongodb_config.ssl_certfile))
+                         ssl_certfile=self.mongodb_config.ssl_certificate))
             if self.mongodb_config.replica_set:
                 _proxy = self._load_mongo_replica_client(**kwargs)
             else:
