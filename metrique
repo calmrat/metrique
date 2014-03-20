@@ -51,7 +51,7 @@ def deactivate():
     if virtenv:
         to_remove = [p for p in sys.path if p.startswith(virtenv)]
         if to_remove:
-            sys.path = [p for p in sys.path if p in to_remove]
+            sys.path = [p for p in sys.path if p not in to_remove]
             logger.info(' ... paths cleared: %s' % sorted(to_remove))
         env['VIRTUAL_ENV'] = ''
         logger.debug('Virtual Env (%s): Deactivated' % virtenv)
