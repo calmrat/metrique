@@ -76,7 +76,6 @@ import logging
 import os
 import pandas as pd
 import re
-import shutil
 import urllib
 
 from metrique.config import Config
@@ -401,7 +400,7 @@ class BaseClient(object):
             try:
                 df = self._load_file(_path, filetype, as_dict=False, **kwargs)
             finally:
-                shutil.remove(_path)
+                os.remove(_path)
         else:
             path = re.sub('^file://', '', path)
             path = os.path.expanduser(path)
