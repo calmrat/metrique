@@ -8,7 +8,7 @@ install:
 services: 
   - mongodb
 script: 
-  - "coverage run --source=metrique,metriqueu,metriquec -m py.test tests"
+  - "coverage run --source=metrique -m py.test tests"
 after_success:
   - coveralls
 after_failure:

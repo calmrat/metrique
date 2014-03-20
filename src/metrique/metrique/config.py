@@ -22,7 +22,7 @@ import logging
 import multiprocessing
 import os
 
-from metriqueu.jsonconf import JSONConf
+from metrique.jsonconf import JSONConf
 
 logger = logging.getLogger(__name__)
 

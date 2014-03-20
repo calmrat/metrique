@@ -9,16 +9,28 @@ __version__ = '0.2.7'
 __release__ = "1a"
 __nvr__ = '%s-%s' % (__version__, __release__)
 __pkgs__ = ['metrique']
+__pkgs__ = ['metrique', 'sql',
+            'cubes', 'cubes.csvdata',
+            'cubes.gitdata', 'cubes.sqldata',
+]
 __provides__ = ['metrique']
 __desc__ = 'Metrique - Client Libraries'
-__scripts__ = []
+__scripts__ = ['scripts']
 __requires__ = [
-    'metriqueu (>=%s)' % __version__,
+    'decorator (==3.4.0)',
     'pandas (==0.13.0)',
+    'pql (==0.4.2)',
+    'python_dateutil (==2.2.0)',
+    'pytz'
+    'simplejson (==3.3.2)',
 ]
 __irequires__ = [
-    'metriqueu>=%s' % __version__,
+    'decorator==3.4.0',
     'pandas==0.13.0',
+    'pql==0.4.2',
+    'python_dateutil==2.2.0',
+    'pytz',
+    'simplejson==3.3.2',
 ]
 pip_src = 'https://pypi.python.org/packages/source'
 __deplinks__ = []

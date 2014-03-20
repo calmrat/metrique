@@ -19,8 +19,7 @@ import os
 # add these directories to sys.path here. If the directory is relative to the
 # documentation root, use os.path.abspath to make it absolute, like shown here.
 #import sys
-#paths = ['../../src/metrique', '../../src/metriqued', '../../src/metriquet',
-#         '../../src/metriquec', '../../src/metriqueu', '../../src/plotrique']
+#paths = ['../../src/metrique', '../../src/plotrique']
 #[sys.path.insert(0, os.path.abspath(p)) for p in paths]
 
 # -- General configuration ----------------------------------------------------
@@ -270,7 +269,7 @@ man_pages = [
 texinfo_documents = [
     ('index', 'metrique', 'metrique documentation',
      'Chris Ward <cward@redhat.com>', 'metrique',
-     'Python/MongoDB Data Warehouse and Data Glue',
+     'Python/MongoDB Data Warehouse',
      'Miscellaneous'),
 ]
 

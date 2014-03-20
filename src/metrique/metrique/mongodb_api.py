@@ -26,10 +26,9 @@ except ImportError:
     raise ImportError("Pymongo 2.6+ required!")
 
 from metrique.core_api import BaseClient, MetriqueObject
-from metrique.utils import parse_pql_query
+from metrique.utils import parse_pql_query, dt2ts, batch_gen
 from metrique.result import Result
-from metriqueu.jsonconf import JSONConf
-from metriqueu.utils import dt2ts, batch_gen
+from metrique.jsonconf import JSONConf
 
 logger = logging.getLogger(__name__)
 

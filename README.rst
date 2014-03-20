@@ -44,8 +44,7 @@ The instructions given below assume fedora rpm package names::
     sudo yum install git gcc gcc-c++ gcc-gfortran
     sudo yum install freetype-devel libpng-devel # matplotlib deps
 
-    # metriqued - mongodb expected to be running; kerberos is optional
-    sudo yum install mongodb mongodb-server krb5-devel
+    sudo yum install mongodb mongodb-server
 
     # additional python global dependencies, from pip
     sudo pip install pip-accel  # faster cached pip installed
@@ -53,10 +52,10 @@ The instructions given below assume fedora rpm package names::
     # make sure our core package managers are up2date
     sudo pip-accel install -U distribute setuptools
 
-    # our installation directory is always a python virtualenv
+    # our installation directory should always be a py virtualenv
     sudo pip-accel install virtualenv
 
-    # get the metrique sources
+    # get metrique sources
     git clone https://github.com/kejbaly2/metrique.git
     cd metrique
 
@@ -66,7 +65,7 @@ The instructions given below assume fedora rpm package names::
     ./metrique -V ~/metrique.master deploy --ipython --pytest --docs --develop
 
     # activate the virtual environment
-    source ~/virtenv-metrique/bin/activate
+    source ~/metrique.master/bin/activate
 
     # to persist data, start mongodb
     ./metrique mongodb firstboot
