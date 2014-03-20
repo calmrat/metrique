@@ -181,14 +181,18 @@ DEFAULT_METRIQUE_JSON = '''{
 
 DEFAULT_MONGODB_JSON = '''{
     "auth": false,
-    "username": "admin",
-    "password": "%s",
+    "fsync": false,
     "host": "127.0.0.1",
     "_host": "%s",
-    "journal": true,
+    "journal": false,
+    "password": "%s",
     "port": 27017,
+    "read_preference": "NEAREST",
+    "replica_set": '',
     "ssl": false,
     "ssl_certificate": "%s",
+    "tz_aware": true,
+    "username": "admin",
     "write_concern": 1
 }'''
 

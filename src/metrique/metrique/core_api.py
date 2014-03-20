@@ -217,7 +217,7 @@ class MetriqueContainer(MutableMapping):
                 "objects must be a list, tuple, dict or pandas.DataFrame")
 
     def __getitem__(self, key):
-        return self.store[key]
+        return dict(self.store[key])
 
     def __setitem__(self, key, value):
         self.store[key] = value
