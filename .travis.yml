@@ -1,0 +1,16 @@
+language: python
+python:
+  - "2.7"
+install:
+  - "pip install coveralls"
+  - "pip install virtualenv"
+  - "./metrique firstboot"
+  - "./metrique deploy --slow"
+services: 
+  - mongodb
+script: 
+  - "coverage run --source=metrique,metriqueu,metriquec -m py.test tests"
+after_success:
+  - coveralls
+after_failure:
+  - "cat ~/.metrique/*"
