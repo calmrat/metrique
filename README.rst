@@ -1,4 +1,4 @@
-.. image:: src/metriqued/metriqued/static/img/metrique_logo.png
+.. image:: static/src/metrique_logo.png
    :target: https://github.com/kejbaly2/metrique
 
 Metrique
@@ -22,10 +22,10 @@ Metrique
 Python/MongoDB Data Warehouse and Information Platform
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-metrique provides a simple python and rest API to support
+metrique provides a simple python API to support
 ETL workloads for extracting data from disperate sources, 
 iteratively, rapidly and reproducibly, with transparent,
-historical serverside object persistence and tight clientside 
+historical object persistence and tight clientside 
 integration with popular python scientific computing libraries 
 to faciliate creation and publication of a wide variety of analysis 
 and reports, large and small. 
@@ -46,9 +46,6 @@ The instructions given below assume fedora rpm package names::
 
     # metriqued - mongodb expected to be running; kerberos is optional
     sudo yum install mongodb mongodb-server krb5-devel
-
-    # metriqued - nginx is optional
-    sudo yum install nginx 
 
     # additional python global dependencies, from pip
     sudo pip install pip-accel  # faster cached pip installed
@@ -71,11 +68,8 @@ The instructions given below assume fedora rpm package names::
     # activate the virtual environment
     source ~/virtenv-metrique/bin/activate
 
-    # optionally, start mongodb and metriqued
+    # to persist data, start mongodb
     ./metrique mongodb firstboot
     ./metrique mongodb start
-
-    ./metrique metriqued firstboot
-    ./metrique metriqued start
 
     # launch ipython, connect to a metriqued instance and start mining!

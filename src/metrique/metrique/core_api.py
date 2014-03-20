@@ -85,8 +85,6 @@ from metriqueu.utils import utcnow, jsonhash, dt2ts
 
 logger = logging.getLogger(__name__)
 
-FILETYPES = {'csv': pd.read_csv, 'json': pd.read_json}
-
 FIELDS_RE = re.compile('[\W]+')
 SPACE_RE = re.compile('\s+')
 UNDA_RE = re.compile('_')

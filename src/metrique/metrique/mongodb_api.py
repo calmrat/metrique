@@ -202,8 +202,6 @@ class MongoDBClient(BaseClient):
             if self.dbconfig.auth:
                 _proxy = self._authenticate(_proxy)
             self._proxy = _proxy
-        else:
-            logger.debug('Using cached mongodb proxy...')
         return _proxy
 
     def _authenticate(self, proxy, username=None, password=None):
@@ -503,8 +501,8 @@ class MongoDBClient(BaseClient):
     def _filter_end_null_dups(self, _cube, objects):
         # filter out dups which have null _end value
         _hashes = [o['_hash'] for o in objects if o['_end'] is None]
-        spec = parse_pql_query('_hash in %s' % _hashes, date=None)
         if _hashes:
+            spec = parse_pql_query('_hash in %s' % _hashes, date=None)
             return set(_cube.find(spec).distinct('_id'))
         else:
             return set()
@@ -512,8 +510,8 @@ class MongoDBClient(BaseClient):
     def _filter_end_not_null_dups(self, _cube, objects):
         # filter out dups which have non-null _end value
         _ids = [o['_id'] for o in objects if o['_end'] is not None]
-        spec = parse_pql_query('_id in %s' % _ids, date='~')
         if _ids:
+            spec = parse_pql_query('_id in %s' % _ids, date='~')
             return set(_cube.find(spec).distinct('_id'))
         else:
             return set()
