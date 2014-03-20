@@ -20,7 +20,7 @@ import pandas.tseries.offsets as off
 from pandas.tslib import Timestamp
 import pandas as pd
 
-from metriqueu.utils import dt2ts
+from metrique.utils import dt2ts
 
 logger = logging.getLogger(__name__)
 

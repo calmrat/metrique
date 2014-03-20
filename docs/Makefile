@@ -44,9 +44,6 @@ clean:
 
 sources:
 	sphinx-apidoc -f -o $(SOURCEDIR)/source_codes/metrique ../src/metrique/metrique
-	sphinx-apidoc -f -o $(SOURCEDIR)/source_codes/metriquet ../src/metriquet/metriquet
-	sphinx-apidoc -f -o $(SOURCEDIR)/source_codes/metriquec ../src/metriquec/metriquec
-	sphinx-apidoc -f -o $(SOURCEDIR)/source_codes/metriqueu ../src/metriqueu/metriqueu
 	@echo "Source-code documentation generated."
 
 html:	sources

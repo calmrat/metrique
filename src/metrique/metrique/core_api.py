@@ -79,8 +79,7 @@ import re
 import urllib
 
 from metrique.config import Config
-from metrique.utils import get_cube
-from metriqueu.utils import utcnow, jsonhash, dt2ts
+from metrique.utils import get_cube, utcnow, jsonhash, dt2ts
 
 logger = logging.getLogger(__name__)
 
@@ -505,14 +504,14 @@ class BaseClient(object):
         return logger
 
     def get_cube(self, cube, init=True, name=None, **kwargs):
-        '''wrapper for :func:`metriqueu.utils.get_cube`
+        '''wrapper for :func:`metrique.utils.get_cube`
 
         Locates and loads a metrique cube
 
         :param cube: name of cube to load
         :param init: (bool) initialize cube before returning?
         :param name: override the name of the cube
-        :param kwargs: additional :func:`metriqueu.utils.get_cube`
+        :param kwargs: additional :func:`metrique.utils.get_cube`
         '''
         config = copy(self.config)
         # don't apply the name to the current obj, but to the object
@@ -543,7 +542,7 @@ class BaseClient(object):
     def set_config(self, config=None, **kwargs):
         '''Try to load a config file and handle when its not available
 
-        :param config: config file or :class:`metriqueu.jsonconf.JSONConf`
+        :param config: config file or :class:`metrique.jsonconf.JSONConf`
         :param kwargs: additional config key:value pairs to store
         '''
         if type(config) is type(Config):

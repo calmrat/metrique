@@ -36,7 +36,7 @@ env = os.environ
 active_virtualenv = lambda: os.environ.get('VIRTUAL_ENV', '')
 call_subprocess = virtualenv.call_subprocess
 
-__pkgs__ = ['metrique', 'metriquec', 'metriqueu', 'plotrique']
+__pkgs__ = ['metrique', 'plotrique']
 __actions__ = ['build', 'sdist', 'install', 'develop', 'register',
                'bump', 'status']
 __bumps__ = ['x', 'y', 'z', 'r']
@@ -497,6 +497,7 @@ def adjust_options(options, args):
     options.no_site_packages = True
 virtualenv.adjust_options = adjust_options
 
+
 def firstboot(args, force=False):
     # make sure we have some basic defaults configured in the environment
     force = getattr(args, 'force', force)
@@ -725,8 +726,6 @@ def mongodb_backup(args):
 def mongodb(args):
     fork = not args.nofork
     fast = args.fast
-    ssl = args.ssl
-    host = args.host
 
     if args.command == 'start':
         mongodb_start(fork, fast)
@@ -752,9 +751,9 @@ def rsync(args):
         raise OSError("one or more targets required!")
     targets = ' '.join(args.targets)
     if ssh_host:
-        call('rsync -av %s -e ssh %s %s@%s:%s' % (compress, targets, ssh_user,
-                                                  ssh_host, saveas),
-             show_stdout=show_stdout)
+        call('rsync -av %s -e ssh %s %s@%s:%s' % (
+            compress, targets, ssh_user, ssh_host, saveas),
+            show_stdout=True)
     else:
         saveas = pjoin(BACKUP_DIR, saveas)
         call('rsync -av %s %s %s' % (compress, targets, saveas),
@@ -773,7 +772,7 @@ def trash(args=None):
               TMP_DIR, CELERY_DIR, MONGODB_DIR]:
         _dest = os.path.join(dest, os.path.basename(f))
         try:
-            shutil.move(f, dest)
+            shutil.move(f, _dest)
         except (IOError, OSError) as e:
             logger.error(e)
             continue
@@ -943,6 +942,10 @@ def deploy(args):
         call('%s install -U supervisor' % pip)
     if args.joblib:
         call('%s install -U joblib' % pip)
+    if args.postgres:
+        call('%s install -U psycopg2' % pip)
+    if args.celery:
+        call('%s install -U celery' % pip)
 
     cmd = 'install'
     no_pre = getattr(args, 'no_pre', False)
@@ -961,8 +964,7 @@ def deploy(args):
         running = get_pid(MONGODB_PIDFILE) != 0
         if not running:
             call('metrique mongodb start --fast')
-        call('coverage run --source=metrique,'
-             'metriqueu,metriquec -m py.test tests', cwd=GIT_DIR)
+        call('coverage run --source=metrique -m py.test tests', cwd=GIT_DIR)
 
 
 def bump(args, kind=None, reset=None):
@@ -1182,6 +1184,10 @@ def main():
         '--supervisord', action='store_true', help='install supervisord')
     _deploy.add_argument(
         '--joblib', action='store_true', help='install joblib')
+    _deploy.add_argument(
+        '--postgres', action='store_true', help='install postgres')
+    _deploy.add_argument(
+        '--celery', action='store_true', help='install celery')
     _deploy.add_argument(
         '--trash', action='store_true', help='fresh install (rm old virtenv)')
     _deploy.set_defaults(func=deploy)

@@ -28,5 +28,5 @@ class Local(pyclient):
 
 
 if __name__ == '__main__':
-    from metriquec.argparsers import cube_cli
+    from metrique.argparsers import cube_cli
     cube_cli(Local)
