@@ -9,9 +9,9 @@ __version__ = '0.3.0'
 __release__ = "1a"
 __nvr__ = '%s-%s' % (__version__, __release__)
 __pkgs__ = ['metrique']
-__pkgs__ = ['metrique', 'sql',
-            'cubes', 'cubes.csvdata',
-            'cubes.gitdata', 'cubes.sqldata',
+__pkgs__ = ['metrique', 'metrique.sql',
+            'metrique.cubes', 'metrique.cubes.csvdata',
+            'metrique.cubes.gitdata', 'metrique.cubes.sqldata',
 ]
 __provides__ = ['metrique']
 __desc__ = 'Metrique - Client Libraries'
