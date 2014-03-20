@@ -36,7 +36,7 @@ env = os.environ
 active_virtualenv = lambda: os.environ.get('VIRTUAL_ENV', '')
 call_subprocess = virtualenv.call_subprocess
 
-__pkgs__ = ['metrique', 'metriquec', 'metriqueu', 'metriquet', 'plotrique']
+__pkgs__ = ['metrique', 'metriquec', 'metriqueu', 'plotrique']
 __actions__ = ['build', 'sdist', 'install', 'develop', 'register',
                'bump', 'status']
 __bumps__ = ['x', 'y', 'z', 'r']
@@ -172,14 +172,10 @@ SUPERVISORD_HISTORYFILE = pjoin(TMP_DIR, 'supervisord_history')
 DEFAULT_METRIQUE_JSON = '''{
     "batch_size": 5000,
     "debug": true,
-    "host": "127.0.0.1",
     "log2file": true,
     "logstdout": false,
     "max_workers": 4,
-    "port": 5420,
-    "sql_batch_size": 1000,
-    "ssl": false,
-    "ssl_verify": false
+    "sql_batch_size": 1000
 }'''
 
 
@@ -188,6 +184,7 @@ DEFAULT_MONGODB_JSON = '''{
     "username": "admin",
     "password": "%s",
     "host": "127.0.0.1",
+    "_host": "%s",
     "journal": true,
     "port": 27017,
     "ssl": false,
@@ -496,9 +493,9 @@ def adjust_options(options, args):
     options.no_site_packages = True
 virtualenv.adjust_options = adjust_options
 
-def firstboot(args):
+def firstboot(args, force=False):
     # make sure we have some basic defaults configured in the environment
-    force = getattr(args, 'force', False)
+    force = getattr(args, 'force', force)
     sys_firstboot(force)
     mongodb_firstboot(force)
     metrique_firstboot(force)
@@ -760,7 +757,7 @@ def rsync(args):
              show_stdout=True)
 
 
-def trash(args):
+def trash(args=None):
     supervisord_terminate()
     celerybeat_terminate()
     celeryd_terminate()
@@ -899,6 +896,7 @@ def deploy(args):
         # scratch the existing virtenv directory, if requested
         if args.trash:
             remove(virtenv)
+            trash()
 
         # virtualenv.main; pass in only the virtenv path
         sys.argv = sys.argv[0:1] + [virtenv]
@@ -909,7 +907,7 @@ def deploy(args):
         activate(args)
 
     # make sure we have some basic defaults configured in the environment
-    firstboot(args)
+    firstboot(args, force=True)
 
     # make sure we have the installer basics and their up2date
     # pip-accel caches compiled binaries
@@ -960,7 +958,7 @@ def deploy(args):
         if not running:
             call('metrique mongodb start --fast')
         call('coverage run --source=metrique,'
-             'metriqueu,metriquec,metriquet -m py.test tests', cwd=GIT_DIR)
+             'metriqueu,metriquec -m py.test tests', cwd=GIT_DIR)
 
 
 def bump(args, kind=None, reset=None):
@@ -1046,7 +1044,7 @@ def mongodb_firstboot(force):
     mongodb_gen_keyfile()
 
     global DEFAULT_MONGODB_JSON, DEFAULT_MONGODB_CONF, DEFAULT_MONGODB_JS
-    DEFAULT_MONGODB_JSON = DEFAULT_MONGODB_JSON % (PASSWORD, SSL_PEM)
+    DEFAULT_MONGODB_JSON = DEFAULT_MONGODB_JSON % (PASSWORD, LOCAL_IP, SSL_PEM)
     DEFAULT_MONGODB_CONF = DEFAULT_MONGODB_CONF % (
         MONGODB_DIR, MONGODB_LOG, MONGODB_PIDFILE, LOCAL_IP, SSL_PEM,
         MONGODB_KEYFILE)
@@ -1077,6 +1075,7 @@ def metrique_firstboot(force=False):
 
     global DEFAULT_METRIQUE_JSON
 
+    # nothing to substitute
     #DEFAULT_METRIQUE_JSON = DEFAULT_METRIQUE_JSON
 
     default_conf(METRIQUE_JSON, DEFAULT_METRIQUE_JSON)
