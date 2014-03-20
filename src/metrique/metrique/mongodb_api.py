@@ -155,6 +155,11 @@ class MongoDBClient(BaseClient):
     def values(self, sample_size=1):
         return self.sample_docs(sample_size=sample_size)
 
+    def get_cube(self, *args, **kwargs):
+        conf = self.mongodb_config
+        return super(MongoDBClient, self).get_cube(mongodb_config=conf,
+                                                   *args, **kwargs)
+
 ######################### DB API ##################################
     def get_db(self, owner=None):
         owner = owner or self.mongodb_config.username
