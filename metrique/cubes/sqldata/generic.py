@@ -99,7 +99,6 @@ class Generic(pyclient):
         activities = self.activity_get(oids)
         objects = self.objects.values()
         for doc in objects:
-            doc = doc.as_dict(pop=['_id', '_hash'])
             _oid = doc['_oid']
             acts = activities.setdefault(_oid, [])
             objs = self._activity_import_doc(doc, acts)
@@ -535,11 +534,11 @@ class Generic(pyclient):
         field_order = tuple(self.fields)
 
         batch_size = self.config.sql_batch_size
-        max_workers = self.config.max_workers
         kwargs = self.config
         kwargs.pop('cube', None)  # ends up in config; ignore it
-        runner = Parallel(n_jobs=max_workers)
         if HAS_JOBLIB:
+            max_workers = self.config.max_workers
+            runner = Parallel(n_jobs=max_workers)
             func = delayed(get_objects)
             result = runner(func(
                 cube=self._cube, oids=batch, flush=flush,

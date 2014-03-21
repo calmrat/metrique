@@ -113,7 +113,7 @@ class MetriqueObject(Mapping):
                 if self._strict:
                     raise KeyError("%s is immutable" % key)
                 else:
-                    logger.debug("%s is immutable; not setting" % key)
+                    #logger.debug("%s is immutable; not setting" % key)
                     return
             if key in TIMESTAMP_OBJ_KEYS:
                 # ensure normalized timestamp

@@ -44,8 +44,8 @@ READ_PREFERENCE = {
     'NEAREST': ReadPreference.NEAREST,
 }
 
-VALID_CUBE_SHARE_ROLES = ['read', 'readWrite', 'dbAdminRole', 'userAdminRole']
-CUBE_OWNER_ROLES = ['readWrite', 'dbAdminRole', 'userAdminRole']
+VALID_CUBE_SHARE_ROLES = ['read', 'readWrite', 'dbAdmin', 'userAdmin']
+CUBE_OWNER_ROLES = ['readWrite', 'dbAdmin', 'userAdmin']
 RESTRICTED_COLLECTION_NAMES = ['admin', 'local', 'system']
 INVALID_USERNAME_RE = re.compile('[^a-zA-Z_]')
 
@@ -162,12 +162,12 @@ class MongoDBClient(BaseClient):
 ######################### DB API ##################################
     def _ensure_base_indexes(self, _cube):
         s = 60 * 60
-        _cube.ensure_index('_oid', background=False, unique=False, cache_for=s)
-        _cube.ensure_index('_hash', background=False, unique=True, cache_for=s)
+        _cube.ensure_index('_oid', background=False, cache_for=s)
+        _cube.ensure_index('_hash', background=False, cache_for=s)
         _cube.ensure_index([('_start', -1), ('_end', -1)],
-                           background=False, unique=False, cache_for=s)
+                           background=False, cache_for=s)
         _cube.ensure_index([('_end', -1)],
-                           background=False, unique=False, cache_for=s)
+                           background=False, cache_for=s)
 
     def get_db(self, owner=None):
         owner = owner or self.mongodb_config.username
@@ -369,7 +369,7 @@ class MongoDBClient(BaseClient):
         result = _cube.index_information()
         return result
 
-    def index_new(self, key_or_list, cube=None, owner=None, **kwargs):
+    def index(self, key_or_list, cube=None, owner=None, **kwargs):
         '''
         Build a new index on a cube.
 
