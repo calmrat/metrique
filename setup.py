@@ -4,22 +4,41 @@
 
 from setuptools import setup
 
-__pkg__ = 'plotrique'
+# FIXME: any way to add 'optional' 'extra' dependencies?
+# 'matplotlib (>=1.3.1)',
+# psycopg2, gittle, etc...
+
+__pkg__ = 'metrique'
 __version__ = '0.3.0'
 __release__ = "1a"
 __nvr__ = '%s-%s' % (__version__, __release__)
-__pkgs__ = ['plotrique']
-__provides__ = ['plotrique']
-__desc__ = 'plotrique - Convenience plotting tools'
-__scripts__ = [
+__pkgs__ = ['metrique']
+__pkgs__ = [
+    'metrique', 'metrique.sql',
+    'metrique.cubes', 'metrique.cubes.csvdata',
+    'metrique.cubes.gitdata', 'metrique.cubes.sqldata',
+    'metrique.plotting'
 ]
+__provides__ = ['metrique']
+__desc__ = 'Metrique - Client Libraries'
+__scripts__ = ['metrique/bin/metrique']
 __requires__ = [
-    'matplotlib (==1.3.1)',
-    'pandas (==0.13)',
+    'decorator (>=3.4.0)',
+    'pandas (>=0.13.0)',
+    'pql (>=0.4.2)',
+    'pymongo (>=2.6.3)',
+    'python_dateutil (>=2.2.0)',
+    'pytz'
+    'simplejson (>=3.3.2)',
 ]
 __irequires__ = [
-    'matplotlib==1.3.1',
-    'pandas==0.13',
+    'decorator>=3.4.0',
+    'pandas>=0.13.0',
+    'pql>=0.4.2',
+    'pymongo>=2.6.3',
+    'python_dateutil>=2.2.0',
+    'pytz',
+    'simplejson>=3.3.2',
 ]
 pip_src = 'https://pypi.python.org/packages/source'
 __deplinks__ = []
@@ -33,8 +52,8 @@ download_url = '%s/archive/master.zip' % github
 default_setup = dict(
     url=github,
     license='GPLv3',
-    author='Juraj Niznan',
-    author_email='jniznan@redhat.com',
+    author='Chris Ward',
+    author_email='cward@redhat.com',
     download_url=download_url,
     long_description=readme,
     data_files=[],
