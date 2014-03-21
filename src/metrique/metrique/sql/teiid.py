@@ -11,15 +11,22 @@ to TEIID databases using postgres (psycopg2).
 '''
 
 import logging
-import psycopg2
-from psycopg2.extensions import TRANSACTION_STATUS_UNKNOWN
-from psycopg2.extensions import TRANSACTION_STATUS_INERROR
-from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
+logger = logging.getLogger(__name__)
+
+try:
+    import psycopg2
+    from psycopg2.extensions import TRANSACTION_STATUS_UNKNOWN
+    from psycopg2.extensions import TRANSACTION_STATUS_INERROR
+    from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
+    from psycopg2 import DatabaseError
+    DatabaseError  # avoid 'imported but not used' pyflakes warning
+    HAS_POSTGRES = True
+except ImportError:
+    HAS_POSTGRES = False
+    logger.warn("psycopg2 package not found!")
 import re
 
 from metrique.sql.basesql import BaseSql
-
-logger = logging.getLogger(__name__)
 
 TRANS_ERROR = [TRANSACTION_STATUS_UNKNOWN, TRANSACTION_STATUS_INERROR]
 
@@ -32,6 +39,8 @@ class TEIID(BaseSql):
     method. To connect,
     '''
     def __init__(self, vdb, host, username, password, port, **kwargs):
+        if not HAS_POSTGRES:
+            raise ImportError('`pip install psycopg2` required')
         super(TEIID, self).__init__()
         self.vdb = vdb
         self.host = host

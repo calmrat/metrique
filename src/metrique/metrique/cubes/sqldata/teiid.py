@@ -4,19 +4,18 @@
 
 '''
 metrique.cubes.sqldata.teiid
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 This module contains the cube methods for extracting
 data from SQL TEIID data sources.
 '''
 import logging
+logger = logging.getLogger(__name__)
 
 from metrique.utils import get_cube
 sqldata_generic = get_cube('sqldata_generic')
 
-from metrique.sql.teiid import TEIID
-
-logger = logging.getLogger(__name__)
+from metrique.sql.teiid import TEIID, DatabaseError
 
 
 class Teiid(sqldata_generic):
@@ -31,15 +30,9 @@ class Teiid(sqldata_generic):
     '''
     def __init__(self, sql_host=None, sql_port=None, sql_vdb=None,
                  sql_username=None, sql_password=None, **kwargs):
-
         super(Teiid, self).__init__(sql_host=sql_host,
                                     sql_port=sql_port,
                                     **kwargs)
-        try:
-            from psycopg2 import DatabaseError
-        except ImportError:
-            raise ImportError("pip install psycopg2")
-
         if sql_vdb:
             self.config['sql_vdb'] = sql_vdb
         if sql_username:

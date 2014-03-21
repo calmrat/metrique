@@ -10,6 +10,9 @@ This module contains the cube methods for extracting
 data from generic SQL data sources.
 '''
 
+import logging
+logger = logging.getLogger(__name__)
+
 from copy import deepcopy, copy
 from collections import defaultdict
 from dateutil.parser import parse as dt_parse
@@ -20,8 +23,8 @@ try:
     HAS_JOBLIB = True
 except ImportError:
     HAS_JOBLIB = False
+    logger.warn("joblib package not found!")
 
-import logging
 import pytz
 import re
 import simplejson as json
@@ -30,8 +33,6 @@ import traceback
 
 from metrique import pyclient
 from metrique.utils import batch_gen, ts2dt, dt2ts, utcnow
-
-logger = logging.getLogger(__name__)
 
 # FIXME: why not utf-8?
 DEFAULT_ENCODING = 'latin-1'

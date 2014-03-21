@@ -13,14 +13,22 @@ for exctacting data from a git repository.
 '''
 
 import logging
+logger = logging.getLogger(__name__)
+
+try:
+    from gittle.gittle import Gittle
+    from gittle.utils.git import commit_info
+    HAS_GITTLE = True
+except ImportError:
+    logger.warn("gittle package not found!")
+    HAS_GITTLE = False
+
 import os
 import re
 import tempfile
 import subprocess
 
 from metrique import pyclient
-
-logger = logging.getLogger(__name__)
 
 related_re = re.compile('Related: (.+)$', re.I)
 resolves_re = re.compile('Resolves: (.+)$', re.I)
@@ -41,6 +49,8 @@ class Repo(pyclient):
     name = 'gitdata_repo'
 
     def __init__(self, cache_dir=None, **kwargs):
+        if not HAS_GITTLE:
+            raise ImportError("`pip install gittle` required")
         super(Repo, self).__init__(**kwargs)
         self.cache_dir = os.path.expanduser(cache_dir or TMP_DIR)
 
@@ -52,12 +62,7 @@ class Repo(pyclient):
         :param uri: git repo uri
         :param pull: whether to pull after cloning (or loading cache)
         '''
-        try:
-            from gittle.gittle import Gittle
-        except ImportError:
-            raise ImportError("pip install gittle")
         # FIXME: use gittle to clone repos; bare=True
-
         # make the uri safe for filesystems
         _uri = "".join(x for x in uri if x.isalnum())
         repo_path = os.path.join(self.cache_dir, _uri)
@@ -85,7 +90,6 @@ class Repo(pyclient):
         return Gittle(repo_path)
 
     def _build_commits(self, delta_shas, uri):
-        from gittle.utils.git import commit_info
         cmd = 'git --no-pager log --all --format=sha:%H --numstat'
         p = subprocess.Popen(cmd.split(), stdout=subprocess.PIPE)
         all_logs = p.communicate()[0]

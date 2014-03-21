@@ -10,9 +10,11 @@ MongoDB client API for persisting and querying of
 data cubes backed by MongoDB.
 
 '''
+import logging
+logger = logging.getLogger(__name__)
+
 from collections import defaultdict
 import getpass
-import logging
 from operator import itemgetter
 import os
 import random
@@ -29,8 +31,6 @@ from metrique.core_api import BaseClient, MetriqueObject
 from metrique.utils import parse_pql_query, dt2ts, batch_gen
 from metrique.result import Result
 from metrique.jsonconf import JSONConf
-
-logger = logging.getLogger(__name__)
 
 ETC_DIR = os.environ.get('METRIQUE_ETC')
 DEFAULT_CONFIG = os.path.join(ETC_DIR, 'mongodb.json')

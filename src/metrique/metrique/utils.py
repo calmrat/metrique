@@ -10,20 +10,20 @@ This module contains utility functions shared between
 metrique sub-modules
 '''
 
+import logging
+logger = logging.getLogger(__name__)
+
 from calendar import timegm
 from datetime import datetime
 from dateutil.parser import parse as dt_parse
 from hashlib import sha1
 import locale
-import logging
 import os
 import pql
 import pytz
 import re
 import simplejson as json
 import sys
-
-logger = logging.getLogger(__name__)
 
 json_encoder = json.JSONEncoder()
 
@@ -371,19 +371,6 @@ def to_encoding(ustring, encoding=None):
             return ustring.encode(encoding, 'replace')
     else:
         raise ValueError('basestring type required')
-
-
-def set_default(key, default, null_ok=False, err_msg=None):
-    if not err_msg:
-        err_msg = "non-null value required for %s" % key
-    if not null_ok and key is None and default is None:
-            raise RuntimeError(err_msg)
-    try:
-        # if we get 'type' obj, eg `list`
-        result = key if key is not None else default()
-    except (TypeError, AttributeError):
-        result = key if key is not None else default
-    return result
 
 
 def ts2dt(ts, milli=False, tz_aware=True):
