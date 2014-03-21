@@ -8,10 +8,9 @@ from setuptools import setup
 # 'matplotlib (>=1.3.1)',
 # psycopg2, gittle, etc...
 
+
 __pkg__ = 'metrique'
-__version__ = '0.3.0'
-__release__ = "1a"
-__nvr__ = '%s-%s' % (__version__, __release__)
+__version__ = open('VERSION').read().strip()
 __pkgs__ = ['metrique']
 __pkgs__ = [
     'metrique', 'metrique.sql',
@@ -82,7 +81,7 @@ default_setup = dict(
     provides=__provides__,
     requires=__requires__,
     scripts=__scripts__,
-    version=__nvr__,
+    version=__version__,
 )
 
 setup(**default_setup)
