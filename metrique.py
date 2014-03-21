@@ -480,8 +480,9 @@ def adjust_options(options, args):
 virtualenv.adjust_options = adjust_options
 
 
-def firstboot(args, force=False):
+def firstboot(args, force=False, trash=False):
     # make sure we have some basic defaults configured in the environment
+    trash = getattr(args, 'trash', trash)
     force = getattr(args, 'force', force)
     sys_firstboot(force)
     mongodb_firstboot(force)
@@ -906,7 +907,7 @@ def mongodb_firstboot(force):
     mongodb_gen_keyfile()
 
     global DEFAULT_MONGODB_JSON, DEFAULT_MONGODB_CONF, DEFAULT_MONGODB_JS
-    DEFAULT_MONGODB_JSON = DEFAULT_MONGODB_JSON % (PASSWORD, LOCAL_IP, SSL_PEM)
+    DEFAULT_MONGODB_JSON = DEFAULT_MONGODB_JSON % (LOCAL_IP, PASSWORD, SSL_PEM)
     DEFAULT_MONGODB_CONF = DEFAULT_MONGODB_CONF % (
         MONGODB_DIR, MONGODB_LOG, MONGODB_PIDFILE, LOCAL_IP, SSL_PEM,
         MONGODB_KEYFILE)
