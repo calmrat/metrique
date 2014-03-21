@@ -99,7 +99,7 @@ class Generic(pyclient):
         activities = self.activity_get(oids)
         objects = self.objects.values()
         for doc in objects:
-            doc = doc.as_dict(pop=['_uuid', '_id', '_hash'])
+            doc = doc.as_dict(pop=['_id', '_hash'])
             _oid = doc['_oid']
             acts = activities.setdefault(_oid, [])
             objs = self._activity_import_doc(doc, acts)

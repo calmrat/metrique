@@ -20,15 +20,15 @@ try:
     from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
     from psycopg2 import DatabaseError
     DatabaseError  # avoid 'imported but not used' pyflakes warning
+    TRANS_ERROR = [TRANSACTION_STATUS_UNKNOWN, TRANSACTION_STATUS_INERROR]
     HAS_POSTGRES = True
 except ImportError:
     HAS_POSTGRES = False
     logger.warn("psycopg2 package not found!")
+    TRANS_ERROR = []
 import re
 
 from metrique.sql.basesql import BaseSql
-
-TRANS_ERROR = [TRANSACTION_STATUS_UNKNOWN, TRANSACTION_STATUS_INERROR]
 
 
 class TEIID(BaseSql):

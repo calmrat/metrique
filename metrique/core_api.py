@@ -87,8 +87,8 @@ FIELDS_RE = re.compile('[\W]+')
 SPACE_RE = re.compile('\s+')
 UNDA_RE = re.compile('_')
 
-HASH_EXCLUDE_KEYS = ['_hash', '_id', '_start', '_end', '_uuid']
-IMMUTABLE_OBJ_KEYS = set(['_hash', '_id', '_oid', '_uuid'])
+HASH_EXCLUDE_KEYS = ['_hash', '_id', '_start', '_end']
+IMMUTABLE_OBJ_KEYS = set(['_hash', '_id', '_oid'])
 TIMESTAMP_OBJ_KEYS = set(['_end', '_start'])
 
 
@@ -100,7 +100,6 @@ class MetriqueObject(Mapping):
             '_oid': _oid,
             '_id': None,
             '_hash': None,
-            '_uuid': None,
             '_start': None,
             '_end': None,
         }
@@ -166,11 +165,6 @@ class MetriqueObject(Mapping):
         [o.pop(k) for k in HASH_EXCLUDE_KEYS if k in keys]
         return jsonhash(o)
 
-    def _gen_uuid(self):
-        o = copy(self.store)
-        o.pop('_uuid', None)
-        return jsonhash(o)
-
     def _validate_start_end(self):
         _start = self.get('_start')
         if _start is None:
@@ -187,11 +181,10 @@ class MetriqueObject(Mapping):
         if not self.store.get('_start') or self._touch:
             self.store['_start'] = utcnow()
         self._validate_start_end()
-        # _id depends on _hash, and _uuid depends on _id and _hash
-        # so first, _hash, then _id, then _uuid
+        # _id depends on _hash
+        # so first, _hash, then _id
         self.store['_hash'] = self._gen_hash()
         self.store['_id'] = self._gen_id()
-        self.store['_uuid'] = self._gen_uuid()
 
     def as_dict(self, pop=None):
         store = copy(self.store)
@@ -208,6 +201,7 @@ class MetriqueContainer(MutableMapping):
         elif isinstance(objects, (list, tuple)):
             [self.add(x) for x in objects]
         elif isinstance(objects, (dict, Mapping)):
+            # FIXME: should this be self.update(objects)?
             self.store.update(objects)
         elif isinstance(objects, MetriqueContainer):
             self.store = objects
