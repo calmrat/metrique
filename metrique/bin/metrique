@@ -846,8 +846,7 @@ def deploy(args):
 
     if args.develop:
         path = pjoin(virtenv, 'lib/python2.7/site-packages/metrique*')
-        mods = glob.glob(path)
-        remove(mods)
+        remove(path)
         develop(args)
 
     # run py.test after install
