@@ -1,6 +1,9 @@
 #!/usr/bin/env python
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 
+import logging
+logger = logging.getLogger(__name__)
+
 import codecs
 from collections import MutableMapping
 import os

@@ -179,40 +179,6 @@ def test_jsonhash():
     assert jsonhash(dct) != jsonhash(dct_sorted_z)
 
 
-def test_set_default():
-    ''' args: key, default, null_ok=False, err_msg=None '''
-    from metrique.utils import set_default
-
-    k = None  # key
-    d = None  # default
-    n = True  # null_ok
-    e = None  # err_msg
-
-    assert set_default(k, d, n, e) is None
-
-    k = []
-    assert set_default(k, d, n, e) == []
-
-    d = list
-    assert set_default(k, d, n, e) == []
-
-    d = 'hello'
-    assert set_default(k, d, n, e) != d
-    assert set_default(k, d, n, e) != 42
-
-    n = False
-    try:
-        set_default(k, d, n, e)
-    except RuntimeError:
-        pass
-
-    e = 'oops'
-    try:
-        set_default(k, d, n, e)
-    except RuntimeError as e:
-        assert e == 'oops'
-
-
 def test_ts2dt():
     ''' args: ts, milli=False, tz_aware=True '''
     from metrique.utils import ts2dt
