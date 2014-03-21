@@ -414,6 +414,8 @@ def move(path, dest, quiet=True):
 
 
 def remove(path, quiet=True):
+    if not path:
+        return []
     path = glob.glob(path)
     if isinstance(path, (list, tuple)):
         if len(path) == 1:
