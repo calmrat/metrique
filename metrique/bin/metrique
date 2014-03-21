@@ -36,7 +36,7 @@ env = os.environ
 active_virtualenv = lambda: os.environ.get('VIRTUAL_ENV', '')
 call_subprocess = virtualenv.call_subprocess
 
-__pkgs__ = ['metrique', 'plotrique']
+__pkgs__ = ['metrique']
 __actions__ = ['build', 'sdist', 'install', 'develop', 'register',
                'bump', 'status']
 __bumps__ = ['x', 'y', 'z', 'r']
@@ -98,9 +98,10 @@ except Exception:
 PASSWORD = rand_chars(10)
 COOKIE_SECRET = rand_chars(50)
 
+# FIXME: ... no more packages...
 HERE = os.getcwd()
 GIT_DIR = env.get('METRIQUE_GIT', HERE)
-SRC_DIR = pjoin(GIT_DIR, 'src/')
+SRC_DIR = pjoin(GIT_DIR, 'metrique/')
 
 HOME_DIR = env.get('METRIQUE_HOME', os.path.expanduser('~/'))
 USER_DIR = env.get('METRIQUE_USR', pjoin(HOME_DIR, '.metrique'))
