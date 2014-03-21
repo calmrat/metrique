@@ -4,7 +4,7 @@ python:
 install:
   - "pip install coveralls"
   - "pip install virtualenv"
-  - "./metrique deploy --slow"
+  - "./metrique deploy --slow --all"
 services: 
   - mongodb
 script: 
