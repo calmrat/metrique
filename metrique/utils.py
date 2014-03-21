@@ -172,7 +172,7 @@ def get_cube(cube, init=False, config=None, pkgs=None, cube_paths=None,
         if _cube:
             break
     else:
-        sys.stderr.write('WARNING: %s\n' % err)
+        logger.error(err)
         raise RuntimeError('"%s" not found! %s; %s \n%s)' % (
             cube, pkgs, cube_paths, sys.path))
 
