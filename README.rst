@@ -62,7 +62,7 @@ The instructions given below assume fedora rpm package names::
     # deploy metrique master branch into a virtual environment
     # including dependencies. 
     # NOTE this takes 10-15 minutes to compile everything from source!
-    ./metrique -V ~/metrique.master deploy --ipython --pytest --docs --develop
+    ./metrique.py -V ~/metrique.master deploy --all
 
     # activate the virtual environment
     source ~/metrique.master/bin/activate

@@ -2,6 +2,9 @@
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 # Author: "Chris Ward" <cward@redhat.com>
 
+__version__ = '0.3.0'
+__release__ = '2a'
+
 # setup default root logger
 import logging
 log_format = "%(name)s.%(process)s:%(asctime)s:%(message)s"

@@ -160,6 +160,15 @@ class MongoDBClient(BaseClient):
                                                    *args, **kwargs)
 
 ######################### DB API ##################################
+    def _ensure_base_indexes(self, _cube):
+        s = 60 * 60
+        _cube.ensure_index('_oid', background=False, unique=False, cache_for=s)
+        _cube.ensure_index('_hash', background=False, unique=True, cache_for=s)
+        _cube.ensure_index([('_start', -1), ('_end', -1)],
+                           background=False, unique=False, cache_for=s)
+        _cube.ensure_index([('_end', -1)],
+                           background=False, unique=False, cache_for=s)
+
     def get_db(self, owner=None):
         owner = owner or self.mongodb_config.username
         if not owner:
@@ -174,7 +183,9 @@ class MongoDBClient(BaseClient):
         cube = cube or self.name
         if not (owner and cube):
             raise RuntimeError("[%s.%s] Invalid cube!" % (owner, cube))
-        return self.get_db(owner)[cube]
+        _cube = self.get_db(owner)[cube]
+        self._ensure_base_indexes(_cube)
+        return _cube
 
     @property
     def db(self):
@@ -548,7 +559,7 @@ class MongoDBClient(BaseClient):
             return objects
 
         spec = parse_pql_query('_id in %s' % _ids, date=None)
-        _objs = _cube.find(spec, {'_hash': 0, '_uuid': 0})
+        _objs = _cube.find(spec, {'_hash': 0})
         k = _objs.count()
         logger.debug(
             '[%s] %s of %s objects need to be rotated' % (_cube, k, olen))
