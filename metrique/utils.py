@@ -30,6 +30,7 @@ json_encoder = json.JSONEncoder()
 DEFAULT_PKGS = ['metrique.cubes']
 
 SHA1_HEXDIGEST = lambda o: sha1(repr(o)).hexdigest()
+UTC = pytz.utc
 
 
 def batch_gen(data, batch_size):
@@ -38,18 +39,12 @@ def batch_gen(data, batch_size):
         for batch in batch_gen(iter, 100):
             do_something(batch)
     '''
-    if not data:
-        return
-
-    if batch_size <= 0:
-        # override: yield the whole list
-        yield data
-
+    data = data or []
     for i in range(0, len(data), batch_size):
         yield data[i:i + batch_size]
 
 
-def clear_stale_pids(pids, pid_dir, prefix='metriqued'):
+def clear_stale_pids(pids, pid_dir, prefix):
     'check for and remove any pids which have no corresponding process'
     procs = os.listdir('/proc')
     running = [pid for pid in pids if pid in procs]
@@ -63,9 +58,8 @@ def clear_stale_pids(pids, pid_dir, prefix='metriqued'):
             if os.path.exists(path):
                 try:
                     os.remove(path)
-                except OSError:
-                    # FIXME: LOG!
-                    pass
+                except OSError as e:
+                    logger.debug(e)
     return _running
 
 
@@ -101,10 +95,12 @@ def cube_pkg_mod_cls(cube):
 def dt2ts(dt, drop_micro=False, strict=False):
     ''' convert datetime objects to timestamp seconds (float) '''
     # the equals check to 'NaT' is hack to avoid adding pandas as a dependency
-    if repr(dt) == 'NaT' or not dt:
+    if dt != dt or repr(dt) == 'NaT' or not dt:
+        msg = "invalid datetime '%s'" % dt
         if strict:
-            raise ValueError("invalid datetime '%s'" % dt)
+            raise ValueError(msg)
         else:
+            logger.debug(msg)
             return None
     elif isinstance(dt, (int, long, float)):  # its a ts already
         ts = dt
@@ -154,7 +150,7 @@ def get_cube(cube, init=False, config=None, pkgs=None, cube_paths=None,
     pkgs = pkgs or config.get('cube_pkgs', ['cubes'])
     pkgs = [pkgs] if isinstance(pkgs, basestring) else pkgs
     # search in the given path too, if provided
-    cube_paths = cube_paths if cube_paths else config.get('cube_paths', [])
+    cube_paths = cube_paths or config.get('cube_paths', [])
     cube_paths_is_basestring = isinstance(cube_paths, basestring)
     cube_paths = [cube_paths] if cube_paths_is_basestring else cube_paths
     cube_paths = [os.path.expanduser(path) for path in cube_paths]
@@ -181,7 +177,7 @@ def get_cube(cube, init=False, config=None, pkgs=None, cube_paths=None,
     return _cube
 
 
-def get_pids(pid_dir, prefix='metriqued', clear_stale=True):
+def get_pids(pid_dir, prefix, clear_stale=True):
     pid_dir = os.path.expanduser(pid_dir)
     # eg, server.22325.pid, server.23526.pid
     pids = []
@@ -201,7 +197,6 @@ def get_timezone_converter(from_timezone):
 
     :param from_timezone: timezone name as string
     '''
-    utc = pytz.utc
     from_tz = pytz.timezone(from_timezone)
 
     def timezone_converter(self, dt):
@@ -213,14 +208,14 @@ def get_timezone_converter(from_timezone):
             # datetime instance already has tzinfo set
             # WARN if not dt.tzinfo == from_tz?
             try:
-                dt = dt.astimezone(utc)
+                dt = dt.astimezone(UTC)
             except ValueError:
                 # date has invalid timezone; replace with expected
                 dt = dt.replace(tzinfo=from_tz)
-                dt = dt.astimezone(utc)
+                dt = dt.astimezone(UTC)
         else:
             # set tzinfo as from_tz then convert to utc
-            dt = from_tz.localize(dt).astimezone(utc)
+            dt = from_tz.localize(dt).astimezone(UTC)
         return dt
     return timezone_converter
 
@@ -245,7 +240,7 @@ def jsonhash(obj, root=True, exclude=None, hash_func=None):
         hash_func = SHA1_HEXDIGEST
     if isinstance(obj, dict):
         obj = obj.copy()  # don't affect the ref'd obj passed in
-        keys = set(obj.keys())
+        keys = set(obj.iterkeys())
         if root and exclude:
             [obj.__delitem__(f) for f in exclude if f in keys]
         # frozenset's don't guarantee order; use sorted tuples
@@ -387,10 +382,10 @@ def ts2dt(ts, milli=False, tz_aware=True):
         ts = float(ts)  # already in seconds
     if tz_aware:
         if isinstance(ts, datetime):
-            ts.replace(tzinfo=pytz.utc)
+            ts.replace(tzinfo=UTC)
             return ts
         else:
-            return datetime.fromtimestamp(ts, tz=pytz.utc)
+            return datetime.fromtimestamp(ts, tz=UTC)
     else:
         if isinstance(ts, datetime):
             return ts

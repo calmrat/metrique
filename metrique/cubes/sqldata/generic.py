@@ -75,6 +75,7 @@ class Generic(pyclient):
         self.retry_on_error = None
 
         self._setup_inconsistency_log()
+        self._auto_reconnect_attempted = False
 
     def activity_get(self, ids=None):
         '''
@@ -190,9 +191,9 @@ class Generic(pyclient):
 
     def _build_rows(self, rows):
         logger.debug('Building dict_rows from sql_rows(%i)' % len(rows))
-        _rows = {}
+        _rows = defaultdict(list)
         for row in rows:
-            _rows.setdefault(row['_oid'], []).append(row)
+            _rows[row['_oid']].append(row)
         return _rows
 
     def _build_objects(self, rows):
@@ -279,6 +280,56 @@ class Generic(pyclient):
                     oids.extend(self.get_changed_oids(mtime))
         return sorted(set(oids))
 
+    def fetchall(self, sql, cached=True):
+        '''
+        Shortcut for getting a cursor, cleaning the sql a bit,
+        adding the LIMIT clause, executing the sql, fetching
+        all the results
+
+        If certain failures occur, this method will authomatically
+        attempt to reconnect and rerun.
+
+        :param sql: sql string to execute
+        :param cached: flag for using a chaced proxy or not
+        '''
+        logger.debug('Fetching rows...')
+        proxy = self.get_sql_proxy(cached=cached)
+        k = proxy.cursor()
+        sql = re.sub('\s+', ' ', sql).strip().encode('utf-8')
+        logger.debug('SQL:\n %s' % sql.decode('utf-8'))
+        rows = None
+        try:
+            k.execute(sql)
+            rows = k.fetchall()
+        except Exception as e:
+            if re.search('Transaction is not active', str(e)):
+                if not self._auto_reconnect_attempted:
+                    logger.warn('Transaction failure; reconnecting')
+                    self.fetchall(sql, cached=False)
+            logger.error('%s\n%s\n%s' % ('*' * 100, e, sql))
+            raise
+        else:
+            if self._auto_reconnect_attempted:
+                # in the case we've attempted to reconnect and
+                # the transaction succeeded, reset this flag
+                self._auto_reconnect_attempted = False
+        finally:
+            k.close()
+            del k
+        logger.debug('... fetched (%i)' % len(rows))
+        return rows
+
+    def get_sql_proxy(self, **kwargs):
+        '''
+        Database specific drivers must implemented this method.
+
+        It is expected that by calling this method, the instance
+        will set ._proxy with a auhenticated connection, which is
+        also returned to the caller.
+        '''
+        raise NotImplementedError(
+            "Driver has not provided a get_sql_proxy method!")
+
     def get_full_history(self, force=None, last_update=None,
                          parse_timestamp=None, flush=False, autosnap=False):
         '''
@@ -320,19 +371,13 @@ class Generic(pyclient):
             [self.objects.add(obj) for obj in result]
             return self
 
-    def _fetchall(self, sql, field_order):
-        rows = self.sql_proxy.fetchall(sql)
-        if not rows:
-            return []
-
-        # FIXME: This unicode stuff is fragile and likely to fail
-
+    def _unwrap_aggregated(self, rows):
         # unwrap aggregated values
+        # FIXME: This unicode stuff is fragile and likely to fail
+        encoding = self.get_property('encoding', default=DEFAULT_ENCODING)
         for k, row in enumerate(rows):
             _row = []
             for column in row:
-                encoding = self.get_property('encoding',
-                                             default=DEFAULT_ENCODING)
                 if type(column) is buffer:
                     # unwrap/convert the aggregated string 'buffer'
                     # objects to string
@@ -347,8 +392,14 @@ class Generic(pyclient):
                         column = unicode(column.decode(encoding))
                 _row.append(column)
             rows[k] = _row
+        return rows
 
+    def _fetchall(self, sql, field_order):
+        rows = self.sql_proxy.fetchall(sql)
+        if not rows:
+            return []
         logger.debug('Preparing row data...')
+        rows = self._unwrap_aggregated(rows)
         k = len(rows)
         t0 = time.time()
         objects = [self._prep_object(row, field_order) for row in rows]
@@ -597,7 +648,7 @@ class Generic(pyclient):
         '''
         '''
         clauses = []
-        for f in self.fields.keys():
+        for f in self.fields.iterkeys():
             try:
                 _clause = self.fields[f]['sql'].get(clause)
             except KeyError:
@@ -736,7 +787,7 @@ class Generic(pyclient):
             column = self._normalize_container(column, field)
             column = self._convert(column, field)
             column = self._type(column, field)
-            obj.update({field: column})
+            obj[field] = column
         return obj
 
     def __row_iter(self, rows):
