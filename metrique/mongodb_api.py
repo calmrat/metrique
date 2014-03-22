@@ -83,6 +83,7 @@ class MongoDBConfig(JSONConf):
             'journal': True,
             'password': None,
             'port': 27017,
+            'index_ensure_secs': 60 * 60,
             'read_preference': 'NEAREST',
             'replica_set': None,
             'ssl': False,
@@ -138,6 +139,7 @@ class MongoDBClient(BaseClient):
     '''
 
     default_fields = '~'
+    default_sort = [('_start', -1)]
 
     def __init__(self, mongodb_config=None, **kwargs):
         super(MongoDBClient, self).__init__(**kwargs)
@@ -146,7 +148,7 @@ class MongoDBClient(BaseClient):
     def __getitem__(self, query):
         return self.find(query=query, fields=self.default_fields,
                          date='~', merge_versions=False,
-                         sort=[('_start', -1)])
+                         sort=self.default_sort)
 
     def keys(self, sample_size=1):
         return self.sample_fields(sample_size=sample_size)
@@ -161,7 +163,7 @@ class MongoDBClient(BaseClient):
 
 ######################### DB API ##################################
     def _ensure_base_indexes(self, _cube):
-        s = 60 * 60
+        s = self.config.index_ensure_secs
         _cube.ensure_index('_oid', background=False, cache_for=s)
         _cube.ensure_index('_hash', background=False, cache_for=s)
         _cube.ensure_index([('_start', -1), ('_end', -1)],
@@ -241,7 +243,6 @@ class MongoDBClient(BaseClient):
             read_preference=read_preference, **kwargs)
         return _proxy
 
-    #    return self.db_metrique_admin[self.collection_logs]
 ######################### User API ################################
     def whoami(self, auth=False):
         '''Local api call to check the username of running user'''
@@ -297,7 +298,7 @@ class MongoDBClient(BaseClient):
         self.proxy[username].add_user(username, password,
                                       roles=CUBE_OWNER_ROLES)
         spec = parse_pql_query('user == "%s"' % username)
-        result = self.proxy[username].system.users.find(spec).count
+        result = self.proxy[username].system.users.find(spec).count()
         return bool(result)
 
     def user_remove(self, username, clear_db=False):
@@ -385,6 +386,8 @@ class MongoDBClient(BaseClient):
         '''
         _cube = self.get_collection(owner, cube)
         logger.info('[%s] Writing new index %s' % (_cube, key_or_list))
+        s = self.config.index_ensure_secs
+        kwargs['cache_for'] = kwargs.get('cache_for', s)
         result = _cube.ensure_index(key_or_list, **kwargs)
         return result
 
@@ -435,10 +438,6 @@ class MongoDBClient(BaseClient):
 
         :param field: field name to query
         '''
-        # FIXME: these "get_*" methods are assuming owner/cube
-        # are "None" defaults; ie, that the current instance
-        # has self.name set... maybe we should be explicit?
-        # pass owner, cube?
         last = self.find(query=None, fields=[field],
                          sort=[(field, -1)], one=True, raw=True)
         if last:
