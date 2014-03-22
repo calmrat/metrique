@@ -98,14 +98,13 @@ TIMESTAMP_OBJ_KEYS = set(['_end', '_start'])
 
 
 class MetriqueObject(Mapping):
-    def __init__(self, _oid, strict=False, touch=False, **kwargs):
+    def __init__(self, _oid, strict=False, **kwargs):
         self._strict = strict
-        self._touch = touch
         self.store = {
             '_oid': _oid,
             '_id': None,
             '_hash': None,
-            '_start': None,
+            '_start': utcnow(),
             '_end': None,
         }
         self._update(kwargs)
@@ -183,8 +182,6 @@ class MetriqueObject(Mapping):
         # object is 'current value' continuous
         # so update _start to reflect the time when
         # object's current state was (re)set
-        if not self.store.get('_start') or self._touch:
-            self.store['_start'] = utcnow()
         self._validate_start_end()
         # _id depends on _hash
         # so first, _hash, then _id
@@ -199,6 +196,36 @@ class MetriqueObject(Mapping):
 
 
 class MetriqueContainer(MutableMapping):
+    '''
+    Essentially, cubes are data made from a an object id indexed (_oid)
+    dictionary (keys) or dictionary "objects" (values)
+
+    All objects are expected to contain a `_oid` key value property. This
+    property should be unique per individual "object" defined.
+
+    For example, if we are storing logs, we might consider each log line a
+    separate "object" since those log lines should never change in the future
+    and give each a unique `_oid`. Or if we are storing data about
+    'meta objects' of some sort, say 'github repo issues' for example, we
+    might have objects with _oids of
+    `%(username)s_%(reponame)s_%(issuenumber)s`.
+
+    Optionally, objects can contain the following additional meta-properties:
+        * _start - datetime when the object state was set
+        * _end - datetime when the object state changed to a new state
+
+    Field names (object dict keys) must consist of alphanumeric and underscore
+    characters only.
+
+    Field names are partially normalized automatically:
+        * non-alphanumeric characters are removed
+        * spaces converted to underscores
+        * letters are lowercased
+
+    Property values are normalized to some extent automatically as well:
+        * empty strings -> None
+
+    '''
     def __init__(self, objects=None):
         self.store = {}
         if objects is None:
@@ -212,7 +239,7 @@ class MetriqueContainer(MutableMapping):
             self.store = objects
         else:
             raise ValueError(
-                "objects must be a list, tuple, dict or pandas.DataFrame")
+                "objs must be None, a list, tuple, dict or MetriqueContainer")
 
     def __getitem__(self, key):
         return dict(self.store[key])
@@ -311,33 +338,6 @@ class BaseClient(object):
     Low level client API which provides baseline functionality, including
     methods for loading data from csv and json, loading metrique client
     cubes, config file loading and logging setup.
-
-    Essentially, cubes are data made from a list of dicts.
-
-    All objects are expected to contain a `_oid` key value property. This
-    property should be unique per individual "object" defined.
-
-    For example, if we are storing logs, we might consider each log line a
-    separate "object" since those log lines should never change in the future
-    and give each a unique `_oid`. Or if we are storing data about
-    'meta objects' of some sort, say 'github repo issues' for example, we
-    might have objects with _oids of
-    `%(username)s_%(reponame)s_%(issuenumber)s`.
-
-    Optionally, objects can contain the following additional meta-properties:
-        * _start - datetime when the object state was set
-        * _end - datetime when the object state changed to a new state
-
-    Field names (object dict keys) must consist of alphanumeric and underscore
-    characters only.
-
-    Field names are partially normalized automatically:
-        * non-alphanumeric characters are removed
-        * spaces converted to underscores
-        * letters are lowercased
-
-    Property values are normalized to some extent automatically as well:
-        * empty strings -> None
 
     Additionally, some common operation methods are provided for
     operations such as loading a HTTP uri and determining currently
