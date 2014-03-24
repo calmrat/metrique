@@ -25,10 +25,10 @@ except ImportError:
     HAS_JOBLIB = False
     logger.warn("joblib package not found!")
 
+import os
 import pytz
 import re
 import simplejson as json
-import time
 import traceback
 
 from metrique import pyclient
@@ -209,7 +209,6 @@ class Generic(pyclient):
                 objects.append(obj)
             else:
                 objects.append(col_rows[0])
-        logger.debug('... done')
         return objects
 
     def _convert(self, value, field):
@@ -265,8 +264,8 @@ class Generic(pyclient):
             # get a list of all known object ids
             table = self.get_property('table')
             db = self.get_property('db')
-            _id = self.get_property('column')
-            sql = 'SELECT DISTINCT %s.%s FROM %s.%s' % (table, _id, db, table)
+            _oid = self.get_property('_oid')
+            sql = 'SELECT DISTINCT %s.%s FROM %s.%s' % (table, _oid, db, table)
             rows = self.sql_proxy.fetchall(sql)
             oids = self._extract_row_ids(rows)
         else:
@@ -290,7 +289,7 @@ class Generic(pyclient):
         attempt to reconnect and rerun.
 
         :param sql: sql string to execute
-        :param cached: flag for using a chaced proxy or not
+        :param cached: flag for using a cached proxy or not
         '''
         logger.debug('Fetching rows...')
         proxy = self.get_sql_proxy(cached=cached)
@@ -324,7 +323,7 @@ class Generic(pyclient):
         Database specific drivers must implemented this method.
 
         It is expected that by calling this method, the instance
-        will set ._proxy with a auhenticated connection, which is
+        will set ._sql_proxy with a auhenticated connection, which is
         also returned to the caller.
         '''
         raise NotImplementedError(
@@ -400,12 +399,7 @@ class Generic(pyclient):
             return []
         logger.debug('Preparing row data...')
         rows = self._unwrap_aggregated(rows)
-        k = len(rows)
-        t0 = time.time()
         objects = [self._prep_object(row, field_order) for row in rows]
-        t1 = time.time()
-        logger.debug('... Rows prepared %i docs (%i/sec)' % (
-            k, float(k) / (t1 - t0)))
         return objects
 
     def _fetch_mtime(self, last_update, parse_timestamp):
@@ -443,11 +437,15 @@ class Generic(pyclient):
         '''
         Dictionary of field_id: field_name, as defined in self.fields property
         '''
-        fieldmap = defaultdict(str)
-        for field in self.fields:
-            field_id = self.get_property('what', field)
-            if field_id is not None:
-                fieldmap[field_id] = field
+        if hasattr(self, '_sql_fieldmap') and self._sql_fieldmap:
+            fieldmap = self._sql_fieldmap
+        else:
+            fieldmap = defaultdict(str)
+            for field in self.fields:
+                field_id = self.get_property('what', field)
+                if field_id is not None:
+                    fieldmap[field_id] = field
+            self._sql_fieldmap = fieldmap
         return fieldmap
 
     def _gen_sql(self, id_delta, field_order):
@@ -474,20 +472,18 @@ class Generic(pyclient):
 
         sql = 'SELECT %s %s %s %s' % (
             selects, froms, left_joins, where)
-
-        sql += self._sql_sort(table)
+        sql = self._sql_sort(sql, table)
         sql = self._sql_distinct(sql)
-        logger.debug('... done')
         return sql
 
     def _get_id_delta_sql(self, table, id_delta):
         '''
         '''
-        _id = self.get_property('column')
+        _oid = self.get_property('_oid')
         if id_delta:
             id_delta = sorted(set(id_delta))
             id_delta = ','.join(map(str, id_delta))
-            return ["(%s.%s IN (%s))" % (table, _id, id_delta)]
+            return ["(%s.%s IN (%s))" % (table, _oid, id_delta)]
         else:
             return []
 
@@ -513,21 +509,11 @@ class Generic(pyclient):
             return []
         if isinstance(mtime_columns, basestring):
             mtime_columns = [mtime_columns]
-
-        filters = []
+        where = []
         for _column in mtime_columns:
             _sql = "%s > %s" % (_column, mtime)
-            filters.append(_sql)
-
-        db = self.get_property('db')
-        table = self.get_property('table')
-        _id = self.get_property('column')
-
-        sql = """SELECT DISTINCT %s.%s FROM %s.%s
-            WHERE %s""" % (table, _id, db, table,
-                           ' OR '.join(filters))
-        rows = self.sql_proxy.fetchall(sql) or []
-        return [x[0] for x in rows]
+            where.append(_sql)
+        return self.sql_get_oids(where)
 
     def get_metrics(self, names=None):
         '''
@@ -623,7 +609,7 @@ class Generic(pyclient):
         '''
         table = self.get_property('table')
         db = self.get_property('db')
-        _id = self.get_property('column')
+        _oid = self.get_property('_oid')
         last_id = self.get_last_field('_oid')
         if last_id:
             # if we delta_new_ids is on, but there is no 'last_id',
@@ -633,11 +619,11 @@ class Generic(pyclient):
             except (TypeError, ValueError):
                 pass
             if type(last_id) in [int, float]:
-                where = "%s.%s > %s" % (table, _id, last_id)
+                where = "%s.%s > %s" % (table, _oid, last_id)
             else:
-                where = "%s.%s > '%s'" % (table, _id, last_id)
+                where = "%s.%s > '%s'" % (table, _oid, last_id)
             sql = 'SELECT DISTINCT %s.%s FROM %s.%s WHERE %s' % (
-                table, _id, db, table, where)
+                table, _oid, db, table, where)
             rows = self.sql_proxy.fetchall(sql)
             ids = self._extract_row_ids(rows)
         else:
@@ -669,9 +655,9 @@ class Generic(pyclient):
 
     def _get_sql_selects(self, field_order):
         table = self.get_property('table')
-        _id = self.get_property('column')
+        _oid = self.get_property('_oid')
 
-        base_select = '%s.%s' % (table, _id)
+        base_select = '%s.%s' % (table, _oid)
         selects = [base_select]
         for f in field_order:
             try:
@@ -801,6 +787,8 @@ class Generic(pyclient):
         _logfile = self.config.logfile.split('.log')[0]
         basename = _logfile + '.inconsistencies'
         logfile = basename + '.log'
+        logdir = os.environ.get("METRIQUE_LOGS")
+        logfile = os.path.join(logdir, logfile)
 
         logger_name = 'incon'
         logger = logging.getLogger(logger_name)
@@ -812,14 +800,16 @@ class Generic(pyclient):
         logger.propagate = 0
         self.log_inconsistency = logger.error
 
-    def sql_get_oids(self):
+    def sql_get_oids(self, where=None):
         '''
         Query source database for a distinct list of oids.
         '''
         table = self.get_property('table')
-        _id = self.get_property('column')
+        _oid = self.get_property('_oid')
         db = self.get_property('db')
-        sql = 'SELECT DISTINCT %s.%s FROM %s.%s' % (table, _id, db, table)
+        sql = 'SELECT DISTINCT %s.%s FROM %s.%s' % (table, _oid, db, table)
+        if where:
+            sql += ' WHERE %s' % ' OR '.join(where)
         return sorted([r[0] for r in self.sql_proxy.fetchall(sql)])
 
     def _sql_distinct(self, sql):
@@ -829,12 +819,11 @@ class Generic(pyclient):
         else:
             return sql
 
-    def _sql_sort(self, table):
-        _id = self.get_property('column')
+    def _sql_sort(self, sql, table):
+        _oid = self.get_property('_oid')
         if self.get_property('sort', default=False):
-            return " ORDER BY %s.%s ASC" % (table, _id)
-        else:
-            return ""
+            sql += " ORDER BY %s.%s ASC" % (table, _oid)
+        return sql
 
     def _type_container(self, value, _type):
         ' apply type to all values in the list '
