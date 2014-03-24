@@ -112,18 +112,18 @@ class Teiid(sqldata_generic):
         our connection is some how invalid.
         '''
         err_state = False
-        if cached and hasattr(self, '_proxy'):
-            trans_status = self._proxy.get_transaction_status()
+        if cached and hasattr(self, '_sql_proxy'):
+            trans_status = self._sql_proxy.get_transaction_status()
             if trans_status in TRANS_ERROR:
                 err_state = True
                 logger.error('Transaction Error: %s' % trans_status)
-            elif self._proxy.closed == 1:
+            elif self._sql_proxy.closed == 1:
                 err_state = True
                 logger.error('Connection Error: CLOSED')
         else:
             err_state = True
 
-        if err_state or not (cached and hasattr(self, '_proxy')):
+        if err_state or not (cached and hasattr(self, '_sql_proxy')):
             proxy = psycopg2.connect(self.connect_str)
             logger.debug(' ... Connected (New)')
             # Teiid does not support 'set' command at all; so unless we
@@ -137,5 +137,5 @@ class Teiid(sqldata_generic):
                 # psycopg2 though; ignore exception if it occurs
                 pass
             finally:
-                self._proxy = proxy
-        return self._proxy
+                self._sql_proxy = proxy
+        return self._sql_proxy
