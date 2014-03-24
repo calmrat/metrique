@@ -2,6 +2,9 @@
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 # Author: "Chris Ward" <cward@redhat.com>
 
+from ._version import __version__
+__version__  # touch it to avoid pep8 error 'imported but unused'
+
 # setup default root logger
 import logging
 log_format = "%(name)s.%(process)s:%(asctime)s:%(message)s"
@@ -34,4 +37,4 @@ os.environ['METRIQUE_CACHE'] = os.environ.get(
 
 # ATTENTION: this is the main interface for clients!
 from metrique.mongodb_api import MongoDBClient as pyclient
-pyclient  # touch it to avoid pep8 error 'imported but unused'
+pyclient

@@ -2,16 +2,23 @@
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 # Author: "Chris Ward <cward@redhat.com>
 
+import re
 from setuptools import setup
 
 # FIXME: any way to add 'optional' 'extra' dependencies?
 # 'matplotlib (>=1.3.1)',
 # psycopg2, gittle, etc...
 
+VERSIONFILE = "./metrique/_version.py"
+verstrline = open(VERSIONFILE, "rt").read()
+VSRE = r"^__version__ = ['\"]([^'\"]*)['\"]"
+mo = re.search(VSRE, verstrline, re.M)
+if mo:
+    __version__ = mo.group(1)
+else:
+    raise RuntimeError("Unable to find version string in %s." % (VERSIONFILE,))
 
 __pkg__ = 'metrique'
-__version__ = open('VERSION').read().strip()
-__pkgs__ = ['metrique']
 __pkgs__ = [
     'metrique', 'metrique.sql',
     'metrique.cubes', 'metrique.cubes.csvdata',
