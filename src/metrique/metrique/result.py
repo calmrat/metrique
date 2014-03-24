@@ -391,6 +391,25 @@ class Result(DataFrame):
         '''
         return pd.concat([function(df) for _, df in self.groupby(self._oid)])
 
+    def has(self, field, val):
+        return self[field].apply(lambda vals: val in vals)
+
+    @filtered
+    def fhas(self, field, val):
+        return self[self.has(field, val)]
+
+    def notin(self, field, vals):
+        return self[field].apply(lambda els:
+                                 not any([e in vals for e in els]))
+
+    @filtered
+    def fnotin(self, field, vals):
+        return self[self.notin(field, vals)]
+
+    @filtered
+    def fisin(self, field, vals):
+        return self[self[field].isin(vals)]
+
     ################################ SAVE ####################################
 
     def save_to_cube(self, oid, pyclient, cube='results', owner=None):
