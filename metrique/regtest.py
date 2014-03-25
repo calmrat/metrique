@@ -10,7 +10,7 @@ metrique.regtest
 This module regression test api related functionality
 '''
 
-raise NotImplemented("FIXME")
+raise NotImplementedError("FIXME")
 
 import logging
 import simplejson as json

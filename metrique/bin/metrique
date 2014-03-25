@@ -160,26 +160,25 @@ DEFAULT_METRIQUE_JSON = '''{
     "log2file": true,
     "logstdout": false,
     "max_workers": 4,
-    "sql_batch_size": 1000
+    "sql_batch_size": 1000,
+    "mongodb": {
+        "auth": false,
+        "fsync": false,
+        "host": "127.0.0.1",
+        "_host": "%s",
+        "journal": false,
+        "password": "%s",
+        "port": 27017,
+        "read_preference": "NEAREST",
+        "replica_set": "",
+        "ssl": false,
+        "ssl_certificate": "%s",
+        "tz_aware": true,
+        "username": "admin",
+        "write_concern": 1
+    }
 }'''
 
-
-DEFAULT_MONGODB_JSON = '''{
-    "auth": false,
-    "fsync": false,
-    "host": "127.0.0.1",
-    "_host": "%s",
-    "journal": false,
-    "password": "%s",
-    "port": 27017,
-    "read_preference": "NEAREST",
-    "replica_set": "",
-    "ssl": false,
-    "ssl_certificate": "%s",
-    "tz_aware": true,
-    "username": "admin",
-    "write_concern": 1
-}'''
 
 DEFAULT_MONGODB_CONF = '''
 #fork = true
@@ -913,14 +912,12 @@ def mongodb_firstboot(force, auth=True):
     makedirs(MONGODB_DIR)
     mongodb_gen_keyfile()
 
-    global DEFAULT_MONGODB_JSON, DEFAULT_MONGODB_CONF, DEFAULT_MONGODB_JS
-    DEFAULT_MONGODB_JSON = DEFAULT_MONGODB_JSON % (LOCAL_IP, PASSWORD, SSL_PEM)
+    global DEFAULT_MONGODB_CONF, DEFAULT_MONGODB_JS
     DEFAULT_MONGODB_CONF = DEFAULT_MONGODB_CONF % (
         MONGODB_DIR, MONGODB_LOG, MONGODB_PIDFILE, LOCAL_IP, SSL_PEM,
         MONGODB_KEYFILE)
     DEFAULT_MONGODB_JS = DEFAULT_MONGODB_JS % (PASSWORD)
 
-    default_conf(MONGODB_JSON, DEFAULT_MONGODB_JSON)
     default_conf(MONGODB_CONF, DEFAULT_MONGODB_CONF)
 
     # by installing 'admin' user in Travis-ci we enable
@@ -951,8 +948,8 @@ def metrique_firstboot(force=False):
 
     global DEFAULT_METRIQUE_JSON
 
-    # nothing to substitute
-    #DEFAULT_METRIQUE_JSON = DEFAULT_METRIQUE_JSON
+    DEFAULT_METRIQUE_JSON = DEFAULT_METRIQUE_JSON % (
+        LOCAL_IP, PASSWORD, SSL_PEM)
 
     default_conf(METRIQUE_JSON, DEFAULT_METRIQUE_JSON)
 
