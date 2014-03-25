@@ -43,7 +43,7 @@ clean:
 	-rm -rf $(BUILDDIR)/*
 
 sources:
-	sphinx-apidoc -f -o $(SOURCEDIR)/source_codes/metrique ../src/metrique/metrique
+	sphinx-apidoc -f -o $(SOURCEDIR)/source_codes/metrique ../metrique
 	@echo "Source-code documentation generated."
 
 html:	sources

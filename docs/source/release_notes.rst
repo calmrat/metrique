@@ -1,5 +1,12 @@
 Release Notes
 =============
+0.3.0
+-----
+* metriqued server dropped; metriquet -> github.com/kejbaly2/tornadohttp
+* all API moved to pyclient
+* added MetriqueObject and MetriqueContainer Mapping classes
+* remaining metrique libraries merged into single metrique package
+* using joblib for parallel job execution (not futures)
 
 0.2.6
 -----
