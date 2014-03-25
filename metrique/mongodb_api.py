@@ -11,6 +11,8 @@ MongoDB client API for persisting and querying of
 data cubes backed by MongoDB.
 
 '''
+from __future__ import unicode_literals
+
 import logging
 logger = logging.getLogger(__name__)
 

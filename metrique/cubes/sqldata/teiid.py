@@ -10,6 +10,9 @@ metrique.cubes.sqldata.teiid
 This module contains the cube methods for extracting
 data from SQL TEIID data sources.
 '''
+
+from __future__ import unicode_literals
+
 import logging
 logger = logging.getLogger(__name__)
 
@@ -83,8 +86,13 @@ class Teiid(sqldata_generic):
 
         eg, connect_str = "dbname=%s user=%s password=%s host=%s port=%s"
         '''
+        vdb = self.config.get('sql_vdb')
+        username = self.config.get('sql_username')
+        password = self.config.get('sql_password')
+        host = self.config.get('sql_host')
+        port = self.config.get('sql_port')
         connect_str = "dbname=%s user=%s password=%s host=%s port=%s" % (
-            self.vdb, self.username, self.password, self.host, self.port)
+            vdb, username, password, host, port)
         logger.debug('TEIID Config: %s' % re.sub(
             'password=[^ ]+', 'password=*****', connect_str))
         return connect_str

@@ -11,6 +11,8 @@ This module contains the generic metrique cube used
 for exctacting data from CSV.
 '''
 
+from __future__ import unicode_literals
+
 import itertools
 import logging
 

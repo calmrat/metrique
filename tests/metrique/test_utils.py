@@ -2,6 +2,8 @@
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 # Author: "Chris Ward" <cward@redhat.com>
 
+from __future__ import unicode_literals
+
 import calendar
 from copy import copy
 from datetime import datetime
@@ -165,9 +167,9 @@ def test_jsonhash():
     dct_diff = copy(dct)
     del dct_diff['z']
 
-    DCT = 'a1ddd970e7d0a6a38e2799c503da41cc85f79a8b'
-    DCT_SORTED_Z = '8683dda62f0986d570713be610e967b706d6a161'
-    DCT_DIFF = '4610d85fbd7f6cdf72ab6bf4db4d05cf893eb407'
+    DCT = '26a7e42282b97a7c6ee8ecafd035cd5c72706398'
+    DCT_SORTED_Z = '49848f0184d83be0287b16c55076f558d849bb9f'
+    DCT_DIFF = 'ba439203e121d8a761d14bcbe67e49ed023c07bf'
 
     assert dct != dct_sorted_z
 

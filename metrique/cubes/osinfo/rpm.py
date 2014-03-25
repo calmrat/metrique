@@ -13,6 +13,8 @@ for extracting installed RPM details on a RPM based system.
 .. note:: Target system expected to be RPM based!
 '''
 
+from __future__ import unicode_literals
+
 import logging
 logger = logging.getLogger(__name__)
 

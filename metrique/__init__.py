@@ -3,6 +3,8 @@
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 # Author: "Chris Ward" <cward@redhat.com>
 
+from __future__ import unicode_literals
+
 from ._version import __version__, version_info
 # touch it to avoid pep8 error 'imported but unused'
 __version__, version_info

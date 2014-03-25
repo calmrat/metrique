@@ -4,6 +4,8 @@
 # Author: "Juraj Niznan" <jniznan@redhat.com>
 # Author: "Chris Ward <cward@redhat.com>
 
+from __future__ import unicode_literals
+
 from plotting import Plotter, DiffPlotter, BarPlot
 from container import Container
 from report import Report

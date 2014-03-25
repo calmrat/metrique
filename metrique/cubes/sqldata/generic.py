@@ -11,6 +11,8 @@ This module contains the cube methods for extracting
 data from generic SQL data sources.
 '''
 
+from __future__ import unicode_literals
+
 import logging
 logger = logging.getLogger(__name__)
 
@@ -267,7 +269,7 @@ class Generic(pyclient):
             db = self.get_property('db')
             _oid = self.get_property('_oid')
             sql = 'SELECT DISTINCT %s.%s FROM %s.%s' % (table, _oid, db, table)
-            rows = self.sql_proxy.fetchall(sql)
+            rows = self.fetchall(sql)
             oids = self._extract_row_ids(rows)
         else:
             if self.get_property('delta_new_ids', default=True):
@@ -395,7 +397,7 @@ class Generic(pyclient):
         return rows
 
     def _fetchall(self, sql, field_order):
-        rows = self.sql_proxy.fetchall(sql)
+        rows = self.fetchall(sql)
         if not rows:
             return []
         logger.debug('Preparing row data...')
@@ -537,7 +539,7 @@ class Generic(pyclient):
             sql = definition['sql']
             fields = definition['fields']
             _oid = definition['_oid']
-            rows = self.sql_proxy.fetchall(sql)
+            rows = self.fetchall(sql)
             for row in rows:
                 d = copy(obj)
 
@@ -625,7 +627,7 @@ class Generic(pyclient):
                 where = "%s.%s > '%s'" % (table, _oid, last_id)
             sql = 'SELECT DISTINCT %s.%s FROM %s.%s WHERE %s' % (
                 table, _oid, db, table, where)
-            rows = self.sql_proxy.fetchall(sql)
+            rows = self.fetchall(sql)
             ids = self._extract_row_ids(rows)
         else:
             ids = []
@@ -811,7 +813,7 @@ class Generic(pyclient):
         sql = 'SELECT DISTINCT %s.%s FROM %s.%s' % (table, _oid, db, table)
         if where:
             sql += ' WHERE %s' % ' OR '.join(where)
-        return sorted([r[0] for r in self.sql_proxy.fetchall(sql)])
+        return sorted([r[0] for r in self.fetchall(sql)])
 
     def _sql_distinct(self, sql):
         # whether to query for distinct rows only or not; default, no

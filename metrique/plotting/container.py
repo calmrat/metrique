@@ -17,6 +17,8 @@ simple dictionary formats.
 
 '''
 
+from __future__ import unicode_literals
+
 from plotting import Plotter, DiffPlotter
 
 from matplotlib import pyplot as plt
