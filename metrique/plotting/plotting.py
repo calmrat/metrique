@@ -1,3 +1,9 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+# vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
+# Author: "Juraj Niznan" <jniznan@redhat.com>
+# Author: "Chris Ward <cward@redhat.com>
+
 '''
 This module contains a plotter wrapper that provides
 defaults and additional helper functionality for
@@ -303,7 +309,7 @@ class BarPlot(object):
     def xticks(self, names):
         self.ax1.set_xticks(range(len(names)))
         self.ax1.set_xticklabels(names)
-        
+
     def xlabel(self, label):
         self.ax1.set_xlabel(label)
 

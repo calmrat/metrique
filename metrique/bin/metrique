@@ -1,6 +1,7 @@
 #!/usr/bin/env python
+# -*- coding: utf-8 -*-
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
-# Author: "Chris Ward <cward@redhat.com>
+# Author: "Chris Ward" <cward@redhat.com>
 
 '''
 Commandline interface for managing metrique deployments
@@ -482,12 +483,13 @@ def adjust_options(options, args):
 virtualenv.adjust_options = adjust_options
 
 
-def firstboot(args, force=False, trash=False):
+def firstboot(args, force=False, trash=False, no_auth=False):
     # make sure we have some basic defaults configured in the environment
     trash = getattr(args, 'trash', trash)
     force = getattr(args, 'force', force)
+    auth = not getattr(args, 'no_auth', no_auth)
     sys_firstboot(force)
-    mongodb_firstboot(force)
+    mongodb_firstboot(force, auth=auth)
     metrique_firstboot(force)
     celery_firstboot(force)
     supervisord_firstboot(force)
@@ -677,15 +679,18 @@ def mongodb_backup(args):
 
     host = config.host.split(',')[0]  # get the first host (expected primary)
     port = config.port
-    p = config.admin_password
+    p = config.password
     password = '--password %s' % p if p else ''
-    username = '--username %s' % config.admin_user if password else ''
+    username = '--username %s' % config.username if password else ''
     authdb = '--authenticationDatabase admin' if password else ''
     ssl = '--ssl' if config.ssl else ''
+    db = '--db %s' if args.db else ''
+    collection = '--collection %s' if args.collection else ''
 
     cmd = ('mongodump', '--host %s' % host, '--port %s' % port,
-           ssl, username, password, '--out %s' % out, authdb)
-    cmd = ' '.join(cmd).replace('  ', ' ')
+           ssl, username, password, '--out %s' % out, authdb,
+           db, collection)
+    cmd = re.sub('\s+', ' ', ' '.join(cmd))
     call(cmd)
 
     saveas = out + '.tar.gz'
@@ -899,7 +904,7 @@ def default_conf(path, template):
     logger.info("Installed %s ..." % path)
 
 
-def mongodb_firstboot(force):
+def mongodb_firstboot(force, auth=True):
     exists = os.path.exists(MONGODB_FIRSTBOOT_PATH)
     if exists and not force:
         # skip if we have already run this before
@@ -916,17 +921,23 @@ def mongodb_firstboot(force):
 
     default_conf(MONGODB_JSON, DEFAULT_MONGODB_JSON)
     default_conf(MONGODB_CONF, DEFAULT_MONGODB_CONF)
-    default_conf(MONGODB_JS, DEFAULT_MONGODB_JS)
+
+    # by installing 'admin' user in Travis-ci we enable
+    # authentication; flag here is to disable that
+    # for testing
+    if auth:
+        default_conf(MONGODB_JS, DEFAULT_MONGODB_JS)
 
     started = mongodb_start(fork=True, fast=True)
     logger.debug('MongoDB forking, sleeping for a moment...')
     time.sleep(1)
 
-    try:
-        call('mongo 127.0.0.1/admin %s' % (MONGODB_JS))
-    finally:
-        if started:
-            mongodb_stop()
+    if auth:
+        try:
+            call('mongo 127.0.0.1/admin %s' % (MONGODB_JS))
+        finally:
+            if started:
+                mongodb_stop()
     with open(MONGODB_FIRSTBOOT_PATH, 'w') as f:
         f.write(NOW)
 
@@ -1079,6 +1090,7 @@ def main():
     # Clean-up routines
     _firstboot = _sub.add_parser('firstboot')
     _firstboot.add_argument('-f', '--force', action='store_true')
+    _firstboot.add_argument('-A', '--no-auth', action='store_true')
     _firstboot.set_defaults(func=firstboot)
 
     # rsync
@@ -1106,6 +1118,8 @@ def main():
     # MongoDB Backup
     _mongodb_backup = _sub.add_parser('mongodb_backup')
     _mongodb_backup.add_argument('-c', '--config-file')
+    _mongodb_backup.add_argument('-D', '--db')
+    _mongodb_backup.add_argument('-C', '--collection')
     _mongodb_backup.add_argument('-k', '--keep', type=int, default=3)
     _mongodb_backup.add_argument('-x', '--scp-export', action='store_true')
     _mongodb_backup.add_argument('-H', '--scp-host')
