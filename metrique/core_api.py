@@ -28,14 +28,14 @@ up by persisting those objects to an external `metriqued` host.
 And finishing with some querying and simple charting of the data.
 
     >>> from metrique import pyclient
-    >>> g = pyclient(cube="osinfo_rpm"")
+    >>> g = pyclient(cube="osinfo_rpm")
     >>> g.get_objects()  # get information about all installed RPMs
-    >>> 'Total RPMs: %s' % len(objects)
-    >>> 'Example Object:', objects[0]
+    >>> 'Total RPMs: %s' % len(g.objects)
+    >>> 'Example Object:', g.objects[0]
         {'_oid': 'dhcp129-66.brq.redhat.com__libreoffice-ure-4.1.4.2[...]',
          '_start': 1390619596.0,
          'arch': 'x86_64',
-         'host': 'dhcp129-66.brq.redhat.com',
+         'host': 'bla.host.com',
          'license': '(MPLv1.1 or LGPLv3+) and LGPLv3 and LGPLv2+ and[...]',
          'name': 'libreoffice-ure',
          'nvra': 'libreoffice-ure-4.1.4.2-2.fc20.x86_64',
@@ -48,12 +48,7 @@ And finishing with some querying and simple charting of the data.
          'summary': 'UNO Runtime Environment',
          'version': '4.1.4.2'
     }
-    >>> # connect to metriqued host to save the objects
-    >>> config_file = '~/.metrique/etc/metrique.json'  # default location
-    >>> m = pyclient(config_file=config_file)
-    >>> osinfo_rpm = m.get_cube('osinfo_rpm')
-    >>> osinfo_rpm.cube_register()  # (run once) register the new cube with the
-    >>> ids = osinfo_rpm.extract()  # alias for get_objects + save_objects
+    >>> _ids = osinfo_rpm.get_objects(flush=True)  # persist to mongodb
     >>> df = osinfo_rpm.find(fields='license')
     >>> threshold = 5
     >>> license_k = df.groupby('license').apply(len)
