@@ -17,7 +17,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 from collections import defaultdict
-import getpass
+from getpass import getuser
 from operator import itemgetter
 import os
 import random
@@ -93,43 +93,52 @@ class MongoDBClient(BaseClient):
     default_fields = '~'
     default_sort = [('_start', -1)]
 
-    def __init__(self, host='127.0.0.1', port=27017, auth=False,
-                 username=getpass.getuser(), password='',
-                 ssl=False, ssl_certificate=SSL_PEM,
-                 fsync=False, journal=False,
-                 index_ensure_secs=INDEX_ENSURE_SECS,
-                 read_preference='NEAREST', replica_set=None,
-                 tz_aware=True, write_concern=1, **kwargs):
+    def __init__(self, mongodb_host='127.0.0.1', mongodb_port=27017,
+                 mongodb_auth=False, mongodb_username=None,
+                 mongodb_password='', mongodb_ssl=False,
+                 mongodb_ssl_certificate=SSL_PEM, mongodb_fsync=False,
+                 mongodb_journal=False,
+                 mongodb_index_ensure_secs=INDEX_ENSURE_SECS,
+                 mongodb_read_preference='NEAREST', mongodb_replica_set=None,
+                 mongodb_tz_aware=True, mongodb_write_concern=1,
+                 mongodb_batch_size=1000, **kwargs):
         '''
-        :param auth: enable mongodb authentication
-        :param password: mongodb password
-        :param username: mongodb username
-        :param fsync: sync writes to disk before return?
-        :param host: mongodb host(s) to connect to
-        :param journal: enable write journal before return?
-        :param port: mongodb port to connect to
-        :param read_preference: default - NEAREST
-        :param replica_set: name of replica set, if any
-        :param ssl: enable ssl
-        :param ssl_certificate: path to ssl cert file (or combined .pem)
-        :param ssl_certificate_key: path to ssl certificate key file
-        :param tz_aware: return back tz_aware dates?
-        :param write_concern: number of inst's to write to before finish
+        :param mongodb_auth: enable mongodb authentication
+        :param mongodb_batch_size: The number of objs save at a time
+        :param mongodb_password: mongodb password
+        :param mongodb_username: mongodb username
+        :param mongodb_fsync: sync writes to disk before return?
+        :param mongodb_host: mongodb host(s) to connect to
+        :param mongodb_journal: enable write journal before return?
+        :param mongodb_port: mongodb port to connect to
+        :param mongodb_read_preference: default - NEAREST
+        :param mongodb_replica_set: name of replica set, if any
+        :param mongodb_ssl: enable ssl
+        :param mongodb_ssl_certificate: path to ssl combined .pem
+        :param mongodb_tz_aware: return back tz_aware dates?
+        :param mongodb_write_concern: # of inst's to write to before finish
         '''
         super(MongoDBClient, self).__init__(**kwargs)
-        config = dict(host=host, port=port, auth=auth,
-                      username=username, password=password,
-                      ssl=False, ssl_certificate=ssl_certificate,
-                      fsync=fsync, journal=journal,
-                      index_ensure_secs=index_ensure_secs,
-                      read_preference=read_preference,
-                      replica_set=replica_set, tz_aware=tz_aware,
-                      write_concern=write_concern)
-        try:
-            self.config['mongodb'].update(config)
-        except KeyError:
-            self.config['mongodb'] = config
-        self.mongodb_config = self.config['mongodb']
+        self.config.setdefault('mongodb', {})
+        m = self.mongodb_config = self.config['mongodb']
+        m.config['mongodb'].setdefault('auth', mongodb_auth)
+        m.config['mongodb'].setdefault('batch_size', mongodb_batch_size)
+        m.config['mongodb'].setdefault('password', mongodb_password)
+        m.config['mongodb'].setdefault('username',
+                                       mongodb_username) or getuser()
+        m.config['mongodb'].setdefault('fsync', mongodb_fsync)
+        m.config['mongodb'].setdefault('host', mongodb_host)
+        m.config['mongodb'].setdefault('journal', mongodb_journal)
+        m.config['mongodb'].setdefault('port', mongodb_port)
+        m.config['mongodb'].setdefault('read_preference',
+                                       mongodb_read_preference)
+        m.config['mongodb'].setdefault('replica_set', mongodb_replica_set)
+        m.config['mongodb'].setdefault('ssl', mongodb_ssl)
+        m.config['mongodb'].setdefault('ssl_certificate',
+                                       mongodb_ssl_certificate)
+        m.config['mongodb'].setdefault('ssl_tz_aware', mongodb_tz_aware)
+        m.config['mongodb'].setdefault('ssl_write_concern',
+                                       mongodb_write_concern)
 
     def __getitem__(self, query):
         return self.find(query=query, fields=self.default_fields,

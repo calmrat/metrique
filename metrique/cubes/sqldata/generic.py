@@ -31,7 +31,6 @@ except ImportError:
 import os
 import pytz
 import re
-import simplejson as json
 import traceback
 
 from metrique import pyclient
@@ -66,17 +65,34 @@ class Generic(pyclient):
     .sql_proxy must be defined, in order to know how
     to get a connection object to the target sql db.
 
+    :cvar fields: cube fields definitions
+    :cvar defaults: cube default property container (cube specific meta-data)
+
     :param sql_host: teiid hostname
     :param sql_port: teiid port
+    :param sql_username: sql username
+    :param sql_password: sql password
+    :param sql_retries: number of times before we give up on a query
+    :param sql_batch_size: how many objects to query at a time
     '''
-    def __init__(self, sql_host=None, sql_port=None, **kwargs):
-        super(Generic, self).__init__(**kwargs)
-        if sql_host:
-            self.config['sql_host'] = sql_host
-        if sql_port:
-            self.config['sql_port'] = sql_port
-        self.retry_on_error = None
+    fields = None
+    defaults = None
 
+    def __init__(self, sql_host=None, sql_port=None, sql_retries=1,
+                 sql_batch_size=500, sql_username=None, sql_password=None,
+                 **kwargs):
+        super(Generic, self).__init__(**kwargs)
+        self.fields = self.fields or {}
+        self.defaults = self.defaults or {}
+        self.config.setdefault('sql', {})
+        m = self.config['sql']
+        m.setdefault('host', sql_host)
+        m.setdefault('port', sql_port)
+        m.setdefault('username', sql_username)
+        m.setdefault('password', sql_password)
+        m.setdefault('retries', sql_retries)
+        m.setdefault('batch_size', sql_batch_size)
+        self.retry_on_error = None
         self._setup_inconsistency_log()
         self._auto_reconnect_attempted = False
 
@@ -126,7 +142,6 @@ class Generic(pyclient):
         td_start = ts2dt(time_doc['_start'], tz_aware=tz_aware)
         activities = filter(lambda act: (act[0] < td_start and
                                          act[1] in time_doc), activities)
-        incon_log_type = self.config.get('incon_log_type')
         creation_field = self.get_property('cfield')
         # make sure that activities are sorted by when descending
         activities.sort(reverse=True, key=lambda o: o[0])
@@ -155,7 +170,7 @@ class Generic(pyclient):
             # Check if the object has the correct field value.
             if inconsistent:
                 self._log_inconsistency(last_doc, last_val, field,
-                                        removed, added, when, incon_log_type)
+                                        removed, added, when)
                 new_doc.setdefault('_corrupted', {})
                 # set curreupted field value to the the value that was added
                 # and continue processing as if that issue didn't exist
@@ -227,7 +242,7 @@ class Generic(pyclient):
         return value
 
     def _get_objects(self, oids, field_order, flush=False, autosnap=True):
-        retries = self.config.sql_retries
+        retries = self.config['sql'].get('retries')
         sql = self._gen_sql(oids, field_order)
         while retries >= 0:
             try:
@@ -346,16 +361,14 @@ class Generic(pyclient):
         oids = self._delta_force(force, last_update, parse_timestamp)
         logger.debug("Updating %s objects" % len(oids))
 
-        batch_size = self.config.sql_batch_size
-        max_workers = self.config.max_workers
-        kwargs = self.config
-        kwargs.pop('cube', None)  # ends up in config; ignore it
+        batch_size = self.config['sql'].get('batch_size')
+        max_workers = self.config['sql'].get('max_workers')
         if HAS_JOBLIB:
             runner = Parallel(n_jobs=max_workers)
             func = delayed(get_full_history)
             result = runner(func(
                 cube=self._cube, oids=batch, flush=flush,
-                cube_name=self.name, autosnap=autosnap, **kwargs)
+                cube_name=self.name, autosnap=autosnap)
                 for batch in batch_gen(oids, batch_size))
             # merge list of lists (batched) into single list
             result = [i for l in result for i in l]
@@ -364,7 +377,7 @@ class Generic(pyclient):
             for batch in batch_gen(oids, batch_size):
                 _ = get_objects(
                     cube=self._cube, oids=batch, flush=flush,
-                    cube_name=self.name, autosnap=autosnap, **kwargs)
+                    cube_name=self.name, autosnap=autosnap)
                 result.extend(_)
 
         if flush:
@@ -372,6 +385,26 @@ class Generic(pyclient):
         else:
             [self.objects.add(obj) for obj in result]
             return self
+
+    def get_property(self, property, field=None, default=None):
+        '''Lookup cube defined property (meta-data):
+
+            1. First try to use the field's property, if defined.
+            2. Then try to use the default property, if defined.
+            3. Then use the default for when neither is found.
+            4. Or return None, if no default is defined.
+
+        :param property: property key name
+        :param field: (optional) specific field to query first
+        :param default: default value to return if [field.]property not found
+        '''
+        try:
+            return self.fields[field][property]
+        except KeyError:
+            try:
+                return self.defaults[property]
+            except (TypeError, KeyError):
+                return default
 
     def _unwrap_aggregated(self, rows):
         # unwrap aggregated values
@@ -573,17 +606,15 @@ class Generic(pyclient):
         # out the sql rows and know which column : field
         field_order = tuple(self.fields)
 
-        batch_size = self.config.sql_batch_size
-        kwargs = self.config
-        kwargs.pop('cube', None)  # ends up in config; ignore it
+        batch_size = self.config['sql'].get('batch_size')
         if HAS_JOBLIB:
-            max_workers = self.config.max_workers
+            max_workers = self.config['sql'].get('max_workers')
             runner = Parallel(n_jobs=max_workers)
             func = delayed(get_objects)
             result = runner(func(
                 cube=self._cube, oids=batch, flush=flush,
                 field_order=field_order, cube_name=self.name,
-                autosnap=autosnap, **kwargs)
+                autosnap=autosnap)
                 for batch in batch_gen(oids, batch_size))
             # merge list of lists (batched) into single list
             result = [i for l in result for i in l]
@@ -593,7 +624,7 @@ class Generic(pyclient):
                 _ = get_objects(
                     cube=self._cube, oids=batch, flush=flush,
                     field_order=field_order, cube_name=self.name,
-                    autosnap=autosnap, **kwargs)
+                    autosnap=autosnap)
                 result.extend(_)
 
         logger.debug('... current values objects get - done')
@@ -711,7 +742,7 @@ class Generic(pyclient):
         return ' '.join(left_joins)
 
     def _log_inconsistency(self, last_doc, last_val, field, removed, added,
-                           when, log_type):
+                           when):
         incon = {'oid': last_doc['_oid'],
                  'field': field,
                  'removed': removed,
@@ -721,13 +752,10 @@ class Generic(pyclient):
                  'last_val': last_val,
                  'last_val_type': str(type(last_val)),
                  'when': str(ts2dt(when))}
-        if log_type == 'json':
-            self.log_inconsistency(json.dumps(incon, ensure_ascii=False))
-        else:
-            m = u'{oid} {field}: {removed}-> {added} has {last_val}; '
-            m += u'({removed_type}-> {added_type} has {last_val_type})'
-            m += u' ... on {when}'
-            self.log_inconsistency(m.format(**incon))
+        m = u'{oid} {field}: {removed}-> {added} has {last_val}; '
+        m += u'({removed_type}-> {added_type} has {last_val_type})'
+        m += u' ... on {when}'
+        self.log_inconsistency(m.format(**incon))
 
     def _normalize_object(self, rows):
         o = rows.pop(0)
@@ -787,7 +815,7 @@ class Generic(pyclient):
                     yield field, tokens
 
     def _setup_inconsistency_log(self):
-        _logfile = self.config.logfile.split('.log')[0]
+        _logfile = self.config['metrique'].logfile.split('.log')[0]
         basename = _logfile + '.inconsistencies'
         logfile = basename + '.log'
         logdir = os.environ.get("METRIQUE_LOGS")

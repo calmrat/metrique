@@ -77,7 +77,7 @@ import re
 import urllib
 
 from metrique.utils import get_cube, utcnow, jsonhash, dt2ts
-from metrique.jsonconf import JSONConf
+import anyconfig
 
 logger = logging.getLogger(__name__)
 
@@ -283,54 +283,6 @@ class MetriqueContainer(MutableMapping):
         return pd.DataFrame(tuple(self.store))
 
 
-class MetriqueConfig(JSONConf):
-    '''
-    Client default config class. All metrique clients should subclass
-    from their config objects from this class to ensure defaults
-    values are available.
-
-    This configuration class defines the following overrideable defaults.
-
-    To customize local client configuration, add/update
-    `~/.metrique/etc/metrique.json` (default).
-
-    :param batch_size: The number of objs save at a time (5000)
-    :param cube_pkgs: list of package names where to search for cubes ('cubes')
-    :param cube_paths: Additional paths to search for client cubes (None)
-    :param debug: turn on debug mode logging (level: INFO)
-    :param logfile: filename for logs ('metrique.log')
-    :param log2file: boolean - log output to file? (False)
-    :param logstout: boolean - log output to stdout? (True)
-    :param max_workers: number of workers for threaded operations (#cpus)
-    :param password: the password to connect to metriqued with (None)
-    :param sql_retries: number of attempts to run sql queries before excepting
-    :param sql_batch_size: number of objects to sql query for at a time (1000)
-    :param username: the username to connect to metriqued with ($USERNAME)
-    '''
-    default_config = DEFAULT_CONFIG
-    default_config_dir = ETC_DIR
-
-    def __init__(self, config_file=None, **kwargs):
-        config = {
-            'batch_size': 1000,
-            'cube_pkgs': ['cubes'],
-            'cube_paths': [],
-            'debug': True,
-            'logfile': 'metrique.log',
-            'log2file': True,
-            'logstdout': False,
-            'max_workers': 4,
-            'sql_retries': 1,
-            'sql_batch_size': 500
-        }
-        # apply defaults
-        self.config.update(config)
-        # update the config with the args from the config_file
-        super(MetriqueConfig, self).__init__(config_file=config_file)
-        # anything passed in explicitly gets precedence
-        self.config.update(kwargs)
-
-
 class BaseClient(object):
     '''
     Low level client API which provides baseline functionality, including
@@ -342,8 +294,6 @@ class BaseClient(object):
     configured username.
 
     :cvar name: name of the cube
-    :cvar defaults: cube default property container (cube specific meta-data)
-    :cvar fields: cube fields definitions
     :cvar config: local cube config object
 
     If cube is specified as a kwarg upon initialization, the specific cube
@@ -363,33 +313,65 @@ class BaseClient(object):
 
     '''
     name = None
-    defaults = None
-    fields = None
     config = None
     _objects = None
 
     def __new__(cls, *args, **kwargs):
-        if 'cube' in kwargs and kwargs['cube']:
-            cls = get_cube(cube=kwargs['cube'], init=False)
+        cube = kwargs.get('cube')
+        name = kwargs.get('name') or cube
+        if cube:
+            cls = get_cube(cube=kwargs['cube'], name=name, init=False,
+                           **kwargs)
         else:
             cls = cls
         return object.__new__(cls)
 
-    def __init__(self, config_file=None, name=None, **kwargs):
+    def __init__(self, name, config_file=None, cube_pkgs=None,
+                 cube_paths=None, debug=True, logfile='metrique.log',
+                 log2file=True, logstdout=False, max_workers=4,
+                 **kwargs):
+        '''
+        Client default config class. All metrique clients should subclass
+        from their config objects from this class to ensure defaults
+        values are available.
+
+        This configuration class defines the following overrideable defaults.
+
+        To customize local client configuration, add/update
+        `~/.metrique/etc/metrique.json` (default).
+
+        :param cube_pkgs: list of package names where to search for cubes
+        :param cube_paths: Additional paths to search for client cubes
+        :param debug: turn on debug mode logging
+        :param logfile: filename for logs
+        :param log2file: boolean - log output to file?
+        :param logstout: boolean - log output to stdout?
+        :param max_workers: number of workers for threaded operations
+        '''
         # don't assign to {} in class def, define here to avoid
         # multiple pyclient objects linking to a shared dict
-        if self.defaults is None:
-            self.defaults = {}
-        if self.fields is None:
-            self.fields = {}
         if self.config is None:
             self.config = {}
 
-        self._config_file = config_file or MetriqueConfig.default_config
+        self.config.setdefault('metrique', {})
 
-        # all defaults are loaded, unless specified in
-        # metrique_config.json
-        self.set_config(**kwargs)
+        m = self.config['metrique']
+        # load config
+        if config_file:
+            _config = anyconfig.load(config_file)
+            _config = _config.convert_to()
+            m.update(_config)
+
+        # anything not set in config, set defaults
+        cube_pkgs = cube_pkgs or ['cubes']
+        cube_paths = cube_paths or []
+        m.setdefault('cube_pkgs', cube_pkgs)
+        m.setdefault('cube_paths', cube_paths)
+        m.setdefault('debug', debug)
+        m.setdefault('logfile', logfile)
+        m.setdefault('log2file', log2file)
+        m.setdefault('logstdout', logstdout)
+        m.setdefault('max_workers', max_workers)
 
         # cube class defined name
         self._cube = type(self).name
@@ -563,36 +545,3 @@ class BaseClient(object):
         # we get back from get_cube
         return get_cube(cube=cube, init=init, config=config,
                         name=name, **kwargs)
-
-    def get_property(self, property, field=None, default=None):
-        '''Lookup cube defined property (meta-data):
-
-            1. First try to use the field's property, if defined.
-            2. Then try to use the default property, if defined.
-            3. Then use the default for when neither is found.
-            4. Or return None, if no default is defined.
-
-        :param property: property key name
-        :param field: (optional) specific field to query first
-        :param default: default value to return if [field.]property not found
-        '''
-        try:
-            return self.fields[field][property]
-        except KeyError:
-            try:
-                return self.defaults[property]
-            except (TypeError, KeyError):
-                return default
-
-    def set_config(self, config=None, **kwargs):
-        '''Try to load a config file and handle when its not available
-
-        :param config: config file or :class:`metrique.jsonconf.JSONConf`
-        :param kwargs: additional config key:value pairs to store
-        '''
-        if type(config) is type(MetriqueConfig):
-            self._config_file = config.config_file
-        else:
-            self._config_file = config or self._config_file
-            self.config = MetriqueConfig(config_file=self._config_file)
-        self.config.update(kwargs)

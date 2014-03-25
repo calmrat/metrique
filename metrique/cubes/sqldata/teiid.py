@@ -45,22 +45,11 @@ class Teiid(sqldata_generic):
     :param sql_username: teiid username
     :param sql_password: teiid password
     '''
-    def __init__(self, sql_host=None, sql_port=None, sql_vdb=None,
-                 sql_username=None, sql_password=None, **kwargs):
+    def __init__(self, sql_vdb=None, **kwargs):
         super(Teiid, self).__init__(**kwargs)
         if not HAS_POSTGRES:
             raise ImportError('`pip install psycopg2` required')
-        if sql_vdb:
-            self.config['sql_vdb'] = sql_vdb
-        if sql_username:
-            self.config['sql_username'] = sql_username
-        if sql_password:
-            self.config['sql_password'] = sql_password
-        if sql_host:
-            self.config['sql_host'] = sql_host
-        if sql_port:
-            self.config['sql_port'] = sql_port
-
+        self.config['sql'].setdefault('vdb', sql_vdb)
         self.retry_on_error = DatabaseError
         logger.debug("New TEIID proxy initialized")
 
@@ -71,9 +60,9 @@ class Teiid(sqldata_generic):
         to caller.
         '''
         if not hasattr(self, '_teiid'):
-            for arg in ('sql_vdb', 'sql_host', 'sql_port',
-                        'sql_username', 'sql_password'):
-                if arg not in self.config:
+            for arg in ('vdb', 'host', 'port',
+                        'username', 'password'):
+                if arg not in self.config['sql']:
                     raise RuntimeError("%s argument is not set!" % arg)
             self._teiid = self.get_sql_proxy()
         return self._teiid
@@ -86,11 +75,11 @@ class Teiid(sqldata_generic):
 
         eg, connect_str = "dbname=%s user=%s password=%s host=%s port=%s"
         '''
-        vdb = self.config.get('sql_vdb')
-        username = self.config.get('sql_username')
-        password = self.config.get('sql_password')
-        host = self.config.get('sql_host')
-        port = self.config.get('sql_port')
+        vdb = self.config['sql'].get('vdb')
+        username = self.config['sql'].get('username')
+        password = self.config['sql'].get('password')
+        host = self.config['sql'].get('host')
+        port = self.config['sql'].get('port')
         connect_str = "dbname=%s user=%s password=%s host=%s port=%s" % (
             vdb, username, password, host, port)
         logger.debug('TEIID Config: %s' % re.sub(
