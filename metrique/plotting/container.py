@@ -1,3 +1,9 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+# vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
+# Author: "Juraj Niznan" <jniznan@redhat.com>
+# Author: "Chris Ward" <cward@redhat.com>
+
 '''
 container.py contains a Container class that can
 be used for holding and displaying data in

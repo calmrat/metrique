@@ -1,9 +1,11 @@
 #!/usr/bin/env python
+# -*- coding: utf-8 -*-
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 # Author: "Chris Ward" <cward@redhat.com>
 
-from ._version import __version__
-__version__  # touch it to avoid pep8 error 'imported but unused'
+from ._version import __version__, version_info
+# touch it to avoid pep8 error 'imported but unused'
+__version__, version_info
 
 # setup default root logger
 import logging
@@ -31,9 +33,15 @@ os.environ['METRIQUE_TMP'] = os.environ.get(
 os.environ['METRIQUE_CACHE'] = os.environ.get(
     'METRIQUE_CACHE', os.path.join(prefix, 'cache'))
 
-# FIXME: good idea?
-#import locale
-#locale.setlocale(locale.LC_ALL, '')
+# Don't locale.setlocale(); ... "Setting system default encoding is a
+# bad idea because some modules and libraries you use can
+# rely on the fact it is ascii. Don't do it.
+# ... http://stackoverflow.com/questions/492483/
+
+# Force all writes to stdout to be done with utf8
+import sys
+import codecs
+sys.stdout = codecs.getwriter('utf8')(sys.stdout)
 
 # ATTENTION: this is the main interface for clients!
 from metrique.mongodb_api import MongoDBClient as pyclient

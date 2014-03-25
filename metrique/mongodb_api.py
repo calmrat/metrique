@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# -*- coding: utf-8 -*-
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 # Author: "Chris Ward" <cward@redhat.com>
 
@@ -644,7 +645,8 @@ class MongoDBClient(BaseClient):
         spec = parse_pql_query(query, date)
         fields = self._parse_fields(fields)
 
-        if merge_versions and not one:
+        merge_versions = False if fields is None or one else merge_versions
+        if merge_versions:
             fields = fields or {}
             fields.update({'_start': 1, '_end': 1, '_oid': 1})
 
