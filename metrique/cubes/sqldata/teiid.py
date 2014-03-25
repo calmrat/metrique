@@ -31,8 +31,6 @@ import re
 from metrique.utils import get_cube
 sqldata_generic = get_cube('sqldata_generic')
 
-from metrique.sql.teiid import TEIID, DatabaseError
-
 
 class Teiid(sqldata_generic):
     '''
@@ -74,11 +72,7 @@ class Teiid(sqldata_generic):
                         'sql_username', 'sql_password'):
                 if arg not in self.config:
                     raise RuntimeError("%s argument is not set!" % arg)
-            self._teiid = TEIID(vdb=self.config['sql_vdb'],
-                                host=self.config['sql_host'],
-                                port=self.config['sql_port'],
-                                username=self.config['sql_username'],
-                                password=self.config['sql_password'])
+            self._teiid = self.get_sql_proxy()
         return self._teiid
 
     @property

@@ -640,6 +640,7 @@ def mongodb_start(fork=False, fast=True):
     cmd = 'mongod -f %s %s' % (MONGODB_CONF, fork)
     cmd += ' --noprealloc --nojournal' if fast else ''
     call(cmd, fork=fork, sig=signal.SIGTERM, sig_func=mongodb_terminate)
+    return True
 
 
 def mongodb_stop():
@@ -932,12 +933,12 @@ def mongodb_firstboot(force, auth=True):
     logger.debug('MongoDB forking, sleeping for a moment...')
     time.sleep(1)
 
-    if auth:
-        try:
+    try:
+        if auth:
             call('mongo 127.0.0.1/admin %s' % (MONGODB_JS))
-        finally:
-            if started:
-                mongodb_stop()
+    finally:
+        if started:
+            mongodb_stop()
     with open(MONGODB_FIRSTBOOT_PATH, 'w') as f:
         f.write(NOW)
 

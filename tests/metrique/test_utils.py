@@ -111,7 +111,7 @@ def test_get_pids():
     assert fake_pid not in _(pid_dir, clear_stale=False)
 
     pid = 99999
-    path = os.path.join(pid_dir, 'metriqued.%s.pid' % pid)
+    path = os.path.join(pid_dir, '%s.pid' % pid)
     with open(path, 'w') as f:
         f.write(str(pid))
 

@@ -45,16 +45,17 @@ def batch_gen(data, batch_size):
         yield data[i:i + batch_size]
 
 
-def clear_stale_pids(pids, pid_dir, prefix):
+def clear_stale_pids(pids, pid_dir, prefix=''):
     'check for and remove any pids which have no corresponding process'
     procs = os.listdir('/proc')
     running = [pid for pid in pids if pid in procs]
     _running = []
+    prefix = '%s.' % prefix if prefix else ''
     for pid in pids:
         if pid in running:
             _running.append(pid)
         else:
-            pid_file = '%s.%s.pid' % (prefix, pid)
+            pid_file = '%s%s.pid' % (prefix, pid)
             path = os.path.join(pid_dir, pid_file)
             if os.path.exists(path):
                 try:
@@ -178,12 +179,13 @@ def get_cube(cube, init=False, config=None, pkgs=None, cube_paths=None,
     return _cube
 
 
-def get_pids(pid_dir, prefix, clear_stale=True):
+def get_pids(pid_dir, prefix='', clear_stale=True):
     pid_dir = os.path.expanduser(pid_dir)
     # eg, server.22325.pid, server.23526.pid
     pids = []
+    prefix = '%s.' % prefix if prefix else ''
     for f in os.listdir(pid_dir):
-        pid_re = re.search(r'%s.(\d+).pid' % prefix, f)
+        pid_re = re.search(r'%s(\d+).pid' % prefix, f)
         if pid_re:
             pids.append(pid_re.groups()[0])
     if clear_stale:

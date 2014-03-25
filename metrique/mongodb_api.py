@@ -143,8 +143,10 @@ class MongoDBClient(BaseClient):
     default_sort = [('_start', -1)]
 
     def __init__(self, mongodb_config=None, **kwargs):
-        super(MongoDBClient, self).__init__(**kwargs)
-        self.mongodb_config = MongoDBConfig(mongodb_config)
+        config_file = kwargs.get('config_file')
+        name = kwargs.get('name')
+        super(MongoDBClient, self).__init__(config_file=config_file, name=name)
+        self.mongodb_config = MongoDBConfig(mongodb_config, **kwargs)
 
     def __getitem__(self, query):
         return self.find(query=query, fields=self.default_fields,
@@ -158,13 +160,12 @@ class MongoDBClient(BaseClient):
         return self.sample_docs(sample_size=sample_size)
 
     def get_cube(self, *args, **kwargs):
-        conf = self.mongodb_config
-        return super(MongoDBClient, self).get_cube(mongodb_config=conf,
-                                                   *args, **kwargs)
+        return super(MongoDBClient, self).get_cube(
+            mongodb_config=self.mongodb_config, *args, **kwargs)
 
 ######################### DB API ##################################
     def _ensure_base_indexes(self, _cube):
-        s = self.config.index_ensure_secs
+        s = self.mongodb_config.index_ensure_secs
         _cube.ensure_index('_oid', background=False, cache_for=s)
         _cube.ensure_index('_hash', background=False, cache_for=s)
         _cube.ensure_index([('_start', -1), ('_end', -1)],

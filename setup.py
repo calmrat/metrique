@@ -21,9 +21,12 @@ else:
 
 __pkg__ = 'metrique'
 __pkgs__ = [
-    'metrique', 'metrique.sql',
-    'metrique.cubes', 'metrique.cubes.csvdata',
-    'metrique.cubes.gitdata', 'metrique.cubes.sqldata',
+    'metrique',
+    'metrique.cubes',
+    'metrique.cubes.csvdata',
+    'metrique.cubes.gitdata',
+    'metrique.cubes.osinfo',
+    'metrique.cubes.sqldata',
     'metrique.plotting'
 ]
 __provides__ = ['metrique']
