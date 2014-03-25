@@ -21,11 +21,15 @@ TESTS_ROOT = '/'.join(cwd.split('/')[0:-1])
 paths = [TESTS_ROOT]
 pkgs = ['testcubes']
 
-username = password = 'test_user'
-
-config = dict(username=username,
-              password=password,
-              debug=2)
+config = {
+    "auth": False,
+    "fsync": False,
+    "host": "127.0.0.1",
+    "journal": False,
+    "tz_aware": True,
+    "username": "test_user",
+    "password": "test_user"
+}
 
 objects = [
     {'_oid': 1, 'test': 'yipee'}
@@ -33,9 +37,9 @@ objects = [
 
 
 def test_api():
-    m = pyclient(**config)
-    m.user_remove(username, clear_db=True)
-    assert m.user_register(username, password)
+    m = pyclient()
+    m.user_remove('test_user', clear_db=True)
+    assert m.user_register('test_user', 'test_user')
     cubes = ['csvcube_local', 'jsoncube_local']
     for cube in cubes:
         _cube = m.get_cube(cube=cube, pkgs=pkgs, cube_paths=paths, init=True)
@@ -102,22 +106,21 @@ def test_api():
         assert _cube.drop()
         assert _cube.name not in _cube.ls()
 
-    assert _cube.user_remove(username, clear_db=True)
+    assert _cube.user_remove('test_user', clear_db=True)
 
 
 def test_user_api():
-    m = pyclient(name='test_user', owner='test_user', **config)
+    m = pyclient(name='test_user', **config)
 
-    m.user_remove(username, clear_db=True)
-
-    assert m.user_register(username, password)
+    m.user_remove('test_user', clear_db=True)
+    assert m.user_register('test_user', 'test_user')
 
     # FIXME: what if user tries registering multiple times?
-    #assert m.user_register(username, password)
+    #assert m.user_register('test_user', password)
 
     m.objects = objects
     _ids = m.flush()
     assert _ids is not None
     assert len(_ids) == 1
 
-    assert m.user_remove(username, clear_db=True)
+    assert m.user_remove('test_user', clear_db=True)
