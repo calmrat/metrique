@@ -12,6 +12,8 @@ This module regression test api related functionality
 
 raise NotImplementedError("FIXME")
 
+from __future__ import unicode_literals
+
 import logging
 import simplejson as json
 import os

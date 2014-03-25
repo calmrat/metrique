@@ -9,6 +9,8 @@ other words, test the 'cube_api' functionality of metrique client
 and metrique server.
 '''
 
+from __future__ import unicode_literals
+
 import os
 from metrique import pyclient
 from metrique.result import Result

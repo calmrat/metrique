@@ -12,6 +12,8 @@ additional Pandas object helper functions which is
 used to load and manipulate cube objects.
 '''
 
+from __future__ import unicode_literals
+
 from decorator import decorator
 from datetime import timedelta
 import logging

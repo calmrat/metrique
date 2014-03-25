@@ -65,6 +65,8 @@ And finishing with some querying and simple charting of the data.
     valid date format: '%Y-%m-%d %H:%M:%S,%f', '%Y-%m-%d %H:%M:%S', '%Y-%m-%d'
 '''
 
+from __future__ import unicode_literals
+
 from collections import Mapping, MutableMapping
 from copy import copy
 import glob
@@ -115,7 +117,7 @@ class MetriqueObject(Mapping):
                 else:
                     #logger.debug("%s is immutable; not setting" % key)
                     return
-            if key in TIMESTAMP_OBJ_KEYS:
+            if key in TIMESTAMP_OBJ_KEYS and value is not None:
                 # ensure normalized timestamp
                 value = dt2ts(value)
             if value == '' or value != value:
@@ -156,7 +158,7 @@ class MetriqueObject(Mapping):
         else:
             # if the object is 'current value' without _end,
             # use just str of _oid
-            _id = str(_oid)
+            _id = unicode(_oid)
         return _id
 
     def _gen_hash(self):

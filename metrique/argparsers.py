@@ -27,6 +27,8 @@ See `python cube --help` for more details of the config
 options that can be overriden at runtime.
 '''
 
+from __future__ import unicode_literals
+
 import argparse
 import simplejson as json
 

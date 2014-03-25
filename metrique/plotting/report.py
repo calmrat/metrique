@@ -7,6 +7,8 @@
 import os
 from matplotlib import pyplot as plt
 
+from __future__ import unicode_literals
+
 
 class Report(object):
     def __init__(self, title):

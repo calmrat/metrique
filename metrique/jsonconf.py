@@ -3,6 +3,8 @@
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 # Author: "Chris Ward" <cward@redhat.com>
 
+from __future__ import unicode_literals
+
 import logging
 logger = logging.getLogger(__name__)
 
@@ -115,7 +117,7 @@ class JSONConf(MutableMapping):
         self.config[key] = value
 
     def __str__(self):
-        return str(self.config)
+        return unicode(self.config)
 
     def _default(self, option, default=None, required=False):
         ''' Helper-Method for setting config argument, with default '''

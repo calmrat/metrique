@@ -10,6 +10,8 @@ defaults and additional helper functionality for
 quickly generating plots with pandas and matplotlib
 '''
 
+from __future__ import unicode_literals
+
 import pandas as pd
 import matplotlib.pyplot as plt
 from datetime import datetime

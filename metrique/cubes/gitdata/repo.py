@@ -13,6 +13,8 @@ for exctacting data from a git repository.
 .. note:: This cube requires python 2.7+
 '''
 
+from __future__ import unicode_literals
+
 import logging
 logger = logging.getLogger(__name__)
 
