@@ -33,7 +33,6 @@ import argparse
 import simplejson as json
 
 from metrique.utils import get_cube
-from metrique.jsonconf import JSONConf
 
 
 def extract(args, cube):
@@ -41,9 +40,6 @@ def extract(args, cube):
     ext_kwargs = args.extract_kwargs
     if args.force:
         ext_kwargs.update({'force': args.force})
-    if args.extract_config_file:
-        config = JSONConf(config_file=args.extract_config_file)
-        cube.config.update(config)
     return cube.extract(*ext_args, **ext_kwargs)
 
 
@@ -101,7 +97,6 @@ _cube_args.add_argument('-o', '--owner', type=str)
 
 _sub = _cube_args.add_subparsers(description='Cube Commands CLI')
 _ext_args = _sub.add_parser('extract', help='Extract help')
-_ext_args.add_argument('-xC', '--extract-config-file', type=str)
 _ext_args.add_argument('-g', '--extract_args', type=str,
                        action=_ArgParser, nargs='+', default=[])
 _ext_args.add_argument('-k', '--extract_kwargs', type=str,
@@ -126,6 +121,11 @@ def cube_cli(cube_cls=None):
         --cube-config-dir: config dir path
         --cube-init-kwargs-config-file: load additional __init__ kwargs
     '''
+
+##############################################################################
+    raise NotImplementedError("FIXME")
+##############################################################################
+
     if not cube_cls:
         cube_cls = get_cube(cube_cls)
     args = _cube_args.parse_args()

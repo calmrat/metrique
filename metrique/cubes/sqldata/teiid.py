@@ -39,19 +39,18 @@ class Teiid(sqldata_generic):
     '''
     Driver which adds support for TEIID based sql cubes.
 
-    :param sql_host: teiid hostname
-    :param sql_port: teiid port
     :param sql_vdb: teiid virtual database name
-    :param sql_username: teiid username
-    :param sql_password: teiid password
+
+    Also expects arguments as defined in `sqldata_generic` class
     '''
-    def __init__(self, sql_vdb=None, **kwargs):
-        super(Teiid, self).__init__(**kwargs)
+    def __init__(self, sql_vdb=None, *args, **kwargs):
+        super(Teiid, self).__init__(*args, **kwargs)
         if not HAS_POSTGRES:
             raise ImportError('`pip install psycopg2` required')
-        self.config['sql'].setdefault('vdb', sql_vdb)
+        options = dict(vdb=sql_vdb)
+        defaults = dict(vdb=None)
+        self.configure('sql', options, defaults, kwargs.get('config_file'))
         self.retry_on_error = DatabaseError
-        logger.debug("New TEIID proxy initialized")
 
     @property
     def sql_proxy(self):
@@ -117,7 +116,7 @@ class Teiid(sqldata_generic):
 
         if err_state or not (cached and hasattr(self, '_sql_proxy')):
             proxy = psycopg2.connect(self.connect_str)
-            logger.debug(' ... Connected (New)')
+            logger.debug(' ... TEIID Connected (New)')
             # Teiid does not support 'set' command at all; so unless we
             # specify ISOLATION_LEVEL_AUTOCOMMIT (zero), psycopg2 will send a
             # SET command the teiid server doesn't understand.

@@ -155,14 +155,14 @@ SUPERVISORD_HISTORYFILE = pjoin(TMP_DIR, 'supervisord_history')
 
 ############################## DEFAULT CONFS #################################
 DEFAULT_METRIQUE_JSON = '''{
-    "batch_size": 5000,
-    "debug": true,
-    "log2file": true,
-    "logstdout": false,
-    "max_workers": 4,
-    "sql_batch_size": 1000,
+    "metrique": {
+        "debug": true,
+        "log2file": true,
+        "log2stdout": false
+    },
     "mongodb": {
         "auth": false,
+        "batch_size": 5000,
         "fsync": false,
         "host": "127.0.0.1",
         "_host": "%s",
@@ -175,6 +175,7 @@ DEFAULT_METRIQUE_JSON = '''{
         "ssl_certificate": "%s",
         "tz_aware": true,
         "username": "admin",
+        "workers": 2,
         "write_concern": 1
     }
 }'''

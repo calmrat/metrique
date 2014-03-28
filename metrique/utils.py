@@ -16,6 +16,7 @@ from __future__ import unicode_literals
 import logging
 logger = logging.getLogger(__name__)
 
+import anyconfig
 from calendar import timegm
 from datetime import datetime
 from dateutil.parser import parse as dt_parse
@@ -142,6 +143,14 @@ def _load_cube_pkg(pkg, cube):
         return getattr(mcubes, _cls)
 
 
+def load_config(path):
+    if not path:
+        return {}
+    else:
+        config_file = os.path.expanduser(path)
+        return anyconfig.load(config_file)
+
+
 def get_cube(cube, init=False, config=None, pkgs=None, cube_paths=None,
              **kwargs):
     '''
@@ -155,7 +164,6 @@ def get_cube(cube, init=False, config=None, pkgs=None, cube_paths=None,
     :param kwargs: additional kwargs to pass to cube during initialization
     '''
     config = config or {}
-    config.update(**kwargs)
     pkgs = pkgs or config.get('cube_pkgs', ['cubes'])
     pkgs = [pkgs] if isinstance(pkgs, basestring) else pkgs
     # search in the given path too, if provided
@@ -182,7 +190,7 @@ def get_cube(cube, init=False, config=None, pkgs=None, cube_paths=None,
             cube, pkgs, cube_paths, sys.path))
 
     if init:
-        _cube = _cube(**config)
+        _cube = _cube(config=config, **kwargs)
     return _cube
 
 

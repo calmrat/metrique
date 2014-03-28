@@ -93,15 +93,14 @@ class MongoDBClient(BaseClient):
     default_fields = '~'
     default_sort = [('_start', -1)]
 
-    def __init__(self, mongodb_host='127.0.0.1', mongodb_port=27017,
-                 mongodb_auth=False, mongodb_username=None,
-                 mongodb_password='', mongodb_ssl=False,
-                 mongodb_ssl_certificate=SSL_PEM, mongodb_fsync=False,
-                 mongodb_journal=False,
-                 mongodb_index_ensure_secs=INDEX_ENSURE_SECS,
-                 mongodb_read_preference='NEAREST', mongodb_replica_set=None,
-                 mongodb_tz_aware=True, mongodb_write_concern=1,
-                 mongodb_batch_size=1000, **kwargs):
+    def __init__(self, mongodb_host=None, mongodb_port=None,
+                 mongodb_auth=None, mongodb_username=None,
+                 mongodb_password=None, mongodb_ssl=None,
+                 mongodb_ssl_certificate=None, mongodb_fsync=None,
+                 mongodb_journal=None, mongodb_index_ensure_secs=None,
+                 mongodb_read_preference=None, mongodb_replica_set=None,
+                 mongodb_tz_aware=None, mongodb_write_concern=None,
+                 mongodb_batch_size=None, *args, **kwargs):
         '''
         :param mongodb_auth: enable mongodb authentication
         :param mongodb_batch_size: The number of objs save at a time
@@ -118,27 +117,28 @@ class MongoDBClient(BaseClient):
         :param mongodb_tz_aware: return back tz_aware dates?
         :param mongodb_write_concern: # of inst's to write to before finish
         '''
-        super(MongoDBClient, self).__init__(**kwargs)
-        self.config.setdefault('mongodb', {})
-        m = self.mongodb_config = self.config['mongodb']
-        m.config['mongodb'].setdefault('auth', mongodb_auth)
-        m.config['mongodb'].setdefault('batch_size', mongodb_batch_size)
-        m.config['mongodb'].setdefault('password', mongodb_password)
-        m.config['mongodb'].setdefault('username',
-                                       mongodb_username) or getuser()
-        m.config['mongodb'].setdefault('fsync', mongodb_fsync)
-        m.config['mongodb'].setdefault('host', mongodb_host)
-        m.config['mongodb'].setdefault('journal', mongodb_journal)
-        m.config['mongodb'].setdefault('port', mongodb_port)
-        m.config['mongodb'].setdefault('read_preference',
-                                       mongodb_read_preference)
-        m.config['mongodb'].setdefault('replica_set', mongodb_replica_set)
-        m.config['mongodb'].setdefault('ssl', mongodb_ssl)
-        m.config['mongodb'].setdefault('ssl_certificate',
-                                       mongodb_ssl_certificate)
-        m.config['mongodb'].setdefault('ssl_tz_aware', mongodb_tz_aware)
-        m.config['mongodb'].setdefault('ssl_write_concern',
-                                       mongodb_write_concern)
+        super(MongoDBClient, self).__init__(*args, **kwargs)
+        options = dict(host=mongodb_host, port=mongodb_port,
+                       auth=mongodb_auth, username=mongodb_username,
+                       password=mongodb_password, ssl=mongodb_ssl,
+                       ssl_certificate=mongodb_ssl_certificate,
+                       journal=mongodb_journal,
+                       index_ensure_secs=mongodb_index_ensure_secs,
+                       read_preference=mongodb_read_preference,
+                       replica_set=mongodb_replica_set,
+                       tz_aware=mongodb_tz_aware,
+                       write_concern=mongodb_write_concern,
+                       batch_size=mongodb_batch_size)
+        defaults = dict(host='127.0.0.1', port=27017,
+                        auth=False, username=getuser(),
+                        password='', ssl=False,
+                        ssl_certificate=SSL_PEM, fsync=False,
+                        journal=False,
+                        index_ensure_secs=INDEX_ENSURE_SECS,
+                        read_preference='NEAREST', replica_set=None,
+                        tz_aware=True, write_concern=1,
+                        batch_size=5000)
+        self.configure('mongodb', options, defaults, kwargs.get('config_file'))
 
     def __getitem__(self, query):
         return self.find(query=query, fields=self.default_fields,
@@ -153,7 +153,7 @@ class MongoDBClient(BaseClient):
 
 ######################### DB API ##################################
     def _ensure_base_indexes(self, _cube):
-        s = self.mongodb_config.get('index_ensure_secs')
+        s = self.config['mongodb'].get('index_ensure_secs')
         _cube.ensure_index('_oid', background=False, cache_for=s)
         _cube.ensure_index('_hash', background=False, cache_for=s)
         _cube.ensure_index([('_start', -1), ('_end', -1)],
@@ -162,7 +162,7 @@ class MongoDBClient(BaseClient):
                            background=False, cache_for=s)
 
     def get_db(self, owner=None):
-        owner = owner or self.mongodb_config.get('username')
+        owner = owner or self.config['mongodb'].get('username')
         if not owner:
             raise RuntimeError("[%s] Invalid db!" % owner)
         try:
@@ -171,7 +171,7 @@ class MongoDBClient(BaseClient):
             raise RuntimeError("unable to get db! (%s)" % e)
 
     def get_collection(self, owner=None, cube=None):
-        owner = owner or self.mongodb_config.get('username')
+        owner = owner or self.config['mongodb'].get('username')
         cube = cube or self.name
         if not (owner and cube):
             raise RuntimeError("[%s.%s] Invalid cube!" % (owner, cube))
@@ -181,31 +181,31 @@ class MongoDBClient(BaseClient):
 
     @property
     def db(self):
-        return self.proxy[self.mongodb_config.get('username')]
+        return self.proxy[self.config['mongodb'].get('username')]
 
     @property
     def proxy(self):
         _proxy = getattr(self, '_proxy', None)
         if not _proxy:
             kwargs = {}
-            ssl = self.mongodb_config.get('ssl')
+            ssl = self.config['mongodb'].get('ssl')
             if ssl:
-                cert = self.mongodb_config.get('ssl_certificate')
+                cert = self.config['mongodb'].get('ssl_certificate')
                 # include ssl options only if it's enabled
                 # certfile is a combined key+cert
                 kwargs.update(dict(ssl=ssl, ssl_certfile=cert))
-            if self.mongodb_config.get('replica_set'):
+            if self.config['mongodb'].get('replica_set'):
                 _proxy = self._load_mongo_replica_client(**kwargs)
             else:
                 _proxy = self._load_mongo_client(**kwargs)
-            if self.mongodb_config.get('auth'):
+            if self.config['mongodb'].get('auth'):
                 _proxy = self._authenticate(_proxy)
             self._proxy = _proxy
         return _proxy
 
     def _authenticate(self, proxy, username=None, password=None):
-        username = username or self.mongodb_config.get('username')
-        password = password or self.mongodb_config.get('password')
+        username = username or self.config['mongodb'].get('username')
+        password = password or self.config['mongodb'].get('password')
         ok = proxy[username].authenticate(username, password)
         if ok:
             return proxy
@@ -215,32 +215,33 @@ class MongoDBClient(BaseClient):
     def _load_mongo_client(self, **kwargs):
         logger.debug('Loading new MongoClient connection')
         _proxy = MongoClient(
-            self.mongodb_config.get('host'),
-            self.mongodb_config.get('port'),
-            tz_aware=self.mongodb_config.get('tz_aware'),
-            w=self.mongodb_config.get('write_concern'),
-            j=self.mongodb_config.get('journal'),
-            fsync=self.mongodb_config.get('fsync'), **kwargs)
+            self.config['mongodb'].get('host'),
+            self.config['mongodb'].get('port'),
+            tz_aware=self.config['mongodb'].get('tz_aware'),
+            w=self.config['mongodb'].get('write_concern'),
+            j=self.config['mongodb'].get('journal'),
+            fsync=self.config['mongodb'].get('fsync'), **kwargs)
         return _proxy
 
     def _load_mongo_replica_client(self, **kwargs):
         logger.debug('Loading new MongoReplicaSetClient connection')
-        pref = self.mongodb_config.get('read_preference')
+        pref = self.config['mongodb'].get('read_preference')
         read_preference = READ_PREFERENCE[pref]
         _proxy = MongoReplicaSetClient(
-            self.mongodb_config.get('host'), self.mongodb_config.get('port'),
-            tz_aware=self.mongodb_config.get('tz_aware'),
-            w=self.mongodb_config.get('write_concern'),
-            j=self.mongodb_config.get('journal'),
-            fsync=self.mongodb_config.get('fsync'),
-            replicaSet=self.mongodb_config.get('replica_set'),
+            self.config['mongodb'].get('host'),
+            self.config['mongodb'].get('port'),
+            tz_aware=self.config['mongodb'].get('tz_aware'),
+            w=self.config['mongodb'].get('write_concern'),
+            j=self.config['mongodb'].get('journal'),
+            fsync=self.config['mongodb'].get('fsync'),
+            replicaSet=self.config['mongodb'].get('replica_set'),
             read_preference=read_preference, **kwargs)
         return _proxy
 
 ######################### User API ################################
     def whoami(self, auth=False):
         '''Local api call to check the username of running user'''
-        return self.mongodb_config.get('username')
+        return self.config['mongodb'].get('username')
 
     def _validate_password(self, password):
         is_str = isinstance(password, basestring)
@@ -284,8 +285,8 @@ class MongoDBClient(BaseClient):
         '''
         if username and not password:
             raise RuntimeError('must specify password!')
-        password = password or self.mongodb_config.get('password')
-        username = username or self.mongodb_config.get('username')
+        password = password or self.config['mongodb'].get('password')
+        username = username or self.config['mongodb'].get('username')
         username = self._validate_username(username)
         password = self._validate_password(password)
         logger.info('Registering new user %s' % username)
@@ -296,7 +297,7 @@ class MongoDBClient(BaseClient):
         return bool(result)
 
     def user_remove(self, username, clear_db=False):
-        username = username or self.mongodb_config.get('username')
+        username = username or self.config['mongodb'].get('username')
         username = self._validate_username(username)
         logger.info('Removing user %s' % username)
         self.proxy[username].remove_user(username)
@@ -380,7 +381,7 @@ class MongoDBClient(BaseClient):
         '''
         _cube = self.get_collection(owner, cube)
         logger.info('[%s] Writing new index %s' % (_cube, key_or_list))
-        s = self.mongodb_config.index_ensure_secs
+        s = self.config['mongodb'].get('index_ensure_secs')
         kwargs['cache_for'] = kwargs.get('cache_for', s)
         result = _cube.ensure_index(key_or_list, **kwargs)
         return result
@@ -468,7 +469,7 @@ class MongoDBClient(BaseClient):
         :param autosnap: rotate _end:None's before saving new objects
         :returns result: _ids saved
         '''
-        batch_size = batch_size or self.config.batch_size
+        batch_size = batch_size or self.config.get('batch_size')
         _cube = self.get_collection(owner, cube)
         _ids = []
         for batch in batch_gen(self.objects.values(), batch_size):
