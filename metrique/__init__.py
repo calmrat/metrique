@@ -41,9 +41,11 @@ os.environ['METRIQUE_CACHE'] = os.environ.get(
 # ... http://stackoverflow.com/questions/492483/
 
 # Force all writes to stdout to be done with utf8
-import sys
-import codecs
-sys.stdout = codecs.getwriter('utf8')(sys.stdout)
+# This causes output coruption in Ipython shell;
+# disabling.
+#import sys
+#import codecs
+#sys.stdout = codecs.getwriter('utf8')(sys.stdout)
 
 # ATTENTION: this is the main interface for clients!
 from metrique.mongodb_api import MongoDBClient as pyclient

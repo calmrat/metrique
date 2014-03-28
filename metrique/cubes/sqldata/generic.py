@@ -41,14 +41,16 @@ DEFAULT_ENCODING = 'latin-1'
 
 
 def get_full_history(cube, oids, flush=False, cube_name=None, autosnap=False,
-                     **kwargs):
+                     config=None, **kwargs):
     m = pyclient(cube=cube, name=cube_name, **kwargs)
+    m.config = config
     return m._activity_get_objects(oids=oids, flush=flush, autosnap=autosnap)
 
 
 def get_objects(cube, oids, field_order, flush=False, cube_name=None,
-                autosnap=True, **kwargs):
+                autosnap=True, config=None, **kwargs):
     m = pyclient(cube=cube, name=cube_name, **kwargs)
+    m.config = config
     return m._get_objects(oids=oids, field_order=field_order,
                           flush=flush, autosnap=autosnap)
 
@@ -78,20 +80,18 @@ class Generic(pyclient):
     fields = None
     defaults = None
 
-    def __init__(self, sql_host=None, sql_port=None, sql_retries=1,
-                 sql_batch_size=500, sql_username=None, sql_password=None,
-                 **kwargs):
-        super(Generic, self).__init__(**kwargs)
+    def __init__(self, sql_host=None, sql_port=None, sql_retries=None,
+                 sql_batch_size=None, sql_username=None, sql_password=None,
+                 *args, **kwargs):
+        super(Generic, self).__init__(*args, **kwargs)
         self.fields = self.fields or {}
         self.defaults = self.defaults or {}
-        self.config.setdefault('sql', {})
-        m = self.config['sql']
-        m.setdefault('host', sql_host)
-        m.setdefault('port', sql_port)
-        m.setdefault('username', sql_username)
-        m.setdefault('password', sql_password)
-        m.setdefault('retries', sql_retries)
-        m.setdefault('batch_size', sql_batch_size)
+        options = dict(host=sql_host, port=sql_port, retries=sql_retries,
+                       username=sql_username, password=sql_password,
+                       batch_size=sql_batch_size)
+        defaults = dict(host=None, port=None, retries=1,
+                        username=None, password=None, batch_size=500)
+        self.configure('sql', options, defaults, kwargs.get('config_file'))
         self.retry_on_error = None
         self._setup_inconsistency_log()
         self._auto_reconnect_attempted = False
@@ -284,7 +284,7 @@ class Generic(pyclient):
             db = self.get_property('db')
             _oid = self.get_property('_oid')
             sql = 'SELECT DISTINCT %s.%s FROM %s.%s' % (table, _oid, db, table)
-            rows = self.fetchall(sql)
+            rows = self.sql_fetchall(sql)
             oids = self._extract_row_ids(rows)
         else:
             if self.get_property('delta_new_ids', default=True):
@@ -297,7 +297,7 @@ class Generic(pyclient):
                     oids.extend(self.get_changed_oids(mtime))
         return sorted(set(oids))
 
-    def fetchall(self, sql, cached=True):
+    def sql_fetchall(self, sql, cached=True):
         '''
         Shortcut for getting a cursor, cleaning the sql a bit,
         adding the LIMIT clause, executing the sql, fetching
@@ -322,7 +322,7 @@ class Generic(pyclient):
             if re.search('Transaction is not active', str(e)):
                 if not self._auto_reconnect_attempted:
                     logger.warn('Transaction failure; reconnecting')
-                    self.fetchall(sql, cached=False)
+                    self.sql_fetchall(sql, cached=False)
             logger.error('%s\n%s\n%s' % ('*' * 100, e, sql))
             raise
         else:
@@ -362,22 +362,24 @@ class Generic(pyclient):
         logger.debug("Updating %s objects" % len(oids))
 
         batch_size = self.config['sql'].get('batch_size')
-        max_workers = self.config['sql'].get('max_workers')
+        workers = self.config['metrique'].get('workers')
         if HAS_JOBLIB:
-            runner = Parallel(n_jobs=max_workers)
+            runner = Parallel(n_jobs=workers)
             func = delayed(get_full_history)
             result = runner(func(
                 cube=self._cube, oids=batch, flush=flush,
-                cube_name=self.name, autosnap=autosnap)
+                cube_name=self.name, autosnap=autosnap,
+                config=self.config)
                 for batch in batch_gen(oids, batch_size))
             # merge list of lists (batched) into single list
             result = [i for l in result for i in l]
         else:
             result = []
             for batch in batch_gen(oids, batch_size):
-                _ = get_objects(
+                _ = get_full_history(
                     cube=self._cube, oids=batch, flush=flush,
-                    cube_name=self.name, autosnap=autosnap)
+                    cube_name=self.name, autosnap=autosnap,
+                    config=self.config)
                 result.extend(_)
 
         if flush:
@@ -430,7 +432,7 @@ class Generic(pyclient):
         return rows
 
     def _fetchall(self, sql, field_order):
-        rows = self.fetchall(sql)
+        rows = self.sql_fetchall(sql)
         if not rows:
             return []
         logger.debug('Preparing row data...')
@@ -572,7 +574,7 @@ class Generic(pyclient):
             sql = definition['sql']
             fields = definition['fields']
             _oid = definition['_oid']
-            rows = self.fetchall(sql)
+            rows = self.sql_fetchall(sql)
             for row in rows:
                 d = copy(obj)
 
@@ -608,13 +610,13 @@ class Generic(pyclient):
 
         batch_size = self.config['sql'].get('batch_size')
         if HAS_JOBLIB:
-            max_workers = self.config['sql'].get('max_workers')
-            runner = Parallel(n_jobs=max_workers)
+            workers = self.config['metrique'].get('workers')
+            runner = Parallel(n_jobs=workers)
             func = delayed(get_objects)
             result = runner(func(
                 cube=self._cube, oids=batch, flush=flush,
                 field_order=field_order, cube_name=self.name,
-                autosnap=autosnap)
+                autosnap=autosnap, config=self.config)
                 for batch in batch_gen(oids, batch_size))
             # merge list of lists (batched) into single list
             result = [i for l in result for i in l]
@@ -624,7 +626,7 @@ class Generic(pyclient):
                 _ = get_objects(
                     cube=self._cube, oids=batch, flush=flush,
                     field_order=field_order, cube_name=self.name,
-                    autosnap=autosnap)
+                    autosnap=autosnap, config=self.config)
                 result.extend(_)
 
         logger.debug('... current values objects get - done')
@@ -658,7 +660,7 @@ class Generic(pyclient):
                 where = "%s.%s > '%s'" % (table, _oid, last_id)
             sql = 'SELECT DISTINCT %s.%s FROM %s.%s WHERE %s' % (
                 table, _oid, db, table, where)
-            rows = self.fetchall(sql)
+            rows = self.sql_fetchall(sql)
             ids = self._extract_row_ids(rows)
         else:
             ids = []
@@ -815,7 +817,7 @@ class Generic(pyclient):
                     yield field, tokens
 
     def _setup_inconsistency_log(self):
-        _logfile = self.config['metrique'].logfile.split('.log')[0]
+        _logfile = self.config['metrique'].get('logfile').split('.log')[0]
         basename = _logfile + '.inconsistencies'
         logfile = basename + '.log'
         logdir = os.environ.get("METRIQUE_LOGS")
@@ -841,7 +843,7 @@ class Generic(pyclient):
         sql = 'SELECT DISTINCT %s.%s FROM %s.%s' % (table, _oid, db, table)
         if where:
             sql += ' WHERE %s' % ' OR '.join(where)
-        return sorted([r[0] for r in self.fetchall(sql)])
+        return sorted([r[0] for r in self.sql_fetchall(sql)])
 
     def _sql_distinct(self, sql):
         # whether to query for distinct rows only or not; default, no

@@ -68,7 +68,7 @@ And finishing with some querying and simple charting of the data.
 from __future__ import unicode_literals
 
 from collections import Mapping, MutableMapping
-from copy import copy
+from copy import deepcopy
 import glob
 import logging
 import os
@@ -76,8 +76,7 @@ import pandas as pd
 import re
 import urllib
 
-from metrique.utils import get_cube, utcnow, jsonhash, dt2ts
-import anyconfig
+from metrique.utils import get_cube, utcnow, jsonhash, dt2ts, load_config
 
 logger = logging.getLogger(__name__)
 
@@ -162,7 +161,7 @@ class MetriqueObject(Mapping):
         return _id
 
     def _gen_hash(self):
-        o = copy(self.store)
+        o = deepcopy(self.store)
         keys = set(o.iterkeys())
         [o.pop(k) for k in HASH_EXCLUDE_KEYS if k in keys]
         return jsonhash(o)
@@ -187,7 +186,7 @@ class MetriqueObject(Mapping):
         self.store['_id'] = self._gen_id()
 
     def as_dict(self, pop=None):
-        store = copy(self.store)
+        store = deepcopy(self.store)
         if pop:
             [store.pop(key, None) for key in pop]
         return store
@@ -283,6 +282,14 @@ class MetriqueContainer(MutableMapping):
         return pd.DataFrame(tuple(self.store))
 
 
+class MetriqueFactory(type):
+    def __call__(cls, cube=None, name=None, *args, **kwargs):
+        name = name or cube
+        if cube:
+            cls = get_cube(cube=cube, name=name, init=False)
+        return type.__call__(cls, name=name, *args, **kwargs)
+
+
 class BaseClient(object):
     '''
     Low level client API which provides baseline functionality, including
@@ -312,66 +319,40 @@ class BaseClient(object):
             <type HTTPClient(...)>
 
     '''
+    default_config = DEFAULT_CONFIG
     name = None
     config = None
     _objects = None
 
-    def __new__(cls, *args, **kwargs):
-        cube = kwargs.get('cube')
-        name = kwargs.get('name') or cube
-        if cube:
-            cls = get_cube(cube=kwargs['cube'], name=name, init=False,
-                           **kwargs)
-        else:
-            cls = cls
-        return object.__new__(cls)
+    __metaclass__ = MetriqueFactory
 
-    def __init__(self, name, config_file=None, cube_pkgs=None,
-                 cube_paths=None, debug=True, logfile='metrique.log',
-                 log2file=True, logstdout=False, max_workers=4,
-                 **kwargs):
+    def __init__(self, name, config_file=None,
+                 cube_pkgs=None, cube_paths=None,
+                 debug=None, logdir=None, logfile=None,
+                 log2file=None, log2stdout=None, workers=None):
         '''
-        Client default config class. All metrique clients should subclass
-        from their config objects from this class to ensure defaults
-        values are available.
-
-        This configuration class defines the following overrideable defaults.
-
-        To customize local client configuration, add/update
-        `~/.metrique/etc/metrique.json` (default).
-
         :param cube_pkgs: list of package names where to search for cubes
         :param cube_paths: Additional paths to search for client cubes
         :param debug: turn on debug mode logging
         :param logfile: filename for logs
         :param log2file: boolean - log output to file?
         :param logstout: boolean - log output to stdout?
-        :param max_workers: number of workers for threaded operations
+        :param workers: number of workers for threaded operations
         '''
-        # don't assign to {} in class def, define here to avoid
-        # multiple pyclient objects linking to a shared dict
-        if self.config is None:
-            self.config = {}
+        super(BaseClient, self).__init__()
+        # set default config value as dict (from None set cls level)
+        self.default_config = config_file or self.default_config
+        self.config = self.load_config(config_file)
 
-        self.config.setdefault('metrique', {})
-
-        m = self.config['metrique']
-        # load config
-        if config_file:
-            _config = anyconfig.load(config_file)
-            _config = _config.convert_to()
-            m.update(_config)
-
-        # anything not set in config, set defaults
-        cube_pkgs = cube_pkgs or ['cubes']
-        cube_paths = cube_paths or []
-        m.setdefault('cube_pkgs', cube_pkgs)
-        m.setdefault('cube_paths', cube_paths)
-        m.setdefault('debug', debug)
-        m.setdefault('logfile', logfile)
-        m.setdefault('log2file', log2file)
-        m.setdefault('logstdout', logstdout)
-        m.setdefault('max_workers', max_workers)
+        options = dict(cube_pkgs=cube_pkgs, cube_paths=cube_paths,
+                       debug=debug, logdir=logdir, logfile=logfile,
+                       log2file=log2file, log2stdout=log2stdout,
+                       workers=workers)
+        defaults = dict(cube_pkgs=['cubes'], cube_paths=[], debug=None,
+                       logdir=os.environ.get("METRIQUE_LOGS"),
+                       logfile='metrique.log', log2file=True,
+                       log2stdout=False, workers=2)
+        self.configure('metrique', options, defaults, config_file)
 
         # cube class defined name
         self._cube = type(self).name
@@ -385,6 +366,29 @@ class BaseClient(object):
         self.debug_setup()
 
         self._objects = MetriqueContainer()
+
+    @staticmethod
+    def load_config(path):
+        return load_config(path)
+
+    def configure(self, section_key, options, defaults, config_file=None):
+        # load the config options from disk, if path provided
+        config_file = config_file or self.default_config
+        if config_file:
+            raw_config = self.load_config(config_file)
+            config = raw_config.get(section_key, {})
+            if not isinstance(config, dict):
+                # convert mergeabledict (anyconfig) to dict of dicts
+                config = config.convert_to(config)
+
+        # set option to value passed in, if any
+        # otherwise, set default config values
+        for k, v in defaults.iteritems():
+            opt = options.get(k)
+            v = opt if opt is not None else v
+            config.setdefault(unicode(k), v)
+        self.config.setdefault(section_key, {}).update(config)
+
 
     @property
     def objects(self):
@@ -494,16 +498,16 @@ class BaseClient(object):
 
         Configuration options available for customized logger behaivor:
             * debug (bool)
-            * logstdout (bool)
+            * log2stdout (bool)
             * log2file (bool)
             * logfile (path)
         '''
-        level = self.config.debug
-        logstdout = self.config.logstdout
+        level = self.config['metrique'].get('debug')
+        log2stdout = self.config['metrique'].get('log2stdout')
         log_format = "%(name)s.%(process)s:%(asctime)s:%(message)s"
         log_format = logging.Formatter(log_format, "%Y%m%dT%H%M%S")
 
-        logfile = self.config.logfile
+        logfile = self.config['metrique'].get('logfile', '')
         logdir = os.environ.get("METRIQUE_LOGS")
         if not os.path.exists(logdir):
             os.makedirs(logdir)
@@ -511,11 +515,11 @@ class BaseClient(object):
 
         logger = logging.getLogger()
         logger.handlers = []
-        if logstdout:
+        if log2stdout:
             hdlr = logging.StreamHandler()
             hdlr.setFormatter(log_format)
             logger.addHandler(hdlr)
-        if self.config.log2file and logfile:
+        if self.config['metrique'].get('log2file') and logfile:
             hdlr = logging.FileHandler(logfile)
             hdlr.setFormatter(log_format)
             logger.addHandler(hdlr)
@@ -540,7 +544,7 @@ class BaseClient(object):
         :param name: override the name of the cube
         :param kwargs: additional :func:`metrique.utils.get_cube`
         '''
-        config = copy(self.config)
+        config = deepcopy(self.config)  # recursive...
         # don't apply the name to the current obj, but to the object
         # we get back from get_cube
         return get_cube(cube=cube, init=init, config=config,
