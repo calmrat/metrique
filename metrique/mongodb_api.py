@@ -469,7 +469,7 @@ class MongoDBClient(BaseClient):
         :param autosnap: rotate _end:None's before saving new objects
         :returns result: _ids saved
         '''
-        batch_size = batch_size or self.config.get('batch_size')
+        batch_size = batch_size or self.config['mongodb'].get('batch_size')
         _cube = self.get_collection(owner, cube)
         _ids = []
         for batch in batch_gen(self.objects.values(), batch_size):

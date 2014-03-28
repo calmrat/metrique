@@ -158,7 +158,8 @@ DEFAULT_METRIQUE_JSON = '''{
     "metrique": {
         "debug": true,
         "log2file": true,
-        "log2stdout": false
+        "log2stdout": false,
+        "workers": 2
     },
     "mongodb": {
         "auth": false,
@@ -175,7 +176,6 @@ DEFAULT_METRIQUE_JSON = '''{
         "ssl_certificate": "%s",
         "tz_aware": true,
         "username": "admin",
-        "workers": 2,
         "write_concern": 1
     }
 }'''
