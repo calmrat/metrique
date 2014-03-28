@@ -495,7 +495,7 @@ class MongoDBClient(BaseClient):
             # save each object; overwrite existing
             # (same _oid + _start or _oid if _end = None) or upsert
             logger.debug('[%s] Saving %s versions' % (_cube, len(objects)))
-            _ids = [_cube.save(o, manipulate=True) for o in objects]
+            _ids = [_cube.save(dict(o), manipulate=True) for o in objects]
             # pop those we're already flushed out of the instance container
             failed = olen - len(_ids)
             if failed > 0:
