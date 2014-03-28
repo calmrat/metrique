@@ -17,6 +17,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 import anyconfig
+anyconfig.set_loglevel(logging.WARN)  # too noisy...
 from calendar import timegm
 from datetime import datetime
 from dateutil.parser import parse as dt_parse
@@ -151,8 +152,7 @@ def load_config(path):
         return anyconfig.load(config_file)
 
 
-def get_cube(cube, init=False, config=None, pkgs=None, cube_paths=None,
-             **kwargs):
+def get_cube(cube, init=False, pkgs=None, cube_paths=None, **kwargs):
     '''
     Dynamically locate and load a metrique cube
 
@@ -163,11 +163,10 @@ def get_cube(cube, init=False, config=None, pkgs=None, cube_paths=None,
     :param cube_path: additional paths to search for modules in (sys.path)
     :param kwargs: additional kwargs to pass to cube during initialization
     '''
-    config = config or {}
-    pkgs = pkgs or config.get('cube_pkgs', ['cubes'])
+    pkgs = pkgs or ['cubes']
     pkgs = [pkgs] if isinstance(pkgs, basestring) else pkgs
     # search in the given path too, if provided
-    cube_paths = cube_paths or config.get('cube_paths', [])
+    cube_paths = cube_paths or []
     cube_paths_is_basestring = isinstance(cube_paths, basestring)
     cube_paths = [cube_paths] if cube_paths_is_basestring else cube_paths
     cube_paths = [os.path.expanduser(path) for path in cube_paths]
@@ -190,7 +189,7 @@ def get_cube(cube, init=False, config=None, pkgs=None, cube_paths=None,
             cube, pkgs, cube_paths, sys.path))
 
     if init:
-        _cube = _cube(config=config, **kwargs)
+        _cube = _cube(**kwargs)
     return _cube
 
 

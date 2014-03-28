@@ -119,6 +119,8 @@ class MetriqueObject(Mapping):
             if key in TIMESTAMP_OBJ_KEYS and value is not None:
                 # ensure normalized timestamp
                 value = dt2ts(value)
+            if isinstance(value, str):
+                value = unicode(value, 'utf8')
             if value == '' or value != value:
                 # Normalize empty strings and NaN objects to None
                 # NaN objects do not equal themselves...
@@ -319,7 +321,7 @@ class BaseClient(object):
             <type HTTPClient(...)>
 
     '''
-    default_config = DEFAULT_CONFIG
+    default_config_file = DEFAULT_CONFIG
     name = None
     config = None
     _objects = None
@@ -341,7 +343,7 @@ class BaseClient(object):
         '''
         super(BaseClient, self).__init__()
         # set default config value as dict (from None set cls level)
-        self.default_config = config_file or self.default_config
+        self.default_config_file = config_file or self.default_config_file
         self.config = self.load_config(config_file)
 
         options = dict(cube_pkgs=cube_pkgs, cube_paths=cube_paths,
@@ -349,9 +351,9 @@ class BaseClient(object):
                        log2file=log2file, log2stdout=log2stdout,
                        workers=workers)
         defaults = dict(cube_pkgs=['cubes'], cube_paths=[], debug=None,
-                       logdir=os.environ.get("METRIQUE_LOGS"),
-                       logfile='metrique.log', log2file=True,
-                       log2stdout=False, workers=2)
+                        logdir=os.environ.get("METRIQUE_LOGS"),
+                        logfile='metrique.log', log2file=True,
+                        log2stdout=False, workers=2)
         self.configure('metrique', options, defaults, config_file)
 
         # cube class defined name
@@ -373,22 +375,19 @@ class BaseClient(object):
 
     def configure(self, section_key, options, defaults, config_file=None):
         # load the config options from disk, if path provided
-        config_file = config_file or self.default_config
+        config_file = config_file or self.default_config_file
         if config_file:
             raw_config = self.load_config(config_file)
             config = raw_config.get(section_key, {})
             if not isinstance(config, dict):
                 # convert mergeabledict (anyconfig) to dict of dicts
                 config = config.convert_to(config)
-
+            defaults.update(config)
         # set option to value passed in, if any
-        # otherwise, set default config values
-        for k, v in defaults.iteritems():
-            opt = options.get(k)
-            v = opt if opt is not None else v
-            config.setdefault(unicode(k), v)
+        for k, v in options.iteritems():
+            v = v if v is not None else defaults[k]
+            config[unicode(k)] = v
         self.config.setdefault(section_key, {}).update(config)
-
 
     @property
     def objects(self):
@@ -544,8 +543,5 @@ class BaseClient(object):
         :param name: override the name of the cube
         :param kwargs: additional :func:`metrique.utils.get_cube`
         '''
-        config = deepcopy(self.config)  # recursive...
-        # don't apply the name to the current obj, but to the object
-        # we get back from get_cube
-        return get_cube(cube=cube, init=init, config=config,
-                        name=name, **kwargs)
+        kwargs['config_file'] = self.default_config_file
+        return get_cube(cube=cube, init=init, name=name, **kwargs)
