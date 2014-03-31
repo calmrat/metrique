@@ -115,7 +115,7 @@ class MetriqueObject(Mapping):
                     raise KeyError("%s is immutable" % key)
                 else:
                     #logger.debug("%s is immutable; not setting" % key)
-                    return
+                    continue
             if key in TIMESTAMP_OBJ_KEYS and value is not None:
                 # ensure normalized timestamp
                 value = dt2ts(value)
@@ -232,8 +232,7 @@ class MetriqueContainer(MutableMapping):
         elif isinstance(objects, (list, tuple)):
             [self.add(x) for x in objects]
         elif isinstance(objects, (dict, Mapping)):
-            # FIXME: should this be self.update(objects)?
-            self.store.update(objects)
+            self.update(objects)
         elif isinstance(objects, MetriqueContainer):
             self.store = objects
         else:
@@ -403,7 +402,8 @@ class BaseClient(object):
         self._objects = MetriqueContainer()
 
 ####################### data loading api ###################
-    def load(self, path, filetype=None, as_dict=True, raw=False, **kwargs):
+    def load(self, path, filetype=None, as_dict=True, raw=False,
+             retries=None, **kwargs):
         '''Load multiple files from various file types automatically.
 
         Supports glob paths, eg::
@@ -420,11 +420,22 @@ class BaseClient(object):
         :param filetype: override filetype autodetection
         :param kwargs: additional filetype loader method kwargs
         '''
+        retries = int(retries) if retries else 3
         # kwargs are for passing ftype load options (csv.delimiter, etc)
         # expect the use of globs; eg, file* might result in fileN (file1,
         # file2, file3), etc
         if re.match('https?://', path):
-            _path, headers = self.urlretrieve(path)
+            while retries:
+                try:
+                    _path, headers = self.urlretrieve(path)
+                except Exception as e:
+                    retries -= 1
+                    logger.warn(
+                        'Failed getting %s: %s (retry:%s)' % (
+                            path, e, retries))
+                    continue
+                else:
+                    break
             logger.debug('Saved %s to tmp file: %s' % (path, _path))
             try:
                 df = self._load_file(_path, filetype, as_dict=False, **kwargs)
@@ -507,9 +518,7 @@ class BaseClient(object):
         log_format = logging.Formatter(log_format, "%Y%m%dT%H%M%S")
 
         logfile = self.config['metrique'].get('logfile', '')
-        logdir = os.environ.get("METRIQUE_LOGS")
-        if not os.path.exists(logdir):
-            os.makedirs(logdir)
+        logdir = self.config['metrique'].get('logdir', '')
         logfile = os.path.join(logdir, logfile)
 
         logger = logging.getLogger()
@@ -533,7 +542,7 @@ class BaseClient(object):
             logger.setLevel(logging.DEBUG)
         return logger
 
-    def get_cube(self, cube, init=True, name=None, **kwargs):
+    def get_cube(self, cube, init=True, name=None, copy_config=True, **kwargs):
         '''wrapper for :func:`metrique.utils.get_cube`
 
         Locates and loads a metrique cube
@@ -541,7 +550,16 @@ class BaseClient(object):
         :param cube: name of cube to load
         :param init: (bool) initialize cube before returning?
         :param name: override the name of the cube
+        :param copy_config: apply config of calling cube to new?
+                            Implies init=True.
         :param kwargs: additional :func:`metrique.utils.get_cube`
         '''
-        kwargs['config_file'] = self.default_config_file
-        return get_cube(cube=cube, init=init, name=name, **kwargs)
+        if copy_config:
+            init = True
+        if 'config_file' not in kwargs:
+            kwargs['config_file'] = self.default_config_file
+        cube = get_cube(cube=cube, init=init, name=name, **kwargs)
+        if copy_config:
+            cube.config.update(self.config)
+            cube.debug_setup()  # reload instance logging
+        return cube

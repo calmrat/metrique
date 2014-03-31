@@ -32,6 +32,7 @@ import os
 import pytz
 import re
 import traceback
+import warnings
 
 from metrique import pyclient
 from metrique.utils import batch_gen, ts2dt, dt2ts, utcnow
@@ -43,14 +44,16 @@ DEFAULT_ENCODING = 'latin-1'
 def get_full_history(cube, oids, flush=False, cube_name=None, autosnap=False,
                      config=None, **kwargs):
     m = pyclient(cube=cube, name=cube_name, **kwargs)
-    m.config = config
+    m.config = config or m.config
+    m.debug_setup()
     return m._activity_get_objects(oids=oids, flush=flush, autosnap=autosnap)
 
 
 def get_objects(cube, oids, field_order, flush=False, cube_name=None,
                 autosnap=True, config=None, **kwargs):
     m = pyclient(cube=cube, name=cube_name, **kwargs)
-    m.config = config
+    m.config = config or m.config
+    m.debug_setup()
     return m._get_objects(oids=oids, field_order=field_order,
                           flush=flush, autosnap=autosnap)
 
@@ -90,7 +93,7 @@ class Generic(pyclient):
                        username=sql_username, password=sql_password,
                        batch_size=sql_batch_size)
         defaults = dict(host=None, port=None, retries=1,
-                        username=None, password=None, batch_size=500)
+                        username=None, password=None, batch_size=1000)
         self.configure('sql', options, defaults, kwargs.get('config_file'))
         self.retry_on_error = None
         self._setup_inconsistency_log()
@@ -115,9 +118,9 @@ class Generic(pyclient):
     def _activity_get_objects(self, oids, flush=False, autosnap=False):
         logger.debug('Getting Objects - Activity History')
         self.get_objects(force=oids, flush=False)
+        objects = self.objects.values()
         # dict, has format: oid: [(when, field, removed, added)]
         activities = self.activity_get(oids)
-        objects = self.objects.values()
         for doc in objects:
             _oid = doc['_oid']
             acts = activities.setdefault(_oid, [])
@@ -188,6 +191,8 @@ class Generic(pyclient):
                 elif len(batch_updates) == 1:
                     # we have only one version, that we did not change
                     return []
+                else:
+                    pass  # leave as-is
         except Exception as e:
             logger.error('Error updating creation time; %s' % e)
         return batch_updates
@@ -247,7 +252,7 @@ class Generic(pyclient):
         while retries >= 0:
             try:
                 rows = self._fetchall(sql, field_order)
-                logger.info('Fetch OK')
+                logger.debug('Fetch OK')
             except self.retry_on_error:
                 tb = traceback.format_exc()
                 logger.error('Fetch Failed: %s' % tb)
@@ -295,6 +300,7 @@ class Generic(pyclient):
                 mtime = self._fetch_mtime(last_update, parse_timestamp)
                 if mtime:
                     oids.extend(self.get_changed_oids(mtime))
+        logger.debug("Delta Size: %s" % len(oids))
         return sorted(set(oids))
 
     def sql_fetchall(self, sql, cached=True):
@@ -356,21 +362,24 @@ class Generic(pyclient):
         hash values, so we need to always remove all existing object
         states and import fresh
         '''
-        logger.debug('Extracting Objects - Full History')
-
-        oids = self._delta_force(force, last_update, parse_timestamp)
-        logger.debug("Updating %s objects" % len(oids))
-
-        batch_size = self.config['sql'].get('batch_size')
         workers = self.config['metrique'].get('workers')
+        batch_size = self.config['sql'].get('batch_size')
+        logger.debug(
+            'Getting Full History (%s@%s)' % (workers, batch_size))
+        # determine which oids will we query
+        oids = self._delta_force(force, last_update, parse_timestamp)
         if HAS_JOBLIB:
             runner = Parallel(n_jobs=workers)
             func = delayed(get_full_history)
-            result = runner(func(
-                cube=self._cube, oids=batch, flush=flush,
-                cube_name=self.name, autosnap=autosnap,
-                config=self.config)
-                for batch in batch_gen(oids, batch_size))
+            with warnings.catch_warnings():
+                # suppress warning from joblib:
+                # UserWarning: Parallel loops cannot be nested ...
+                warnings.simplefilter("ignore")
+                result = runner(func(
+                    cube=self._cube, oids=batch, flush=flush,
+                    cube_name=self.name, autosnap=autosnap,
+                    config=self.config)
+                    for batch in batch_gen(oids, batch_size))
             # merge list of lists (batched) into single list
             result = [i for l in result for i in l]
         else:
@@ -451,7 +460,7 @@ class Generic(pyclient):
             mtime = self.get_last_field('_start')
         # convert timestamp to datetime object
         mtime = ts2dt(mtime)
-        logger.info("Last update mtime: %s" % mtime)
+        logger.debug("Last update mtime: %s" % mtime)
 
         if mtime:
             if parse_timestamp is None:
@@ -599,25 +608,29 @@ class Generic(pyclient):
         :param last_update: manual override for 'changed since date'
         :param parse_timestamp: flag to convert timestamp timezones in-line
         '''
-        logger.debug('Fetching Objects - Current Values')
-
-        # determine which oids will we query
-        oids = self._delta_force(force, last_update, parse_timestamp)
-
+        workers = self.config['metrique'].get('workers')
+        batch_size = self.config['sql'].get('batch_size')
         # set the 'index' of sql columns so we can extract
         # out the sql rows and know which column : field
         field_order = tuple(self.fields)
 
-        batch_size = self.config['sql'].get('batch_size')
+        logger.debug(
+            'Getting Objects - Current Values (%s@%s)' % (workers, batch_size))
+        # determine which oids will we query
+        oids = self._delta_force(force, last_update, parse_timestamp)
+
         if HAS_JOBLIB:
-            workers = self.config['metrique'].get('workers')
             runner = Parallel(n_jobs=workers)
             func = delayed(get_objects)
-            result = runner(func(
-                cube=self._cube, oids=batch, flush=flush,
-                field_order=field_order, cube_name=self.name,
-                autosnap=autosnap, config=self.config)
-                for batch in batch_gen(oids, batch_size))
+            with warnings.catch_warnings():
+                # suppress warning from joblib:
+                # UserWarning: Parallel loops cannot be nested ...
+                warnings.simplefilter("ignore")
+                result = runner(func(
+                    cube=self._cube, oids=batch, flush=flush,
+                    field_order=field_order, cube_name=self.name,
+                    autosnap=autosnap, config=self.config)
+                    for batch in batch_gen(oids, batch_size))
             # merge list of lists (batched) into single list
             result = [i for l in result for i in l]
         else:

@@ -137,7 +137,7 @@ class MongoDBClient(BaseClient):
                         index_ensure_secs=INDEX_ENSURE_SECS,
                         read_preference='NEAREST', replica_set=None,
                         tz_aware=True, write_concern=1,
-                        batch_size=5000)
+                        batch_size=10000)
         self.configure('mongodb', options, defaults, kwargs.get('config_file'))
 
     def __getitem__(self, query):
@@ -481,16 +481,18 @@ class MongoDBClient(BaseClient):
     def _flush(self, _cube, objects, autosnap=True, cube=None, owner=None):
         olen = len(objects)
         if olen == 0:
-            logger.info("No objects to flush!")
+            logger.debug("No objects to flush!")
             return []
         logger.info("[%s] Flushing %s objects" % (_cube, olen))
 
-        objects = self._filter_dups(_cube, objects)
+        objects, dup_ids = self._filter_dups(_cube, objects)
 
         if objects and autosnap:
             # append rotated versions to save over previous _end:None docs
             objects = self._add_snap_objects(_cube, objects)
 
+        olen = len(objects)
+        _ids = []
         if objects:
             # save each object; overwrite existing
             # (same _oid + _start or _oid if _end = None) or upsert
@@ -502,11 +504,11 @@ class MongoDBClient(BaseClient):
                 logger.warn("%s objects failed to flush!" % failed)
             # new 'snapshoted' objects are included in _ids, but they
             # aren't in self.objects, so ignore them
-            [self.objects.pop(_id) for _id in _ids if _id in self.objects]
-            logger.debug(
-                "[%s] %s objects remaining" % (_cube, len(self.objects)))
-            return _ids
-        return []
+        [self.objects.pop(_id) for _id in _ids if _id in self.objects]
+        [self.objects.pop(_id) for _id in set(dup_ids)]
+        logger.debug(
+            "[%s] %s objects remaining" % (_cube, len(self.objects)))
+        return _ids
 
     def _filter_end_null_dups(self, _cube, objects):
         # filter out dups which have null _end value
@@ -527,21 +529,21 @@ class MongoDBClient(BaseClient):
             return set()
 
     def _filter_dups(self, _cube, objects):
-        logger.info('Filtering duplicate objects...')
+        logger.debug('Filtering duplicate objects...')
         olen = len(objects)
 
         non_null_ids = self._filter_end_not_null_dups(_cube, objects)
         null_ids = self._filter_end_null_dups(_cube, objects)
-        _ids = non_null_ids | null_ids
+        dup_ids = non_null_ids | null_ids
 
-        if _ids:
+        if dup_ids:
             # update self.object container to contain only non-dups
-            objects = [o for o in objects if o['_id'] not in _ids]
+            objects = [o for o in objects if o['_id'] not in dup_ids]
 
         _olen = len(objects)
         diff = olen - _olen
         logger.info(' ... %s objects filtered; %s remain' % (diff, _olen))
-        return objects
+        return objects, dup_ids
 
     def _add_snap_objects(self, _cube, objects):
         olen = len(objects)

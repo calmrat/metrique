@@ -163,7 +163,7 @@ DEFAULT_METRIQUE_JSON = '''{
     },
     "mongodb": {
         "auth": false,
-        "batch_size": 5000,
+        "batch_size": 10000,
         "fsync": false,
         "host": "127.0.0.1",
         "_host": "%s",
