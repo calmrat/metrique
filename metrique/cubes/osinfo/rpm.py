@@ -101,6 +101,7 @@ class Rpm(pyclient):
         else:
             output = self._local_cmd(fmt)
         if isinstance(output, basestring):
+            output = unicode(output, 'utf-8')
             output = output.strip().split('\n')
         lines = [l.strip().split(':::') for l in output]
         now = utcnow()
@@ -111,7 +112,7 @@ class Rpm(pyclient):
                 if item == '(none)':
                     item = None
                 obj[self.fields[i]] = item
-            obj['_oid'] = '%s__%s' % (host, obj['nvra'])
+            obj['_oid'] = '%s__%s' % (host, obj['name'])
             self.objects.add(obj)
         return super(Rpm, self).get_objects(**kwargs)
 
