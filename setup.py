@@ -30,7 +30,7 @@ __provides__ = ['metrique']
 __desc__ = 'Metrique - Client Libraries'
 __scripts__ = ['metrique/bin/metrique']
 __requires__ = [
-    'anyconfig (==0.0.3.11)',
+    'anyconfig',
     'decorator (>=3.4.0)',
     'pandas (>=0.13.0)',
     'pql (>=0.4.2)',
@@ -40,7 +40,7 @@ __requires__ = [
     'simplejson (>=3.3.2)',
 ]
 __irequires__ = [
-    'anyconfig==0.0.3.11',
+    'anyconfig',
     'decorator>=3.4.0',
     'pandas>=0.13.0',
     'pql>=0.4.2',
