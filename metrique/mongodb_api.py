@@ -612,7 +612,7 @@ class MongoDBClient(BaseClient):
         :param cube: cube name
         :param owner: username of cube owner
         '''
-        _cube = self.get_db(owner, cube)
+        _cube = self.get_collection(owner, cube)
         result = _cube.aggregate(pipeline)
         return result
 
