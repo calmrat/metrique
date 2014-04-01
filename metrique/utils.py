@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 import anyconfig
 anyconfig.set_loglevel(logging.WARN)  # too noisy...
 from calendar import timegm
+import collections
 from datetime import datetime
 from dateutil.parser import parse as dt_parse
 from hashlib import sha1
@@ -152,7 +153,8 @@ def load_config(path):
         return anyconfig.load(config_file)
 
 
-def get_cube(cube, init=False, pkgs=None, cube_paths=None, **kwargs):
+def get_cube(cube, init=False, pkgs=None, cube_paths=None, config=None,
+             **kwargs):
     '''
     Dynamically locate and load a metrique cube
 
@@ -189,7 +191,7 @@ def get_cube(cube, init=False, pkgs=None, cube_paths=None, **kwargs):
             cube, pkgs, cube_paths, sys.path))
 
     if init:
-        _cube = _cube(**kwargs)
+        _cube = _cube(config=config, **kwargs)
     return _cube
 
 
@@ -421,3 +423,16 @@ def utcnow(as_datetime=False, tz_aware=False, drop_micro=False):
         return now
     else:
         return dt2ts(now, drop_micro)
+
+
+def rupdate(d, u):
+    ''' recursively update nested dictionaries
+        see: http://stackoverflow.com/a/3233356/1289080
+    '''
+    for k, v in u.iteritems():
+        if isinstance(v, collections.Mapping):
+            r = rupdate(d.get(k, {}), v)
+            d[k] = r
+        else:
+            d[k] = u[k]
+    return d

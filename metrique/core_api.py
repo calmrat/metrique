@@ -77,6 +77,7 @@ import re
 import urllib
 
 from metrique.utils import get_cube, utcnow, jsonhash, dt2ts, load_config
+from metrique.utils import rupdate
 
 logger = logging.getLogger(__name__)
 
@@ -327,10 +328,10 @@ class BaseClient(object):
 
     __metaclass__ = MetriqueFactory
 
-    def __init__(self, name, config_file=None,
-                 cube_pkgs=None, cube_paths=None,
-                 debug=None, logdir=None, logfile=None,
-                 log2file=None, log2stdout=None, workers=None):
+    def __init__(self, name, config_file=None, config=None,
+                 cube_pkgs=None, cube_paths=None, debug=None,
+                 logdir=None, logfile=None, log2file=None,
+                 log2stdout=None, workers=None):
         '''
         :param cube_pkgs: list of package names where to search for cubes
         :param cube_paths: Additional paths to search for client cubes
@@ -341,10 +342,9 @@ class BaseClient(object):
         :param workers: number of workers for threaded operations
         '''
         super(BaseClient, self).__init__()
+        self.config = self.config or {}
         # set default config value as dict (from None set cls level)
         self.default_config_file = config_file or self.default_config_file
-        self.config = self.load_config(config_file)
-
         options = dict(cube_pkgs=cube_pkgs, cube_paths=cube_paths,
                        debug=debug, logdir=logdir, logfile=logfile,
                        log2file=log2file, log2stdout=log2stdout,
@@ -353,7 +353,12 @@ class BaseClient(object):
                         logdir=os.environ.get("METRIQUE_LOGS"),
                         logfile='metrique.log', log2file=True,
                         log2stdout=False, workers=2)
-        self.configure('metrique', options, defaults, config_file)
+        if config:
+            # config override
+            self.config = rupdate(self.config, config)
+        else:
+            # load defaults + set kwargs passed in
+            self.configure('metrique', options, defaults, config_file)
 
         # cube class defined name
         self._cube = type(self).name
@@ -373,20 +378,23 @@ class BaseClient(object):
         return load_config(path)
 
     def configure(self, section_key, options, defaults, config_file=None):
+        if not section_key:
+            raise ValueError("section_key must be non-null")
         # load the config options from disk, if path provided
         config_file = config_file or self.default_config_file
         if config_file:
             raw_config = self.load_config(config_file)
-            config = raw_config.get(section_key, {})
-            if not isinstance(config, dict):
+            section = raw_config.get(section_key, {})
+            if not isinstance(section, dict):
                 # convert mergeabledict (anyconfig) to dict of dicts
-                config = config.convert_to(config)
-            defaults.update(config)
+                section = section.convert_to(section)
+            defaults = rupdate(defaults, section)
         # set option to value passed in, if any
         for k, v in options.iteritems():
             v = v if v is not None else defaults[k]
-            config[unicode(k)] = v
-        self.config.setdefault(section_key, {}).update(config)
+            section[unicode(k)] = v
+        self.config.setdefault(section_key, {})
+        self.config[section_key] = rupdate(self.config[section_key], section)
 
     @property
     def objects(self):
@@ -554,12 +562,7 @@ class BaseClient(object):
                             Implies init=True.
         :param kwargs: additional :func:`metrique.utils.get_cube`
         '''
-        if copy_config:
-            init = True
-        if 'config_file' not in kwargs:
-            kwargs['config_file'] = self.default_config_file
-        cube = get_cube(cube=cube, init=init, name=name, **kwargs)
-        if copy_config:
-            cube.config.update(self.config)
-            cube.debug_setup()  # reload instance logging
-        return cube
+        name = name or cube
+        config = self.config if copy_config else {}
+        return get_cube(cube=cube, init=init, name=name, config=config,
+                        **kwargs)

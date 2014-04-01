@@ -24,13 +24,10 @@ paths = [TESTS_ROOT]
 pkgs = ['testcubes']
 
 config = {
-    "auth": False,
-    "fsync": False,
-    "host": "127.0.0.1",
-    "journal": False,
-    "tz_aware": True,
-    "username": "test_user",
-    "password": "test_user"
+    "mongodb_auth": False,
+    "mongodb_host": "127.0.0.1",
+    "mongodb_username": "test_user",
+    "mongodb_password": "test_user"
 }
 
 objects = [

@@ -100,7 +100,8 @@ class MongoDBClient(BaseClient):
                  mongodb_journal=None, mongodb_index_ensure_secs=None,
                  mongodb_read_preference=None, mongodb_replica_set=None,
                  mongodb_tz_aware=None, mongodb_write_concern=None,
-                 mongodb_batch_size=None, *args, **kwargs):
+                 mongodb_safe=None, mongodb_batch_size=None,
+                 *args, **kwargs):
         '''
         :param mongodb_auth: enable mongodb authentication
         :param mongodb_batch_size: The number of objs save at a time
@@ -112,33 +113,46 @@ class MongoDBClient(BaseClient):
         :param mongodb_port: mongodb port to connect to
         :param mongodb_read_preference: default - NEAREST
         :param mongodb_replica_set: name of replica set, if any
+        :param mongodb_safe: enable 'safe' write mode (DEPRECIATED)
         :param mongodb_ssl: enable ssl
         :param mongodb_ssl_certificate: path to ssl combined .pem
         :param mongodb_tz_aware: return back tz_aware dates?
         :param mongodb_write_concern: # of inst's to write to before finish
         '''
         super(MongoDBClient, self).__init__(*args, **kwargs)
-        options = dict(host=mongodb_host, port=mongodb_port,
-                       auth=mongodb_auth, username=mongodb_username,
-                       password=mongodb_password, ssl=mongodb_ssl,
+        options = dict(host=mongodb_host,
+                       port=mongodb_port,
+                       auth=mongodb_auth,
+                       username=mongodb_username,
+                       password=mongodb_password,
+                       ssl=mongodb_ssl,
                        ssl_certificate=mongodb_ssl_certificate,
+                       fsync=mongodb_fsync,
                        journal=mongodb_journal,
                        index_ensure_secs=mongodb_index_ensure_secs,
                        read_preference=mongodb_read_preference,
                        replica_set=mongodb_replica_set,
+                       safe=mongodb_safe,
                        tz_aware=mongodb_tz_aware,
                        write_concern=mongodb_write_concern,
                        batch_size=mongodb_batch_size)
-        defaults = dict(host='127.0.0.1', port=27017,
-                        auth=False, username=getuser(),
-                        password='', ssl=False,
-                        ssl_certificate=SSL_PEM, fsync=False,
+        defaults = dict(host='127.0.0.1',
+                        port=27017,
+                        auth=False,
+                        username=getuser(),
+                        password='',
+                        ssl=False,
+                        ssl_certificate=SSL_PEM,
+                        fsync=False,
                         journal=False,
                         index_ensure_secs=INDEX_ENSURE_SECS,
-                        read_preference='NEAREST', replica_set=None,
-                        tz_aware=True, write_concern=1,
+                        read_preference='NEAREST',
+                        replica_set=None,
+                        safe=False,
+                        tz_aware=True,
+                        write_concern=0,
                         batch_size=10000)
-        self.configure('mongodb', options, defaults, kwargs.get('config_file'))
+        self.configure('mongodb', options, defaults)
 
     def __getitem__(self, query):
         return self.find(query=query, fields=self.default_fields,
@@ -478,6 +492,14 @@ class MongoDBClient(BaseClient):
             _ids.extend(_)
         return sorted(_ids)
 
+    def _flush_save(self, _cube, objects):
+        return [_cube.save(dict(o), manipulate=True) for o in objects
+                if o['_end'] is None]
+
+    def _flush_insert(self, _cube, objects):
+        objects = [o for o in objects if o['_end'] is not None]
+        return _cube.insert(objects, manipulate=True)
+
     def _flush(self, _cube, objects, autosnap=True, cube=None, owner=None):
         olen = len(objects)
         if olen == 0:
@@ -486,6 +508,8 @@ class MongoDBClient(BaseClient):
         logger.info("[%s] Flushing %s objects" % (_cube, olen))
 
         objects, dup_ids = self._filter_dups(_cube, objects)
+        # remove dups from instance object container
+        [self.objects.pop(_id) for _id in set(dup_ids)]
 
         if objects and autosnap:
             # append rotated versions to save over previous _end:None docs
@@ -497,7 +521,9 @@ class MongoDBClient(BaseClient):
             # save each object; overwrite existing
             # (same _oid + _start or _oid if _end = None) or upsert
             logger.debug('[%s] Saving %s versions' % (_cube, len(objects)))
-            _ids = [_cube.save(dict(o), manipulate=True) for o in objects]
+            _saved = self._flush_save(_cube, objects)
+            _inserted = self._flush_insert(objects)
+            _ids = set(_saved) | set(_inserted)
             # pop those we're already flushed out of the instance container
             failed = olen - len(_ids)
             if failed > 0:
@@ -505,7 +531,6 @@ class MongoDBClient(BaseClient):
             # new 'snapshoted' objects are included in _ids, but they
             # aren't in self.objects, so ignore them
         [self.objects.pop(_id) for _id in _ids if _id in self.objects]
-        [self.objects.pop(_id) for _id in set(dup_ids)]
         logger.debug(
             "[%s] %s objects remaining" % (_cube, len(self.objects)))
         return _ids
