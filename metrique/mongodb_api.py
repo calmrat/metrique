@@ -234,6 +234,7 @@ class MongoDBClient(BaseClient):
             tz_aware=self.config['mongodb'].get('tz_aware'),
             w=self.config['mongodb'].get('write_concern'),
             j=self.config['mongodb'].get('journal'),
+            safe=self.config['mongodb'].get('safe'),
             fsync=self.config['mongodb'].get('fsync'), **kwargs)
         return _proxy
 
@@ -247,6 +248,7 @@ class MongoDBClient(BaseClient):
             tz_aware=self.config['mongodb'].get('tz_aware'),
             w=self.config['mongodb'].get('write_concern'),
             j=self.config['mongodb'].get('journal'),
+            safe=self.config['mongodb'].get('safe'),
             fsync=self.config['mongodb'].get('fsync'),
             replicaSet=self.config['mongodb'].get('replica_set'),
             read_preference=read_preference, **kwargs)
