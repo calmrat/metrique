@@ -60,6 +60,7 @@ def test_api():
 
         k = len(_ids)
 
+        print _cube.find(date='~', raw=True)
         assert _cube.count(date='~') == k
         assert _cube.count() == k
 
