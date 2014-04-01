@@ -94,7 +94,7 @@ class Generic(pyclient):
                        batch_size=sql_batch_size)
         defaults = dict(host=None, port=None, retries=1,
                         username=None, password=None, batch_size=1000)
-        self.configure('sql', options, defaults, kwargs.get('config_file'))
+        self.configure('sql', options, defaults)
         self.retry_on_error = None
         self._setup_inconsistency_log()
         self._auto_reconnect_attempted = False
@@ -281,9 +281,7 @@ class Generic(pyclient):
             force = self.get_property('force', default=False)
 
         oids = []
-        if isinstance(force, (list, tuple, set)):
-            oids = force
-        elif force is True:
+        if force is True:
             # get a list of all known object ids
             table = self.get_property('table')
             db = self.get_property('db')
@@ -291,7 +289,7 @@ class Generic(pyclient):
             sql = 'SELECT DISTINCT %s.%s FROM %s.%s' % (table, _oid, db, table)
             rows = self.sql_fetchall(sql)
             oids = self._extract_row_ids(rows)
-        else:
+        elif force is None:
             if self.get_property('delta_new_ids', default=True):
                 # get all new (unknown) oids
                 oids.extend(self.get_new_oids())
@@ -300,6 +298,10 @@ class Generic(pyclient):
                 mtime = self._fetch_mtime(last_update, parse_timestamp)
                 if mtime:
                     oids.extend(self.get_changed_oids(mtime))
+        elif isinstance(force, (list, tuple, set)):
+            oids = force
+        else:
+            force = [force]
         logger.debug("Delta Size: %s" % len(oids))
         return sorted(set(oids))
 
