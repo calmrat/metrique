@@ -354,11 +354,12 @@ class BaseClient(object):
                         logfile='metrique.log', log2file=True,
                         log2stdout=False, workers=2)
         if config:
-            # config override
-            self.config = rupdate(self.config, config)
-        else:
-            # load defaults + set kwargs passed in
-            self.configure('metrique', options, defaults, config_file)
+            # make sure we apply any args passed in
+            config.setdefault('metrique', {})
+            config['metrique'].update(options)
+
+        # load defaults + set kwargs passed in
+        self.configure('metrique', options, defaults, config_file)
 
         # cube class defined name
         self._cube = type(self).name
@@ -564,5 +565,6 @@ class BaseClient(object):
         '''
         name = name or cube
         config = self.config if copy_config else {}
+        config_file = self.default_config_file
         return get_cube(cube=cube, init=init, name=name, config=config,
-                        **kwargs)
+                        config_file=config_file, **kwargs)
