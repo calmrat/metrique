@@ -94,14 +94,13 @@ class MongoDBClient(BaseClient):
     default_sort = [('_start', -1)]
 
     def __init__(self, mongodb_host=None, mongodb_port=None,
-                 mongodb_auth=None, mongodb_username=None,
+                 mongodb_username=None,
                  mongodb_password=None, mongodb_ssl=None,
                  mongodb_ssl_certificate=None, mongodb_index_ensure_secs=None,
                  mongodb_read_preference=None, mongodb_replica_set=None,
                  mongodb_tz_aware=None, mongodb_write_concern=None,
                  mongodb_batch_size=None, *args, **kwargs):
         '''
-        :param mongodb_auth: enable mongodb authentication
         :param mongodb_batch_size: The number of objs save at a time
         :param mongodb_password: mongodb password
         :param mongodb_username: mongodb username
@@ -117,7 +116,6 @@ class MongoDBClient(BaseClient):
         super(MongoDBClient, self).__init__(*args, **kwargs)
         options = dict(host=mongodb_host,
                        port=mongodb_port,
-                       auth=mongodb_auth,
                        username=mongodb_username,
                        password=mongodb_password,
                        ssl=mongodb_ssl,
@@ -130,7 +128,6 @@ class MongoDBClient(BaseClient):
                        batch_size=mongodb_batch_size)
         defaults = dict(host='127.0.0.1',
                         port=27017,
-                        auth=False,
                         username=getuser(),
                         password='',
                         ssl=False,
@@ -201,14 +198,14 @@ class MongoDBClient(BaseClient):
                 _proxy = self._load_mongo_replica_client(**kwargs)
             else:
                 _proxy = self._load_mongo_client(**kwargs)
-            if self.config['mongodb'].get('auth'):
-                _proxy = self._authenticate(_proxy)
+            username = self.config['mongodb'].get('username')
+            password = self.config['mongodb'].get('password')
+            if username and password:
+                _proxy = self._authenticate(_proxy, username, password)
             self._proxy = _proxy
         return _proxy
 
-    def _authenticate(self, proxy, username=None, password=None):
-        username = username or self.config['mongodb'].get('username')
-        password = password or self.config['mongodb'].get('password')
+    def _authenticate(self, proxy, username, password):
         ok = proxy[username].authenticate(username, password)
         if ok:
             return proxy
@@ -217,25 +214,28 @@ class MongoDBClient(BaseClient):
 
     def _load_mongo_client(self, **kwargs):
         logger.debug('Loading new MongoClient connection')
-        _proxy = MongoClient(
-            self.config['mongodb'].get('host'),
-            self.config['mongodb'].get('port'),
-            tz_aware=self.config['mongodb'].get('tz_aware'),
-            w=self.config['mongodb'].get('write_concern'),
-            **kwargs)
+        host = self.config['mongodb'].get('host')
+        port = self.config['mongodb'].get('port')
+        tz_aware = self.config['mongodb'].get('tz_aware')
+        w = self.config['mongodb'].get('write_concern')
+        _proxy = MongoClient(host, port, tz_aware=tz_aware,
+                             w=w, **kwargs)
         return _proxy
 
     def _load_mongo_replica_client(self, **kwargs):
-        logger.debug('Loading new MongoReplicaSetClient connection')
+        host = self.config['mongodb'].get('host')
+        port = self.config['mongodb'].get('port')
+        tz_aware = self.config['mongodb'].get('tz_aware')
+        w = self.config['mongodb'].get('write_concern')
+        replica_set = self.config['mongodb'].get('replica_set')
         pref = self.config['mongodb'].get('read_preference')
         read_preference = READ_PREFERENCE[pref]
-        _proxy = MongoReplicaSetClient(
-            self.config['mongodb'].get('host'),
-            self.config['mongodb'].get('port'),
-            tz_aware=self.config['mongodb'].get('tz_aware'),
-            w=self.config['mongodb'].get('write_concern'),
-            replicaSet=self.config['mongodb'].get('replica_set'),
-            read_preference=read_preference, **kwargs)
+
+        logger.debug('Loading new MongoReplicaSetClient connection')
+        _proxy = MongoReplicaSetClient(host, port, tz_aware=tz_aware,
+                                       w=w, replicaSet=replica_set,
+                                       read_preference=read_preference,
+                                       **kwargs)
         return _proxy
 
 ######################### User API ################################
@@ -454,7 +454,7 @@ class MongoDBClient(BaseClient):
         result = _cube.remove(spec)
         return result
 
-    def flush(self, autosnap=True, batch_size=None,
+    def flush(self, autosnap=True, batch_size=None, fast=True,
               cube=None, owner=None):
         '''
         Persist a list of objects to MongoDB.
@@ -474,19 +474,34 @@ class MongoDBClient(BaseClient):
         _ids = []
         for batch in batch_gen(self.objects.values(), batch_size):
             _ = self._flush(_cube=_cube, objects=batch, autosnap=autosnap,
-                            cube=cube, owner=owner)
+                            fast=fast, cube=cube, owner=owner)
             _ids.extend(_)
         return sorted(_ids)
 
-    def _flush_save(self, _cube, objects):
-        return [_cube.save(dict(o), manipulate=True) for o in objects
-                if o['_end'] is None]
+    def _flush_save(self, _cube, objects, fast=True):
+        objects = [dict(o) for o in objects if o['_end'] is None]
+        if not objects:
+            _ids = []
+        elif fast:
+            _ids = [o['_id'] for o in objects]
+            [_cube.save(o, manipulate=False)]
+        else:
+            _ids = [_cube.save(dict(o), manipulate=True) for o in objects]
+        return _ids
 
-    def _flush_insert(self, _cube, objects):
-        objects = [o for o in objects if o['_end'] is not None]
-        return _cube.insert(objects, manipulate=True)
+    def _flush_insert(self, _cube, objects, fast=True):
+        objects = [dict(o) for o in objects if o['_end'] is not None]
+        if not objects:
+            _ids = []
+        elif fast:
+            _ids = [o['_id'] for o in objects]
+            _cube.insert(objects, manipulate=False)
+        else:
+            _ids = _cube.insert(objects, manipulate=True)
+        return _ids
 
-    def _flush(self, _cube, objects, autosnap=True, cube=None, owner=None):
+    def _flush(self, _cube, objects, autosnap=True, fast=True,
+               cube=None, owner=None):
         olen = len(objects)
         if olen == 0:
             logger.debug("No objects to flush!")
@@ -507,8 +522,8 @@ class MongoDBClient(BaseClient):
             # save each object; overwrite existing
             # (same _oid + _start or _oid if _end = None) or upsert
             logger.debug('[%s] Saving %s versions' % (_cube, len(objects)))
-            _saved = self._flush_save(_cube, objects)
-            _inserted = self._flush_insert(_cube, objects)
+            _saved = self._flush_save(_cube, objects, fast)
+            _inserted = self._flush_insert(_cube, objects, fast)
             _ids = set(_saved) | set(_inserted)
             # pop those we're already flushed out of the instance container
             failed = olen - len(_ids)

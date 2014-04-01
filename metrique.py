@@ -164,10 +164,8 @@ DEFAULT_METRIQUE_JSON = '''{
     "mongodb": {
         "auth": false,
         "batch_size": 10000,
-        "fsync": false,
         "host": "127.0.0.1",
         "_host": "%s",
-        "journal": false,
         "password": "%s",
         "port": 27017,
         "read_preference": "NEAREST",
@@ -176,7 +174,7 @@ DEFAULT_METRIQUE_JSON = '''{
         "ssl_certificate": "%s",
         "tz_aware": true,
         "username": "admin",
-        "write_concern": 1
+        "write_concern": 0
     }
 }'''
 
