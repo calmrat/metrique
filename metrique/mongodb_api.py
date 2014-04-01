@@ -96,24 +96,19 @@ class MongoDBClient(BaseClient):
     def __init__(self, mongodb_host=None, mongodb_port=None,
                  mongodb_auth=None, mongodb_username=None,
                  mongodb_password=None, mongodb_ssl=None,
-                 mongodb_ssl_certificate=None, mongodb_fsync=None,
-                 mongodb_journal=None, mongodb_index_ensure_secs=None,
+                 mongodb_ssl_certificate=None, mongodb_index_ensure_secs=None,
                  mongodb_read_preference=None, mongodb_replica_set=None,
                  mongodb_tz_aware=None, mongodb_write_concern=None,
-                 mongodb_safe=None, mongodb_batch_size=None,
-                 *args, **kwargs):
+                 mongodb_batch_size=None, *args, **kwargs):
         '''
         :param mongodb_auth: enable mongodb authentication
         :param mongodb_batch_size: The number of objs save at a time
         :param mongodb_password: mongodb password
         :param mongodb_username: mongodb username
-        :param mongodb_fsync: sync writes to disk before return?
         :param mongodb_host: mongodb host(s) to connect to
-        :param mongodb_journal: enable write journal before return?
         :param mongodb_port: mongodb port to connect to
         :param mongodb_read_preference: default - NEAREST
         :param mongodb_replica_set: name of replica set, if any
-        :param mongodb_safe: enable 'safe' write mode (DEPRECIATED)
         :param mongodb_ssl: enable ssl
         :param mongodb_ssl_certificate: path to ssl combined .pem
         :param mongodb_tz_aware: return back tz_aware dates?
@@ -127,12 +122,9 @@ class MongoDBClient(BaseClient):
                        password=mongodb_password,
                        ssl=mongodb_ssl,
                        ssl_certificate=mongodb_ssl_certificate,
-                       fsync=mongodb_fsync,
-                       journal=mongodb_journal,
                        index_ensure_secs=mongodb_index_ensure_secs,
                        read_preference=mongodb_read_preference,
                        replica_set=mongodb_replica_set,
-                       safe=mongodb_safe,
                        tz_aware=mongodb_tz_aware,
                        write_concern=mongodb_write_concern,
                        batch_size=mongodb_batch_size)
@@ -143,12 +135,9 @@ class MongoDBClient(BaseClient):
                         password='',
                         ssl=False,
                         ssl_certificate=SSL_PEM,
-                        fsync=False,
-                        journal=False,
                         index_ensure_secs=INDEX_ENSURE_SECS,
                         read_preference='NEAREST',
                         replica_set=None,
-                        safe=False,
                         tz_aware=True,
                         write_concern=0,
                         batch_size=10000)
@@ -233,9 +222,7 @@ class MongoDBClient(BaseClient):
             self.config['mongodb'].get('port'),
             tz_aware=self.config['mongodb'].get('tz_aware'),
             w=self.config['mongodb'].get('write_concern'),
-            j=self.config['mongodb'].get('journal'),
-            safe=self.config['mongodb'].get('safe'),
-            fsync=self.config['mongodb'].get('fsync'), **kwargs)
+            **kwargs)
         return _proxy
 
     def _load_mongo_replica_client(self, **kwargs):
@@ -247,9 +234,6 @@ class MongoDBClient(BaseClient):
             self.config['mongodb'].get('port'),
             tz_aware=self.config['mongodb'].get('tz_aware'),
             w=self.config['mongodb'].get('write_concern'),
-            j=self.config['mongodb'].get('journal'),
-            safe=self.config['mongodb'].get('safe'),
-            fsync=self.config['mongodb'].get('fsync'),
             replicaSet=self.config['mongodb'].get('replica_set'),
             read_preference=read_preference, **kwargs)
         return _proxy
