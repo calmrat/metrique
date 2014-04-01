@@ -508,7 +508,7 @@ class MongoDBClient(BaseClient):
             # (same _oid + _start or _oid if _end = None) or upsert
             logger.debug('[%s] Saving %s versions' % (_cube, len(objects)))
             _saved = self._flush_save(_cube, objects)
-            _inserted = self._flush_insert(objects)
+            _inserted = self._flush_insert(_cube, objects)
             _ids = set(_saved) | set(_inserted)
             # pop those we're already flushed out of the instance container
             failed = olen - len(_ids)

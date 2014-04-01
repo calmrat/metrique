@@ -37,9 +37,6 @@ import warnings
 from metrique import pyclient
 from metrique.utils import batch_gen, ts2dt, dt2ts, utcnow
 
-# FIXME: why not utf-8?
-DEFAULT_ENCODING = 'latin-1'
-
 
 def get_full_history(cube, oids, flush=False, cube_name=None, autosnap=False,
                      config=None, **kwargs):
@@ -422,7 +419,7 @@ class Generic(pyclient):
     def _unwrap_aggregated(self, rows):
         # unwrap aggregated values
         # FIXME: This unicode stuff is fragile and likely to fail
-        encoding = self.get_property('encoding', default=DEFAULT_ENCODING)
+        encoding = self.get_property('encoding', default='utf8')
         for k, row in enumerate(rows):
             _row = []
             for column in row:
