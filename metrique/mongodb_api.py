@@ -94,13 +94,14 @@ class MongoDBClient(BaseClient):
     default_sort = [('_start', -1)]
 
     def __init__(self, mongodb_host=None, mongodb_port=None,
-                 mongodb_username=None,
-                 mongodb_password=None, mongodb_ssl=None,
+                 mongodb_username=None, mongodb_password=None,
+                 mongodb_auth=None, mongodb_ssl=None,
                  mongodb_ssl_certificate=None, mongodb_index_ensure_secs=None,
                  mongodb_read_preference=None, mongodb_replica_set=None,
                  mongodb_tz_aware=None, mongodb_write_concern=None,
                  mongodb_batch_size=None, *args, **kwargs):
         '''
+        :param mongodb_auth: Enable authentication
         :param mongodb_batch_size: The number of objs save at a time
         :param mongodb_password: mongodb password
         :param mongodb_username: mongodb username
@@ -116,6 +117,7 @@ class MongoDBClient(BaseClient):
         super(MongoDBClient, self).__init__(*args, **kwargs)
         options = dict(host=mongodb_host,
                        port=mongodb_port,
+                       auth=mongodb_auth,
                        username=mongodb_username,
                        password=mongodb_password,
                        ssl=mongodb_ssl,
@@ -128,6 +130,7 @@ class MongoDBClient(BaseClient):
                        batch_size=mongodb_batch_size)
         defaults = dict(host='127.0.0.1',
                         port=27017,
+                        auth=False,
                         username=getuser(),
                         password='',
                         ssl=False,
@@ -198,14 +201,18 @@ class MongoDBClient(BaseClient):
                 _proxy = self._load_mongo_replica_client(**kwargs)
             else:
                 _proxy = self._load_mongo_client(**kwargs)
+            auth = self.config['mongodb'].get('auth')
             username = self.config['mongodb'].get('username')
             password = self.config['mongodb'].get('password')
-            if username and password:
+            if auth:
                 _proxy = self._authenticate(_proxy, username, password)
             self._proxy = _proxy
         return _proxy
 
     def _authenticate(self, proxy, username, password):
+        if not (username and password):
+            raise ValueError(
+                "username:%s, password:%s required" % (username, password))
         ok = proxy[username].authenticate(username, password)
         if ok:
             return proxy
@@ -484,7 +491,7 @@ class MongoDBClient(BaseClient):
             _ids = []
         elif fast:
             _ids = [o['_id'] for o in objects]
-            [_cube.save(o, manipulate=False)]
+            [_cube.save(o, manipulate=False) for o in objects]
         else:
             _ids = [_cube.save(dict(o), manipulate=True) for o in objects]
         return _ids
