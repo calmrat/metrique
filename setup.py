@@ -38,6 +38,7 @@ __requires__ = [
     'python_dateutil (>=2.2.0)',
     'pytz'
     'simplejson (>=3.3.2)',
+    'virtualenv (>=1.11)',
 ]
 __irequires__ = [
     'anyconfig',
@@ -48,6 +49,7 @@ __irequires__ = [
     'python_dateutil>=2.2.0',
     'pytz',
     'simplejson>=3.3.2',
+    'virtualenv>=1.11',
 ]
 pip_src = 'https://pypi.python.org/packages/source'
 __deplinks__ = []
