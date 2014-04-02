@@ -12,7 +12,7 @@ used to load and manipulate cube objects.
 '''
 
 from decorator import decorator
-from datetime import datetime, timedelta
+from datetime import timedelta
 import logging
 import numpy as np
 from pandas import DataFrame, Series
@@ -20,7 +20,7 @@ import pandas.tseries.offsets as off
 from pandas.tslib import Timestamp
 import pandas as pd
 
-from metrique.utils import dt2ts
+from metrique.utils import dt2ts, utcnow
 
 logger = logging.getLogger(__name__)
 
@@ -166,7 +166,8 @@ class Result(DataFrame):
 
     ############################# DATES RANGE ################################
 
-    def get_dates_range(self, scale='auto', start=None, end=None):
+    def get_dates_range(self, scale='auto', start=None, end=None,
+                        date_max='2010-01-01'):
         '''
         Returns a list of dates sampled according to the specified parameters.
 
@@ -180,11 +181,13 @@ class Result(DataFrame):
         if scale not in ['auto', 'maximum', 'daily', 'weekly', 'monthly',
                          'quarterly', 'yearly']:
             raise ValueError('Incorrect scale: %s' % scale)
-        start = Timestamp(start or self._start.min() or '2010-01-01')
-        start = Timestamp('2010-01-01') if repr(start) == 'NaT' else start
+        start = Timestamp(start or self._start.min() or date_max)
+        # FIXME: start != start is true for NaN objects... is NaT the same?
+        start = Timestamp(date_max) if repr(start) == 'NaT' else start
         end = Timestamp(end or max(Timestamp(self._end.max()),
                                    self._start.max()))
-        end = datetime.utcnow() if repr(end) == 'NaT' else end
+        # FIXME: end != end ?
+        end = utcnow(as_datetime=True) if repr(end) == 'NaT' else end
         start = start if self.check_in_bounds(start) else self._lbound
         end = end if self.check_in_bounds(end) else self._rbound
 
@@ -311,7 +314,7 @@ class Result(DataFrame):
             last[col_name] = age - timedelta(microseconds=age.microseconds)
             return last
 
-        cut_ts = self._rbound or datetime.utcnow()
+        cut_ts = self._rbound or utcnow(as_datetime=True)
         res = pd.concat([prep(df) for _, df in self.groupby(self._oid)])
         return res
 
@@ -415,19 +418,3 @@ class Result(DataFrame):
 
     def notempty(self, field):
         return ~self.isempty(field)
-
-    ################################ SAVE ####################################
-
-    def save_to_cube(self, oid, pyclient, cube='results', owner=None):
-        '''
-        Saves this result objects to the specified metrique cube.
-
-        :param oid: The _oid to be used for this result
-        :param pyclient: A client that should be used to connect to the cube
-        :param cube: cube name
-        :param owner: username of cube owner
-        '''
-        frame = self.to_dict('list')
-        obj = {'_oid': str(oid), 'frame': frame,
-               'lbound': self._lbound, 'rbound': self._rbound}
-        pyclient.cube_save([obj], cube=cube, owner=owner)

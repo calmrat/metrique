@@ -9,22 +9,26 @@ metrique.cubes.osinfo.rpm
 This module contains the generic metrique cube used
 for extracting installed RPM details on a RPM based system.
 
-.. note:: Target system must be RPM based!
-
-.. note:: Requires paramiko python package!
+.. note:: Target system expected to be RPM based!
 '''
 
-from datetime import datetime
-import getpass
 import logging
+logger = logging.getLogger(__name__)
+
+import getpass
+try:
+    import paramiko
+    HAS_PARAMIKO = True
+except ImportError:
+    logger.warn('paramiko not found (ssh: disabled)')
+    HAS_PARAMIKO = False
 import shlex
 import socket
 import subprocess
 
 from metrique import pyclient
-from metrique.utils import dt2ts
+from metrique.utils import utcnow
 
-logger = logging.getLogger(__name__)
 FIELDS = ["name", "version", "release", "arch", "nvra", "license",
           "os", "packager", "platform", "sourcepackage", "sourcerpm",
           "summary"]
@@ -51,7 +55,8 @@ class Rpm(pyclient):
         super(Rpm, self).__init__(**kwargs)
 
     def _ssh_cmd(self, fmt):
-        import paramiko
+        if not HAS_PARAMIKO:
+            raise ImportError("`pip install paramiko` required!")
         cmd = "rpm -qa --queryformat '%s'" % fmt
         logger.debug('[%s] Running: %s' % (self.ssh_host, cmd))
         ssh = paramiko.SSHClient()
@@ -68,7 +73,7 @@ class Rpm(pyclient):
         cmd = shlex.split(cmd)
         return subprocess.check_output(cmd)
 
-    def get_objects(self):
+    def get_objects(self, **kwargs):
         '''
         Run `rpm -q` command on a {local, remote} system to get back
         details of installed RPMs.
@@ -95,9 +100,8 @@ class Rpm(pyclient):
         if isinstance(output, basestring):
             output = output.strip().split('\n')
         lines = [l.strip().split(':::') for l in output]
-        now = dt2ts(datetime.now())
+        now = utcnow()
         host = self.ssh_host or socket.gethostname()
-        objects = []
         for line in lines:
             obj = {'host': host, '_start': now}
             for i, item in enumerate(line):
@@ -105,9 +109,8 @@ class Rpm(pyclient):
                     item = None
                 obj[self.fields[i]] = item
             obj['_oid'] = '%s__%s' % (host, obj['nvra'])
-            objects.append(obj)
-        objects = self.normalize(objects)
-        return objects
+            self.objects.add(obj)
+        return super(Rpm, self).get_objects(**kwargs)
 
 
 if __name__ == '__main__':

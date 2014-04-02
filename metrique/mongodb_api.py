@@ -542,7 +542,7 @@ class MongoDBClient(BaseClient):
 
         if _ids:
             # update self.object container to contain only non-dups
-            objects = {o for o in objects if o['_id'] not in _ids}
+            objects = [o for o in objects if o['_id'] not in _ids]
 
         _olen = len(objects)
         diff = olen - _olen
@@ -607,7 +607,7 @@ class MongoDBClient(BaseClient):
     def _parse_fields(self, fields):
         _fields = {'_id': 0, '_start': 1, '_end': 1, '_oid': 1}
         if fields in [None, False]:
-            pass
+            _fields = None
         elif fields in ['~', True]:
             _fields = None
         elif isinstance(fields, dict):
@@ -708,7 +708,7 @@ class MongoDBClient(BaseClient):
         pipeline = [
             {'$match': spec},
             {'$group':
-             {'_id': '$%s' % by_field if by_field else 'id',
+             {'_id': '$%s' % by_field if by_field else '_id',
               'starts': {'$push': '$_start'},
               'ends': {'$push': '$_end'}}
              }]
@@ -827,8 +827,8 @@ class MongoDBClient(BaseClient):
         '''
         docs = self.sample_docs(sample_size=sample_size, query=query,
                                 date=date, cube=cube, owner=owner)
-        result = list(set([k for d in docs for k in d.keys()]))
-        return sorted(result)
+        result = sorted({k for d in docs for k in d.iterkeys()})
+        return result
 
     def sample_docs(self, sample_size=None, query=None, date=None,
                     cube=None, owner=None):
@@ -847,7 +847,7 @@ class MongoDBClient(BaseClient):
         docs = _cube.find(spec)
         n = docs.count()
         if n <= sample_size:
-            docs = tuple(docs)
+            docs = list(docs)
         else:
             to_sample = sorted(set(random.sample(xrange(n), sample_size)))
             docs = [docs[i] for i in to_sample]
