@@ -832,8 +832,8 @@ class Generic(pyclient):
         _log_file = self.config['metrique'].get('log_file').split('.log')[0]
         basename = _log_file + '.inconsistencies'
         log_file = basename + '.log'
-        logdir = os.environ.get("METRIQUE_LOGS")
-        log_file = os.path.join(logdir, log_file)
+        log_dir = self.config['metrique'].get('log_dir')
+        log_file = os.path.join(log_dir, log_file)
 
         logger_name = 'incon'
         logger = logging.getLogger(logger_name)
