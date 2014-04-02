@@ -286,7 +286,7 @@ class Generic(pyclient):
             sql = 'SELECT DISTINCT %s.%s FROM %s.%s' % (table, _oid, db, table)
             rows = self.sql_fetchall(sql)
             oids = self._extract_row_ids(rows)
-        elif force is None:
+        elif not force:
             if self.get_property('delta_new_ids', default=True):
                 # get all new (unknown) oids
                 oids.extend(self.get_new_oids())
@@ -296,7 +296,7 @@ class Generic(pyclient):
                 if mtime:
                     oids.extend(self.get_changed_oids(mtime))
         elif isinstance(force, (list, tuple, set)):
-            oids = force
+            oids = list(force)
         else:
             force = [force]
         logger.debug("Delta Size: %s" % len(oids))

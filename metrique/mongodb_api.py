@@ -183,7 +183,7 @@ class MongoDBClient(BaseClient):
     def get_collection(self, owner=None, cube=None):
         cube = cube or self.name
         if not cube:
-            raise RuntimeError("[%s.%s] Invalid cube!" % cube)
+            raise RuntimeError("[%s] Invalid cube!" % cube)
         _cube = self.get_db(owner)[cube]
         try:
             self._ensure_base_indexes(_cube)
@@ -430,6 +430,9 @@ class MongoDBClient(BaseClient):
         '''
         if not (new_name or new_owner):
             raise ValueError("must set either/or new_name or new_owner")
+        new_name = new_name or cube or self.name
+        if not new_name:
+            raise ValueError("new_name is not set!")
         _cube = self.get_collection(owner, cube)
         if new_owner:
             _from = _cube.full_name
