@@ -15,6 +15,8 @@ log_format = "%(name)s.%(process)s:%(asctime)s:%(message)s"
 logging.basicConfig(format=log_format)
 logger = logging.getLogger()
 logger.setLevel(logging.WARN)
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.WARN)
 
 import os
 # if HOME environment variable is set, use that

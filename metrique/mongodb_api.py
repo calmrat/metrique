@@ -89,7 +89,7 @@ class MongoDBClient(BaseClient):
         + sample: query for a psuedo-random set of objects
         + aggregate: run pql (mongodb) aggregate query remotely
     '''
-
+    config_section = 'mongodb'
     default_fields = '~'
     default_sort = [('_start', -1)]
 
@@ -146,7 +146,7 @@ class MongoDBClient(BaseClient):
                         tz_aware=True,
                         write_concern=0,
                         batch_size=10000)
-        self.configure('mongodb', options, defaults)
+        self.configure(options, defaults)
 
     def __getitem__(self, query):
         return self.find(query=query, fields=self.default_fields,

@@ -324,6 +324,7 @@ class BaseClient(object):
             <type HTTPClient(...)>
 
     '''
+    config_section = 'metrique'
     default_config_file = DEFAULT_CONFIG
     name = None
     config = None
@@ -383,7 +384,7 @@ class BaseClient(object):
              for k, v in options.iteritems() if v is not None]
         else:
             # load defaults + set args passed in
-            self.configure('metrique', options, defaults, config_file)
+            self.configure(options, defaults, config_file)
 
         # cube class defined name
         self._cube = type(self).name
@@ -402,9 +403,11 @@ class BaseClient(object):
     def load_config(path):
         return load_config(path)
 
-    def configure(self, section_key, options, defaults, config_file=None):
+    def configure(self, options, defaults, section_key=None,
+                  config_file=None):
+        section_key = section_key or self.config_section
         if not section_key:
-            raise ValueError("section_key must be non-null")
+            raise ValueError("section_key can't be null")
         # load the config options from disk, if path provided
         config_file = config_file or self.default_config_file
         if config_file:

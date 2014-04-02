@@ -49,7 +49,7 @@ class Teiid(sqldata_generic):
             raise ImportError('`pip install psycopg2` required')
         options = dict(vdb=sql_vdb)
         defaults = dict(vdb=None)
-        self.configure('sql', options, defaults)
+        self.configure(options, defaults)
         self.retry_on_error = DatabaseError
 
     @property
