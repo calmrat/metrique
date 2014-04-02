@@ -39,6 +39,7 @@ def test_api():
     m = pyclient()
     m.user_remove('test_user', clear_db=True)
     assert m.user_register('test_user', 'test_user')
+    m = pyclient(**config)
     cubes = ['csvcube_local', 'jsoncube_local']
     for cube in cubes:
         _cube = m.get_cube(cube=cube, pkgs=pkgs, cube_paths=paths, init=True)
@@ -60,7 +61,6 @@ def test_api():
 
         k = len(_ids)
 
-        print _cube.find(date='~', raw=True)
         assert _cube.count(date='~') == k
         assert _cube.count() == k
 

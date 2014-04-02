@@ -342,7 +342,6 @@ class BaseClient(object):
         :param workers: number of workers for threaded operations
         '''
         super(BaseClient, self).__init__()
-        self.config = self.config or {}
         # set default config value as dict (from None set cls level)
         self.default_config_file = config_file or self.default_config_file
         options = dict(cube_pkgs=cube_pkgs, cube_paths=cube_paths,
@@ -353,13 +352,20 @@ class BaseClient(object):
                         logdir=os.environ.get("METRIQUE_LOGS"),
                         logfile='metrique.log', log2file=True,
                         log2stdout=False, workers=2)
-        if config:
-            # make sure we apply any args passed in
-            config.setdefault('metrique', {})
-            config['metrique'].update(options)
 
-        # load defaults + set kwargs passed in
-        self.configure('metrique', options, defaults, config_file)
+        # if config is passed in, set it, otherwise start
+        # with class assigned default or empty dict
+        self.config = deepcopy(config) or self.config or {}
+
+        if config:
+            # we're going to use the passed in config;
+            # make sure we apply any args passed in though
+            self.config.setdefault('metrique', {})
+            [self.config['metrique'].update({k: v})
+             for k, v in options.iteritems() if v is not None]
+        else:
+            # load defaults + set args passed in
+            self.configure('metrique', options, defaults, config_file)
 
         # cube class defined name
         self._cube = type(self).name

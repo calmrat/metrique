@@ -137,7 +137,7 @@ class MongoDBClient(BaseClient):
                         auth=False,
                         username=getuser(),
                         password='',
-                        owner=options.get('username') or getuser(),
+                        owner=None,
                         ssl=False,
                         ssl_certificate=SSL_PEM,
                         index_ensure_secs=INDEX_ENSURE_SECS,
@@ -171,6 +171,8 @@ class MongoDBClient(BaseClient):
 
     def get_db(self, owner=None):
         owner = owner or self.config['mongodb'].get('owner')
+        # assume owner is config'd username if not set
+        owner = owner or self.config['mongodb'].get('username')
         if not owner:
             raise RuntimeError("[%s] Invalid db!" % owner)
         try:
@@ -179,10 +181,9 @@ class MongoDBClient(BaseClient):
             raise RuntimeError("unable to get db! (%s)" % e)
 
     def get_collection(self, owner=None, cube=None):
-        owner = owner or self.config['mongodb'].get('owner')
         cube = cube or self.name
-        if not (owner and cube):
-            raise RuntimeError("[%s.%s] Invalid cube!" % (owner, cube))
+        if not cube:
+            raise RuntimeError("[%s.%s] Invalid cube!" % cube)
         _cube = self.get_db(owner)[cube]
         try:
             self._ensure_base_indexes(_cube)
@@ -223,6 +224,7 @@ class MongoDBClient(BaseClient):
                 "username:%s, password:%s required" % (username, password))
         ok = proxy[username].authenticate(username, password)
         if ok:
+            logger.debug('Authenticated as %s' % username)
             return proxy
         raise RuntimeError(
             "MongoDB failed to authenticate user (%s)" % username)
@@ -347,7 +349,7 @@ class MongoDBClient(BaseClient):
         '''
         with_user = self._validate_username(with_user)
         roles = self._validate_cube_roles(roles or ['read'])
-        _cube = self.get_collection(owner, cube)
+        _cube = self.get_db(owner)
         logger.info(
             '[%s] Sharing cube with %s (%s)' % (_cube, with_user, roles))
         result = _cube.add_user(name=with_user, roles=roles,
