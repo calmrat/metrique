@@ -13,7 +13,7 @@ __version__, version_info
 import logging
 log_format = "%(name)s.%(process)s:%(asctime)s:%(message)s"
 log_format = logging.Formatter(log_format)
-logger = logging.getLogger()
+logger = logging.getLogger(__name__)
 logger.setLevel(logging.WARN)
 hdlr = logging.StreamHandler()
 hdlr.setFormatter(log_format)

@@ -99,13 +99,16 @@ class MongoDBClient(BaseClient):
                  mongodb_ssl_certificate=None, mongodb_index_ensure_secs=None,
                  mongodb_read_preference=None, mongodb_replica_set=None,
                  mongodb_tz_aware=None, mongodb_write_concern=None,
-                 mongodb_batch_size=None, *args, **kwargs):
+                 mongodb_batch_size=None,
+                 mongodb_owner=None,
+                 *args, **kwargs):
         '''
         :param mongodb_auth: Enable authentication
         :param mongodb_batch_size: The number of objs save at a time
         :param mongodb_password: mongodb password
         :param mongodb_username: mongodb username
         :param mongodb_host: mongodb host(s) to connect to
+        :param mongodb_owner: mongodb owner user database cube is in
         :param mongodb_port: mongodb port to connect to
         :param mongodb_read_preference: default - NEAREST
         :param mongodb_replica_set: name of replica set, if any
@@ -120,6 +123,7 @@ class MongoDBClient(BaseClient):
                        auth=mongodb_auth,
                        username=mongodb_username,
                        password=mongodb_password,
+                       owner=mongodb_owner,
                        ssl=mongodb_ssl,
                        ssl_certificate=mongodb_ssl_certificate,
                        index_ensure_secs=mongodb_index_ensure_secs,
@@ -133,6 +137,7 @@ class MongoDBClient(BaseClient):
                         auth=False,
                         username=getuser(),
                         password='',
+                        owner=options.get('username') or getuser(),
                         ssl=False,
                         ssl_certificate=SSL_PEM,
                         index_ensure_secs=INDEX_ENSURE_SECS,
@@ -165,7 +170,7 @@ class MongoDBClient(BaseClient):
                            background=False, cache_for=s)
 
     def get_db(self, owner=None):
-        owner = owner or self.config['mongodb'].get('username')
+        owner = owner or self.config['mongodb'].get('owner')
         if not owner:
             raise RuntimeError("[%s] Invalid db!" % owner)
         try:
@@ -174,12 +179,15 @@ class MongoDBClient(BaseClient):
             raise RuntimeError("unable to get db! (%s)" % e)
 
     def get_collection(self, owner=None, cube=None):
-        owner = owner or self.config['mongodb'].get('username')
+        owner = owner or self.config['mongodb'].get('owner')
         cube = cube or self.name
         if not (owner and cube):
             raise RuntimeError("[%s.%s] Invalid cube!" % (owner, cube))
         _cube = self.get_db(owner)[cube]
-        self._ensure_base_indexes(_cube)
+        try:
+            self._ensure_base_indexes(_cube)
+        except OperationFailure as e:
+            logger.debug(e)
         return _cube
 
     @property
@@ -650,7 +658,7 @@ class MongoDBClient(BaseClient):
         return _fields
 
     def find(self, query=None, fields=None, date=None, sort=None, one=False,
-             raw=False, explain=False, merge_versions=True, skip=0,
+             raw=False, explain=False, merge_versions=False, skip=0,
              limit=0, as_cursor=False, cube=None, owner=None):
         '''
         Run a pql mongodb based query on the given cube.

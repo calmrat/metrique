@@ -530,7 +530,7 @@ class BaseClient(object):
         logdir = self.config['metrique'].get('logdir', '')
         logfile = os.path.join(logdir, logfile)
 
-        logger = logging.getLogger()
+        logger = logging.getLogger(__name__)
         logger.handlers = []
         if log2stdout:
             hdlr = logging.StreamHandler()
