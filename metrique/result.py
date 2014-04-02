@@ -396,6 +396,7 @@ class Result(DataFrame):
         :param function: func that takes a DataFrame and returns a DataFrame
         '''
         return pd.concat([function(df) for _, df in self.groupby(self._oid)])
+
     def has(self, field, val):
         return self[field].apply(lambda vals: val in (vals or []))
 

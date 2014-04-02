@@ -816,7 +816,7 @@ class MongoDBClient(BaseClient):
         checked = set(oids)
         fringe = oids
         loop_k = 0
-        _cube = self.get_colletion(owner, cube)
+        _cube = self.get_collection(owner, cube)
         while len(fringe) > 0:
             if level and loop_k == abs(level):
                 break
