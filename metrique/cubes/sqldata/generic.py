@@ -829,15 +829,15 @@ class Generic(pyclient):
                     yield field, tokens
 
     def _setup_inconsistency_log(self):
-        _logfile = self.config['metrique'].get('logfile').split('.log')[0]
-        basename = _logfile + '.inconsistencies'
-        logfile = basename + '.log'
+        _log_file = self.config['metrique'].get('log_file').split('.log')[0]
+        basename = _log_file + '.inconsistencies'
+        log_file = basename + '.log'
         logdir = os.environ.get("METRIQUE_LOGS")
-        logfile = os.path.join(logdir, logfile)
+        log_file = os.path.join(logdir, log_file)
 
         logger_name = 'incon'
         logger = logging.getLogger(logger_name)
-        hdlr = logging.FileHandler(logfile)
+        hdlr = logging.FileHandler(log_file)
         log_format = logging.Formatter("%(message)s")
         hdlr.setFormatter(log_format)
         logger.addHandler(hdlr)
