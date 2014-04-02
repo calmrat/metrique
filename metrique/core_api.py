@@ -591,19 +591,22 @@ class BaseClient(object):
         log_format = "%(name)s.%(process)s:%(asctime)s:%(message)s"
         log_format = logging.Formatter(log_format, "%Y%m%dT%H%M%S")
 
+        log2file = self.config['metrique'].get('log2file')
         log_file = self.config['metrique'].get('log_file', '')
         log_dir = self.config['metrique'].get('log_dir', '')
         log_file = os.path.join(log_dir, log_file)
 
-        logger = logging.getLogger(__name__)
+        logger = logging.getLogger('metrique')
         logger.propagate = 0
         logger.handlers = []
-        if log2stdout:
-            hdlr = logging.StreamHandler()
+        if log2file and log_file:
+            hdlr = logging.FileHandler(log_file)
             hdlr.setFormatter(log_format)
             logger.addHandler(hdlr)
-        if self.config['metrique'].get('log2file') and log_file:
-            hdlr = logging.FileHandler(log_file)
+        else:
+            log2stdout = True
+        if log2stdout:
+            hdlr = logging.StreamHandler()
             hdlr.setFormatter(log_format)
             logger.addHandler(hdlr)
         self._debug_set_level(logger, level)
