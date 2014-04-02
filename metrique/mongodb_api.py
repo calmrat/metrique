@@ -418,18 +418,34 @@ class MongoDBClient(BaseClient):
 
     ######## SAVE/REMOVE ########
 
-    def rename(self, new_name, drop_target=False, cube=None, owner=None):
+    def rename(self, new_name=None, new_owner=None, drop_target=False,
+               cube=None, owner=None):
         '''
         Rename a cube.
 
         :param new_name: new cube name
+        :param new_owner: new cube owner (admin privleges required!)
         :param cube: cube name
         :param owner: username of cube owner
         '''
+        if not (new_name or new_owner):
+            raise ValueError("must set either/or new_name or new_owner")
         _cube = self.get_collection(owner, cube)
-        logger.info('[%s] Renaming cube -> %s' % (_cube, new_name))
-        _cube.rename(new_name, dropTarget=drop_target)
-        result = bool(new_name in self.db.collection_names())
+        if new_owner:
+            _from = _cube.full_name
+            _to = '%s.%s' % (new_owner, new_name)
+            self.proxy['admin'].command(
+                'renameCollection', _from, to=_to, dropTarget=drop_target)
+            # don't touch the new collection until after attempting
+            # the rename; collection would otherwise be created
+            # empty automatically then the rename fails because
+            # target already exists.
+            _new_db = self.get_db(new_owner)
+            result = bool(new_name in _new_db.collection_names())
+        else:
+            logger.info('[%s] Renaming cube -> %s' % (_cube, new_name))
+            _cube.rename(new_name, dropTarget=drop_target)
+            result = bool(new_name in self.db.collection_names())
         if cube is None and result:
             self.name = new_name
         return result
