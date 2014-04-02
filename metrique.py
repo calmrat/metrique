@@ -435,7 +435,7 @@ def remove(path, quiet=True):
     return path
 
 
-def system(cmd, fork=False, sig=None, sig_func=None):
+def system(cmd, sig=None, sig_func=None):
     if sig and sig_func:
         signal.signal(sig, sig_func)
 

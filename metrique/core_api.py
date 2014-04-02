@@ -74,6 +74,9 @@ import logging
 import os
 import pandas as pd
 import re
+import shlex
+import signal
+import subprocess
 import urllib
 
 from metrique.utils import get_cube, utcnow, jsonhash, dt2ts, load_config
@@ -330,13 +333,14 @@ class BaseClient(object):
 
     def __init__(self, name, config_file=None, config=None,
                  cube_pkgs=None, cube_paths=None, debug=None,
-                 logdir=None, logfile=None, log2file=None,
-                 log2stdout=None, workers=None):
+                 log_file=None, log2file=None, log2stdout=None,
+                 workers=None, log_dir=None, cache_dir=None,
+                 etc_dir=None, tmp_dir=None):
         '''
         :param cube_pkgs: list of package names where to search for cubes
         :param cube_paths: Additional paths to search for client cubes
         :param debug: turn on debug mode logging
-        :param logfile: filename for logs
+        :param log_file: filename for logs
         :param log2file: boolean - log output to file?
         :param logstout: boolean - log output to stdout?
         :param workers: number of workers for threaded operations
@@ -344,14 +348,28 @@ class BaseClient(object):
         super(BaseClient, self).__init__()
         # set default config value as dict (from None set cls level)
         self.default_config_file = config_file or self.default_config_file
-        options = dict(cube_pkgs=cube_pkgs, cube_paths=cube_paths,
-                       debug=debug, logdir=logdir, logfile=logfile,
-                       log2file=log2file, log2stdout=log2stdout,
-                       workers=workers)
-        defaults = dict(cube_pkgs=['cubes'], cube_paths=[], debug=None,
-                        logdir=os.environ.get("METRIQUE_LOGS"),
-                        logfile='metrique.log', log2file=True,
-                        log2stdout=False, workers=2)
+        options = dict(cube_pkgs=cube_pkgs,
+                       cube_paths=cube_paths,
+                       debug=debug,
+                       log_file=log_file,
+                       log2file=log2file,
+                       log2stdout=log2stdout,
+                       workers=workers,
+                       log_dir=log_dir,
+                       cache_dir=cache_dir,
+                       etc_dir=etc_dir,
+                       tmp_dir=tmp_dir)
+        defaults = dict(cube_pkgs=['cubes'],
+                        cube_paths=[],
+                        debug=None,
+                        log_file='metrique.log',
+                        log2file=True,
+                        log2stdout=False,
+                        workers=2,
+                        etc_dir=os.environ.get('METRIQUE_ETC', ''),
+                        log_dir=os.environ.get('METRIQUE_LOGS', ''),
+                        tmp_dir=os.environ.get('METRIQUE_TMP', ''),
+                        cache_dir=os.environ.get('METRIQUE_CACHE', ''))
 
         # if config is passed in, set it, otherwise start
         # with class assigned default or empty dict
@@ -416,7 +434,48 @@ class BaseClient(object):
         # replacing existing container with a new, empty one
         self._objects = MetriqueContainer()
 
+    def _sys_call(self, cmd, sig=None, sig_func=None, quiet=True):
+        if not quiet:
+            logger.debug(cmd)
+        if isinstance(cmd, basestring):
+            cmd = re.sub('\s+', ' ', cmd)
+            cmd = cmd.strip()
+            cmd = shlex.split(cmd)
+        if sig and sig_func:
+            signal.signal(sig, sig_func)
+        output = subprocess.check_output(cmd, stderr=subprocess.STDOUT)
+        if not quiet:
+            logger.debug(output)
+        return output
+
 ####################### data loading api ###################
+    def git_clone(self, uri, pull=True):
+        '''
+        Given a git repo, clone (cache) it locally.
+
+        :param uri: git repo uri
+        :param pull: whether to pull after cloning (or loading cache)
+        '''
+        cache_dir = self.config['metrique'].get('cache_dir')
+        # make the uri safe for filesystems
+        _uri = "".join(x for x in uri if x.isalnum())
+        repo_path = os.path.expanduser(os.path.join(cache_dir, _uri))
+        if not os.path.exists(repo_path):
+            from_cache = False
+            logger.info(
+                'Locally caching git repo [%s] to [%s]' % (uri, repo_path))
+            cmd = 'git clone %s %s' % (uri, repo_path)
+            self._sys_call(cmd)
+        else:
+            from_cache = True
+            logger.info(
+                'GIT repo loaded from local cache [%s])' % (repo_path))
+        if pull and not from_cache:
+            os.chdir(repo_path)
+            cmd = 'git pull'
+            self._sys_call(cmd)
+        return repo_path
+
     def load(self, path, filetype=None, as_dict=True, raw=False,
              retries=None, **kwargs):
         '''Load multiple files from various file types automatically.
@@ -525,25 +584,26 @@ class BaseClient(object):
             * debug (bool)
             * log2stdout (bool)
             * log2file (bool)
-            * logfile (path)
+            * log_file (path)
         '''
         level = self.config['metrique'].get('debug')
         log2stdout = self.config['metrique'].get('log2stdout')
         log_format = "%(name)s.%(process)s:%(asctime)s:%(message)s"
         log_format = logging.Formatter(log_format, "%Y%m%dT%H%M%S")
 
-        logfile = self.config['metrique'].get('logfile', '')
-        logdir = self.config['metrique'].get('logdir', '')
-        logfile = os.path.join(logdir, logfile)
+        log_file = self.config['metrique'].get('log_file', '')
+        log_dir = self.config['metrique'].get('log_dir', '')
+        log_file = os.path.join(log_dir, log_file)
 
         logger = logging.getLogger(__name__)
+        logger.propagate = 0
         logger.handlers = []
         if log2stdout:
             hdlr = logging.StreamHandler()
             hdlr.setFormatter(log_format)
             logger.addHandler(hdlr)
-        if self.config['metrique'].get('log2file') and logfile:
-            hdlr = logging.FileHandler(logfile)
+        if self.config['metrique'].get('log2file') and log_file:
+            hdlr = logging.FileHandler(log_file)
             hdlr.setFormatter(log_format)
             logger.addHandler(hdlr)
         self._debug_set_level(logger, level)
