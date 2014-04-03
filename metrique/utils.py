@@ -31,6 +31,14 @@ import re
 import simplejson as json
 import sys
 
+try:
+    import sqlalchemy
+    HAS_SQLALCHEMY = True
+except ImportError:
+    logger.warn('sqlalchemy not installed!')
+    HAS_SQLALCHEMY = False
+
+
 json_encoder = json.JSONEncoder()
 
 DEFAULT_PKGS = ['metrique.cubes']
@@ -237,6 +245,30 @@ def get_timezone_converter(from_timezone):
             dt = from_tz.localize(dt).astimezone(UTC)
         return dt
     return timezone_converter
+
+
+def _sqla_teiid(host, port, vdb, username, password, version=None):
+    version = version or (8, 2)
+    uri = 'postgresql+psycopg2://%s:%s@%s:%s/%s' % (
+        username, password, host, port, vdb)
+    import sqlalchemy.dialects.postgresql as p
+    # version normally comes "'Teiid 8.5.0.Final'", which sqlalchemy
+    # failed to parse
+    p.base.PGDialect._get_server_version_info = lambda *i: version
+    p.base.PGDialect.get_isolation_level = lambda *i: "READ UNCOMMITTED"
+    p.psycopg2.PGDialect_psycopg2.set_isolation_level = lambda *i: None
+    kwargs = dict(isolation_level="READ UNCOMMITTED")
+    return uri, kwargs
+
+
+def get_sqlalchemy_engine(backend, echo=True, **kwargs):
+        if not HAS_SQLALCHEMY:
+            raise NotImplementedError('`pip install sqlalchemy` required')
+        if backend == 'teiid':
+            uri, kwargs = _sqla_teiid(**kwargs)
+        else:
+            raise NotImplementedError("Unsupported backend: %s" % backend)
+        return sqlalchemy.create_engine(uri, echo=echo, **kwargs)
 
 
 def json_encode(obj):

@@ -80,7 +80,7 @@ import subprocess
 import urllib
 
 from metrique.utils import get_cube, utcnow, jsonhash, dt2ts, load_config
-from metrique.utils import rupdate
+from metrique.utils import rupdate, get_sqlalchemy_engine
 
 logger = logging.getLogger(__name__)
 
@@ -329,7 +329,6 @@ class BaseClient(object):
     name = None
     config = None
     _objects = None
-
     __metaclass__ = MetriqueFactory
 
     def __init__(self, name, config_file=None, config=None,
@@ -399,172 +398,15 @@ class BaseClient(object):
 
         self._objects = MetriqueContainer()
 
-    @staticmethod
-    def load_config(path):
-        return load_config(path)
+    def _debug_set_level(self, logger, level):
+        if level in [-1, False]:
+            logger.setLevel(logging.WARN)
+        elif level in [0, None]:
+            logger.setLevel(logging.INFO)
+        elif level in [True, 1, 2]:
+            logger.setLevel(logging.DEBUG)
+        return logger
 
-    def configure(self, section_key, options, defaults, config_file=None):
-        if not section_key:
-            raise ValueError("section_key can't be null")
-        # load the config options from disk, if path provided
-        config_file = config_file or self.default_config_file
-        if config_file:
-            raw_config = self.load_config(config_file)
-            section = raw_config.get(section_key, {})
-            if not isinstance(section, dict):
-                # convert mergeabledict (anyconfig) to dict of dicts
-                section = section.convert_to(section)
-            defaults = rupdate(defaults, section)
-        # set option to value passed in, if any
-        for k, v in options.iteritems():
-            v = v if v is not None else defaults[k]
-            section[unicode(k)] = v
-        self.config.setdefault(section_key, {})
-        self.config[section_key] = rupdate(self.config[section_key], section)
-
-    @property
-    def objects(self):
-        return self._objects
-
-    @objects.setter
-    def objects(self, value):
-        self._objects = MetriqueContainer(value)
-
-    @objects.deleter
-    def objects(self):
-        # replacing existing container with a new, empty one
-        self._objects = MetriqueContainer()
-
-    def _sys_call(self, cmd, sig=None, sig_func=None, quiet=True):
-        if not quiet:
-            logger.debug(cmd)
-        if isinstance(cmd, basestring):
-            cmd = re.sub('\s+', ' ', cmd)
-            cmd = cmd.strip()
-            cmd = shlex.split(cmd)
-        if sig and sig_func:
-            signal.signal(sig, sig_func)
-        output = subprocess.check_output(cmd, stderr=subprocess.STDOUT)
-        if not quiet:
-            logger.debug(output)
-        return output
-
-####################### data loading api ###################
-    def git_clone(self, uri, pull=True):
-        '''
-        Given a git repo, clone (cache) it locally.
-
-        :param uri: git repo uri
-        :param pull: whether to pull after cloning (or loading cache)
-        '''
-        cache_dir = self.config['metrique'].get('cache_dir')
-        # make the uri safe for filesystems
-        _uri = "".join(x for x in uri if x.isalnum())
-        repo_path = os.path.expanduser(os.path.join(cache_dir, _uri))
-        if not os.path.exists(repo_path):
-            from_cache = False
-            logger.info(
-                'Locally caching git repo [%s] to [%s]' % (uri, repo_path))
-            cmd = 'git clone %s %s' % (uri, repo_path)
-            self._sys_call(cmd)
-        else:
-            from_cache = True
-            logger.info(
-                'GIT repo loaded from local cache [%s])' % (repo_path))
-        if pull and not from_cache:
-            os.chdir(repo_path)
-            cmd = 'git pull'
-            self._sys_call(cmd)
-        return repo_path
-
-    def load(self, path, filetype=None, as_dict=True, raw=False,
-             retries=None, **kwargs):
-        '''Load multiple files from various file types automatically.
-
-        Supports glob paths, eg::
-
-            path = 'data/*.csv'
-
-        Filetypes are autodetected by common extension strings.
-
-        Currently supports loadings from:
-            * csv (pd.read_csv)
-            * json (pd.read_json)
-
-        :param path: path to config json file
-        :param filetype: override filetype autodetection
-        :param kwargs: additional filetype loader method kwargs
-        '''
-        retries = int(retries) if retries else 3
-        # kwargs are for passing ftype load options (csv.delimiter, etc)
-        # expect the use of globs; eg, file* might result in fileN (file1,
-        # file2, file3), etc
-        if re.match('https?://', path):
-            while retries:
-                try:
-                    _path, headers = self.urlretrieve(path)
-                except Exception as e:
-                    retries -= 1
-                    logger.warn(
-                        'Failed getting %s: %s (retry:%s)' % (
-                            path, e, retries))
-                    continue
-                else:
-                    break
-            logger.debug('Saved %s to tmp file: %s' % (path, _path))
-            try:
-                df = self._load_file(_path, filetype, as_dict=False, **kwargs)
-            finally:
-                os.remove(_path)
-        else:
-            path = re.sub('^file://', '', path)
-            path = os.path.expanduser(path)
-            datasets = glob.glob(os.path.expanduser(path))
-            # buid up a single dataframe by concatting
-            # all globbed files together
-            df = [self._load_file(ds, filetype, as_dict=False, **kwargs)
-                  for ds in datasets]
-            if df:
-                df = pd.concat(df)
-
-        if df.empty:
-            raise ValueError("not data extracted!")
-
-        if raw:
-            return df.to_dict()
-        # FIXME: rename to transform
-        if as_dict:
-            return df.T.to_dict().values()
-        else:
-            return df
-
-    def _load_file(self, path, filetype, as_dict=True, **kwargs):
-        if not filetype:
-            # try to get file extension
-            filetype = path.split('.')[-1]
-        if filetype in ['csv', 'txt']:
-            result = self._load_csv(path, as_dict=as_dict, **kwargs)
-        elif filetype in ['json']:
-            result = self._load_json(path, as_dict=as_dict, **kwargs)
-        else:
-            raise TypeError("Invalid filetype: %s" % filetype)
-        if as_dict:
-            return result.T.as_dict.values()
-        else:
-            return result
-
-    def _load_csv(self, path, as_dict=True, **kwargs):
-        # load the file according to filetype
-        return pd.read_csv(path, **kwargs)
-
-    def _load_json(self, path, as_dict=True, **kwargs):
-        return pd.read_json(path, **kwargs)
-
-    def urlretrieve(self, uri, saveas=None):
-        '''urllib.urlretrieve wrapper'''
-        return urllib.urlretrieve(uri, saveas)
-
-#################### misc ##################################
     def debug_setup(self):
         '''
         Local object instance logger setup.
@@ -612,14 +454,24 @@ class BaseClient(object):
             logger.addHandler(hdlr)
         self._debug_set_level(logger, level)
 
-    def _debug_set_level(self, logger, level):
-        if level in [-1, False]:
-            logger.setLevel(logging.WARN)
-        elif level in [0, None]:
-            logger.setLevel(logging.INFO)
-        elif level in [True, 1, 2]:
-            logger.setLevel(logging.DEBUG)
-        return logger
+    def configure(self, section_key, options, defaults, config_file=None):
+        if not section_key:
+            raise ValueError("section_key can't be null")
+        # load the config options from disk, if path provided
+        config_file = config_file or self.default_config_file
+        if config_file:
+            raw_config = self.load_config(config_file)
+            section = raw_config.get(section_key, {})
+            if not isinstance(section, dict):
+                # convert mergeabledict (anyconfig) to dict of dicts
+                section = section.convert_to(section)
+            defaults = rupdate(defaults, section)
+        # set option to value passed in, if any
+        for k, v in options.iteritems():
+            v = v if v is not None else defaults[k]
+            section[unicode(k)] = v
+        self.config.setdefault(section_key, {})
+        self.config[section_key] = rupdate(self.config[section_key], section)
 
     def get_cube(self, cube, init=True, name=None, copy_config=True, **kwargs):
         '''wrapper for :func:`metrique.utils.get_cube`
@@ -638,3 +490,164 @@ class BaseClient(object):
         config_file = self.default_config_file
         return get_cube(cube=cube, init=init, name=name, config=config,
                         config_file=config_file, **kwargs)
+
+    def git_clone(self, uri, pull=True):
+        '''
+        Given a git repo, clone (cache) it locally.
+
+        :param uri: git repo uri
+        :param pull: whether to pull after cloning (or loading cache)
+        '''
+        cache_dir = self.config['metrique'].get('cache_dir')
+        # make the uri safe for filesystems
+        _uri = "".join(x for x in uri if x.isalnum())
+        repo_path = os.path.expanduser(os.path.join(cache_dir, _uri))
+        if not os.path.exists(repo_path):
+            from_cache = False
+            logger.info(
+                'Locally caching git repo [%s] to [%s]' % (uri, repo_path))
+            cmd = 'git clone %s %s' % (uri, repo_path)
+            self._sys_call(cmd)
+        else:
+            from_cache = True
+            logger.info(
+                'GIT repo loaded from local cache [%s])' % (repo_path))
+        if pull and not from_cache:
+            os.chdir(repo_path)
+            cmd = 'git pull'
+            self._sys_call(cmd)
+        return repo_path
+
+    @property
+    def objects(self):
+        return self._objects
+
+    @objects.setter
+    def objects(self, value):
+        self._objects = MetriqueContainer(value)
+
+    @objects.deleter
+    def objects(self):
+        # replacing existing container with a new, empty one
+        self._objects = MetriqueContainer()
+
+    def load(self, path, filetype=None, as_dict=True, raw=False,
+             retries=None, **kwargs):
+        '''Load multiple files from various file types automatically.
+
+        Supports glob paths, eg::
+
+            path = 'data/*.csv'
+
+        Filetypes are autodetected by common extension strings.
+
+        Currently supports loadings from:
+            * csv (pd.read_csv)
+            * json (pd.read_json)
+
+        :param path: path to config json file
+        :param filetype: override filetype autodetection
+        :param kwargs: additional filetype loader method kwargs
+        '''
+        # kwargs are for passing ftype load options (csv.delimiter, etc)
+        # expect the use of globs; eg, file* might result in fileN (file1,
+        # file2, file3), etc
+        if re.match('https?://', path):
+            _path, headers = self.urlretrieve(path, retries)
+            logger.debug('Saved %s to tmp file: %s' % (path, _path))
+            try:
+                df = self._load_file(_path, filetype, as_dict=False, **kwargs)
+            finally:
+                os.remove(_path)
+        elif re.match('sql\+.+://', path):
+            match = re.match('sql\+(.+)://(.+)', path)
+            if match:
+                backend, sql = match.groups()
+                df = self._load_sql(backend, sql, as_dict=False, **kwargs)
+            else:
+                raise ValueError("invalid sql uri: %s" % path)
+        else:
+            path = re.sub('^file://', '', path)
+            path = os.path.expanduser(path)
+            datasets = glob.glob(os.path.expanduser(path))
+            # buid up a single dataframe by concatting
+            # all globbed files together
+            df = [self._load_file(ds, filetype, as_dict=False, **kwargs)
+                  for ds in datasets]
+            if df:
+                df = pd.concat(df)
+
+        if df.empty:
+            raise ValueError("not data extracted!")
+
+        if raw:
+            return df.to_dict()
+        # FIXME: rename to transform
+        if as_dict:
+            return df.T.to_dict().values()
+        else:
+            return df
+
+    def _load_file(self, path, filetype, as_dict=True, **kwargs):
+        if not filetype:
+            # try to get file extension
+            filetype = path.split('.')[-1]
+        if filetype in ['csv', 'txt']:
+            result = self._load_csv(path, as_dict=as_dict, **kwargs)
+        elif filetype in ['json']:
+            result = self._load_json(path, as_dict=as_dict, **kwargs)
+        else:
+            raise TypeError("Invalid filetype: %s" % filetype)
+        if as_dict:
+            return result.T.as_dict.values()
+        else:
+            return result
+
+    def _load_csv(self, path, as_dict=True, **kwargs):
+        # load the file according to filetype
+        return pd.read_csv(path, **kwargs)
+
+    def _load_json(self, path, as_dict=True, **kwargs):
+        return pd.read_json(path, **kwargs)
+
+    def _load_sql(self, backend, sql, as_dict=True, **kwargs):
+        engine = get_sqlalchemy_engine(backend=backend, **kwargs)
+        rows = engine.execute(sql)
+        objects = [dict(row) for row in rows]
+        if not as_dict:
+            objects = pd.DataFrame(objects)
+        return objects
+
+    def load_config(self, path):
+        return load_config(path)
+
+    @staticmethod
+    def _sys_call(self, cmd, sig=None, sig_func=None, quiet=True):
+        if not quiet:
+            logger.debug(cmd)
+        if isinstance(cmd, basestring):
+            cmd = re.sub('\s+', ' ', cmd)
+            cmd = cmd.strip()
+            cmd = shlex.split(cmd)
+        if sig and sig_func:
+            signal.signal(sig, sig_func)
+        output = subprocess.check_output(cmd, stderr=subprocess.STDOUT)
+        if not quiet:
+            logger.debug(output)
+        return output
+
+    def urlretrieve(self, uri, saveas=None, retries=3):
+        '''urllib.urlretrieve wrapper'''
+        retries = int(retries) if retries else 3
+        while retries:
+            try:
+                _path, headers = urllib.urlretrieve(uri, saveas)
+            except Exception as e:
+                retries -= 1
+                logger.warn(
+                    'Failed getting %s: %s (retry:%s)' % (
+                        uri, e, retries))
+                continue
+            else:
+                break
+        return _path, headers
