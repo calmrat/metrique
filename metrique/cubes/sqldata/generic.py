@@ -5,7 +5,7 @@
 
 '''
 metrique.cubes.sqldata.generic
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 This module contains the cube methods for extracting
 data from generic SQL data sources.
@@ -16,10 +16,14 @@ from __future__ import unicode_literals
 import logging
 logger = logging.getLogger(__name__)
 
-from copy import deepcopy, copy
+from copy import deepcopy
 from collections import defaultdict
 from dateutil.parser import parse as dt_parse
 from functools import partial
+import os
+import pandas as pd
+import pytz
+import re
 
 try:
     from joblib import Parallel, delayed
@@ -27,32 +31,47 @@ try:
 except ImportError:
     HAS_JOBLIB = False
     logger.warn("joblib package not found!")
+try:
+    import sqlalchemy
+    HAS_SQLALCHEMY = True
+except ImportError:
+    logger.warn('sqlalchemy not installed!')
+    HAS_SQLALCHEMY = False
 
-import os
-import pytz
-import re
-import traceback
+
 import warnings
 
 from metrique import pyclient
-from metrique.utils import batch_gen, ts2dt, dt2ts, utcnow
+from metrique.utils import batch_gen, ts2dt, dt2ts
 
 
 def get_full_history(cube, oids, flush=False, cube_name=None, autosnap=False,
                      config=None, **kwargs):
-    m = pyclient(cube=cube, name=cube_name, **kwargs)
+    m = pyclient(cube=cube, name=cube_name, config=config, **kwargs)
     m.config = config or m.config
+    # FIXME: MAKE THIS WORK AUTOMATICALLY AFTER UPDATING CONFIG!
     m.debug_setup()
-    return m._activity_get_objects(oids=oids, flush=flush, autosnap=autosnap)
+    m._setup_sqlalchemy_logging()
+    m._setup_inconsistency_log()
+    results = []
+    for batch in batch_gen(oids, m.config['sql'].get('batch_size')):
+        _ = m._activity_get_objects(oids=batch, flush=flush, autosnap=autosnap)
+        results.extend(_)
+    return results
 
 
-def get_objects(cube, oids, field_order, flush=False, cube_name=None,
-                autosnap=True, config=None, **kwargs):
-    m = pyclient(cube=cube, name=cube_name, **kwargs)
+def get_objects(cube, oids, flush=False, cube_name=None, autosnap=True,
+                config=None, **kwargs):
+    m = pyclient(cube=cube, name=cube_name, config=config, **kwargs)
     m.config = config or m.config
     m.debug_setup()
-    return m._get_objects(oids=oids, field_order=field_order,
-                          flush=flush, autosnap=autosnap)
+    m._setup_sqlalchemy_logging()
+    m._setup_inconsistency_log()
+    results = []
+    for batch in batch_gen(oids, m.config['sql'].get('batch_size')):
+        _ = m._get_objects(oids=batch, flush=flush, autosnap=autosnap)
+        results.extend(_)
+    return results
 
 
 class Generic(pyclient):
@@ -64,9 +83,6 @@ class Generic(pyclient):
     subclass this basecube to implement db specific connection
     methods, etc.
 
-    .sql_proxy must be defined, in order to know how
-    to get a connection object to the target sql db.
-
     :cvar fields: cube fields definitions
     :cvar defaults: cube default property container (cube specific meta-data)
 
@@ -77,24 +93,26 @@ class Generic(pyclient):
     :param sql_retries: number of times before we give up on a query
     :param sql_batch_size: how many objects to query at a time
     '''
+    sql_backend = None
     fields = None
-    defaults = None
 
     def __init__(self, sql_host=None, sql_port=None, sql_retries=None,
                  sql_batch_size=None, sql_username=None, sql_password=None,
-                 *args, **kwargs):
+                 sql_debug=None, sql_worker_batch_size=None, *args, **kwargs):
         super(Generic, self).__init__(*args, **kwargs)
         self.fields = self.fields or {}
-        self.defaults = self.defaults or {}
         options = dict(host=sql_host, port=sql_port, retries=sql_retries,
                        username=sql_username, password=sql_password,
-                       batch_size=sql_batch_size)
+                       batch_size=sql_batch_size, debug=sql_debug,
+                       worker_batch_size=sql_worker_batch_size)
         defaults = dict(host=None, port=None, retries=1,
-                        username=None, password=None, batch_size=1000)
+                        username=None, password=None, batch_size=1000,
+                        debug=logging.DEBUG, worker_batch_size=10000)
         self.configure('sql', options, defaults)
-        self.retry_on_error = None
+        self.retry_on_error = (Exception, )
+        self.debug_setup()
         self._setup_inconsistency_log()
-        self._auto_reconnect_attempted = False
+        self._setup_sqlalchemy_logging()
 
     def activity_get(self, ids=None):
         '''
@@ -123,7 +141,6 @@ class Generic(pyclient):
             acts = activities.setdefault(_oid, [])
             objs = self._activity_import_doc(doc, acts)
             self.objects.extend(objs)
-        logger.debug('... activity get - done')
         if flush:
             return self.flush(autosnap=autosnap)
         else:
@@ -142,7 +159,7 @@ class Generic(pyclient):
         td_start = ts2dt(time_doc['_start'], tz_aware=tz_aware)
         activities = filter(lambda act: (act[0] < td_start and
                                          act[1] in time_doc), activities)
-        creation_field = self.get_property('cfield')
+        creation_field = self.config['sql'].get('cfield')
         # make sure that activities are sorted by when descending
         activities.sort(reverse=True, key=lambda o: o[0])
         new_doc = {}
@@ -209,92 +226,36 @@ class Generic(pyclient):
             val = removed
         return val, inconsistent
 
-    def _build_rows(self, rows):
-        logger.debug('Building dict_rows from sql_rows(%i)' % len(rows))
-        _rows = defaultdict(list)
-        for row in rows:
-            _rows[row['_oid']].append(row)
-        return _rows
-
-    def _build_objects(self, rows):
-        '''
-        Given a set of rows/columns, build metrique object dictionaries
-        Normalize null values to be type(None).
-        '''
-        objects = []
-        logger.debug('Building objects from rows(%i)' % len(rows))
-        for col_rows in rows.itervalues():
-            if len(col_rows) > 1:
-                obj = self._normalize_object(col_rows)
-                objects.append(obj)
-            else:
-                objects.append(col_rows[0])
-        return objects
-
-    def _convert(self, value, field):
-        convert = self.get_property('convert', field)
-        container = self.get_property('container', field)
-        if value and convert and container:
-            _convert = partial(convert, self)
+    def _convert(self, field, value):
+        convert = self.fields[field].get('convert')
+        container = self.fields[field].get('container')
+        if value is None:
+            return None
+        elif convert and container:
+            # FIXME: callers need to make convert STATIC (no self)
+            _convert = partial(convert)
             value = map(_convert, value)
         elif convert:
-            value = convert(self, value)
+            value = convert(value)
         else:
             value = value
         return value
 
-    def _get_objects(self, oids, field_order, flush=False, autosnap=True):
-        retries = self.config['sql'].get('retries')
-        sql = self._gen_sql(oids, field_order)
-        while retries >= 0:
-            try:
-                rows = self._fetchall(sql, field_order)
-                logger.debug('Fetch OK')
-            except self.retry_on_error:
-                tb = traceback.format_exc()
-                logger.error('Fetch Failed: %s' % tb)
-                del tb
-                if retries == 0:
-                    raise
-                else:
-                    retries -= 1
-            else:
-                rows = self._build_rows(rows)
-                self.objects = self._build_objects(rows)
-                break
-        if flush:
-            return self.flush(autosnap=autosnap)
-        else:
-            return self.objects.values()
-
-    def _extract_row_ids(self, rows):
-        if rows:
-            return sorted([x[0] for x in rows])
-        else:
-            return []
-
-    def _delta_force(self, force, last_update, parse_timestamp):
-        if force is None:
-            force = self.get_property('force', default=False)
-
+    def _delta_force(self, force=None, last_update=None, parse_timestamp=None):
+        force = force or False
         oids = []
         if force is True:
             # get a list of all known object ids
-            table = self.get_property('table')
-            db = self.get_property('db')
-            _oid = self.get_property('_oid')
-            sql = 'SELECT DISTINCT %s.%s FROM %s.%s' % (table, _oid, db, table)
-            rows = self.sql_fetchall(sql)
-            oids = self._extract_row_ids(rows)
+            oids = self.sql_get_oids()
         elif not force:
-            if self.get_property('delta_new_ids', default=True):
+            c = self.config['sql']
+            if c.get('delta_new_ids', True):
                 # get all new (unknown) oids
                 oids.extend(self.get_new_oids())
-            if self.get_property('delta_mtime', default=False):
+            if c.get('delta_mtime', False):
                 # get only those oids that have changed since last update
-                mtime = self._fetch_mtime(last_update, parse_timestamp)
-                if mtime:
-                    oids.extend(self.get_changed_oids(mtime))
+                oids.extend(self.get_changed_oids(last_update,
+                                                  parse_timestamp))
         elif isinstance(force, (list, tuple, set)):
             oids = list(force)
         else:
@@ -302,238 +263,7 @@ class Generic(pyclient):
         logger.debug("Delta Size: %s" % len(oids))
         return sorted(set(oids))
 
-    def sql_fetchall(self, sql, cached=True):
-        '''
-        Shortcut for getting a cursor, cleaning the sql a bit,
-        adding the LIMIT clause, executing the sql, fetching
-        all the results
-
-        If certain failures occur, this method will authomatically
-        attempt to reconnect and rerun.
-
-        :param sql: sql string to execute
-        :param cached: flag for using a cached proxy or not
-        '''
-        logger.debug('Fetching rows...')
-        proxy = self.get_sql_proxy(cached=cached)
-        k = proxy.cursor()
-        sql = re.sub('\s+', ' ', sql).strip().encode('utf-8')
-        logger.debug('SQL:\n %s' % sql.decode('utf-8'))
-        rows = None
-        try:
-            k.execute(sql)
-            rows = k.fetchall()
-        except Exception as e:
-            if re.search('Transaction is not active', str(e)):
-                if not self._auto_reconnect_attempted:
-                    logger.warn('Transaction failure; reconnecting')
-                    self.sql_fetchall(sql, cached=False)
-            logger.error('%s\n%s\n%s' % ('*' * 100, e, sql))
-            raise
-        else:
-            if self._auto_reconnect_attempted:
-                # in the case we've attempted to reconnect and
-                # the transaction succeeded, reset this flag
-                self._auto_reconnect_attempted = False
-        finally:
-            k.close()
-            del k
-        logger.debug('... fetched (%i)' % len(rows))
-        return rows
-
-    def get_sql_proxy(self, **kwargs):
-        '''
-        Database specific drivers must implemented this method.
-
-        It is expected that by calling this method, the instance
-        will set ._sql_proxy with a auhenticated connection, which is
-        also returned to the caller.
-        '''
-        raise NotImplementedError(
-            "Driver has not provided a get_sql_proxy method!")
-
-    def get_full_history(self, force=None, last_update=None,
-                         parse_timestamp=None, flush=False, autosnap=False):
-        '''
-        Fields change depending on when you run activity_import,
-        such as "last_updated" type fields which don't have activity
-        being tracked, which means we'll always end up with different
-        hash values, so we need to always remove all existing object
-        states and import fresh
-        '''
-        workers = self.config['metrique'].get('workers')
-        batch_size = self.config['sql'].get('batch_size')
-        logger.debug(
-            'Getting Full History (%s@%s)' % (workers, batch_size))
-        # determine which oids will we query
-        oids = self._delta_force(force, last_update, parse_timestamp)
-        if HAS_JOBLIB:
-            runner = Parallel(n_jobs=workers)
-            func = delayed(get_full_history)
-            with warnings.catch_warnings():
-                # suppress warning from joblib:
-                # UserWarning: Parallel loops cannot be nested ...
-                warnings.simplefilter("ignore")
-                result = runner(func(
-                    cube=self._cube, oids=batch, flush=flush,
-                    cube_name=self.name, autosnap=autosnap,
-                    config=self.config)
-                    for batch in batch_gen(oids, batch_size))
-            # merge list of lists (batched) into single list
-            result = [i for l in result for i in l]
-        else:
-            result = []
-            for batch in batch_gen(oids, batch_size):
-                _ = get_full_history(
-                    cube=self._cube, oids=batch, flush=flush,
-                    cube_name=self.name, autosnap=autosnap,
-                    config=self.config)
-                result.extend(_)
-
-        if flush:
-            return result
-        else:
-            [self.objects.add(obj) for obj in result]
-            return self
-
-    def get_property(self, property, field=None, default=None):
-        '''Lookup cube defined property (meta-data):
-
-            1. First try to use the field's property, if defined.
-            2. Then try to use the default property, if defined.
-            3. Then use the default for when neither is found.
-            4. Or return None, if no default is defined.
-
-        :param property: property key name
-        :param field: (optional) specific field to query first
-        :param default: default value to return if [field.]property not found
-        '''
-        try:
-            return self.fields[field][property]
-        except KeyError:
-            try:
-                return self.defaults[property]
-            except (TypeError, KeyError):
-                return default
-
-    def _unwrap_aggregated(self, rows):
-        # unwrap aggregated values
-        # FIXME: This unicode stuff is fragile and likely to fail
-        encoding = self.get_property('encoding', default='utf8')
-        for k, row in enumerate(rows):
-            _row = []
-            for column in row:
-                if type(column) is buffer:
-                    # unwrap/convert the aggregated string 'buffer'
-                    # objects to string
-                    column = unicode(str(column), encoding)
-                    column = column.replace('"', '').strip()
-                    if not column:
-                        column = None
-                    else:
-                        column = column.split('\n')
-                else:
-                    if isinstance(column, basestring):
-                        column = unicode(column.decode(encoding))
-                _row.append(column)
-            rows[k] = _row
-        return rows
-
-    def _fetchall(self, sql, field_order):
-        rows = self.sql_fetchall(sql)
-        if not rows:
-            return []
-        logger.debug('Preparing row data...')
-        rows = self._unwrap_aggregated(rows)
-        objects = [self._prep_object(row, field_order) for row in rows]
-        return objects
-
-    def _fetch_mtime(self, last_update, parse_timestamp):
-        mtime = None
-        if last_update:
-            if isinstance(last_update, basestring):
-                mtime = dt_parse(last_update)
-            else:
-                mtime = last_update
-        else:
-            mtime = self.get_last_field('_start')
-        # convert timestamp to datetime object
-        mtime = ts2dt(mtime)
-        logger.debug("Last update mtime: %s" % mtime)
-
-        if mtime:
-            if parse_timestamp is None:
-                parse_timestamp = self.get_property('parse_timestamp',
-                                                    default=True)
-            if parse_timestamp:
-                if not (hasattr(mtime, 'tzinfo') and mtime.tzinfo):
-                    # We need the timezone, to readjust relative to the
-                    # server's tz
-                    mtime = mtime.replace(tzinfo=pytz.utc)
-                mtime = mtime.strftime('%Y-%m-%d %H:%M:%S %z')
-                dt_format = "yyyy-MM-dd HH:mm:ss z"
-                mtime = "parseTimestamp('%s', '%s')" % (mtime, dt_format)
-            else:
-                mtime = "'%s'" % mtime
-
-        return mtime
-
-    @property
-    def fieldmap(self):
-        '''
-        Dictionary of field_id: field_name, as defined in self.fields property
-        '''
-        if hasattr(self, '_sql_fieldmap') and self._sql_fieldmap:
-            fieldmap = self._sql_fieldmap
-        else:
-            fieldmap = defaultdict(str)
-            for field in self.fields:
-                field_id = self.get_property('what', field)
-                if field_id is not None:
-                    fieldmap[field_id] = field
-            self._sql_fieldmap = fieldmap
-        return fieldmap
-
-    def _gen_sql(self, id_delta, field_order):
-        '''
-        '''
-        logger.debug('Generating SQL...')
-        db = self.get_property('db')
-        table = self.get_property('table')
-        selects = self._get_sql_selects(field_order)
-
-        base_from = '%s.%s' % (db, table)
-        froms = 'FROM ' + ', '.join([base_from])
-
-        left_joins = self._get_sql_left_joins(field_order)
-
-        delta_filter = []
-        where = ''
-
-        delta_filter.extend(
-            self._get_id_delta_sql(table, id_delta))
-
-        if delta_filter:
-            where = 'WHERE ' + ' OR '.join(delta_filter)
-
-        sql = 'SELECT %s %s %s %s' % (
-            selects, froms, left_joins, where)
-        sql = self._sql_sort(sql, table)
-        sql = self._sql_distinct(sql)
-        return sql
-
-    def _get_id_delta_sql(self, table, id_delta):
-        '''
-        '''
-        _oid = self.get_property('_oid')
-        if id_delta:
-            id_delta = sorted(set(id_delta))
-            id_delta = ','.join(map(str, id_delta))
-            return ["(%s.%s IN (%s))" % (table, _oid, id_delta)]
-        else:
-            return []
-
-    def get_changed_oids(self, mtime):
+    def get_changed_oids(self, last_update=None, parse_timestamp=None):
         '''
         Returns a list of object ids of those objects that have changed since
         `mtime`. This method expects that the changed objects can be
@@ -550,7 +280,9 @@ class Generic(pyclient):
 
         :param mtime: datetime string used as 'change since date'
         '''
-        mtime_columns = self.get_property('delta_mtime', default=list())
+        logger.debug("DELTA: Changed OIDS")
+        mtime = self._fetch_mtime(last_update, parse_timestamp)
+        mtime_columns = self.config['sql'].get('delta_mtime', [])
         if not (mtime_columns and mtime):
             return []
         if isinstance(mtime_columns, basestring):
@@ -561,41 +293,96 @@ class Generic(pyclient):
             where.append(_sql)
         return self.sql_get_oids(where)
 
-    def get_metrics(self, names=None):
+    def _fetch_mtime(self, last_update=None, parse_timestamp=None):
+        mtime = None
+        if last_update:
+            if isinstance(last_update, basestring):
+                mtime = dt_parse(last_update)
+            else:
+                mtime = last_update
+        else:
+            mtime = self.get_last_field('_start')
+
+        # convert timestamp to datetime object
+        mtime = ts2dt(mtime)
+        logger.debug("Last update mtime: %s" % mtime)
+
+        if mtime:
+            if parse_timestamp is None:
+                parse_timestamp = self.config['sql'].get('parse_timestamp',
+                                                         True)
+            if parse_timestamp:
+                if not (hasattr(mtime, 'tzinfo') and mtime.tzinfo):
+                    # We need the timezone, to readjust relative to the
+                    # server's tz
+                    mtime = mtime.replace(tzinfo=pytz.utc)
+                mtime = mtime.strftime('%Y-%m-%d %H:%M:%S %z')
+                dt_format = "yyyy-MM-dd HH:mm:ss z"
+                mtime = "parseTimestamp('%s', '%s')" % (mtime, dt_format)
+            else:
+                mtime = "'%s'" % mtime
+        return mtime
+
+    @property
+    def fieldmap(self):
         '''
-        Run metric SQL defined in the cube.
+        Dictionary of field_id: field_name, as defined in self.fields property
         '''
-        if isinstance(names, basestring):
-            names = [names]
+        if hasattr(self, '_sql_fieldmap') and self._sql_fieldmap:
+            fieldmap = self._sql_fieldmap
+        else:
+            fieldmap = defaultdict(str)
+            for field, opts in self.fields.iteritems():
+                field_id = opts.get('what')
+                if field_id is not None:
+                    fieldmap[field_id] = field
+            self._sql_fieldmap = fieldmap
+        return fieldmap
 
-        start = utcnow()
+    def _generate_sql(self, _oids=None, sort=True):
+        db = self.config['sql'].get('db')
+        _oid = self.config['sql'].get('_oid')
+        table = self.config['sql'].get('table')
 
-        obj = {
-            '_start': start,
-            '_end': None,
-        }
+        if not all((_oid, table, db)):
+            raise ValueError("Must define db, table, _oid in config['sql']!")
+        selects = []
+        stmts = []
+        for as_field, opts in self.fields.iteritems():
+            select = opts.get('select') or as_field
+            select = '%s as %s' % (select, as_field)
+            selects.append(select)
+            sql = opts.get('sql') or ''
+            sql = re.sub('\s+', ' ', sql)
+            if sql:
+                stmts.append(sql)
 
-        objects = []
-        for metric, definition in self.metrics.items():
-            if names and metric not in names:
-                continue
-            sql = definition['sql']
-            fields = definition['fields']
-            _oid = definition['_oid']
-            rows = self.sql_fetchall(sql)
-            for row in rows:
-                d = copy(obj)
+        selects = ', '.join(selects)
+        stmts = ' '.join(stmts)
+        sql = 'SELECT %s FROM %s.%s %s' % (selects, db, table, stmts)
+        if _oids:
+            sql += ' WHERE %s.%s in (%s)' % (table, _oid,
+                                             ','.join(map(str, _oids)))
+        if sort:
+            sql += " ORDER BY %s.%s ASC" % (table, _oid)
+        sql = re.sub('\s+', ' ', sql)
+        return sql
 
-                # derive _oid from metric name and row contents
-                d['_oid'] = _oid(metric, row)
-
-                for i, element in enumerate(row):
-                    d[fields[i]] = element
-
-                # append to the local metric result list
-                objects.append(d)
-        objects = self.normalize(objects)
-        return objects
+    def get_engine(self, backend=None, connect=True,
+                   cached=True, **kwargs):
+        if not HAS_SQLALCHEMY:
+            raise NotImplementedError('`pip install sqlalchemy` required')
+        if not cached or not hasattr(self, '_sql_engine'):
+            backend = backend or self.sql_backend
+            if backend == 'teiid':
+                uri, kwargs = self._sqla_teiid(**kwargs)
+            else:
+                raise NotImplementedError("Unsupported backend: %s" % backend)
+            self._sql_engine = sqlalchemy.create_engine(
+                uri, echo=False, **kwargs)
+            if connect:
+                self._sql_engine.connect()
+        return self._sql_engine
 
     def get_objects(self, force=None, last_update=None, parse_timestamp=None,
                     flush=False, autosnap=True):
@@ -608,17 +395,15 @@ class Generic(pyclient):
         :param parse_timestamp: flag to convert timestamp timezones in-line
         '''
         workers = self.config['metrique'].get('workers')
-        batch_size = self.config['sql'].get('batch_size')
+        batch_size = self.config['sql'].get('worker_batch_size')
         # set the 'index' of sql columns so we can extract
         # out the sql rows and know which column : field
-        field_order = tuple(self.fields)
-
         logger.debug(
             'Getting Objects - Current Values (%s@%s)' % (workers, batch_size))
         # determine which oids will we query
         oids = self._delta_force(force, last_update, parse_timestamp)
 
-        if HAS_JOBLIB:
+        if HAS_JOBLIB and workers > 1:
             runner = Parallel(n_jobs=workers)
             func = delayed(get_objects)
             with warnings.catch_warnings():
@@ -627,26 +412,49 @@ class Generic(pyclient):
                 warnings.simplefilter("ignore")
                 result = runner(func(
                     cube=self._cube, oids=batch, flush=flush,
-                    field_order=field_order, cube_name=self.name,
-                    autosnap=autosnap, config=self.config)
+                    cube_name=self.name, autosnap=autosnap,
+                    config=self.config)
                     for batch in batch_gen(oids, batch_size))
             # merge list of lists (batched) into single list
             result = [i for l in result for i in l]
         else:
             result = []
             for batch in batch_gen(oids, batch_size):
-                _ = get_objects(
-                    cube=self._cube, oids=batch, flush=flush,
-                    field_order=field_order, cube_name=self.name,
-                    autosnap=autosnap, config=self.config)
+                _ = self._get_objects(oids=batch, flush=flush,
+                                      autosnap=autosnap)
                 result.extend(_)
-
-        logger.debug('... current values objects get - done')
         if flush:
             return result
         else:
             [self.objects.add(obj) for obj in result]
             return self
+
+    def _get_objects(self, oids, flush=False, autosnap=True):
+        retries = self.config['sql'].get('retries') or 1
+        _oid = self.config['sql'].get('_oid')
+        sql = self._generate_sql(oids)
+        while retries > 0:
+            try:
+                objects = self._load_sql(sql)
+                break
+            except self.retry_on_error as e:
+                logger.error('Fetch Failed: %s' % e)
+                if retries <= 1:
+                    raise
+                else:
+                    retries -= 1
+        else:
+            raise RuntimeError(
+                "Failed to fetch any objects from %s!" % len(oids))
+        # set _oid
+        self.objects = self._prep_objects(objects)
+        [o.update({'_oid': o[_oid]}) for o in objects]
+        self.objects = objects
+        return self.objects.values()
+        if flush:
+            return self.flush(autosnap=autosnap)
+        else:
+            return self.objects.values()
 
     def get_new_oids(self):
         '''
@@ -655,105 +463,84 @@ class Generic(pyclient):
         Essentially, a diff of distinct oids in the source database
         compared to cube.
         '''
-        table = self.get_property('table')
-        db = self.get_property('db')
-        _oid = self.get_property('_oid')
+        logger.debug('DELTA: New OIDS')
+        table = self.config['sql'].get('table')
+        _oid = self.config['sql'].get('_oid')
         last_id = self.get_last_field('_oid')
+        ids = []
         if last_id:
-            # if we delta_new_ids is on, but there is no 'last_id',
-            # then we need to do a FULL run...
             try:  # try to convert to integer... if not, assume unicode value
-                last_id = int(last_id)
-            except (TypeError, ValueError):
-                pass
-            if type(last_id) in [int, float]:
+                last_id = float(last_id)
                 where = "%s.%s > %s" % (table, _oid, last_id)
-            else:
+            except (TypeError, ValueError):
                 where = "%s.%s > '%s'" % (table, _oid, last_id)
-            sql = 'SELECT DISTINCT %s.%s FROM %s.%s WHERE %s' % (
-                table, _oid, db, table, where)
-            rows = self.sql_fetchall(sql)
-            ids = self._extract_row_ids(rows)
-        else:
-            ids = []
+            ids = self.sql_get_oids(where)
         return ids
 
-    def _get_sql_clause(self, clause, default=None):
+    def get_full_history(self, force=None, last_update=None,
+                         parse_timestamp=None, flush=False, autosnap=False):
         '''
+        Fields change depending on when you run activity_import,
+        such as "last_updated" type fields which don't have activity
+        being tracked, which means we'll always end up with different
+        hash values, so we need to always remove all existing object
+        states and import fresh
         '''
-        clauses = []
-        for f in self.fields.iterkeys():
-            try:
-                _clause = self.fields[f]['sql'].get(clause)
-            except KeyError:
-                if default:
-                    _clause = default
-                else:
-                    raise
-            if type(_clause) is list:
-                clauses.extend(_clause)
+        workers = self.config['metrique'].get('workers')
+        batch_size = self.config['sql'].get('worker_batch_size')
+        logger.debug(
+            'Getting Full History (%s@%s)' % (workers, batch_size))
+        # determine which oids will we query
+        oids = self._delta_force(force, last_update, parse_timestamp)
+        if HAS_JOBLIB and workers > 1:
+            runner = Parallel(n_jobs=workers)
+            func = delayed(get_full_history)
+            with warnings.catch_warnings():
+                # suppress warning from joblib:
+                # UserWarning: Parallel loops cannot be nested ...
+                warnings.simplefilter("ignore")
+                result = runner(func(
+                    cube=self._cube, oids=batch, flush=flush,
+                    cube_name=self.name, autosnap=autosnap,
+                    config=self.config)
+                    for batch in batch_gen(oids, batch_size))
+            # merge list of lists (batched) into single list
+            result = [i for l in result for i in l]
+        else:
+            result = []
+            for batch in batch_gen(oids, batch_size):
+                _ = self._activity_get_objects(oids=batch, flush=flush,
+                                               autosnap=autosnap)
+                result.extend(_)
+
+        if flush:
+            return result
+        else:
+            [self.objects.add(obj) for obj in result]
+            return self
+
+    def load(self, path, **kwargs):
+        if re.match('sql\+.+://', path):
+            match = re.match('sql\+(.+)://(.+)', path)
+            if match:
+                backend, sql = match.groups()
+                df = self._load_sql(backend, sql, as_dict=False, **kwargs)
+                return super(Generic, self).load(path=df)
             else:
-                clauses.append(_clause)
-        clauses = list(set(clauses))
-        try:
-            del clauses[clauses.index(None)]
-        except ValueError:
-            pass
-        return clauses
+                raise ValueError("invalid sql uri: %s" % path)
+        else:
+            return super(Generic, self).load(path, **kwargs)
 
-    def _get_sql_selects(self, field_order):
-        table = self.get_property('table')
-        _oid = self.get_property('_oid')
-
-        base_select = '%s.%s' % (table, _oid)
-        selects = [base_select]
-        for f in field_order:
-            try:
-                assert isinstance(self.fields[f]['sql'], dict)
-            except KeyError:
-                select = '%s.%s' % (table, f)
-            except AssertionError:
-                select = '%s.%s' % (table, self.fields[f]['sql'])
-            else:
-                s = self.fields[f]['sql'].get('select')
-                if re.match('!', s):
-                    # if we start with a bang, append the line directly
-                    select = re.sub('^!', '', s)
-                elif self.get_property('container', f):
-                    select = '%s_grouped.%s' % (f, s)
-                else:
-                    select = '%s.%s' % (f, s)
-            selects.append(select)
-        return ', '.join(selects)
-
-    def _get_sql_left_joins(self, field_order):
-        left_joins = []
-        for f in field_order:
-            try:
-                assert isinstance(self.fields[f]['sql'], dict)
-            except (KeyError, AssertionError):
-                pass
-            else:
-                lj = self.fields[f]['sql'].get('left_join', [])
-                for i in lj:
-                    container = self.get_property('container', f)
-                    is_str = isinstance(i, basestring)
-                    if not (container or is_str):
-                        _field = f
-                        _select = i[0]
-                        _select_name = '%s.%s' % (f, i[1])
-                        _on_equals = i[2]
-
-                        _lj = 'LEFT JOIN %s %s ON %s = %s' % (
-                            _select, _field, _select_name, _on_equals)
-                    elif container and not is_str:
-                        raise ValueError(
-                            "[%s] Write textagg(for) "
-                            "join statements by hand!" % f)
-                    else:
-                        _lj = i
-                    left_joins.append(_lj)
-        return ' '.join(left_joins)
+    def _load_sql(self, sql, backend=None, as_dict=True,
+                  cached=True, **kwargs):
+        backend = backend or self.sql_backend
+        kwargs.update(self.config['sql'])
+        engine = self.get_engine(backend=backend, cached=cached, **kwargs)
+        rows = engine.execute(sql)
+        objects = [dict(row) for row in rows]
+        if not as_dict:
+            objects = pd.DataFrame(objects)
+        return objects
 
     def _log_inconsistency(self, last_doc, last_val, field, removed, added,
                            when):
@@ -771,62 +558,83 @@ class Generic(pyclient):
         m += u' ... on {when}'
         self.log_inconsistency(m.format(**incon))
 
-    def _normalize_object(self, rows):
-        o = rows.pop(0)
-        for field, tokens in self.__row_iter(rows):
-            if o[field] == tokens:
-                continue
-
-            if type(o[field]) is list:
-                if type(tokens) is list:
-                    o[field].extend(tokens)
-                elif tokens not in o[field]:
-                    o[field].append(tokens)
-                else:
-                    # skip non-unique duplicate values
-                    continue
-            else:
-                o[field] = [o[field], tokens]
-
-    def _normalize_container(self, value, field):
-        container = self.get_property('container', field)
-        value_is_list = type(value) is list
-        if container and not value_is_list:
+    def _normalize_container(self, field, value):
+        container = self.fields[field].get('container')
+        is_list = isinstance(value, (list, tuple))
+        if container and not is_list:
             # and normalize to be a singleton list
-            value = [value] if value else None
-        elif not container and value_is_list:
+            # FIXME: SHOULD WE NORMALIZE to empty list []?
+            return [value] if value else None
+        elif not container and is_list:
             raise ValueError(
                 "Expected single value (%s), got list (%s)" % (
                     field, value))
         else:
-            value = value
+            return value
+
+    def _prep_objects(self, objects):
+        for o in objects:
+            for field, value in o.iteritems():
+                value = self._unwrap(field, value)
+                value = self._normalize_container(field, value)
+                value = self._convert(field, value)
+                value = self._typecast(field, value)
+                o[field] = value
+
+    def _typecast(self, field, value):
+        _type = self.fields[field].get('type')
+        if self.fields[field].get('container'):
+            value = self._type_container(value, _type)
+        else:
+            value = self._type_single(value, _type)
         return value
 
-    @property
-    def sql_proxy(self):
-        raise NotImplementedError("sql_proxy is not defined")
+    def _type_container(self, value, _type):
+        ' apply type to all values in the list '
+        if value is None:  # don't convert null values
+            # FIXME: NORMALIZE to empty [] list?
+            return value
+        if not isinstance(value, (list, tuple)):
+            raise ValueError("expected list type, got: %s" % type(value))
+        for i, item in enumerate(value):
+            item = self._type_single(item, _type)
+            value[i] = item
+        value = sorted(value)
+        return value
 
-    def _prep_object(self, row, field_order):
-        '''
-        0th item is always the object '_oid'
-        Otherwise, fields is expected to map 1:1 with row columns
-        '''
-        row = list(row)
-        obj = {'_oid': row.pop(0)}
-        for k, column in enumerate(row, 0):
-            field = field_order[k]
-            column = self._normalize_container(column, field)
-            column = self._convert(column, field)
-            column = self._type(column, field)
-            obj[field] = column
-        return obj
+    def _type_single(self, value, _type):
+        ' apply type to the single value '
+        # FIXME: convert '' -> None?
+        if value is None:  # don't convert null values
+            pass
+        elif _type is None:
+            value = unicode(str(value), 'utf8')
+        elif isinstance(value, _type):  # or values already of correct type
+            pass
+        else:
+            value = _type(value)
+            if isinstance(value, basestring):
+                value = unicode(value, 'utf8')
+        return value
 
-    def __row_iter(self, rows):
-        for row in rows:
-            for field, tokens in row.iteritems():
-                # _oid field doesn't require normalization
-                if field != '_oid':
-                    yield field, tokens
+    def _unwrap(self, field, value):
+        if type(value) is buffer:
+            # unwrap/convert the aggregated string 'buffer'
+            # objects to string
+            value = unicode(str(value), 'utf8')
+            # FIXME: this might cause issues if the buffered
+            # text has " quotes...
+            value = value.replace('"', '').strip()
+            if not value:
+                value = None
+            else:
+                value = value.split('\n')
+        return value
+
+    def _setup_sqlalchemy_logging(self):
+        logger = logging.getLogger('sqlalchemy')
+        level = self.config['sql'].get('debug')
+        self.debug_setup(logger=logger, level=level)
 
     def _setup_inconsistency_log(self):
         _log_file = self.config['metrique'].get('log_file').split('.log')[0]
@@ -849,57 +657,26 @@ class Generic(pyclient):
         '''
         Query source database for a distinct list of oids.
         '''
-        table = self.get_property('table')
-        _oid = self.get_property('_oid')
-        db = self.get_property('db')
+        table = self.config['sql'].get('table')
+        db = self.config['sql'].get('db')
+        _oid = self.config['sql'].get('_oid')
         sql = 'SELECT DISTINCT %s.%s FROM %s.%s' % (table, _oid, db, table)
+        where = [where] if isinstance(where, basestring) else list(where)
         if where:
             sql += ' WHERE %s' % ' OR '.join(where)
-        return sorted([r[0] for r in self.sql_fetchall(sql)])
+        return sorted([r[_oid] for r in self._load_sql(sql)])
 
-    def _sql_distinct(self, sql):
-        # whether to query for distinct rows only or not; default, no
-        if self.get_property('distinct', default=False):
-            return re.sub('^SELECT', 'SELECT DISTINCT', sql)
-        else:
-            return sql
-
-    def _sql_sort(self, sql, table):
-        _oid = self.get_property('_oid')
-        if self.get_property('sort', default=False):
-            sql += " ORDER BY %s.%s ASC" % (table, _oid)
-        return sql
-
-    def _type_container(self, value, _type):
-        ' apply type to all values in the list '
-        if value is None:  # don't convert null values
-            return value
-        assert isinstance(value, (list, tuple))
-        for i, item in enumerate(value):
-            item = self._type_single(item, _type)
-            value[i] = item
-        value = sorted(value)
-        return value
-
-    def _type_single(self, value, _type):
-        ' apply type to the single value '
-        # FIXME: convert '' -> None?
-        if None in [_type, value]:  # don't convert null values
-            pass
-        elif isinstance(value, _type):  # or values already of correct type
-            pass
-        else:
-            value = _type(value)
-            if isinstance(value, basestring):
-                # FIXME: docode.locale()
-                value = unicode(value)
-        return value
-
-    def _type(self, value, field):
-        container = self.get_property('container', field)
-        _type = self.get_property('type', field)
-        if container:
-            value = self._type_container(value, _type)
-        else:
-            value = self._type_single(value, _type)
-        return value
+    def _sqla_teiid(self, host, port, vdb, username, password, version=None,
+                    **kwargs):
+        version = version or (8, 2)
+        uri = 'postgresql+psycopg2://%s:%s@%s:%s/%s' % (
+            username, password, host, port, vdb)
+        import sqlalchemy.dialects.postgresql as p
+        # version normally comes "'Teiid 8.5.0.Final'", which sqlalchemy
+        # failed to parse
+        p.base.PGDialect._get_server_version_info = lambda *i: version
+        p.base.PGDialect.get_isolation_level = lambda *i: "AUTOCOMMIT"
+        p.psycopg2.PGDialect_psycopg2.set_isolation_level = lambda *i: None
+        #p.base.PGDialect._get_default_schema_name = lambda *i: None
+        kwargs = dict(isolation_level="AUTOCOMMIT")
+        return uri, kwargs

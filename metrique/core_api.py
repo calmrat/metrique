@@ -80,7 +80,7 @@ import subprocess
 import urllib
 
 from metrique.utils import get_cube, utcnow, jsonhash, dt2ts, load_config
-from metrique.utils import rupdate, get_sqlalchemy_engine
+from metrique.utils import rupdate
 
 logger = logging.getLogger(__name__)
 
@@ -324,7 +324,6 @@ class BaseClient(object):
             <type HTTPClient(...)>
 
     '''
-    config_section = 'metrique'
     default_config_file = DEFAULT_CONFIG
     name = None
     config = None
@@ -403,11 +402,14 @@ class BaseClient(object):
             logger.setLevel(logging.WARN)
         elif level in [0, None]:
             logger.setLevel(logging.INFO)
-        elif level in [True, 1, 2]:
+        elif level is True:
             logger.setLevel(logging.DEBUG)
+        else:
+            level = int(level)
+            logger.setLevel(level)
         return logger
 
-    def debug_setup(self):
+    def debug_setup(self, logger=None, level=None):
         '''
         Local object instance logger setup.
 
@@ -429,7 +431,7 @@ class BaseClient(object):
             * log2file (bool)
             * log_file (path)
         '''
-        level = self.config['metrique'].get('debug')
+        level = level or self.config['metrique'].get('debug')
         log2stdout = self.config['metrique'].get('log2stdout')
         log_format = "%(name)s.%(process)s:%(asctime)s:%(message)s"
         log_format = logging.Formatter(log_format, "%Y%m%dT%H%M%S")
@@ -439,7 +441,7 @@ class BaseClient(object):
         log_dir = self.config['metrique'].get('log_dir', '')
         log_file = os.path.join(log_dir, log_file)
 
-        logger = logging.getLogger('metrique')
+        logger = logger or logging.getLogger('metrique')
         logger.propagate = 0
         logger.handlers = []
         if log2file and log_file:
@@ -452,7 +454,7 @@ class BaseClient(object):
             hdlr = logging.StreamHandler()
             hdlr.setFormatter(log_format)
             logger.addHandler(hdlr)
-        self._debug_set_level(logger, level)
+        logger = self._debug_set_level(logger, level)
 
     def configure(self, section_key, options, defaults, config_file=None):
         if not section_key:
@@ -552,20 +554,18 @@ class BaseClient(object):
         # kwargs are for passing ftype load options (csv.delimiter, etc)
         # expect the use of globs; eg, file* might result in fileN (file1,
         # file2, file3), etc
-        if re.match('https?://', path):
+        if not isinstance(path, basestring):
+            # assume we're getting a raw dataframe
+            df = path
+            if not isinstance(df, pd.DataFrame):
+                raise ValueError("loading raw values must be DataFrames")
+        elif re.match('https?://', path):
             _path, headers = self.urlretrieve(path, retries)
             logger.debug('Saved %s to tmp file: %s' % (path, _path))
             try:
                 df = self._load_file(_path, filetype, as_dict=False, **kwargs)
             finally:
                 os.remove(_path)
-        elif re.match('sql\+.+://', path):
-            match = re.match('sql\+(.+)://(.+)', path)
-            if match:
-                backend, sql = match.groups()
-                df = self._load_sql(backend, sql, as_dict=False, **kwargs)
-            else:
-                raise ValueError("invalid sql uri: %s" % path)
         else:
             path = re.sub('^file://', '', path)
             path = os.path.expanduser(path)
@@ -577,7 +577,7 @@ class BaseClient(object):
             if df:
                 df = pd.concat(df)
 
-        if df.empty:
+        if not hasattr(df, 'empty') or df.empty:
             raise ValueError("not data extracted!")
 
         if raw:
@@ -609,14 +609,6 @@ class BaseClient(object):
 
     def _load_json(self, path, as_dict=True, **kwargs):
         return pd.read_json(path, **kwargs)
-
-    def _load_sql(self, backend, sql, as_dict=True, **kwargs):
-        engine = get_sqlalchemy_engine(backend=backend, **kwargs)
-        rows = engine.execute(sql)
-        objects = [dict(row) for row in rows]
-        if not as_dict:
-            objects = pd.DataFrame(objects)
-        return objects
 
     def load_config(self, path):
         return load_config(path)
