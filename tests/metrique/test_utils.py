@@ -90,7 +90,6 @@ def test_get_cube():
     # expected to be available (built-ins)
     get_cube('csvdata_rows')
     get_cube('sqldata_generic')
-    get_cube('sqldata_teiid')
 
     # test pulling from arbitrary path/pkg
     paths = [os.path.dirname(os.path.abspath(__file__))]
