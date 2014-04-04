@@ -347,7 +347,7 @@ def parse_pql_query(query, date=None):
 
     :param query: pql query
     '''
-    _query = re.sub(' in \([^\)]+\)', ' in (...)', query)
+    _query = re.sub(' in \([^\)]+\)', ' in (...)', query) if query else query
     logger.debug('Query: %s' % _query)
     query = query_add_date(query, date)
     if not query:

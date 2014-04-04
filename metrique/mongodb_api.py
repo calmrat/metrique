@@ -582,8 +582,9 @@ class MongoDBClient(BaseClient):
 
     def _filter_end_not_null_dups(self, _cube, objects):
         # filter out dups which have non-null _end value
-        _ids, _hashes = zip(*[(o['_id'], o['_hash']) for o in objects
-                            if o['_end'] is not None])
+        tups = [(o['_id'], o['_hash']) for o in objects
+                if o['_end'] is not None]
+        _ids, _hashes = zip(*tups) if tups else [], []
         if _ids:
             spec = parse_pql_query(
                 '_id in %s and _hash in %s' % (_ids, _hashes), date='~')
