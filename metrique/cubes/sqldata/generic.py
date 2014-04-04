@@ -87,21 +87,22 @@ class Generic(pyclient):
     sql_backend = None
     fields = None
 
-    def __init__(self, sql_host=None, sql_port=None, sql_db=None,
-                 sql_retries=None, sql_batch_size=None,
+    def __init__(self, sql_host=None, sql_port=None, sql_vdb=None,
+                 sql_db=None, sql_retries=None, sql_batch_size=None,
                  sql_username=None, sql_password=None,
                  sql_debug=None, sql_worker_batch_size=None,
                  *args, **kwargs):
         super(Generic, self).__init__(*args, **kwargs)
         self.fields = self.fields or {}
         options = dict(host=sql_host, port=sql_port, db=sql_db,
-                       retries=sql_retries, username=sql_username,
-                       password=sql_password, batch_size=sql_batch_size,
-                       debug=sql_debug,
+                       vdb=sql_vdb, retries=sql_retries,
+                       username=sql_username, password=sql_password,
+                       batch_size=sql_batch_size, debug=sql_debug,
                        worker_batch_size=sql_worker_batch_size)
-        defaults = dict(host=None, port=None, db=None, retries=1,
-                        username=None, password=None, batch_size=1000,
-                        debug=logging.INFO, worker_batch_size=5000)
+        defaults = dict(host=None, port=None, db=None, vdb=None,
+                        retries=1, username=None, password=None,
+                        batch_size=1000, debug=logging.INFO,
+                        worker_batch_size=5000)
         self.configure('sql', options, defaults)
         self.retry_on_error = (Exception, )
         self.debug_setup()
@@ -553,8 +554,11 @@ class Generic(pyclient):
     def _load_sql(self, sql, backend=None, as_dict=True,
                   cached=True, **kwargs):
         backend = backend or self.sql_backend
-        kwargs.update(self.config['sql'])
-        engine = self.get_engine(backend=backend, cached=cached, **kwargs)
+        # load sql kwargs from instance config
+        _kwargs = deepcopy(self.config['sql'])
+        # override anything passed in
+        _kwargs.update(kwargs)
+        engine = self.get_engine(backend=backend, cached=cached, **_kwargs)
         rows = engine.execute(sql)
         objects = [dict(row) for row in rows]
         if not as_dict:

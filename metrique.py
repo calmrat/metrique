@@ -163,18 +163,25 @@ DEFAULT_METRIQUE_JSON = '''{
     },
     "mongodb": {
         "auth": false,
-        "batch_size": 10000,
+        "batch_size": 5000,
         "host": "127.0.0.1",
         "_host": "%s",
         "password": "%s",
         "port": 27017,
-        "read_preference": "NEAREST",
+        "read_preference": "SECONDARY_PREFERRED",
         "replica_set": "",
         "ssl": false,
         "ssl_certificate": "%s",
         "tz_aware": true,
         "username": "admin",
         "write_concern": 0
+    },
+    "sql": {
+      "port": 0,
+      "host": "",
+      "password": "",
+      "username": "",
+      "vdb": ""
     }
 }'''
 
