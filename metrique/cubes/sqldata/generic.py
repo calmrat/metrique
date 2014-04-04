@@ -48,11 +48,6 @@ from metrique.utils import batch_gen, ts2dt, dt2ts
 def get_full_history(cube, oids, flush=False, cube_name=None, autosnap=False,
                      config=None, **kwargs):
     m = pyclient(cube=cube, name=cube_name, config=config, **kwargs)
-    m.config = config or m.config
-    # FIXME: MAKE THIS WORK AUTOMATICALLY AFTER UPDATING CONFIG!
-    m.debug_setup()
-    m._setup_sqlalchemy_logging()
-    m._setup_inconsistency_log()
     results = []
     for batch in batch_gen(oids, m.config['sql'].get('batch_size')):
         _ = m._activity_get_objects(oids=batch, flush=flush, autosnap=autosnap)
@@ -63,10 +58,6 @@ def get_full_history(cube, oids, flush=False, cube_name=None, autosnap=False,
 def get_objects(cube, oids, flush=False, cube_name=None, autosnap=True,
                 config=None, **kwargs):
     m = pyclient(cube=cube, name=cube_name, config=config, **kwargs)
-    m.config = config or m.config
-    m.debug_setup()
-    m._setup_sqlalchemy_logging()
-    m._setup_inconsistency_log()
     results = []
     for batch in batch_gen(oids, m.config['sql'].get('batch_size')):
         _ = m._get_objects(oids=batch, flush=flush, autosnap=autosnap)
@@ -96,23 +87,24 @@ class Generic(pyclient):
     sql_backend = None
     fields = None
 
-    def __init__(self, sql_host=None, sql_port=None, sql_retries=None,
-                 sql_batch_size=None, sql_username=None, sql_password=None,
-                 sql_debug=None, sql_worker_batch_size=None, *args, **kwargs):
+    def __init__(self, sql_host=None, sql_port=None, sql_db=None,
+                 sql_retries=None, sql_batch_size=None,
+                 sql_username=None, sql_password=None,
+                 sql_debug=None, sql_worker_batch_size=None,
+                 *args, **kwargs):
         super(Generic, self).__init__(*args, **kwargs)
         self.fields = self.fields or {}
-        options = dict(host=sql_host, port=sql_port, retries=sql_retries,
-                       username=sql_username, password=sql_password,
-                       batch_size=sql_batch_size, debug=sql_debug,
+        options = dict(host=sql_host, port=sql_port, db=sql_db,
+                       retries=sql_retries, username=sql_username,
+                       password=sql_password, batch_size=sql_batch_size,
+                       debug=sql_debug,
                        worker_batch_size=sql_worker_batch_size)
-        defaults = dict(host=None, port=None, retries=1,
+        defaults = dict(host=None, port=None, db=None, retries=1,
                         username=None, password=None, batch_size=1000,
-                        debug=logging.DEBUG, worker_batch_size=10000)
+                        debug=logging.INFO, worker_batch_size=5000)
         self.configure('sql', options, defaults)
         self.retry_on_error = (Exception, )
         self.debug_setup()
-        self._setup_inconsistency_log()
-        self._setup_sqlalchemy_logging()
 
     def activity_get(self, ids=None):
         '''
@@ -132,7 +124,7 @@ class Generic(pyclient):
 
     def _activity_get_objects(self, oids, flush=False, autosnap=False):
         logger.debug('Getting Objects - Activity History')
-        self.get_objects(force=oids, flush=False)
+        self._get_objects(oids=oids, flush=False)
         objects = self.objects.values()
         # dict, has format: oid: [(when, field, removed, added)]
         activities = self.activity_get(oids)
@@ -242,7 +234,7 @@ class Generic(pyclient):
         return value
 
     def _delta_force(self, force=None, last_update=None, parse_timestamp=None):
-        force = force or False
+        force = force or self.config['sql'].get('force') or False
         oids = []
         if force is True:
             # get a list of all known object ids
@@ -263,6 +255,11 @@ class Generic(pyclient):
         logger.debug("Delta Size: %s" % len(oids))
         return sorted(set(oids))
 
+    def debug_setup(self, *args, **kwargs):
+        super(Generic, self).debug_setup(*args, **kwargs)
+        self._setup_inconsistency_log()
+        self._setup_sqlalchemy_logging()
+
     def get_changed_oids(self, last_update=None, parse_timestamp=None):
         '''
         Returns a list of object ids of those objects that have changed since
@@ -280,7 +277,6 @@ class Generic(pyclient):
 
         :param mtime: datetime string used as 'change since date'
         '''
-        logger.debug("DELTA: Changed OIDS")
         mtime = self._fetch_mtime(last_update, parse_timestamp)
         mtime_columns = self.config['sql'].get('delta_mtime', [])
         if not (mtime_columns and mtime):
@@ -349,7 +345,7 @@ class Generic(pyclient):
         selects = []
         stmts = []
         for as_field, opts in self.fields.iteritems():
-            select = opts.get('select') or as_field
+            select = opts.get('select') or '%s.%s' % (table, as_field)
             select = '%s as %s' % (select, as_field)
             selects.append(select)
             sql = opts.get('sql') or ''
@@ -395,15 +391,21 @@ class Generic(pyclient):
         :param parse_timestamp: flag to convert timestamp timezones in-line
         '''
         workers = self.config['metrique'].get('workers')
-        batch_size = self.config['sql'].get('worker_batch_size')
+        # if we're using multiple workers, break the oids
+        # according to worker batchsize, then each worker will
+        # break the batch into smaller sql batch size batches
+        # otherwise, single threaded, use sql batch size
+        w_batch_size = self.config['sql'].get('worker_batch_size')
+        s_batch_size = self.config['sql'].get('batch_size')
         # set the 'index' of sql columns so we can extract
         # out the sql rows and know which column : field
-        logger.debug(
-            'Getting Objects - Current Values (%s@%s)' % (workers, batch_size))
         # determine which oids will we query
         oids = self._delta_force(force, last_update, parse_timestamp)
 
         if HAS_JOBLIB and workers > 1:
+            logger.debug(
+                'Getting Objects - Current Values (%s@%s)' % (
+                    workers, w_batch_size))
             runner = Parallel(n_jobs=workers)
             func = delayed(get_objects)
             with warnings.catch_warnings():
@@ -414,12 +416,15 @@ class Generic(pyclient):
                     cube=self._cube, oids=batch, flush=flush,
                     cube_name=self.name, autosnap=autosnap,
                     config=self.config)
-                    for batch in batch_gen(oids, batch_size))
+                    for batch in batch_gen(oids, w_batch_size))
             # merge list of lists (batched) into single list
             result = [i for l in result for i in l]
         else:
+            logger.debug(
+                'Getting Objects - Current Values (%s@%s)' % (
+                    workers, s_batch_size))
             result = []
-            for batch in batch_gen(oids, batch_size):
+            for batch in batch_gen(oids, s_batch_size):
                 _ = self._get_objects(oids=batch, flush=flush,
                                       autosnap=autosnap)
                 result.extend(_)
@@ -450,7 +455,6 @@ class Generic(pyclient):
         self.objects = self._prep_objects(objects)
         [o.update({'_oid': o[_oid]}) for o in objects]
         self.objects = objects
-        return self.objects.values()
         if flush:
             return self.flush(autosnap=autosnap)
         else:
@@ -463,7 +467,6 @@ class Generic(pyclient):
         Essentially, a diff of distinct oids in the source database
         compared to cube.
         '''
-        logger.debug('DELTA: New OIDS')
         table = self.config['sql'].get('table')
         _oid = self.config['sql'].get('_oid')
         last_id = self.get_last_field('_oid')
@@ -487,12 +490,14 @@ class Generic(pyclient):
         states and import fresh
         '''
         workers = self.config['metrique'].get('workers')
-        batch_size = self.config['sql'].get('worker_batch_size')
-        logger.debug(
-            'Getting Full History (%s@%s)' % (workers, batch_size))
+        w_batch_size = self.config['sql'].get('worker_batch_size')
+        s_batch_size = self.config['sql'].get('batch_size')
         # determine which oids will we query
         oids = self._delta_force(force, last_update, parse_timestamp)
         if HAS_JOBLIB and workers > 1:
+            logger.debug(
+                'Getting Full History (%s@%s)' % (
+                    workers, w_batch_size))
             runner = Parallel(n_jobs=workers)
             func = delayed(get_full_history)
             with warnings.catch_warnings():
@@ -503,12 +508,15 @@ class Generic(pyclient):
                     cube=self._cube, oids=batch, flush=flush,
                     cube_name=self.name, autosnap=autosnap,
                     config=self.config)
-                    for batch in batch_gen(oids, batch_size))
+                    for batch in batch_gen(oids, w_batch_size))
             # merge list of lists (batched) into single list
             result = [i for l in result for i in l]
         else:
+            logger.debug(
+                'Getting Full History (%s@%s)' % (
+                    workers, s_batch_size))
             result = []
-            for batch in batch_gen(oids, batch_size):
+            for batch in batch_gen(oids, s_batch_size):
                 _ = self._activity_get_objects(oids=batch, flush=flush,
                                                autosnap=autosnap)
                 result.extend(_)
@@ -518,6 +526,16 @@ class Generic(pyclient):
         else:
             [self.objects.add(obj) for obj in result]
             return self
+
+    def _left_join(self, select_as, select_prop, join_prop, join_table,
+                   on_col, on_db=None, on_table=None, join_db=None):
+        on_table = on_table or self.config['sql'].get('table')
+        on_db = on_db or self.config['sql'].get('db')
+        join_db = join_db or self.config['sql'].get('db')
+        return {'select': '%s.%s' % (select_as, select_prop),
+                'sql': 'LEFT JOIN %s.%s %s ON %s.%s = %s.%s.%s' % (
+                    join_db, join_table, select_as, select_as, join_prop,
+                    on_db, on_table, on_col)}
 
     def load(self, path, **kwargs):
         if re.match('sql\+.+://', path):
@@ -531,6 +549,7 @@ class Generic(pyclient):
         else:
             return super(Generic, self).load(path, **kwargs)
 
+    # FIXME: as_dict -> raw? we're returning a list... not dict
     def _load_sql(self, sql, backend=None, as_dict=True,
                   cached=True, **kwargs):
         backend = backend or self.sql_backend
@@ -591,30 +610,35 @@ class Generic(pyclient):
 
     def _type_container(self, value, _type):
         ' apply type to all values in the list '
-        if value is None:  # don't convert null values
-            # FIXME: NORMALIZE to empty [] list?
-            return value
-        if not isinstance(value, (list, tuple)):
+        if value is None:
+            # normalize null containers to empty list
+            return []
+        elif not isinstance(value, (list, tuple)):
             raise ValueError("expected list type, got: %s" % type(value))
-        for i, item in enumerate(value):
-            item = self._type_single(item, _type)
-            value[i] = item
-        value = sorted(value)
-        return value
+        else:
+            return sorted(self._type_single(item, _type) for item in value)
 
     def _type_single(self, value, _type):
         ' apply type to the single value '
-        # FIXME: convert '' -> None?
         if value is None:  # don't convert null values
             pass
+        elif value == '':
+            value = None
         elif _type is None:
-            value = unicode(str(value), 'utf8')
+            if isinstance(value, unicode):
+                value = value.encode('utf8')
+            else:
+                value = unicode(str(value), 'utf8')
         elif isinstance(value, _type):  # or values already of correct type
             pass
         else:
             value = _type(value)
-            if isinstance(value, basestring):
+            if isinstance(value, unicode):
+                value = value.encode('utf8')
+            elif isinstance(value, str):
                 value = unicode(value, 'utf8')
+            else:
+                pass  # leave as-is
         return value
 
     def _unwrap(self, field, value):
@@ -634,7 +658,7 @@ class Generic(pyclient):
     def _setup_sqlalchemy_logging(self):
         logger = logging.getLogger('sqlalchemy')
         level = self.config['sql'].get('debug')
-        self.debug_setup(logger=logger, level=level)
+        super(Generic, self).debug_setup(logger=logger, level=level)
 
     def _setup_inconsistency_log(self):
         _log_file = self.config['metrique'].get('log_file').split('.log')[0]
@@ -661,8 +685,8 @@ class Generic(pyclient):
         db = self.config['sql'].get('db')
         _oid = self.config['sql'].get('_oid')
         sql = 'SELECT DISTINCT %s.%s FROM %s.%s' % (table, _oid, db, table)
-        where = [where] if isinstance(where, basestring) else list(where)
         if where:
+            where = [where] if isinstance(where, basestring) else list(where)
             sql += ' WHERE %s' % ' OR '.join(where)
         return sorted([r[_oid] for r in self._load_sql(sql)])
 
@@ -674,9 +698,11 @@ class Generic(pyclient):
         import sqlalchemy.dialects.postgresql as p
         # version normally comes "'Teiid 8.5.0.Final'", which sqlalchemy
         # failed to parse
+        p.base.PGDialect.description_encoding = str('utf8')
+        p.base.PGDialect._check_unicode_returns = lambda *i: True
         p.base.PGDialect._get_server_version_info = lambda *i: version
         p.base.PGDialect.get_isolation_level = lambda *i: "AUTOCOMMIT"
         p.psycopg2.PGDialect_psycopg2.set_isolation_level = lambda *i: None
-        #p.base.PGDialect._get_default_schema_name = lambda *i: None
+        p.base.PGDialect._get_default_schema_name = lambda *i: None
         kwargs = dict(isolation_level="AUTOCOMMIT")
         return uri, kwargs

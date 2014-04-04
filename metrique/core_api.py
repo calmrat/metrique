@@ -374,15 +374,8 @@ class BaseClient(object):
         # with class assigned default or empty dict
         self.config = deepcopy(config) or self.config or {}
 
-        if config:
-            # we're going to use the passed in config;
-            # make sure we apply any args passed in though
-            self.config.setdefault('metrique', {})
-            [self.config['metrique'].update({k: v})
-             for k, v in options.iteritems() if v is not None]
-        else:
-            # load defaults + set args passed in
-            self.configure('metrique', options, defaults, config_file)
+        # load defaults + set args passed in
+        self.configure('metrique', options, defaults, config_file)
 
         # cube class defined name
         self._cube = type(self).name
@@ -390,10 +383,8 @@ class BaseClient(object):
         # set name if passed in, but don't overwrite default if not
         self.name = name or self.name
 
-        # keep logging local to the cube so multiple
-        # cubes can independently log without interferring
-        # with each others logging.
-        self.debug_setup()
+        # top level sub-classes are expected to call this!
+        #self.debug_setup()
 
         self._objects = MetriqueContainer()
 
@@ -456,24 +447,34 @@ class BaseClient(object):
             logger.addHandler(hdlr)
         logger = self._debug_set_level(logger, level)
 
-    def configure(self, section_key, options, defaults, config_file=None):
-        if not section_key:
+    def configure(self, section_key, options, defaults, config_file=None,
+                  force=False):
+        sk = section_key
+        if not sk:
             raise ValueError("section_key can't be null")
-        # load the config options from disk, if path provided
-        config_file = config_file or self.default_config_file
-        if config_file:
-            raw_config = self.load_config(config_file)
-            section = raw_config.get(section_key, {})
-            if not isinstance(section, dict):
-                # convert mergeabledict (anyconfig) to dict of dicts
-                section = section.convert_to(section)
-            defaults = rupdate(defaults, section)
-        # set option to value passed in, if any
-        for k, v in options.iteritems():
-            v = v if v is not None else defaults[k]
-            section[unicode(k)] = v
-        self.config.setdefault(section_key, {})
-        self.config[section_key] = rupdate(self.config[section_key], section)
+        elif sk in self.config and not force:
+            # if 'sql' is already configured, ie, we initiated with
+            # config set already, don't set defaults, only options
+            # not set as None
+            self.config.setdefault(section_key, {})
+            [self.config[section_key].update({k: v})
+             for k, v in options.iteritems() if v is not None]
+        else:
+            # load the config options from disk, if path provided
+            config_file = config_file or self.default_config_file
+            if config_file:
+                raw_config = self.load_config(config_file)
+                section = raw_config.get(sk, {})
+                if not isinstance(section, dict):
+                    # convert mergeabledict (anyconfig) to dict of dicts
+                    section = section.convert_to(section)
+                defaults = rupdate(defaults, section)
+            # set option to value passed in, if any
+            for k, v in options.iteritems():
+                v = v if v is not None else defaults[k]
+                section[unicode(k)] = v
+            self.config.setdefault(sk, {})
+            self.config[sk] = rupdate(self.config[sk], section)
 
     def get_cube(self, cube, init=True, name=None, copy_config=True, **kwargs):
         '''wrapper for :func:`metrique.utils.get_cube`
