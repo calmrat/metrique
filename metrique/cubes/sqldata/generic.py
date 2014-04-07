@@ -42,7 +42,7 @@ except ImportError:
 import warnings
 
 from metrique import pyclient
-from metrique.utils import batch_gen, ts2dt, dt2ts
+from metrique.utils import batch_gen
 
 
 def get_full_history(cube, oids, flush=False, cube_name=None, autosnap=False,
@@ -144,12 +144,10 @@ class Generic(pyclient):
         Import activities for a single document into timeline.
         '''
         batch_updates = [time_doc]
-        # compare tz aware/naive depending if acts 'when' is tz_aware or not
-        tz_aware = True if activities and activities[0][0].tzinfo else False
         # We want to consider only activities that happend before time_doc
         # do not move this, because time_doc._start changes
         # time_doc['_start'] is a timestamp, whereas act[0] is a datetime
-        td_start = ts2dt(time_doc['_start'], tz_aware=tz_aware)
+        td_start = time_doc['_start']
         activities = filter(lambda act: (act[0] < td_start and
                                          act[1] in time_doc), activities)
         creation_field = self.config['sql'].get('cfield')
@@ -157,7 +155,6 @@ class Generic(pyclient):
         activities.sort(reverse=True, key=lambda o: o[0])
         new_doc = {}
         for when, field, removed, added in activities:
-            when = dt2ts(when)
             last_doc = batch_updates.pop()
             # check if this activity happened at the same time as the last one,
             # if it did then we need to group them together
@@ -192,7 +189,7 @@ class Generic(pyclient):
             # set start to creation time if available
             last_doc = batch_updates[-1]
             if creation_field:
-                creation_ts = dt2ts(last_doc[creation_field])
+                creation_ts = last_doc[creation_field]
                 if creation_ts < last_doc['_start']:
                     last_doc['_start'] = creation_ts
                 elif len(batch_updates) == 1:
@@ -300,8 +297,6 @@ class Generic(pyclient):
         else:
             mtime = self.get_last_field('_start')
 
-        # convert timestamp to datetime object
-        mtime = ts2dt(mtime)
         logger.debug("Last update mtime: %s" % mtime)
 
         if mtime:
@@ -575,7 +570,7 @@ class Generic(pyclient):
                  'added_type': str(type(added)),
                  'last_val': last_val,
                  'last_val_type': str(type(last_val)),
-                 'when': str(ts2dt(when))}
+                 'when': str(when)}
         m = u'{oid} {field}: {removed}-> {added} has {last_val}; '
         m += u'({removed_type}-> {added_type} has {last_val_type})'
         m += u' ... on {when}'

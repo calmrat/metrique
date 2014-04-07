@@ -79,7 +79,7 @@ import signal
 import subprocess
 import urllib
 
-from metrique.utils import get_cube, utcnow, jsonhash, dt2ts, load_config
+from metrique.utils import get_cube, utcnow, jsonhash, load_config
 from metrique.utils import rupdate
 
 logger = logging.getLogger(__name__)
@@ -120,9 +120,10 @@ class MetriqueObject(Mapping):
                 else:
                     #logger.debug("%s is immutable; not setting" % key)
                     continue
-            if key in TIMESTAMP_OBJ_KEYS and value is not None:
-                # ensure normalized timestamp
-                value = dt2ts(value)
+            #if key in TIMESTAMP_OBJ_KEYS and value is not None:
+            #    # ensure normalized timestamp
+            #    value = dt2ts(value)
+            # # FIXME: use ts2dt()? we need to normalize to datetime()
             if isinstance(value, str):
                 value = unicode(value, 'utf8')
             if value == '' or value != value:

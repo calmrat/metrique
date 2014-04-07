@@ -31,7 +31,7 @@ except ImportError:
     raise ImportError("Pymongo 2.6+ required!")
 
 from metrique.core_api import BaseClient, MetriqueObject
-from metrique.utils import parse_pql_query, dt2ts, batch_gen
+from metrique.utils import parse_pql_query, batch_gen
 from metrique.result import Result
 
 ETC_DIR = os.environ.get('METRIQUE_ETC')
@@ -779,7 +779,7 @@ class MongoDBClient(BaseClient):
         return data
 
     def _history_accumulate(self, data, date_list):
-        date_list = sorted(map(dt2ts, date_list))
+        date_list = sorted(date_list)
         # accumulate the counts
         res = defaultdict(lambda: defaultdict(int))
         for group in data:
