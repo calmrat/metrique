@@ -398,20 +398,22 @@ class Result(DataFrame):
     def fhas(self, field, val):
         return self[self.has(field, val)]
 
-    def notin(self, field, vals):
-        return self[field].apply(lambda els:
-                                 not any([e in vals for e in (els or [])]))
-
-    @filtered
-    def fnotin(self, field, vals):
-        return self[self.notin(field, vals)]
+    def isin(self, field, vals):
+        return self[field].apply(lambda x:
+                                 any([e in vals for e in x])
+                                 if isinstance(x, list)
+                                 else x in vals)
 
     @filtered
     def fisin(self, field, vals):
-        return self[self[field].isin(vals)]
+        return self[self.isin(field, vals)]
+
+    @filtered
+    def fnotin(self, field, vals):
+        return self[~self.isin(field, vals)]
 
     def isempty(self, field):
-        return self[field].apply(lambda l: len(l or [])) == 0
+        return self[field].astype(bool)
 
     def notempty(self, field):
         return ~self.isempty(field)
