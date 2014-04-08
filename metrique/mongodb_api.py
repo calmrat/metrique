@@ -913,3 +913,10 @@ class MongoDBClient(BaseClient):
             to_sample = sorted(set(random.sample(xrange(n), sample_size)))
             docs = [docs[i] for i in to_sample]
         return docs
+
+    def persist(self, query=None, fields=None, date=None,
+                cube=None, owner=None, **kwargs):
+        itr = self.find(query=query, fields=fields, date=date,
+                        cube=cube, owner=owner, as_cursor=True)
+        kwargs['prefix'] = self.config['mongodb'].get('username')
+        return super(MongoDBClient, self).persist(itr, **kwargs)

@@ -413,7 +413,7 @@ def ts2dt(ts, milli=False, tz_aware=True):
             return datetime.utcfromtimestamp(ts)
 
 
-def utcnow(as_datetime=False, tz_aware=False, drop_micro=False):
+def utcnow(as_datetime=True, tz_aware=False, drop_micro=False):
     if tz_aware:
         now = datetime.now(pytz.UTC)
     else:

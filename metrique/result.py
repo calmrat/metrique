@@ -52,8 +52,6 @@ class Result(DataFrame):
     def __init__(self, data=None, date=None):
         super(Result, self).__init__(data)
         # The converts are here so that None is converted to NaT
-        self.to_datetime('_start')
-        self.to_datetime('_end')
         if isinstance(data, Result):
             self._lbound = data._lbound
             self._rbound = data._rbound
@@ -63,10 +61,7 @@ class Result(DataFrame):
 
     def to_datetime(self, column):
         '''
-        The json serialization/deserialization process leaves dates as
-        timestamps (in s).
-
-        This function converts the column to datetimes.
+        This function converts epoch timestamps to datetimes.
 
         :param column: column to convert from current state -> datetime
         '''
@@ -190,7 +185,7 @@ class Result(DataFrame):
         end = Timestamp(end or max(Timestamp(self._end.max()),
                                    self._start.max()))
         # FIXME: end != end ?
-        end = utcnow(as_datetime=True) if repr(end) == 'NaT' else end
+        end = utcnow() if repr(end) == 'NaT' else end
         start = start if self.check_in_bounds(start) else self._lbound
         end = end if self.check_in_bounds(end) else self._rbound
 
@@ -317,7 +312,7 @@ class Result(DataFrame):
             last[col_name] = age - timedelta(microseconds=age.microseconds)
             return last
 
-        cut_ts = self._rbound or utcnow(as_datetime=True)
+        cut_ts = self._rbound or utcnow()
         res = pd.concat([prep(df) for _, df in self.groupby(self._oid)])
         return res
 

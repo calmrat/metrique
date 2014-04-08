@@ -68,8 +68,14 @@ And finishing with some querying and simple charting of the data.
 from __future__ import unicode_literals
 
 from collections import Mapping, MutableMapping
+import cPickle
 from copy import deepcopy
+from getpass import getuser
 import glob
+try:
+    import simplejson as json
+except ImportError:
+    import json
 import logging
 import os
 import pandas as pd
@@ -77,10 +83,11 @@ import re
 import shlex
 import signal
 import subprocess
+import tempfile
 import urllib
 
 from metrique.utils import get_cube, utcnow, jsonhash, load_config
-from metrique.utils import rupdate
+from metrique.utils import rupdate, json_encode
 
 logger = logging.getLogger(__name__)
 
@@ -574,7 +581,8 @@ class BaseClient(object):
             datasets = glob.glob(os.path.expanduser(path))
             # buid up a single dataframe by concatting
             # all globbed files together
-            df = [self._load_file(ds, filetype, as_dict=False, **kwargs)
+            df = [self._load_file(ds, filetype, as_dict=False,
+                                  **kwargs)
                   for ds in datasets]
             if df:
                 df = pd.concat(df)
@@ -595,9 +603,11 @@ class BaseClient(object):
             # try to get file extension
             filetype = path.split('.')[-1]
         if filetype in ['csv', 'txt']:
-            result = self._load_csv(path, as_dict=as_dict, **kwargs)
+            result = self._load_csv(path, **kwargs)
         elif filetype in ['json']:
-            result = self._load_json(path, as_dict=as_dict, **kwargs)
+            result = self._load_json(path, **kwargs)
+        elif filetype in ['pickle']:
+            result = self._load_pickle(path, **kwargs)
         else:
             raise TypeError("Invalid filetype: %s" % filetype)
         if as_dict:
@@ -605,15 +615,66 @@ class BaseClient(object):
         else:
             return result
 
-    def _load_csv(self, path, as_dict=True, **kwargs):
+    def _load_pickle(self, path, **kwargs):
+        result = []
+        with open(path) as f:
+            while 1:
+                # in case we have multiple pickles dumped
+                try:
+                    result.append(cPickle.load(f))
+                except EOFError:
+                    break
+        return pd.DataFrame(result)
+
+    def _load_csv(self, path, **kwargs):
         # load the file according to filetype
         return pd.read_csv(path, **kwargs)
 
-    def _load_json(self, path, as_dict=True, **kwargs):
+    def _load_json(self, path, **kwargs):
         return pd.read_json(path, **kwargs)
 
     def load_config(self, path):
         return load_config(path)
+
+    def flush(self, **kwargs):
+        return self.persist(**kwargs)
+
+    def persist(self, itr=None, _type=None, _dir=None, prefix=None):
+        itr = itr or self.objects
+        _type = _type or 'pickle'
+        _dir = _dir or self.config['metrique'].get('cache_dir')
+        prefix = '%s_' % prefix or getuser()
+        if _type == 'pickle':
+            path = self._persist_pickle(itr, _dir=_dir, prefix=prefix)
+        elif _type == 'json':
+            path = self._persist_json(itr, _dir=_dir, prefix=prefix)
+        else:
+            raise ValueError("Unknown target uri: %s" % uri)
+        return path
+
+    def _persist_json(self, itr, _dir, prefix):
+        suffix = '.json'
+        handle, path = tempfile.mkstemp(dir=_dir, prefix=prefix, suffix=suffix)
+        _sep = (',', ':')
+        with os.fdopen(handle, 'w') as f:
+            [json.dump(doc, f, separators=_sep, default=json_encode)
+             for doc in itr]
+        file_is_empty = bool(os.stat(path).st_size == 0)
+        if file_is_empty:
+            logger.warn("file is empty! (removing)")
+            os.remove(path)
+        return path
+
+    def _persist_pickle(self, itr, _dir, prefix):
+        suffix = '.pickle'
+        handle, path = tempfile.mkstemp(dir=_dir, prefix=prefix, suffix=suffix)
+        with os.fdopen(handle, 'w') as f:
+            [cPickle.dump(doc, f, 2) for doc in itr]
+        file_is_empty = bool(os.stat(path).st_size == 0)
+        if file_is_empty:
+            logger.warn("file is empty! (removing)")
+            os.remove(path)
+        return path
 
     @staticmethod
     def _sys_call(self, cmd, sig=None, sig_func=None, quiet=True):
