@@ -100,6 +100,7 @@ class MongoDBClient(BaseClient):
                  mongodb_tz_aware=None, mongodb_write_concern=None,
                  mongodb_batch_size=None,
                  mongodb_owner=None,
+                 mongodb_config_key=None,
                  *args, **kwargs):
         '''
         :param mongodb_auth: Enable authentication
@@ -130,7 +131,9 @@ class MongoDBClient(BaseClient):
                        replica_set=mongodb_replica_set,
                        tz_aware=mongodb_tz_aware,
                        write_concern=mongodb_write_concern,
-                       batch_size=mongodb_batch_size)
+                       batch_size=mongodb_batch_size,
+                       config_key=mongodb_config_key,
+                       )
         defaults = dict(host='127.0.0.1',
                         port=27017,
                         auth=False,
@@ -144,8 +147,10 @@ class MongoDBClient(BaseClient):
                         replica_set=None,
                         tz_aware=True,
                         write_concern=0,
-                        batch_size=10000)
-        self.configure('mongodb', options, defaults)
+                        batch_size=10000,
+                        config_key='mongodb',
+                        )
+        self.configure(mongodb_config_key, options, defaults)
 
     def __getitem__(self, query):
         return self.find(query=query, fields=self.default_fields,
@@ -189,10 +194,6 @@ class MongoDBClient(BaseClient):
         except OperationFailure as e:
             logger.debug(e)
         return _cube
-
-    @property
-    def db(self):
-        return self.proxy[self.config['mongodb'].get('username')]
 
     @property
     def proxy(self):
@@ -366,7 +367,7 @@ class MongoDBClient(BaseClient):
         _cube = self.get_collection(owner, cube)
         logger.info('[%s] Dropping cube' % _cube)
         _cube.drop()
-        result = not bool(self.name in self.db.collection_names())
+        result = not bool(self.name in self.get_db(owner).collection_names())
         return result
 
     def index_list(self, cube=None, owner=None):
@@ -436,7 +437,7 @@ class MongoDBClient(BaseClient):
         if new_owner:
             _from = _cube.full_name
             _to = '%s.%s' % (new_owner, new_name)
-            self.proxy['admin'].command(
+            self.get_db('admin').command(
                 'renameCollection', _from, to=_to, dropTarget=drop_target)
             # don't touch the new collection until after attempting
             # the rename; collection would otherwise be created
@@ -447,7 +448,7 @@ class MongoDBClient(BaseClient):
         else:
             logger.info('[%s] Renaming cube -> %s' % (_cube, new_name))
             _cube.rename(new_name, dropTarget=drop_target)
-            result = bool(new_name in self.db.collection_names())
+            result = bool(new_name in self.get_db(owner).collection_names())
         if cube is None and result:
             self.name = new_name
         return result

@@ -91,6 +91,7 @@ class Generic(pyclient):
                  sql_db=None, sql_retries=None, sql_batch_size=None,
                  sql_username=None, sql_password=None,
                  sql_debug=None, sql_worker_batch_size=None,
+                 sql_config_key=None,
                  *args, **kwargs):
         super(Generic, self).__init__(*args, **kwargs)
         self.fields = self.fields or {}
@@ -98,12 +99,14 @@ class Generic(pyclient):
                        vdb=sql_vdb, retries=sql_retries,
                        username=sql_username, password=sql_password,
                        batch_size=sql_batch_size, debug=sql_debug,
-                       worker_batch_size=sql_worker_batch_size)
+                       worker_batch_size=sql_worker_batch_size,
+                       config_key=sql_config_key)
         defaults = dict(host=None, port=None, db=None, vdb=None,
                         retries=1, username=None, password=None,
                         batch_size=1000, debug=logging.INFO,
-                        worker_batch_size=5000)
-        self.configure('sql', options, defaults)
+                        worker_batch_size=5000,
+                        config_key='sql')
+        self.configure(sql_config_key, options, defaults)
         self.retry_on_error = (Exception, )
         self.debug_setup()
 

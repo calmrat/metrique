@@ -220,11 +220,11 @@ def test_utcnow():
     now_time = int(calendar.timegm(now_date.utctimetuple()))
 
     # FIXME: millisecond resolution?
-    assert utcnow(drop_micro=True) == now_time
+    assert utcnow(as_datetime=False, drop_micro=True) == now_time
     assert utcnow(as_datetime=True, drop_micro=True) == now_date
     _ = utcnow(as_datetime=True, tz_aware=True, drop_micro=True)
     assert _ == now_date_utc
-    assert utcnow(tz_aware=True, drop_micro=True) == now_time
+    assert utcnow(as_datetime=False, tz_aware=True, drop_micro=True) == now_time
 
 
 # FIXME: THIS IS REALLY SLOW... reenable by adding test_ prefix

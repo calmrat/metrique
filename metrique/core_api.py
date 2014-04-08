@@ -339,6 +339,7 @@ class BaseClient(object):
     __metaclass__ = MetriqueFactory
 
     def __init__(self, name, config_file=None, config=None,
+                 config_key=None,
                  cube_pkgs=None, cube_paths=None, debug=None,
                  log_file=None, log2file=None, log2stdout=None,
                  workers=None, log_dir=None, cache_dir=None,
@@ -357,6 +358,7 @@ class BaseClient(object):
         self.default_config_file = config_file or self.default_config_file
         options = dict(cube_pkgs=cube_pkgs,
                        cube_paths=cube_paths,
+                       config_key=config_key,
                        debug=debug,
                        log_file=log_file,
                        log2file=log2file,
@@ -368,6 +370,7 @@ class BaseClient(object):
                        tmp_dir=tmp_dir)
         defaults = dict(cube_pkgs=['cubes'],
                         cube_paths=[],
+                        config_key='metrique',
                         debug=None,
                         log_file='metrique.log',
                         log2file=True,
@@ -383,7 +386,7 @@ class BaseClient(object):
         self.config = deepcopy(config) or self.config or {}
 
         # load defaults + set args passed in
-        self.configure('metrique', options, defaults, config_file)
+        self.configure(config_key, options, defaults, config_file)
 
         # cube class defined name
         self._cube = type(self).name
@@ -457,7 +460,9 @@ class BaseClient(object):
 
     def configure(self, section_key, options, defaults, config_file=None,
                   force=False):
+        # FIXME: permit list of section keys to lookup values in
         sk = section_key
+        sk = sk or options.get('config_key') or defaults.get('config_key')
         if not sk:
             raise ValueError("section_key can't be null")
         elif sk in self.config and not force:
@@ -528,6 +533,10 @@ class BaseClient(object):
             cmd = 'git pull'
             self._sys_call(cmd)
         return repo_path
+
+    def get_objects(self, **kwargs):
+        # subclass implemented
+        raise NotImplementedError()
 
     @property
     def objects(self):
@@ -649,7 +658,7 @@ class BaseClient(object):
         elif _type == 'json':
             path = self._persist_json(itr, _dir=_dir, prefix=prefix)
         else:
-            raise ValueError("Unknown target uri: %s" % uri)
+            raise ValueError("Unknown persist type: %s" % _type)
         return path
 
     def _persist_json(self, itr, _dir, prefix):
