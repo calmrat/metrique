@@ -413,10 +413,10 @@ class Result(DataFrame):
         return self[~self.isin(field, vals)]
 
     def isempty(self, field):
-        return self[field].astype(bool)
+        return ~self[field].astype(bool)
 
     def notempty(self, field):
-        return ~self.isempty(field)
+        return self[field].astype(bool)
 
     ################################ SAVE ####################################
 
