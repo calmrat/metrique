@@ -151,6 +151,7 @@ class MongoDBClient(BaseClient):
                         config_key='mongodb',
                         )
         self.configure(mongodb_config_key, options, defaults)
+        super(MongoDBClient, self).debug_setup()
 
     def __getitem__(self, query):
         return self.find(query=query, fields=self.default_fields,

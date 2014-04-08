@@ -394,7 +394,7 @@ class BaseClient(object):
         # set name if passed in, but don't overwrite default if not
         self.name = name or self.name
 
-        # top level sub-classes are expected to call this!
+        # sub-classes are expected to call this!
         #self.debug_setup()
 
         self._objects = MetriqueContainer()
@@ -469,8 +469,8 @@ class BaseClient(object):
             # if 'sql' is already configured, ie, we initiated with
             # config set already, don't set defaults, only options
             # not set as None
-            self.config.setdefault(section_key, {})
-            [self.config[section_key].update({k: v})
+            self.config.setdefault(sk, {})
+            [self.config[sk].update({k: v})
              for k, v in options.iteritems() if v is not None]
         else:
             # load the config options from disk, if path provided
@@ -703,6 +703,8 @@ class BaseClient(object):
     def urlretrieve(self, uri, saveas=None, retries=3):
         '''urllib.urlretrieve wrapper'''
         retries = int(retries) if retries else 3
+        # FIXME: make saveas load tempfile.mkstemp in
+        # self.config['metrique'].get('cache_dir')
         while retries:
             try:
                 _path, headers = urllib.urlretrieve(uri, saveas)
