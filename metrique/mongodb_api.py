@@ -20,6 +20,7 @@ from collections import defaultdict
 from getpass import getuser
 from operator import itemgetter
 import os
+import pql
 import random
 import re
 
@@ -31,7 +32,7 @@ except ImportError:
     raise ImportError("Pymongo 2.6+ required!")
 
 from metrique.core_api import BaseClient, MetriqueObject
-from metrique.utils import parse_pql_query, batch_gen
+from metrique.utils import batch_gen, ts2dt
 from metrique.result import Result
 
 ETC_DIR = os.environ.get('METRIQUE_ETC')
@@ -310,7 +311,7 @@ class MongoDBClient(BaseClient):
         logger.info('Registering new user %s' % username)
         self.proxy[username].add_user(username, password,
                                       roles=CUBE_OWNER_ROLES)
-        spec = parse_pql_query('user == "%s"' % username)
+        spec = self.parse_pql_query('user == "%s"' % username)
         result = self.proxy[username].system.users.find(spec).count()
         return bool(result)
 
@@ -321,7 +322,7 @@ class MongoDBClient(BaseClient):
         self.proxy[username].remove_user(username)
         if clear_db:
             self.proxy.drop_database(username)
-        spec = parse_pql_query('user == "%s"' % username)
+        spec = self.parse_pql_query('user == "%s"' % username)
         result = not bool(self.proxy[username].system.users.find(spec).count())
         return result
 
@@ -485,7 +486,7 @@ class MongoDBClient(BaseClient):
         :param cube: cube name
         :param owner: username of cube owner
         '''
-        spec = parse_pql_query(query, date)
+        spec = self.parse_pql_query(query, date)
         _cube = self.get_collection(owner, cube)
         logger.info("[%s] Removing objects (%s): %s" % (_cube, date, query))
         result = _cube.remove(spec)
@@ -577,7 +578,7 @@ class MongoDBClient(BaseClient):
         # filter out dups which have null _end value
         _hashes = [o['_hash'] for o in objects if o['_end'] is None]
         if _hashes:
-            spec = parse_pql_query('_hash in %s' % _hashes, date=None)
+            spec = self.parse_pql_query('_hash in %s' % _hashes, date=None)
             return set(_cube.find(spec).distinct('_id'))
         else:
             return set()
@@ -588,7 +589,7 @@ class MongoDBClient(BaseClient):
                 if o['_end'] is not None]
         _ids, _hashes = zip(*tups) if tups else [], []
         if _ids:
-            spec = parse_pql_query(
+            spec = self.parse_pql_query(
                 '_id in %s and _hash in %s' % (_ids, _hashes), date='~')
             return set(_cube.find(spec).distinct('_id'))
         else:
@@ -620,7 +621,7 @@ class MongoDBClient(BaseClient):
                 '[%s] 0 of %s objects need to be rotated' % (_cube, olen))
             return objects
 
-        spec = parse_pql_query('_id in %s' % _ids, date=None)
+        spec = self.parse_pql_query('_id in %s' % _ids, date=None)
         _objs = _cube.find(spec, {'_hash': 0})
         k = _objs.count()
         logger.debug(
@@ -637,6 +638,102 @@ class MongoDBClient(BaseClient):
         return objects
 
 ######################## Query API ################################
+    @staticmethod
+    def _date_pql_string(date):
+        '''
+        Generate a new pql date query component that can be used to
+        query for date (range) specific data in cubes.
+
+        :param date: metrique date (range) to apply to pql query
+
+        If date is None, the resulting query will be a current value
+        only query (_end == None)
+
+        The tilde '~' symbol is used as a date range separated.
+
+        A tilde by itself will mean 'all dates ranges possible'
+        and will therefore search all objects irrelevant of it's
+        _end date timestamp.
+
+        A date on the left with a tilde but no date on the right
+        will generate a query where the date range starts
+        at the date provide and ends 'today'.
+        ie, from date -> now.
+
+        A date on the right with a tilde but no date on the left
+        will generate a query where the date range starts from
+        the first date available in the past (oldest) and ends
+        on the date provided.
+        ie, from beginning of known time -> date.
+
+        A date on both the left and right will be a simple date
+        range query where the date range starts from the date
+        on the left and ends on the date on the right.
+        ie, from date to date.
+        '''
+        if date is None:
+            return '_end == None'
+        if date == '~':
+            return ''
+
+        before = lambda d: '_start <= date("%f")' % ts2dt(d)
+        after = lambda d: '(_end >= date("%f") or _end == None)' % ts2dt(d)
+        split = date.split('~')
+        # replace all occurances of 'T' with ' '
+        # this is used for when datetime is passed in
+        # like YYYY-MM-DDTHH:MM:SS instead of
+        #      YYYY-MM-DD HH:MM:SS as expected
+        # and drop all occurances of 'timezone' like substring
+        split = [re.sub('\+\d\d:\d\d', '', d.replace('T', ' ')) for d in split]
+        if len(split) == 1:
+            # 'dt'
+            return '%s and %s' % (before(split[0]), after(split[0]))
+        elif split[0] == '':
+            # '~dt'
+            return before(split[1])
+        elif split[1] == '':
+            # 'dt~'
+            return after(split[0])
+        else:
+            # 'dt~dt'
+            return '%s and %s' % (before(split[1]), after(split[0]))
+
+    def _query_add_date(self, query, date):
+        '''
+        Take an existing pql query and append a date (range)
+        limiter.
+
+        :param query: pql query
+        :param date: metrique date (range) to append
+        '''
+        date_pql = self._date_pql_string(date)
+        if query and date_pql:
+            return '%s and %s' % (query, date_pql)
+        return query or date_pql
+
+    def parse_pql_query(self, query, date=None):
+        '''
+        Given a pql based query string, parse it using
+        pql.SchemaFreeParser and return the resulting
+        pymongo 'spec' dictionary.
+
+        :param query: pql query
+        '''
+        _subpat = re.compile(' in \([^\)]+\)')
+        _q = _subpat.sub(' in (...)', query) if query else query
+        logger.debug('Query: %s' % _q)
+        query = self._query_add_date(query, date)
+        if not query:
+            return {}
+        if not isinstance(query, basestring):
+            raise TypeError("query expected as a string")
+        pql_parser = pql.SchemaFreeParser()
+        try:
+            spec = pql_parser.parse(query)
+        except Exception as e:
+            raise SyntaxError("Invalid Query (%s)" % str(e))
+        return spec
+
     def aggregate(self, pipeline, cube=None, owner=None):
         '''
         Run a pql mongodb aggregate pipeline on remote cube
@@ -662,7 +759,7 @@ class MongoDBClient(BaseClient):
         :param owner: username of cube owner
         '''
         _cube = self.get_collection(owner, cube)
-        spec = parse_pql_query(query, date)
+        spec = self.parse_pql_query(query, date)
         result = _cube.find(spec).count()
         return result
 
@@ -704,7 +801,7 @@ class MongoDBClient(BaseClient):
         :param owner: username of cube owner
         '''
         _cube = self.get_collection(owner, cube)
-        spec = parse_pql_query(query, date)
+        spec = self.parse_pql_query(query, date)
         fields = self._parse_fields(fields)
 
         merge_versions = False if fields is None or one else merge_versions
@@ -766,15 +863,14 @@ class MongoDBClient(BaseClient):
         '''
         query = '%s and _start < %s and (_end >= %s or _end == None)' % (
                 query, max(date_list), min(date_list))
-        spec = parse_pql_query(query)
+        spec = self.parse_pql_query(query)
 
         pipeline = [
             {'$match': spec},
-            {'$group':
-             {'_id': '$%s' % by_field if by_field else '_id',
-              'starts': {'$push': '$_start'},
-              'ends': {'$push': '$_end'}}
-             }]
+            {'$group': {
+                '_id': '$%s' % by_field if by_field else '_id',
+                'starts': {'$push': '$_start'},
+                'ends': {'$push': '$_end'}}}]
         data = self.aggregate(pipeline)['result']
         data = self._history_accumulate(data, date_list)
         data = self._history_convert(data, by_field)
@@ -809,7 +905,7 @@ class MongoDBClient(BaseClient):
                 vals = []
                 for field_val, count in value.items():
                     vals.append({by_field: field_val,
-                                 "count": count})
+                                "count": count})
                 ret.append({"date": date,
                             "values": vals})
             else:
@@ -844,7 +940,7 @@ class MongoDBClient(BaseClient):
             if level and loop_k == abs(level):
                 break
             query = '_oid in %s and %s != None' % (fringe, field)
-            spec = parse_pql_query(query, date)
+            spec = self.parse_pql_query(query, date)
             fields = {'_id': -1, '_oid': 1, field: 1}
             docs = _cube.find(spec, fields=fields)
             fringe = set([oid for doc in docs for oid in doc[field]])
@@ -864,7 +960,7 @@ class MongoDBClient(BaseClient):
         '''
         _cube = self.get_collection(owner, cube)
         if query:
-            spec = parse_pql_query(query, date)
+            spec = self.parse_pql_query(query, date)
             result = _cube.find(spec).distinct(field)
         else:
             result = _cube.distinct(field)
@@ -905,7 +1001,7 @@ class MongoDBClient(BaseClient):
         :returns list: sorted list of fields
         '''
         sample_size = sample_size or 1
-        spec = parse_pql_query(query, date)
+        spec = self.parse_pql_query(query, date)
         _cube = self.get_collection(owner)
         docs = _cube.find(spec)
         n = docs.count()
