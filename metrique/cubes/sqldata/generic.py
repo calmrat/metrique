@@ -42,7 +42,7 @@ except ImportError:
 import warnings
 
 from metrique import pyclient
-from metrique.utils import batch_gen
+from metrique.utils import batch_gen, ts2dt
 
 
 def get_full_history(cube, oids, flush=False, cube_name=None, autosnap=False,
@@ -303,6 +303,7 @@ class Generic(pyclient):
         logger.debug("Last update mtime: %s" % mtime)
 
         if mtime:
+            mtime = ts2dt(mtime)
             if parse_timestamp is None:
                 parse_timestamp = self.config['sql'].get('parse_timestamp',
                                                          True)

@@ -87,7 +87,7 @@ import tempfile
 import urllib
 
 from metrique.utils import get_cube, utcnow, jsonhash, load_config
-from metrique.utils import rupdate, json_encode
+from metrique.utils import rupdate, json_encode, dt2ts
 
 logger = logging.getLogger(__name__)
 
@@ -112,7 +112,7 @@ class MetriqueObject(Mapping):
             '_oid': _oid,
             '_id': None,
             '_hash': None,
-            '_start': utcnow(),
+            '_start': utcnow(tz_aware=True),
             '_end': None,
         }
         self._update(kwargs)
@@ -125,9 +125,9 @@ class MetriqueObject(Mapping):
                 if self._strict:
                     raise KeyError("%s is immutable" % key)
                 else:
-                    #logger.debug("%s is immutable; not setting" % key)
+                    # logger.debug("%s is immutable; not setting" % key)
                     continue
-            #if key in TIMESTAMP_OBJ_KEYS and value is not None:
+            # if key in TIMESTAMP_OBJ_KEYS and value is not None:
             #    # ensure normalized timestamp
             #    value = dt2ts(value)
             # # FIXME: use ts2dt()? we need to normalize to datetime()
@@ -167,7 +167,7 @@ class MetriqueObject(Mapping):
             _start = self.store.get('_start')
             # if the object at the exact start/oid is later
             # updated, it's possible to just save(upsert=True)
-            _id = ':'.join(map(str, (_oid, _start)))
+            _id = ':'.join(map(str, (_oid, dt2ts(_start))))
         else:
             # if the object is 'current value' without _end,
             # use just str of _oid
@@ -395,7 +395,7 @@ class BaseClient(object):
         self.name = name or self.name
 
         # sub-classes are expected to call this!
-        #self.debug_setup()
+        # self.debug_setup()
 
         self._objects = MetriqueContainer()
 

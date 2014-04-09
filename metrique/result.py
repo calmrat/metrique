@@ -52,6 +52,8 @@ class Result(DataFrame):
     def __init__(self, data=None, date=None):
         super(Result, self).__init__(data)
         # The converts are here so that None is converted to NaT
+        self.to_datetime('_start')
+        self.to_datetime('_end')
         if isinstance(data, Result):
             self._lbound = data._lbound
             self._rbound = data._rbound

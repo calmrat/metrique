@@ -835,6 +835,8 @@ def _deploy_deps(args):
         call('%s install -U psycopg2' % pip)
     if args.all or args.celery:
         call('%s install -U celery' % pip)
+    if args.all or args.sqlalchemy:
+        call('%s install -U sqlalchemy' % pip)
 
 
 def deploy(args):
@@ -1053,6 +1055,8 @@ def main():
         '--all', action='store_true', help='install all "extra" dependencies')
     _deploy.add_argument(
         '--ipython', action='store_true', help='install ipython')
+    _deploy.add_argument(
+        '--sqlalchemy', action='store_true', help='install sqlalchemy')
     _deploy.add_argument(
         '--pytest', action='store_true', help='install pytest')
     _deploy.add_argument(

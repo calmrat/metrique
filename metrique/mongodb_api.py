@@ -164,7 +164,7 @@ class MongoDBClient(BaseClient):
     def values(self, sample_size=1):
         return self.sample_docs(sample_size=sample_size)
 
-######################### DB API ##################################
+# ######################## DB API ##################################
     def _ensure_base_indexes(self, _cube):
         s = self.config['mongodb'].get('index_ensure_secs')
         _cube.ensure_index('_oid', background=False, cache_for=s)
@@ -256,7 +256,7 @@ class MongoDBClient(BaseClient):
                                        **kwargs)
         return _proxy
 
-######################### User API ################################
+# ######################## User API ################################
     def whoami(self, auth=False):
         '''Local api call to check the username of running user'''
         return self.config['mongodb'].get('username')
@@ -325,7 +325,7 @@ class MongoDBClient(BaseClient):
         result = not bool(self.proxy[username].system.users.find(spec).count())
         return result
 
-######################### Cube API ################################
+# ######################## Cube API ################################
     def ls(self, startswith=None, owner=None):
         '''
         List all cubes available to the calling client.
@@ -417,7 +417,7 @@ class MongoDBClient(BaseClient):
         result = _cube.drop_index(index_or_name)
         return result
 
-    ######## SAVE/REMOVE ########
+    # ####### SAVE/REMOVE ########
 
     def rename(self, new_name=None, new_owner=None, drop_target=False,
                cube=None, owner=None):
@@ -454,7 +454,7 @@ class MongoDBClient(BaseClient):
             self.name = new_name
         return result
 
-######################## ETL API ##################################
+# ####################### ETL API ##################################
     def get_objects(self, flush=False, autosnap=True):
         '''Main API method for sub-classed cubes to override for the
         generation of the objects which are to (potentially) be added
@@ -584,12 +584,12 @@ class MongoDBClient(BaseClient):
 
     def _filter_end_not_null_dups(self, _cube, objects):
         # filter out dups which have non-null _end value
-        tups = [(o['_id'], o['_hash']) for o in objects
-                if o['_end'] is not None]
-        _ids, _hashes = zip(*tups) if tups else [], []
+        _ids = [o['_id'] for o in objects if o['_end'] is not None]
+        _hashes = [o['_hash'] for o in objects if o['_end'] is not None]
         if _ids:
             spec = parse_pql_query(
-                '_id in %s and _hash in %s' % (_ids, _hashes), date='~')
+                '_id in %s and _hash in %s' % (list(_ids),
+                                               list(_hashes)), date='~')
             return set(_cube.find(spec).distinct('_id'))
         else:
             return set()
@@ -636,7 +636,7 @@ class MongoDBClient(BaseClient):
             objects.append(MetriqueObject(**o))
         return objects
 
-######################## Query API ################################
+# ####################### Query API ################################
     def aggregate(self, pipeline, cube=None, owner=None):
         '''
         Run a pql mongodb aggregate pipeline on remote cube
