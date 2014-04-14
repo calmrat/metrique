@@ -237,7 +237,8 @@ class MetriqueContainer(MutableMapping):
         * empty strings -> None
 
     '''
-    def __init__(self, objects=None):
+    def __init__(self, objects=None, cache_dir=None):
+        self._cache_dir = cache_dir or tempfile.gettempdir()
         self.store = {}
         if objects is None:
             pass
@@ -294,6 +295,46 @@ class MetriqueContainer(MutableMapping):
         '''Return a pandas dataframe from objects'''
         return pd.DataFrame(tuple(self.store))
 
+    def flush(self, **kwargs):
+        return self.persist(**kwargs)
+
+    def persist(self, itr=None, _type=None, _dir=None, prefix=None):
+        itr = itr or self.store.itervalues()
+        _type = _type or 'pickle'
+        _dir = _dir or self._cache_dir
+        prefix = '%s_' % (prefix or getuser())
+        if _type == 'pickle':
+            path = self._persist_pickle(itr, _dir=_dir, prefix=prefix)
+        elif _type == 'json':
+            path = self._persist_json(itr, _dir=_dir, prefix=prefix)
+        else:
+            raise ValueError("Unknown persist type: %s" % _type)
+        return path
+
+    def _persist_json(self, itr, _dir, prefix):
+        suffix = '.json'
+        handle, path = tempfile.mkstemp(dir=_dir, prefix=prefix, suffix=suffix)
+        _sep = (',', ':')
+        with os.fdopen(handle, 'w') as f:
+            [json.dump(doc, f, separators=_sep, default=json_encode)
+             for doc in itr]
+        file_is_empty = bool(os.stat(path).st_size == 0)
+        if file_is_empty:
+            logger.warn("file is empty! (removing)")
+            os.remove(path)
+        return path
+
+    def _persist_pickle(self, itr, _dir, prefix):
+        suffix = '.pickle'
+        handle, path = tempfile.mkstemp(dir=_dir, prefix=prefix, suffix=suffix)
+        with os.fdopen(handle, 'w') as f:
+            [cPickle.dump(doc, f, 2) for doc in itr]
+        file_is_empty = bool(os.stat(path).st_size == 0)
+        if file_is_empty:
+            logger.warn("file is empty! (removing)")
+            os.remove(path)
+        return path
+
 
 class MetriqueFactory(type):
     def __call__(cls, cube=None, name=None, *args, **kwargs):
@@ -333,6 +374,7 @@ class BaseClient(object):
 
     '''
     default_config_file = DEFAULT_CONFIG
+    core_config_key = 'metrique'
     name = None
     config = None
     _objects = None
@@ -370,7 +412,7 @@ class BaseClient(object):
                        tmp_dir=tmp_dir)
         defaults = dict(cube_pkgs=['cubes'],
                         cube_paths=[],
-                        config_key='metrique',
+                        config_key=self.core_config_key,
                         debug=None,
                         log_file='metrique.log',
                         log2file=True,
@@ -394,10 +436,27 @@ class BaseClient(object):
         # set name if passed in, but don't overwrite default if not
         self.name = name or self.name
 
-        # sub-classes are expected to call this!
+        # sub-classes must call this!
         #self.debug_setup()
 
-        self._objects = MetriqueContainer()
+    def _set_container(self, value=None):
+        cache_dir = self.config['metrique'].get('cache_dir')
+        self._objects = MetriqueContainer(objects=value, cache_dir=cache_dir)
+
+    @property
+    def objects(self):
+        if self._objects is None:
+            BaseClient._set_container(self)
+        return self._objects
+
+    @objects.setter
+    def objects(self, value):
+        self._set_container(value)
+
+    @objects.deleter
+    def objects(self):
+        # replacing existing container with a new, empty one
+        self._objects = self._set_container()
 
     def _debug_set_level(self, logger, level):
         if level in [-1, False]:
@@ -538,19 +597,6 @@ class BaseClient(object):
         # subclass implemented
         raise NotImplementedError()
 
-    @property
-    def objects(self):
-        return self._objects
-
-    @objects.setter
-    def objects(self, value):
-        self._objects = MetriqueContainer(value)
-
-    @objects.deleter
-    def objects(self):
-        # replacing existing container with a new, empty one
-        self._objects = MetriqueContainer()
-
     def load(self, path, filetype=None, as_dict=True, raw=False,
              retries=None, **kwargs):
         '''Load multiple files from various file types automatically.
@@ -644,46 +690,6 @@ class BaseClient(object):
 
     def load_config(self, path):
         return load_config(path)
-
-    def flush(self, **kwargs):
-        return self.persist(**kwargs)
-
-    def persist(self, itr=None, _type=None, _dir=None, prefix=None):
-        itr = itr or self.objects
-        _type = _type or 'pickle'
-        _dir = _dir or self.config['metrique'].get('cache_dir')
-        prefix = '%s_' % prefix or getuser()
-        if _type == 'pickle':
-            path = self._persist_pickle(itr, _dir=_dir, prefix=prefix)
-        elif _type == 'json':
-            path = self._persist_json(itr, _dir=_dir, prefix=prefix)
-        else:
-            raise ValueError("Unknown persist type: %s" % _type)
-        return path
-
-    def _persist_json(self, itr, _dir, prefix):
-        suffix = '.json'
-        handle, path = tempfile.mkstemp(dir=_dir, prefix=prefix, suffix=suffix)
-        _sep = (',', ':')
-        with os.fdopen(handle, 'w') as f:
-            [json.dump(doc, f, separators=_sep, default=json_encode)
-             for doc in itr]
-        file_is_empty = bool(os.stat(path).st_size == 0)
-        if file_is_empty:
-            logger.warn("file is empty! (removing)")
-            os.remove(path)
-        return path
-
-    def _persist_pickle(self, itr, _dir, prefix):
-        suffix = '.pickle'
-        handle, path = tempfile.mkstemp(dir=_dir, prefix=prefix, suffix=suffix)
-        with os.fdopen(handle, 'w') as f:
-            [cPickle.dump(doc, f, 2) for doc in itr]
-        file_is_empty = bool(os.stat(path).st_size == 0)
-        if file_is_empty:
-            logger.warn("file is empty! (removing)")
-            os.remove(path)
-        return path
 
     @staticmethod
     def _sys_call(self, cmd, sig=None, sig_func=None, quiet=True):

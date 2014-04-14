@@ -84,6 +84,7 @@ class Generic(pyclient):
     :param sql_retries: number of times before we give up on a query
     :param sql_batch_size: how many objects to query at a time
     '''
+    sql_config_key = 'sql'
     sql_backend = None
     fields = None
 
@@ -105,7 +106,7 @@ class Generic(pyclient):
                         retries=1, username=None, password=None,
                         batch_size=1000, debug=logging.INFO,
                         worker_batch_size=5000,
-                        config_key='sql')
+                        config_key=self.sql_config_key,)
         self.configure(sql_config_key, options, defaults)
         self.retry_on_error = (Exception, )
         self.debug_setup()

@@ -38,6 +38,47 @@ SHA1_HEXDIGEST = lambda o: sha1(repr(o)).hexdigest()
 UTC = pytz.utc
 
 
+def configure(options, defaults, config_file=None,
+              section_key=None, update=None, force=False,
+              section_only=False):
+    config = update or {}
+    # FIXME: permit list of section keys to lookup values in
+    sk = section_key
+    sk = sk or options.get('config_key') or defaults.get('config_key')
+    if not sk:
+        sk = 'global'
+        section_only = True
+    if not sk:
+        raise ValueError("section_key can't be null")
+    elif sk in config and not force:
+        # if 'sql' is already configured, ie, we initiated with
+        # config set already, don't set defaults, only options
+        # not set as None
+        config.setdefault(sk, {})
+        [config[sk].update({k: v})
+         for k, v in options.iteritems() if v is not None]
+    else:
+        # load the config options from disk, if path provided
+        section = {}
+        if config_file:
+            raw_config = load_config(config_file)
+            section = raw_config.get(sk, {})
+            if not isinstance(section, dict):
+                # convert mergeabledict (anyconfig) to dict of dicts
+                section = section.convert_to(section)
+            defaults = rupdate(defaults, section)
+        # set option to value passed in, if any
+        for k, v in options.iteritems():
+            v = v if v is not None else defaults[k]
+            section[unicode(k)] = v
+        config.setdefault(sk, {})
+        config[sk] = rupdate(config[sk], section)
+    if section_only:
+        return config.get(sk)
+    else:
+        return config
+
+
 def batch_gen(data, batch_size):
     '''
     Usage::

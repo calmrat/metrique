@@ -31,8 +31,8 @@ try:
 except ImportError:
     raise ImportError("Pymongo 2.6+ required!")
 
-from metrique.core_api import BaseClient, MetriqueObject
-from metrique.utils import batch_gen, ts2dt
+from metrique.core_api import BaseClient, MetriqueContainer, MetriqueObject
+from metrique.utils import batch_gen, ts2dt, configure
 from metrique.result import Result
 
 ETC_DIR = os.environ.get('METRIQUE_ETC')
@@ -51,6 +51,418 @@ VALID_CUBE_SHARE_ROLES = ['read', 'readWrite', 'dbAdmin', 'userAdmin']
 CUBE_OWNER_ROLES = ['readWrite', 'dbAdmin', 'userAdmin']
 RESTRICTED_COLLECTION_NAMES = ['admin', 'local', 'system']
 INVALID_USERNAME_RE = re.compile('[^a-zA-Z_]')
+
+
+def _date_pql_string(date):
+    '''
+    Generate a new pql date query component that can be used to
+    query for date (range) specific data in cubes.
+
+    :param date: metrique date (range) to apply to pql query
+
+    If date is None, the resulting query will be a current value
+    only query (_end == None)
+
+    The tilde '~' symbol is used as a date range separated.
+
+    A tilde by itself will mean 'all dates ranges possible'
+    and will therefore search all objects irrelevant of it's
+    _end date timestamp.
+
+    A date on the left with a tilde but no date on the right
+    will generate a query where the date range starts
+    at the date provide and ends 'today'.
+    ie, from date -> now.
+
+    A date on the right with a tilde but no date on the left
+    will generate a query where the date range starts from
+    the first date available in the past (oldest) and ends
+    on the date provided.
+    ie, from beginning of known time -> date.
+
+    A date on both the left and right will be a simple date
+    range query where the date range starts from the date
+    on the left and ends on the date on the right.
+    ie, from date to date.
+    '''
+    if date is None:
+        return '_end == None'
+    if date == '~':
+        return ''
+
+    before = lambda d: '_start <= date("%f")' % ts2dt(d)
+    after = lambda d: '(_end >= date("%f") or _end == None)' % ts2dt(d)
+    split = date.split('~')
+    # replace all occurances of 'T' with ' '
+    # this is used for when datetime is passed in
+    # like YYYY-MM-DDTHH:MM:SS instead of
+    #      YYYY-MM-DD HH:MM:SS as expected
+    # and drop all occurances of 'timezone' like substring
+    split = [re.sub('\+\d\d:\d\d', '', d.replace('T', ' ')) for d in split]
+    if len(split) == 1:
+        # 'dt'
+        return '%s and %s' % (before(split[0]), after(split[0]))
+    elif split[0] == '':
+        # '~dt'
+        return before(split[1])
+    elif split[1] == '':
+        # 'dt~'
+        return after(split[0])
+    else:
+        # 'dt~dt'
+        return '%s and %s' % (before(split[1]), after(split[0]))
+
+
+def _query_add_date(query, date):
+    '''
+    Take an existing pql query and append a date (range)
+    limiter.
+
+    :param query: pql query
+    :param date: metrique date (range) to append
+    '''
+    date_pql = _date_pql_string(date)
+    if query and date_pql:
+        return '%s and %s' % (query, date_pql)
+    return query or date_pql
+
+
+def parse_query(query, date=None):
+    '''
+    Given a pql based query string, parse it using
+    pql.SchemaFreeParser and return the resulting
+    pymongo 'spec' dictionary.
+
+    :param query: pql query
+    '''
+    _subpat = re.compile(' in \([^\)]+\)')
+    _q = _subpat.sub(' in (...)', query) if query else query
+    logger.debug('Query: %s' % _q)
+    query = _query_add_date(query, date)
+    if not query:
+        return {}
+    if not isinstance(query, basestring):
+        raise TypeError("query expected as a string")
+    pql_parser = pql.SchemaFreeParser()
+    try:
+        spec = pql_parser.parse(query)
+    except Exception as e:
+        raise SyntaxError("Invalid Query (%s)" % str(e))
+    return spec
+
+
+class MongoDBProxy(object):
+    '''
+        :param auth: Enable authentication
+        :param batch_size: The number of objs save at a time
+        :param password: mongodb password
+        :param username: mongodb username
+        :param host: mongodb host(s) to connect to
+        :param owner: mongodb owner user database cube is in
+        :param port: mongodb port to connect to
+        :param read_preference: default - NEAREST
+        :param replica_set: name of replica set, if any
+        :param ssl: enable ssl
+        :param ssl_certificate: path to ssl combined .pem
+        :param tz_aware: return back tz_aware dates?
+        :param write_concern: # of inst's to write to before finish
+
+    Takes kwargs, but ignores them.
+    '''
+    def __init__(self, host=None, port=None, username=None, password=None,
+                 auth=None, ssl=None, ssl_certificate=None,
+                 index_ensure_secs=None, read_preference=None,
+                 replica_set=None, tz_aware=None, write_concern=None,
+                 batch_size=None, owner=None, cube=None, **kwargs):
+        options = dict(host=host,
+                       port=port,
+                       auth=auth,
+                       username=username,
+                       password=password,
+                       ssl=ssl,
+                       ssl_certificate=ssl_certificate,
+                       index_ensure_secs=index_ensure_secs,
+                       read_preference=read_preference,
+                       replica_set=replica_set,
+                       tz_aware=tz_aware,
+                       write_concern=write_concern,
+                       batch_size=batch_size,
+                       owner=owner,
+                       cube=cube,
+                       )
+        defaults = dict(host='127.0.0.1',
+                        port=27017,
+                        auth=False,
+                        username=getuser(),
+                        password='',
+                        ssl=False,
+                        ssl_certificate=SSL_PEM,
+                        index_ensure_secs=INDEX_ENSURE_SECS,
+                        read_preference='NEAREST',
+                        replica_set=None,
+                        tz_aware=True,
+                        write_concern=0,
+                        batch_size=10000,
+                        owner=getuser(),
+                        cube=None,
+                        )
+        self.config = configure(options, defaults)
+
+    @property
+    def proxy(self):
+        _proxy = getattr(self, '_proxy', None)
+        if not _proxy:
+            kwargs = {}
+            ssl = self.config.get('ssl')
+            if ssl:
+                cert = self.config.get('ssl_certificate')
+                # include ssl options only if it's enabled
+                # certfile is a combined key+cert
+                kwargs.update(dict(ssl=ssl, ssl_certfile=cert))
+            if self.config.get('replica_set'):
+                _proxy = self._load_mongo_replica_client(**kwargs)
+            else:
+                _proxy = self._load_mongo_client(**kwargs)
+            auth = self.config.get('auth')
+            username = self.config.get('username')
+            password = self.config.get('password')
+            if auth:
+                _proxy = self._authenticate(_proxy, username, password)
+            self._proxy = _proxy
+        return _proxy
+
+    def _authenticate(self, proxy, username, password):
+        if not (username and password):
+            raise ValueError(
+                "username:%s, password:%s required" % (username, password))
+        ok = proxy[username].authenticate(username, password)
+        if ok:
+            logger.debug('Authenticated as %s' % username)
+            return proxy
+        raise RuntimeError(
+            "MongoDB failed to authenticate user (%s)" % username)
+
+    def _load_mongo_client(self, **kwargs):
+        logger.debug('Loading new MongoClient connection')
+        host = self.config.get('host')
+        port = self.config.get('port')
+        tz_aware = self.config.get('tz_aware')
+        w = self.config.get('write_concern')
+        _proxy = MongoClient(host, port, tz_aware=tz_aware,
+                             w=w, **kwargs)
+        return _proxy
+
+    def _load_mongo_replica_client(self, **kwargs):
+        host = self.config.get('host')
+        port = self.config.get('port')
+        tz_aware = self.config.get('tz_aware')
+        w = self.config.get('write_concern')
+        replica_set = self.config.get('replica_set')
+        pref = self.config.get('read_preference')
+        read_preference = READ_PREFERENCE[pref]
+
+        logger.debug('Loading new MongoReplicaSetClient connection')
+        _proxy = MongoReplicaSetClient(host, port, tz_aware=tz_aware,
+                                       w=w, replicaSet=replica_set,
+                                       read_preference=read_preference,
+                                       **kwargs)
+        return _proxy
+
+    def get_db(self, owner=None):
+        owner = owner or self.config.get('owner')
+        if not owner:
+            raise RuntimeError("[%s] Invalid db!" % owner)
+        try:
+            return self.proxy[owner]
+        except OperationFailure as e:
+            raise RuntimeError("unable to get db! (%s)" % e)
+
+    def get_collection(self, owner=None, cube=None):
+        cube = cube or self.config.get('cube')
+        if not cube:
+            raise RuntimeError("[%s] Invalid cube!" % cube)
+        _cube = self.get_db(owner)[cube]
+        return _cube
+
+    def _ensure_base_indexes(self, ensure_time=90):
+        _cube = self.get_collection()
+        s = ensure_time
+        ensure_time = int(s) if s and s != 0 else 90
+        _cube.ensure_index('_oid', background=False, cache_for=s)
+        _cube.ensure_index('_hash', background=False, cache_for=s)
+        _cube.ensure_index([('_start', -1), ('_end', -1)],
+                           background=False, cache_for=s)
+        _cube.ensure_index([('_end', -1)],
+                           background=False, cache_for=s)
+
+
+class MongoDBContainer(MetriqueContainer):
+    _objects = None
+    config = None
+    owner = None
+    cube = None
+
+    def __init__(self, config, objects=None):
+        super(MongoDBContainer, self).__init__(objects)
+        self.config = config
+
+    @property
+    def proxy(self):
+        _proxy = getattr(self, '_proxy', None)
+        if not _proxy:
+            self._proxy = MongoDBProxy(**self.config)
+
+        try:
+            self._proxy._ensure_base_indexes()
+        except OperationFailure as e:
+            logger.debug(e)
+
+        return self._proxy
+
+    def flush(self, autosnap=True, batch_size=None, fast=True,
+              cube=None, owner=None):
+        '''
+        Persist a list of objects to MongoDB.
+
+        Returns back a list of object ids saved.
+
+        :param objects: list of dictionary-like objects to be stored
+        :param cube: cube name
+        :param owner: username of cube owner
+        :param start: ISO format datetime to apply as _start
+                      per object, serverside
+        :param autosnap: rotate _end:None's before saving new objects
+        :returns result: _ids saved
+        '''
+        batch_size = batch_size or self.config.get('batch_size')
+        _cube = self.proxy.get_collection(owner, cube)
+        _ids = []
+        for batch in batch_gen(self.store.values(), batch_size):
+            _ = self._flush(_cube=_cube, objects=batch, autosnap=autosnap,
+                            fast=fast, cube=cube, owner=owner)
+            _ids.extend(_)
+        return sorted(_ids)
+
+    def _flush_save(self, _cube, objects, fast=True):
+        objects = [dict(o) for o in objects if o['_end'] is None]
+        if not objects:
+            _ids = []
+        elif fast:
+            _ids = [o['_id'] for o in objects]
+            [_cube.save(o, manipulate=False) for o in objects]
+        else:
+            _ids = [_cube.save(dict(o), manipulate=True) for o in objects]
+        return _ids
+
+    def _flush_insert(self, _cube, objects, fast=True):
+        objects = [dict(o) for o in objects if o['_end'] is not None]
+        if not objects:
+            _ids = []
+        elif fast:
+            _ids = [o['_id'] for o in objects]
+            _cube.insert(objects, manipulate=False)
+        else:
+            _ids = _cube.insert(objects, manipulate=True)
+        return _ids
+
+    def _flush(self, _cube, objects, autosnap=True, fast=True,
+               cube=None, owner=None):
+        olen = len(objects)
+        if olen == 0:
+            logger.debug("No objects to flush!")
+            return []
+        logger.info("[%s] Flushing %s objects" % (_cube, olen))
+
+        objects, dup_ids = self._filter_dups(_cube, objects)
+        # remove dups from instance object container
+        [self.store.pop(_id) for _id in set(dup_ids)]
+
+        if objects and autosnap:
+            # append rotated versions to save over previous _end:None docs
+            objects = self._add_snap_objects(_cube, objects)
+
+        olen = len(objects)
+        _ids = []
+        if objects:
+            # save each object; overwrite existing
+            # (same _oid + _start or _oid if _end = None) or upsert
+            logger.debug('[%s] Saving %s versions' % (_cube, len(objects)))
+            _saved = self._flush_save(_cube, objects, fast)
+            _inserted = self._flush_insert(_cube, objects, fast)
+            _ids = set(_saved) | set(_inserted)
+            # pop those we're already flushed out of the instance container
+            failed = olen - len(_ids)
+            if failed > 0:
+                logger.warn("%s objects failed to flush!" % failed)
+            # new 'snapshoted' objects are included in _ids, but they
+            # aren't in self.store, so ignore them
+        [self.store.pop(_id) for _id in _ids if _id in self.store]
+        logger.debug(
+            "[%s] %s objects remaining" % (_cube, len(self.store)))
+        return _ids
+
+    def _filter_end_null_dups(self, _cube, objects):
+        # filter out dups which have null _end value
+        _hashes = [o['_hash'] for o in objects if o['_end'] is None]
+        if _hashes:
+            spec = parse_query('_hash in %s' % _hashes, date=None)
+            return set(_cube.find(spec).distinct('_id'))
+        else:
+            return set()
+
+    def _filter_end_not_null_dups(self, _cube, objects):
+        # filter out dups which have non-null _end value
+        tups = [(o['_id'], o['_hash']) for o in objects
+                if o['_end'] is not None]
+        _ids, _hashes = zip(*tups) if tups else [], []
+        if _ids:
+            spec = parse_query(
+                '_id in %s and _hash in %s' % (_ids, _hashes), date='~')
+            return set(_cube.find(spec).distinct('_id'))
+        else:
+            return set()
+
+    def _filter_dups(self, _cube, objects):
+        logger.debug('Filtering duplicate objects...')
+        olen = len(objects)
+
+        non_null_ids = self._filter_end_not_null_dups(_cube, objects)
+        null_ids = self._filter_end_null_dups(_cube, objects)
+        dup_ids = non_null_ids | null_ids
+
+        if dup_ids:
+            # update self.object container to contain only non-dups
+            objects = [o for o in objects if o['_id'] not in dup_ids]
+
+        _olen = len(objects)
+        diff = olen - _olen
+        logger.info(' ... %s objects filtered; %s remain' % (diff, _olen))
+        return objects, dup_ids
+
+    def _add_snap_objects(self, _cube, objects):
+        olen = len(objects)
+        _ids = [o['_id'] for o in objects if o['_end'] is None]
+
+        if not _ids:
+            logger.debug(
+                '[%s] 0 of %s objects need to be rotated' % (_cube, olen))
+            return objects
+
+        spec = parse_query('_id in %s' % _ids, date=None)
+        _objs = _cube.find(spec, {'_hash': 0})
+        k = _objs.count()
+        logger.debug(
+            '[%s] %s of %s objects need to be rotated' % (_cube, k, olen))
+        if k == 0:  # nothing to rotate...
+            return objects
+        for o in _objs:
+            # _end of existing obj where _end:None should get new's _start
+            # look this up in the instance objects mapping
+            _start = self.store[o['_id']]['_start']
+            o['_end'] = _start
+            del o['_id']
+            objects.append(MetriqueObject(**o))
+        return objects
 
 
 class MongoDBClient(BaseClient):
@@ -90,6 +502,7 @@ class MongoDBClient(BaseClient):
         + sample: query for a psuedo-random set of objects
         + aggregate: run pql (mongodb) aggregate query remotely
     '''
+    mongodb_config_key = 'mongodb'
     default_fields = '~'
     default_sort = [('_start', -1)]
 
@@ -99,24 +512,10 @@ class MongoDBClient(BaseClient):
                  mongodb_ssl_certificate=None, mongodb_index_ensure_secs=None,
                  mongodb_read_preference=None, mongodb_replica_set=None,
                  mongodb_tz_aware=None, mongodb_write_concern=None,
-                 mongodb_batch_size=None,
-                 mongodb_owner=None,
-                 mongodb_config_key=None,
+                 mongodb_batch_size=None, mongodb_owner=None,
+                 mongodb_cube=None, mongodb_config_key=None,
                  *args, **kwargs):
         '''
-        :param mongodb_auth: Enable authentication
-        :param mongodb_batch_size: The number of objs save at a time
-        :param mongodb_password: mongodb password
-        :param mongodb_username: mongodb username
-        :param mongodb_host: mongodb host(s) to connect to
-        :param mongodb_owner: mongodb owner user database cube is in
-        :param mongodb_port: mongodb port to connect to
-        :param mongodb_read_preference: default - NEAREST
-        :param mongodb_replica_set: name of replica set, if any
-        :param mongodb_ssl: enable ssl
-        :param mongodb_ssl_certificate: path to ssl combined .pem
-        :param mongodb_tz_aware: return back tz_aware dates?
-        :param mongodb_write_concern: # of inst's to write to before finish
         '''
         super(MongoDBClient, self).__init__(*args, **kwargs)
         options = dict(host=mongodb_host,
@@ -124,7 +523,6 @@ class MongoDBClient(BaseClient):
                        auth=mongodb_auth,
                        username=mongodb_username,
                        password=mongodb_password,
-                       owner=mongodb_owner,
                        ssl=mongodb_ssl,
                        ssl_certificate=mongodb_ssl_certificate,
                        index_ensure_secs=mongodb_index_ensure_secs,
@@ -133,14 +531,14 @@ class MongoDBClient(BaseClient):
                        tz_aware=mongodb_tz_aware,
                        write_concern=mongodb_write_concern,
                        batch_size=mongodb_batch_size,
-                       config_key=mongodb_config_key,
+                       owner=mongodb_owner,
+                       cube=mongodb_cube,
                        )
         defaults = dict(host='127.0.0.1',
                         port=27017,
                         auth=False,
                         username=getuser(),
                         password='',
-                        owner=None,
                         ssl=False,
                         ssl_certificate=SSL_PEM,
                         index_ensure_secs=INDEX_ENSURE_SECS,
@@ -149,10 +547,26 @@ class MongoDBClient(BaseClient):
                         tz_aware=True,
                         write_concern=0,
                         batch_size=10000,
-                        config_key='mongodb',
+                        owner=None,
+                        cube=self.name,
                         )
-        self.configure(mongodb_config_key, options, defaults)
+        mongodb_config_key = mongodb_config_key or self.mongodb_config_key
+        self.config = configure(options, defaults,
+                                section_key=mongodb_config_key,
+                                update=self.config)
+        # default owner == username
+        o = self.config[mongodb_config_key]['owner']
+        u = defaults.get('username')
+        self.config[mongodb_config_key]['owner'] = o or u
+
         super(MongoDBClient, self).debug_setup()
+
+        config = self.config[self.mongodb_config_key]
+        self.objects = MongoDBContainer(config=config)
+
+    def _set_container(self, value=None):
+        config = self.config[self.mongodb_config_key]
+        self._objects = MongoDBContainer(config=config, objects=value)
 
     def __getitem__(self, query):
         return self.find(query=query, fields=self.default_fields,
@@ -165,99 +579,16 @@ class MongoDBClient(BaseClient):
     def values(self, sample_size=1):
         return self.sample_docs(sample_size=sample_size)
 
-######################### DB API ##################################
-    def _ensure_base_indexes(self, _cube):
-        s = self.config['mongodb'].get('index_ensure_secs')
-        _cube.ensure_index('_oid', background=False, cache_for=s)
-        _cube.ensure_index('_hash', background=False, cache_for=s)
-        _cube.ensure_index([('_start', -1), ('_end', -1)],
-                           background=False, cache_for=s)
-        _cube.ensure_index([('_end', -1)],
-                           background=False, cache_for=s)
-
-    def get_db(self, owner=None):
-        owner = owner or self.config['mongodb'].get('owner')
-        # assume owner is config'd username if not set
-        owner = owner or self.config['mongodb'].get('username')
-        if not owner:
-            raise RuntimeError("[%s] Invalid db!" % owner)
-        try:
-            return self.proxy[owner]
-        except OperationFailure as e:
-            raise RuntimeError("unable to get db! (%s)" % e)
-
-    def get_collection(self, owner=None, cube=None):
-        cube = cube or self.name
-        if not cube:
-            raise RuntimeError("[%s] Invalid cube!" % cube)
-        _cube = self.get_db(owner)[cube]
-        try:
-            self._ensure_base_indexes(_cube)
-        except OperationFailure as e:
-            logger.debug(e)
-        return _cube
-
+# ######################## DB API ##################################
     @property
-    def proxy(self):
-        _proxy = getattr(self, '_proxy', None)
-        if not _proxy:
-            kwargs = {}
-            ssl = self.config['mongodb'].get('ssl')
-            if ssl:
-                cert = self.config['mongodb'].get('ssl_certificate')
-                # include ssl options only if it's enabled
-                # certfile is a combined key+cert
-                kwargs.update(dict(ssl=ssl, ssl_certfile=cert))
-            if self.config['mongodb'].get('replica_set'):
-                _proxy = self._load_mongo_replica_client(**kwargs)
-            else:
-                _proxy = self._load_mongo_client(**kwargs)
-            auth = self.config['mongodb'].get('auth')
-            username = self.config['mongodb'].get('username')
-            password = self.config['mongodb'].get('password')
-            if auth:
-                _proxy = self._authenticate(_proxy, username, password)
-            self._proxy = _proxy
-        return _proxy
+    def mongodb(self):
+        _mongodb = getattr(self, '_mongodb', None)
+        if not _mongodb:
+            config = self.config[self.mongodb_config_key]
+            self._mongodb = MongoDBProxy(**config)
+        return self._mongodb
 
-    def _authenticate(self, proxy, username, password):
-        if not (username and password):
-            raise ValueError(
-                "username:%s, password:%s required" % (username, password))
-        ok = proxy[username].authenticate(username, password)
-        if ok:
-            logger.debug('Authenticated as %s' % username)
-            return proxy
-        raise RuntimeError(
-            "MongoDB failed to authenticate user (%s)" % username)
-
-    def _load_mongo_client(self, **kwargs):
-        logger.debug('Loading new MongoClient connection')
-        host = self.config['mongodb'].get('host')
-        port = self.config['mongodb'].get('port')
-        tz_aware = self.config['mongodb'].get('tz_aware')
-        w = self.config['mongodb'].get('write_concern')
-        _proxy = MongoClient(host, port, tz_aware=tz_aware,
-                             w=w, **kwargs)
-        return _proxy
-
-    def _load_mongo_replica_client(self, **kwargs):
-        host = self.config['mongodb'].get('host')
-        port = self.config['mongodb'].get('port')
-        tz_aware = self.config['mongodb'].get('tz_aware')
-        w = self.config['mongodb'].get('write_concern')
-        replica_set = self.config['mongodb'].get('replica_set')
-        pref = self.config['mongodb'].get('read_preference')
-        read_preference = READ_PREFERENCE[pref]
-
-        logger.debug('Loading new MongoReplicaSetClient connection')
-        _proxy = MongoReplicaSetClient(host, port, tz_aware=tz_aware,
-                                       w=w, replicaSet=replica_set,
-                                       read_preference=read_preference,
-                                       **kwargs)
-        return _proxy
-
-######################### User API ################################
+# ######################## User API ################################
     def whoami(self, auth=False):
         '''Local api call to check the username of running user'''
         return self.config['mongodb'].get('username')
@@ -309,24 +640,26 @@ class MongoDBClient(BaseClient):
         username = self._validate_username(username)
         password = self._validate_password(password)
         logger.info('Registering new user %s' % username)
-        self.proxy[username].add_user(username, password,
-                                      roles=CUBE_OWNER_ROLES)
-        spec = self.parse_pql_query('user == "%s"' % username)
-        result = self.proxy[username].system.users.find(spec).count()
+        db = self.mongodb.get_db(username)
+        self.db.add_user(username, password,
+                         roles=CUBE_OWNER_ROLES)
+        spec = parse_query('user == "%s"' % username)
+        result = db.system.users.find(spec).count()
         return bool(result)
 
     def user_remove(self, username, clear_db=False):
         username = username or self.config['mongodb'].get('username')
         username = self._validate_username(username)
         logger.info('Removing user %s' % username)
-        self.proxy[username].remove_user(username)
+        db = self.mongodb.get_db(username)
+        db.remove_user(username)
         if clear_db:
-            self.proxy.drop_database(username)
-        spec = self.parse_pql_query('user == "%s"' % username)
-        result = not bool(self.proxy[username].system.users.find(spec).count())
+            db.drop_database(username)
+        spec = parse_query('user == "%s"' % username)
+        result = not bool(db.system.users.find(spec).count())
         return result
 
-######################### Cube API ################################
+# ######################## Cube API ################################
     def ls(self, startswith=None, owner=None):
         '''
         List all cubes available to the calling client.
@@ -334,7 +667,7 @@ class MongoDBClient(BaseClient):
         :param startswith: string to use in a simple "startswith" query filter
         :returns list: sorted list of cube names
         '''
-        db = self.get_db(owner)
+        db = self.mongodb.get_db(owner)
         cubes = db.collection_names(include_system_collections=False)
         startswith = unicode(startswith or '')
         cubes = [name for name in cubes if name.startswith(startswith)]
@@ -351,7 +684,7 @@ class MongoDBClient(BaseClient):
         '''
         with_user = self._validate_username(with_user)
         roles = self._validate_cube_roles(roles or ['read'])
-        _cube = self.get_db(owner)
+        _cube = self.mongodb.get_db(owner)
         logger.info(
             '[%s] Sharing cube with %s (%s)' % (_cube, with_user, roles))
         result = _cube.add_user(name=with_user, roles=roles,
@@ -366,10 +699,11 @@ class MongoDBClient(BaseClient):
         :param owner: username of cube owner
         :param cube: cube name
         '''
-        _cube = self.get_collection(owner, cube)
+        _cube = self.mongodb.get_collection(owner, cube)
         logger.info('[%s] Dropping cube' % _cube)
         _cube.drop()
-        result = not bool(self.name in self.get_db(owner).collection_names())
+        db = self.mongodb.get_db(owner)
+        result = not bool(self.name in db.collection_names())
         return result
 
     def index_list(self, cube=None, owner=None):
@@ -379,7 +713,7 @@ class MongoDBClient(BaseClient):
         :param cube: cube name
         :param owner: username of cube owner
         '''
-        _cube = self.get_collection(owner, cube)
+        _cube = self.mongodb.get_collection(owner, cube)
         logger.info('[%s] Listing indexes' % _cube)
         result = _cube.index_information()
         return result
@@ -398,7 +732,7 @@ class MongoDBClient(BaseClient):
         :param cube: cube name
         :param owner: username of cube owner
         '''
-        _cube = self.get_collection(owner, cube)
+        _cube = self.mongodb.get_collection(owner, cube)
         logger.info('[%s] Writing new index %s' % (_cube, key_or_list))
         s = self.config['mongodb'].get('index_ensure_secs')
         kwargs['cache_for'] = kwargs.get('cache_for', s)
@@ -413,7 +747,7 @@ class MongoDBClient(BaseClient):
         :param cube: cube name
         :param owner: username of cube owner
         '''
-        _cube = self.get_collection(owner, cube)
+        _cube = self.mongodb.get_collection(owner, cube)
         logger.info('[%s] Droping index %s' % (_cube, index_or_name))
         result = _cube.drop_index(index_or_name)
         return result
@@ -435,34 +769,35 @@ class MongoDBClient(BaseClient):
         new_name = new_name or cube or self.name
         if not new_name:
             raise ValueError("new_name is not set!")
-        _cube = self.get_collection(owner, cube)
+        _cube = self.mongodb.get_collection(owner, cube)
         if new_owner:
             _from = _cube.full_name
             _to = '%s.%s' % (new_owner, new_name)
-            self.get_db('admin').command(
+            self.mongodb.get_db('admin').command(
                 'renameCollection', _from, to=_to, dropTarget=drop_target)
             # don't touch the new collection until after attempting
             # the rename; collection would otherwise be created
             # empty automatically then the rename fails because
             # target already exists.
-            _new_db = self.get_db(new_owner)
+            _new_db = self.mongodb.get_db(new_owner)
             result = bool(new_name in _new_db.collection_names())
         else:
             logger.info('[%s] Renaming cube -> %s' % (_cube, new_name))
             _cube.rename(new_name, dropTarget=drop_target)
-            result = bool(new_name in self.get_db(owner).collection_names())
+            db = self.mongodb.get_db(owner)
+            result = bool(new_name in db.collection_names())
         if cube is None and result:
             self.name = new_name
         return result
 
-######################## ETL API ##################################
+# ####################### ETL API ##################################
     def get_objects(self, flush=False, autosnap=True):
         '''Main API method for sub-classed cubes to override for the
         generation of the objects which are to (potentially) be added
         to the cube (assuming no duplicates)
         '''
         if flush:
-            return self.flush(autosnap=True)
+            return self.objects.flush(autosnap=True)
         return self
 
     def get_last_field(self, field):
@@ -486,254 +821,13 @@ class MongoDBClient(BaseClient):
         :param cube: cube name
         :param owner: username of cube owner
         '''
-        spec = self.parse_pql_query(query, date)
-        _cube = self.get_collection(owner, cube)
+        spec = parse_query(query, date)
+        _cube = self.mongodb.get_collection(owner, cube)
         logger.info("[%s] Removing objects (%s): %s" % (_cube, date, query))
         result = _cube.remove(spec)
         return result
 
-    def flush(self, autosnap=True, batch_size=None, fast=True,
-              cube=None, owner=None):
-        '''
-        Persist a list of objects to MongoDB.
-
-        Returns back a list of object ids saved.
-
-        :param objects: list of dictionary-like objects to be stored
-        :param cube: cube name
-        :param owner: username of cube owner
-        :param start: ISO format datetime to apply as _start
-                      per object, serverside
-        :param autosnap: rotate _end:None's before saving new objects
-        :returns result: _ids saved
-        '''
-        batch_size = batch_size or self.config['mongodb'].get('batch_size')
-        _cube = self.get_collection(owner, cube)
-        _ids = []
-        for batch in batch_gen(self.objects.values(), batch_size):
-            _ = self._flush(_cube=_cube, objects=batch, autosnap=autosnap,
-                            fast=fast, cube=cube, owner=owner)
-            _ids.extend(_)
-        return sorted(_ids)
-
-    def _flush_save(self, _cube, objects, fast=True):
-        objects = [dict(o) for o in objects if o['_end'] is None]
-        if not objects:
-            _ids = []
-        elif fast:
-            _ids = [o['_id'] for o in objects]
-            [_cube.save(o, manipulate=False) for o in objects]
-        else:
-            _ids = [_cube.save(dict(o), manipulate=True) for o in objects]
-        return _ids
-
-    def _flush_insert(self, _cube, objects, fast=True):
-        objects = [dict(o) for o in objects if o['_end'] is not None]
-        if not objects:
-            _ids = []
-        elif fast:
-            _ids = [o['_id'] for o in objects]
-            _cube.insert(objects, manipulate=False)
-        else:
-            _ids = _cube.insert(objects, manipulate=True)
-        return _ids
-
-    def _flush(self, _cube, objects, autosnap=True, fast=True,
-               cube=None, owner=None):
-        olen = len(objects)
-        if olen == 0:
-            logger.debug("No objects to flush!")
-            return []
-        logger.info("[%s] Flushing %s objects" % (_cube, olen))
-
-        objects, dup_ids = self._filter_dups(_cube, objects)
-        # remove dups from instance object container
-        [self.objects.pop(_id) for _id in set(dup_ids)]
-
-        if objects and autosnap:
-            # append rotated versions to save over previous _end:None docs
-            objects = self._add_snap_objects(_cube, objects)
-
-        olen = len(objects)
-        _ids = []
-        if objects:
-            # save each object; overwrite existing
-            # (same _oid + _start or _oid if _end = None) or upsert
-            logger.debug('[%s] Saving %s versions' % (_cube, len(objects)))
-            _saved = self._flush_save(_cube, objects, fast)
-            _inserted = self._flush_insert(_cube, objects, fast)
-            _ids = set(_saved) | set(_inserted)
-            # pop those we're already flushed out of the instance container
-            failed = olen - len(_ids)
-            if failed > 0:
-                logger.warn("%s objects failed to flush!" % failed)
-            # new 'snapshoted' objects are included in _ids, but they
-            # aren't in self.objects, so ignore them
-        [self.objects.pop(_id) for _id in _ids if _id in self.objects]
-        logger.debug(
-            "[%s] %s objects remaining" % (_cube, len(self.objects)))
-        return _ids
-
-    def _filter_end_null_dups(self, _cube, objects):
-        # filter out dups which have null _end value
-        _hashes = [o['_hash'] for o in objects if o['_end'] is None]
-        if _hashes:
-            spec = self.parse_pql_query('_hash in %s' % _hashes, date=None)
-            return set(_cube.find(spec).distinct('_id'))
-        else:
-            return set()
-
-    def _filter_end_not_null_dups(self, _cube, objects):
-        # filter out dups which have non-null _end value
-        tups = [(o['_id'], o['_hash']) for o in objects
-                if o['_end'] is not None]
-        _ids, _hashes = zip(*tups) if tups else [], []
-        if _ids:
-            spec = self.parse_pql_query(
-                '_id in %s and _hash in %s' % (_ids, _hashes), date='~')
-            return set(_cube.find(spec).distinct('_id'))
-        else:
-            return set()
-
-    def _filter_dups(self, _cube, objects):
-        logger.debug('Filtering duplicate objects...')
-        olen = len(objects)
-
-        non_null_ids = self._filter_end_not_null_dups(_cube, objects)
-        null_ids = self._filter_end_null_dups(_cube, objects)
-        dup_ids = non_null_ids | null_ids
-
-        if dup_ids:
-            # update self.object container to contain only non-dups
-            objects = [o for o in objects if o['_id'] not in dup_ids]
-
-        _olen = len(objects)
-        diff = olen - _olen
-        logger.info(' ... %s objects filtered; %s remain' % (diff, _olen))
-        return objects, dup_ids
-
-    def _add_snap_objects(self, _cube, objects):
-        olen = len(objects)
-        _ids = [o['_id'] for o in objects if o['_end'] is None]
-
-        if not _ids:
-            logger.debug(
-                '[%s] 0 of %s objects need to be rotated' % (_cube, olen))
-            return objects
-
-        spec = self.parse_pql_query('_id in %s' % _ids, date=None)
-        _objs = _cube.find(spec, {'_hash': 0})
-        k = _objs.count()
-        logger.debug(
-            '[%s] %s of %s objects need to be rotated' % (_cube, k, olen))
-        if k == 0:  # nothing to rotate...
-            return objects
-        for o in _objs:
-            # _end of existing obj where _end:None should get new's _start
-            # look this up in the instance objects mapping
-            _start = self.objects[o['_id']]['_start']
-            o['_end'] = _start
-            del o['_id']
-            objects.append(MetriqueObject(**o))
-        return objects
-
-######################## Query API ################################
-    @staticmethod
-    def _date_pql_string(date):
-        '''
-        Generate a new pql date query component that can be used to
-        query for date (range) specific data in cubes.
-
-        :param date: metrique date (range) to apply to pql query
-
-        If date is None, the resulting query will be a current value
-        only query (_end == None)
-
-        The tilde '~' symbol is used as a date range separated.
-
-        A tilde by itself will mean 'all dates ranges possible'
-        and will therefore search all objects irrelevant of it's
-        _end date timestamp.
-
-        A date on the left with a tilde but no date on the right
-        will generate a query where the date range starts
-        at the date provide and ends 'today'.
-        ie, from date -> now.
-
-        A date on the right with a tilde but no date on the left
-        will generate a query where the date range starts from
-        the first date available in the past (oldest) and ends
-        on the date provided.
-        ie, from beginning of known time -> date.
-
-        A date on both the left and right will be a simple date
-        range query where the date range starts from the date
-        on the left and ends on the date on the right.
-        ie, from date to date.
-        '''
-        if date is None:
-            return '_end == None'
-        if date == '~':
-            return ''
-
-        before = lambda d: '_start <= date("%f")' % ts2dt(d)
-        after = lambda d: '(_end >= date("%f") or _end == None)' % ts2dt(d)
-        split = date.split('~')
-        # replace all occurances of 'T' with ' '
-        # this is used for when datetime is passed in
-        # like YYYY-MM-DDTHH:MM:SS instead of
-        #      YYYY-MM-DD HH:MM:SS as expected
-        # and drop all occurances of 'timezone' like substring
-        split = [re.sub('\+\d\d:\d\d', '', d.replace('T', ' ')) for d in split]
-        if len(split) == 1:
-            # 'dt'
-            return '%s and %s' % (before(split[0]), after(split[0]))
-        elif split[0] == '':
-            # '~dt'
-            return before(split[1])
-        elif split[1] == '':
-            # 'dt~'
-            return after(split[0])
-        else:
-            # 'dt~dt'
-            return '%s and %s' % (before(split[1]), after(split[0]))
-
-    def _query_add_date(self, query, date):
-        '''
-        Take an existing pql query and append a date (range)
-        limiter.
-
-        :param query: pql query
-        :param date: metrique date (range) to append
-        '''
-        date_pql = self._date_pql_string(date)
-        if query and date_pql:
-            return '%s and %s' % (query, date_pql)
-        return query or date_pql
-
-    def parse_pql_query(self, query, date=None):
-        '''
-        Given a pql based query string, parse it using
-        pql.SchemaFreeParser and return the resulting
-        pymongo 'spec' dictionary.
-
-        :param query: pql query
-        '''
-        _subpat = re.compile(' in \([^\)]+\)')
-        _q = _subpat.sub(' in (...)', query) if query else query
-        logger.debug('Query: %s' % _q)
-        query = self._query_add_date(query, date)
-        if not query:
-            return {}
-        if not isinstance(query, basestring):
-            raise TypeError("query expected as a string")
-        pql_parser = pql.SchemaFreeParser()
-        try:
-            spec = pql_parser.parse(query)
-        except Exception as e:
-            raise SyntaxError("Invalid Query (%s)" % str(e))
-        return spec
-
+# ####################### Query API ################################
     def aggregate(self, pipeline, cube=None, owner=None):
         '''
         Run a pql mongodb aggregate pipeline on remote cube
@@ -742,7 +836,7 @@ class MongoDBClient(BaseClient):
         :param cube: cube name
         :param owner: username of cube owner
         '''
-        _cube = self.get_collection(owner, cube)
+        _cube = self.mongodb.get_collection(owner, cube)
         result = _cube.aggregate(pipeline)
         return result
 
@@ -758,8 +852,8 @@ class MongoDBClient(BaseClient):
         :param cube: cube name
         :param owner: username of cube owner
         '''
-        _cube = self.get_collection(owner, cube)
-        spec = self.parse_pql_query(query, date)
+        _cube = self.mongodb.get_collection(owner, cube)
+        spec = parse_query(query, date)
         result = _cube.find(spec).count()
         return result
 
@@ -800,8 +894,8 @@ class MongoDBClient(BaseClient):
         :param cube: cube name
         :param owner: username of cube owner
         '''
-        _cube = self.get_collection(owner, cube)
-        spec = self.parse_pql_query(query, date)
+        _cube = self.mongodb.get_collection(owner, cube)
+        spec = parse_query(query, date)
         fields = self._parse_fields(fields)
 
         merge_versions = False if fields is None or one else merge_versions
@@ -863,7 +957,7 @@ class MongoDBClient(BaseClient):
         '''
         query = '%s and _start < %s and (_end >= %s or _end == None)' % (
                 query, max(date_list), min(date_list))
-        spec = self.parse_pql_query(query)
+        spec = parse_query(query)
 
         pipeline = [
             {'$match': spec},
@@ -935,12 +1029,12 @@ class MongoDBClient(BaseClient):
         checked = set(oids)
         fringe = oids
         loop_k = 0
-        _cube = self.get_collection(owner, cube)
+        _cube = self.mongodb.get_collection(owner, cube)
         while len(fringe) > 0:
             if level and loop_k == abs(level):
                 break
             query = '_oid in %s and %s != None' % (fringe, field)
-            spec = self.parse_pql_query(query, date)
+            spec = parse_query(query, date)
             fields = {'_id': -1, '_oid': 1, field: 1}
             docs = _cube.find(spec, fields=fields)
             fringe = set([oid for doc in docs for oid in doc[field]])
@@ -958,9 +1052,9 @@ class MongoDBClient(BaseClient):
         :param cube: cube name
         :param owner: username of cube owner
         '''
-        _cube = self.get_collection(owner, cube)
+        _cube = self.mongodb.get_collection(owner, cube)
         if query:
-            spec = self.parse_pql_query(query, date)
+            spec = parse_query(query, date)
             result = _cube.find(spec).distinct(field)
         else:
             result = _cube.distinct(field)
@@ -1001,8 +1095,8 @@ class MongoDBClient(BaseClient):
         :returns list: sorted list of fields
         '''
         sample_size = sample_size or 1
-        spec = self.parse_pql_query(query, date)
-        _cube = self.get_collection(owner)
+        spec = parse_query(query, date)
+        _cube = self.mongodb.get_collection(owner, cube)
         docs = _cube.find(spec)
         n = docs.count()
         if n <= sample_size:
@@ -1011,10 +1105,3 @@ class MongoDBClient(BaseClient):
             to_sample = sorted(set(random.sample(xrange(n), sample_size)))
             docs = [docs[i] for i in to_sample]
         return docs
-
-    def persist(self, query=None, fields=None, date=None,
-                cube=None, owner=None, **kwargs):
-        itr = self.find(query=query, fields=fields, date=date,
-                        cube=cube, owner=owner, as_cursor=True)
-        kwargs['prefix'] = self.config['mongodb'].get('username')
-        return super(MongoDBClient, self).persist(itr, **kwargs)
