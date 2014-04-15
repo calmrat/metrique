@@ -48,14 +48,14 @@ from metrique.utils import batch_gen, utcnow
 ETC_DIR = os.environ.get('METRIQUE_ETC')
 
 TYPE_MAP = {
-    None: UnicodeText,
-    int: Integer,
-    float: Float,
-    long: BigInteger,
-    str: UnicodeText,
+    UnicodeText: UnicodeText, None: UnicodeText,
+    int: Integer, Integer: Integer,
+    float: Float, Float: Float,
+    long: BigInteger, BigInteger: BigInteger,
+    str: UnicodeText, UnicodeText: UnicodeText,
     unicode: UnicodeText,
-    bool: Boolean,
-    datetime: DateTime
+    bool: Boolean, Boolean: Boolean,
+    datetime: DateTime, DateTime: DateTime,
 }
 
 
@@ -130,10 +130,12 @@ class SQLAlchemyClient(BaseClient):
         setattr(self, cube, table)
         meta.create_all(engine)
 
-    def _cube_factory(self, name, schema, cached=False):
-        Base = self.get_base(cached=cached)
+    def _cube_factory(self, name, schema=None, cached=False):
+        # cubes can define schema in either schema or fields attr (alias)
+        schema = schema or getattr(self, 'schema') or getattr(self, 'fields')
         if not schema:
             raise ValueError('schema definition can not be null')
+        Base = self.get_base(cached=cached)
 
         defaults = {
             '__tablename__': name,
@@ -165,7 +167,7 @@ class SQLAlchemyClient(BaseClient):
         return _cube
 
     def _check_compatible(self, uri, driver, msg=None):
-        msg = '%s required!' % driver
+        msg = msg or '%s required!' % driver
         if not HAS_PSYCOPG2:
             raise NotImplementedError(
                 '`pip install psycopg2` required')

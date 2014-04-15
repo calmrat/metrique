@@ -47,4 +47,5 @@ os.environ['METRIQUE_CACHE'] = os.environ.get(
 
 # ATTENTION: this is the main interface for clients!
 from metrique.core_api import BaseClient as pyclient
-pyclient
+from metrique.core_api import MongoDBContainer, SQLAlchemyContainer
+pyclient, MongoDBContainer, SQLAlchemyContainer

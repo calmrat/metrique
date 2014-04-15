@@ -53,104 +53,6 @@ RESTRICTED_COLLECTION_NAMES = ['admin', 'local', 'system']
 INVALID_USERNAME_RE = re.compile('[^a-zA-Z_]')
 
 
-def _date_pql_string(date):
-    '''
-    Generate a new pql date query component that can be used to
-    query for date (range) specific data in cubes.
-
-    :param date: metrique date (range) to apply to pql query
-
-    If date is None, the resulting query will be a current value
-    only query (_end == None)
-
-    The tilde '~' symbol is used as a date range separated.
-
-    A tilde by itself will mean 'all dates ranges possible'
-    and will therefore search all objects irrelevant of it's
-    _end date timestamp.
-
-    A date on the left with a tilde but no date on the right
-    will generate a query where the date range starts
-    at the date provide and ends 'today'.
-    ie, from date -> now.
-
-    A date on the right with a tilde but no date on the left
-    will generate a query where the date range starts from
-    the first date available in the past (oldest) and ends
-    on the date provided.
-    ie, from beginning of known time -> date.
-
-    A date on both the left and right will be a simple date
-    range query where the date range starts from the date
-    on the left and ends on the date on the right.
-    ie, from date to date.
-    '''
-    if date is None:
-        return '_end == None'
-    if date == '~':
-        return ''
-
-    before = lambda d: '_start <= date("%f")' % ts2dt(d)
-    after = lambda d: '(_end >= date("%f") or _end == None)' % ts2dt(d)
-    split = date.split('~')
-    # replace all occurances of 'T' with ' '
-    # this is used for when datetime is passed in
-    # like YYYY-MM-DDTHH:MM:SS instead of
-    #      YYYY-MM-DD HH:MM:SS as expected
-    # and drop all occurances of 'timezone' like substring
-    split = [re.sub('\+\d\d:\d\d', '', d.replace('T', ' ')) for d in split]
-    if len(split) == 1:
-        # 'dt'
-        return '%s and %s' % (before(split[0]), after(split[0]))
-    elif split[0] == '':
-        # '~dt'
-        return before(split[1])
-    elif split[1] == '':
-        # 'dt~'
-        return after(split[0])
-    else:
-        # 'dt~dt'
-        return '%s and %s' % (before(split[1]), after(split[0]))
-
-
-def _query_add_date(query, date):
-    '''
-    Take an existing pql query and append a date (range)
-    limiter.
-
-    :param query: pql query
-    :param date: metrique date (range) to append
-    '''
-    date_pql = _date_pql_string(date)
-    if query and date_pql:
-        return '%s and %s' % (query, date_pql)
-    return query or date_pql
-
-
-def parse_query(query, date=None):
-    '''
-    Given a pql based query string, parse it using
-    pql.SchemaFreeParser and return the resulting
-    pymongo 'spec' dictionary.
-
-    :param query: pql query
-    '''
-    _subpat = re.compile(' in \([^\)]+\)')
-    _q = _subpat.sub(' in (...)', query) if query else query
-    logger.debug('Query: %s' % _q)
-    query = _query_add_date(query, date)
-    if not query:
-        return {}
-    if not isinstance(query, basestring):
-        raise TypeError("query expected as a string")
-    pql_parser = pql.SchemaFreeParser()
-    try:
-        spec = pql_parser.parse(query)
-    except Exception as e:
-        raise SyntaxError("Invalid Query (%s)" % str(e))
-    return spec
-
-
 class MongoDBProxy(object):
     '''
         :param auth: Enable authentication
@@ -284,17 +186,6 @@ class MongoDBProxy(object):
         _cube = self.get_db(owner)[cube]
         return _cube
 
-    def _ensure_base_indexes(self, ensure_time=90):
-        _cube = self.get_collection()
-        s = ensure_time
-        ensure_time = int(s) if s and s != 0 else 90
-        _cube.ensure_index('_oid', background=False, cache_for=s)
-        _cube.ensure_index('_hash', background=False, cache_for=s)
-        _cube.ensure_index([('_start', -1), ('_end', -1)],
-                           background=False, cache_for=s)
-        _cube.ensure_index([('_end', -1)],
-                           background=False, cache_for=s)
-
 
 class MongoDBContainer(MetriqueContainer):
     _objects = None
@@ -304,7 +195,9 @@ class MongoDBContainer(MetriqueContainer):
 
     def __init__(self, config, objects=None):
         super(MongoDBContainer, self).__init__(objects)
-        self.config = config
+        config = config or {}
+        self.config = self.config or {}
+        self.config.update(config)
 
     @property
     def proxy(self):
@@ -463,6 +356,17 @@ class MongoDBContainer(MetriqueContainer):
             del o['_id']
             objects.append(MetriqueObject(**o))
         return objects
+
+    def _ensure_base_indexes(self, ensure_time=90):
+        _cube = self.proxy.get_collection()
+        s = ensure_time
+        ensure_time = int(s) if s and s != 0 else 90
+        _cube.ensure_index('_oid', background=False, cache_for=s)
+        _cube.ensure_index('_hash', background=False, cache_for=s)
+        _cube.ensure_index([('_start', -1), ('_end', -1)],
+                           background=False, cache_for=s)
+        _cube.ensure_index([('_end', -1)],
+                           background=False, cache_for=s)
 
 
 class MongoDBClient(BaseClient):
@@ -791,15 +695,6 @@ class MongoDBClient(BaseClient):
         return result
 
 # ####################### ETL API ##################################
-    def get_objects(self, flush=False, autosnap=True):
-        '''Main API method for sub-classed cubes to override for the
-        generation of the objects which are to (potentially) be added
-        to the cube (assuming no duplicates)
-        '''
-        if flush:
-            return self.objects.flush(autosnap=True)
-        return self
-
     def get_last_field(self, field):
         '''Shortcut for querying to get the last field value for
         a given owner, cube.
@@ -1105,3 +1000,101 @@ class MongoDBClient(BaseClient):
             to_sample = sorted(set(random.sample(xrange(n), sample_size)))
             docs = [docs[i] for i in to_sample]
         return docs
+
+
+def _date_pql_string(date):
+    '''
+    Generate a new pql date query component that can be used to
+    query for date (range) specific data in cubes.
+
+    :param date: metrique date (range) to apply to pql query
+
+    If date is None, the resulting query will be a current value
+    only query (_end == None)
+
+    The tilde '~' symbol is used as a date range separated.
+
+    A tilde by itself will mean 'all dates ranges possible'
+    and will therefore search all objects irrelevant of it's
+    _end date timestamp.
+
+    A date on the left with a tilde but no date on the right
+    will generate a query where the date range starts
+    at the date provide and ends 'today'.
+    ie, from date -> now.
+
+    A date on the right with a tilde but no date on the left
+    will generate a query where the date range starts from
+    the first date available in the past (oldest) and ends
+    on the date provided.
+    ie, from beginning of known time -> date.
+
+    A date on both the left and right will be a simple date
+    range query where the date range starts from the date
+    on the left and ends on the date on the right.
+    ie, from date to date.
+    '''
+    if date is None:
+        return '_end == None'
+    if date == '~':
+        return ''
+
+    before = lambda d: '_start <= date("%f")' % ts2dt(d)
+    after = lambda d: '(_end >= date("%f") or _end == None)' % ts2dt(d)
+    split = date.split('~')
+    # replace all occurances of 'T' with ' '
+    # this is used for when datetime is passed in
+    # like YYYY-MM-DDTHH:MM:SS instead of
+    #      YYYY-MM-DD HH:MM:SS as expected
+    # and drop all occurances of 'timezone' like substring
+    split = [re.sub('\+\d\d:\d\d', '', d.replace('T', ' ')) for d in split]
+    if len(split) == 1:
+        # 'dt'
+        return '%s and %s' % (before(split[0]), after(split[0]))
+    elif split[0] == '':
+        # '~dt'
+        return before(split[1])
+    elif split[1] == '':
+        # 'dt~'
+        return after(split[0])
+    else:
+        # 'dt~dt'
+        return '%s and %s' % (before(split[1]), after(split[0]))
+
+
+def _query_add_date(query, date):
+    '''
+    Take an existing pql query and append a date (range)
+    limiter.
+
+    :param query: pql query
+    :param date: metrique date (range) to append
+    '''
+    date_pql = _date_pql_string(date)
+    if query and date_pql:
+        return '%s and %s' % (query, date_pql)
+    return query or date_pql
+
+
+def parse_query(query, date=None):
+    '''
+    Given a pql based query string, parse it using
+    pql.SchemaFreeParser and return the resulting
+    pymongo 'spec' dictionary.
+
+    :param query: pql query
+    '''
+    _subpat = re.compile(' in \([^\)]+\)')
+    _q = _subpat.sub(' in (...)', query) if query else query
+    logger.debug('Query: %s' % _q)
+    query = _query_add_date(query, date)
+    if not query:
+        return {}
+    if not isinstance(query, basestring):
+        raise TypeError("query expected as a string")
+    pql_parser = pql.SchemaFreeParser()
+    try:
+        spec = pql_parser.parse(query)
+    except Exception as e:
+        raise SyntaxError("Invalid Query (%s)" % str(e))
+    return spec

@@ -809,10 +809,12 @@ def trash(args=None):
     celeryd_terminate()
     nginx_terminate()
     mongodb_terminate()
+    postgresql_stop()
 
     dest = pjoin(TRASH_DIR, 'metrique-%s' % NOW)
     for f in [ETC_DIR, PIDS_DIR, LOGS_DIR, CACHE_DIR,
-              TMP_DIR, CELERY_DIR, MONGODB_DIR]:
+              TMP_DIR, CELERY_DIR, MONGODB_DIR,
+              POSTGRESQL_PGDATA_PATH]:
         _dest = os.path.join(dest, os.path.basename(f))
         try:
             shutil.move(f, _dest)

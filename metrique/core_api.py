@@ -67,33 +67,74 @@ And finishing with some querying and simple charting of the data.
 
 from __future__ import unicode_literals
 
+import logging
+logger = logging.getLogger('metrique')
+
 from collections import Mapping, MutableMapping
 import cPickle
+from collections import defaultdict
 from copy import deepcopy
+from datetime import datetime
 from getpass import getuser
 import glob
 try:
     import simplejson as json
 except ImportError:
     import json
-import logging
+import inspect
 import os
+from operator import itemgetter
 import pandas as pd
+import pql
+
+try:
+    from pymongo import MongoClient, MongoReplicaSetClient
+    from pymongo.read_preferences import ReadPreference
+    from pymongo.errors import OperationFailure
+    HAS_PYMONGO = True
+except ImportError:
+    logger.warn('pymongo 2.6+ not installed!')
+    HAS_PYMONGO = False
+
+try:
+    import psycopg2
+    psycopg2  # avoid pep8 'imported, not used' lint error
+    import sqlalchemy.dialects.postgresql as pg
+    from sqlalchemy.dialects.postgresql import ARRAY
+    HAS_PSYCOPG2 = True
+except ImportError:
+    logger.warn('psycopg2 not installed!')
+    HAS_PSYCOPG2 = False
+
 import re
+import random
 import shlex
 import signal
+
+try:
+    from sqlalchemy import create_engine, MetaData
+    from sqlalchemy import Column, Integer, Unicode, DateTime
+    from sqlalchemy import Float, BigInteger, Boolean, UnicodeText
+    from sqlalchemy.orm import sessionmaker
+    from sqlalchemy.ext.declarative import declarative_base
+    HAS_SQLALCHEMY = True
+except ImportError:
+    logger.warn('sqlalchemy not installed!')
+    HAS_SQLALCHEMY = False
+
 import subprocess
 import tempfile
 import urllib
 
 from metrique.utils import get_cube, utcnow, jsonhash, load_config
-from metrique.utils import rupdate, json_encode
-
-logger = logging.getLogger(__name__)
+from metrique.utils import json_encode, batch_gen, ts2dt, configure
+from metrique.result import Result
 
 # if HOME environment variable is set, use that
 # useful when running 'as user' with root (supervisord)
 ETC_DIR = os.environ.get('METRIQUE_ETC')
+LOGS_DIR = os.environ.get('METRIQUE_LOGS')
+CACHE_DIR = os.environ.get('METRIQUE_CACHE')
 DEFAULT_CONFIG = os.path.join(ETC_DIR, 'metrique.json')
 
 FIELDS_RE = re.compile('[\W]+')
@@ -125,7 +166,6 @@ class MetriqueObject(Mapping):
                 if self._strict:
                     raise KeyError("%s is immutable" % key)
                 else:
-                    #logger.debug("%s is immutable; not setting" % key)
                     continue
             #if key in TIMESTAMP_OBJ_KEYS and value is not None:
             #    # ensure normalized timestamp
@@ -237,8 +277,8 @@ class MetriqueContainer(MutableMapping):
         * empty strings -> None
 
     '''
-    def __init__(self, objects=None, cache_dir=None):
-        self._cache_dir = cache_dir or tempfile.gettempdir()
+    def __init__(self, objects=None, cache_dir=CACHE_DIR):
+        self._cache_dir = cache_dir or CACHE_DIR
         self.store = {}
         if objects is None:
             pass
@@ -337,11 +377,12 @@ class MetriqueContainer(MutableMapping):
 
 
 class MetriqueFactory(type):
-    def __call__(cls, cube=None, name=None, *args, **kwargs):
+    def __call__(cls, cube=None, name=None, backends=None, *args, **kwargs):
         name = name or cube
         if cube:
-            cls = get_cube(cube=cube, name=name, init=False)
-        return type.__call__(cls, name=name, *args, **kwargs)
+            cls = get_cube(cube=cube, name=name, init=False, backends=backends)
+        _type = type.__call__(cls, name=name, *args, **kwargs)
+        return _type
 
 
 class BaseClient(object):
@@ -373,19 +414,18 @@ class BaseClient(object):
             <type HTTPClient(...)>
 
     '''
-    default_config_file = DEFAULT_CONFIG
-    core_config_key = 'metrique'
+    config_file = DEFAULT_CONFIG
+    config_key = 'metrique'
     name = None
     config = None
     _objects = None
     __metaclass__ = MetriqueFactory
 
     def __init__(self, name, config_file=None, config=None,
-                 config_key=None,
-                 cube_pkgs=None, cube_paths=None, debug=None,
-                 log_file=None, log2file=None, log2stdout=None,
-                 workers=None, log_dir=None, cache_dir=None,
-                 etc_dir=None, tmp_dir=None):
+                 config_key=None, cube_pkgs=None, cube_paths=None,
+                 debug=None, log_file=None, log2file=None, log2stdout=None,
+                 workers=None, log_dir=None, cache_dir=None, etc_dir=None,
+                 tmp_dir=None, container=None, container_kwargs=None):
         '''
         :param cube_pkgs: list of package names where to search for cubes
         :param cube_paths: Additional paths to search for client cubes
@@ -397,10 +437,9 @@ class BaseClient(object):
         '''
         super(BaseClient, self).__init__()
         # set default config value as dict (from None set cls level)
-        self.default_config_file = config_file or self.default_config_file
+        self.config_file = config_file or self.config_file
         options = dict(cube_pkgs=cube_pkgs,
                        cube_paths=cube_paths,
-                       config_key=config_key,
                        debug=debug,
                        log_file=log_file,
                        log2file=log2file,
@@ -412,7 +451,6 @@ class BaseClient(object):
                        tmp_dir=tmp_dir)
         defaults = dict(cube_pkgs=['cubes'],
                         cube_paths=[],
-                        config_key=self.core_config_key,
                         debug=None,
                         log_file='metrique.log',
                         log2file=True,
@@ -427,8 +465,12 @@ class BaseClient(object):
         # with class assigned default or empty dict
         self.config = deepcopy(config) or self.config or {}
 
+        config_key = config_key or self.config_key
         # load defaults + set args passed in
-        self.configure(config_key, options, defaults, config_file)
+        self.config = configure(options, defaults,
+                                config_file=config_file,
+                                section_key=config_key,
+                                update=self.config)
 
         # cube class defined name
         self._cube = type(self).name
@@ -436,8 +478,27 @@ class BaseClient(object):
         # set name if passed in, but don't overwrite default if not
         self.name = name or self.name
 
-        # sub-classes must call this!
-        #self.debug_setup()
+        level = self.config['metrique'].get('debug')
+        log2stdout = self.config['metrique'].get('log2stdout')
+        log_format = None
+        log2file = self.config['metrique'].get('log2file')
+        log_dir = self.config['metrique'].get('log_dir', '')
+        log_file = self.config['metrique'].get('log_file', '')
+        log_file = os.path.join(log_dir, log_file)
+        debug_setup(logger='metrique', level=level, log2stdout=log2stdout,
+                    log_format=log_format, log2file=log2file,
+                    log_dir=log_dir, log_file=log_file)
+
+        if container:
+            if inspect.isclass(container):
+                kwargs = container_kwargs or {}
+                kwargs['owner'] = kwargs.get('owner') or getuser()
+                kwargs['cube'] = kwargs.get('cube') or self.name
+                self._objects = container(**kwargs)
+            else:
+                self._objects = container
+        else:
+            self._set_container()
 
     def _set_container(self, value=None):
         cache_dir = self.config['metrique'].get('cache_dir')
@@ -458,96 +519,6 @@ class BaseClient(object):
         # replacing existing container with a new, empty one
         self._objects = self._set_container()
 
-    def _debug_set_level(self, logger, level):
-        if level in [-1, False]:
-            logger.setLevel(logging.WARN)
-        elif level in [0, None]:
-            logger.setLevel(logging.INFO)
-        elif level is True:
-            logger.setLevel(logging.DEBUG)
-        else:
-            level = int(level)
-            logger.setLevel(level)
-        return logger
-
-    def debug_setup(self, logger=None, level=None):
-        '''
-        Local object instance logger setup.
-
-        Verbosity levels are determined as such::
-
-            if level in [-1, False]:
-                logger.setLevel(logging.WARN)
-            elif level in [0, None]:
-                logger.setLevel(logging.INFO)
-            elif level in [True, 1, 2]:
-                logger.setLevel(logging.DEBUG)
-
-        If (level == 2) `logging.DEBUG` will be set even for
-        the "root logger".
-
-        Configuration options available for customized logger behaivor:
-            * debug (bool)
-            * log2stdout (bool)
-            * log2file (bool)
-            * log_file (path)
-        '''
-        level = level or self.config['metrique'].get('debug')
-        log2stdout = self.config['metrique'].get('log2stdout')
-        log_format = "%(name)s.%(process)s:%(asctime)s:%(message)s"
-        log_format = logging.Formatter(log_format, "%Y%m%dT%H%M%S")
-
-        log2file = self.config['metrique'].get('log2file')
-        log_file = self.config['metrique'].get('log_file', '')
-        log_dir = self.config['metrique'].get('log_dir', '')
-        log_file = os.path.join(log_dir, log_file)
-
-        logger = logger or logging.getLogger('metrique')
-        logger.propagate = 0
-        logger.handlers = []
-        if log2file and log_file:
-            hdlr = logging.FileHandler(log_file)
-            hdlr.setFormatter(log_format)
-            logger.addHandler(hdlr)
-        else:
-            log2stdout = True
-        if log2stdout:
-            hdlr = logging.StreamHandler()
-            hdlr.setFormatter(log_format)
-            logger.addHandler(hdlr)
-        logger = self._debug_set_level(logger, level)
-
-    def configure(self, section_key, options, defaults, config_file=None,
-                  force=False):
-        # FIXME: permit list of section keys to lookup values in
-        sk = section_key
-        sk = sk or options.get('config_key') or defaults.get('config_key')
-        if not sk:
-            raise ValueError("section_key can't be null")
-        elif sk in self.config and not force:
-            # if 'sql' is already configured, ie, we initiated with
-            # config set already, don't set defaults, only options
-            # not set as None
-            self.config.setdefault(sk, {})
-            [self.config[sk].update({k: v})
-             for k, v in options.iteritems() if v is not None]
-        else:
-            # load the config options from disk, if path provided
-            config_file = config_file or self.default_config_file
-            if config_file:
-                raw_config = self.load_config(config_file)
-                section = raw_config.get(sk, {})
-                if not isinstance(section, dict):
-                    # convert mergeabledict (anyconfig) to dict of dicts
-                    section = section.convert_to(section)
-                defaults = rupdate(defaults, section)
-            # set option to value passed in, if any
-            for k, v in options.iteritems():
-                v = v if v is not None else defaults[k]
-                section[unicode(k)] = v
-            self.config.setdefault(sk, {})
-            self.config[sk] = rupdate(self.config[sk], section)
-
     def get_cube(self, cube, init=True, name=None, copy_config=True, **kwargs):
         '''wrapper for :func:`metrique.utils.get_cube`
 
@@ -562,7 +533,7 @@ class BaseClient(object):
         '''
         name = name or cube
         config = self.config if copy_config else {}
-        config_file = self.default_config_file
+        config_file = self.config_file
         return get_cube(cube=cube, init=init, name=name, config=config,
                         config_file=config_file, **kwargs)
 
@@ -593,9 +564,15 @@ class BaseClient(object):
             self._sys_call(cmd)
         return repo_path
 
-    def get_objects(self, **kwargs):
-        # subclass implemented
-        raise NotImplementedError()
+    def get_objects(self, flush=False, autosnap=True):
+        '''
+        Main API method for sub-classed cubes to override for the
+        generation of the objects which are to (potentially) be added
+        to the cube (assuming no duplicates)
+        '''
+        if flush:
+            return self.objects.flush(autosnap=autosnap)
+        return self
 
     def load(self, path, filetype=None, as_dict=True, raw=False,
              retries=None, **kwargs):
@@ -723,3 +700,1453 @@ class BaseClient(object):
             else:
                 break
         return _path, headers
+
+    # ############################## Backends #################################
+    def mongodb(self, cached=True, owner=None, cube=None, **kwargs):
+        _mongodb = getattr(self, '_mongodb', None)
+        # return cached unless kwargs are set, cached is False
+        # or there isn't already an instance cached available
+        if not (kwargs and _mongodb and cached):
+            owner = owner or getuser()
+            cube = cube or self.name
+            self._mongodb = MongoDBProxy(owner=owner, cube=cube, **kwargs)
+        return self._mongodb
+
+    def sqla(self, cached=True, owner=None, cube=None, **kwargs):
+        _sqla = getattr(self, '_sqla', None)
+        # return cached unless kwargs are set, cached is False
+        # or there isn't already an instance cached available
+        if not (kwargs and _sqla and cached):
+            owner = owner or getuser()
+            cube = cube or self.name
+            self._sqla = SQLAlchemyProxy(owner=owner, cube=cube, **kwargs)
+        return self._sqla
+
+
+def _debug_set_level(logger, level):
+    if level in [-1, False]:
+        logger.setLevel(logging.WARN)
+    elif level in [0, None]:
+        logger.setLevel(logging.INFO)
+    elif level is True:
+        logger.setLevel(logging.DEBUG)
+    else:
+        level = int(level)
+        logger.setLevel(level)
+    return logger
+
+
+def debug_setup(logger=None, level=None, log2file=None,
+                log_file=None, log_format=None, log_dir=None,
+                log2stdout=None, ):
+    '''
+    Local object instance logger setup.
+
+    Verbosity levels are determined as such::
+
+        if level in [-1, False]:
+            logger.setLevel(logging.WARN)
+        elif level in [0, None]:
+            logger.setLevel(logging.INFO)
+        elif level in [True, 1, 2]:
+            logger.setLevel(logging.DEBUG)
+
+    If (level == 2) `logging.DEBUG` will be set even for
+    the "root logger".
+
+    Configuration options available for customized logger behaivor:
+        * debug (bool)
+        * log2stdout (bool)
+        * log2file (bool)
+        * log_file (path)
+    '''
+    log2stdout = log2stdout or False
+    _log_format = "%(name)s.%(process)s:%(asctime)s:%(message)s"
+    _log_format = logging.Formatter(log_format, "%Y%m%dT%H%M%S")
+    log_format = log_format or _log_format
+
+    log2file = log2file or True
+    log_file = log_file or 'metrique.log'
+    log_dir = log_dir or LOGS_DIR or ''
+    log_file = os.path.join(log_dir, log_file)
+
+    if isinstance(logger, basestring):
+        logger = logging.getLogger(logger)
+    logger = logger or logging.getLogger('metrique')
+    logger.propagate = 0
+    logger.handlers = []
+    if log2file and log_file:
+        hdlr = logging.FileHandler(log_file)
+        hdlr.setFormatter(log_format)
+        logger.addHandler(hdlr)
+        logger.warn("Logging to %s" % log_file)
+    else:
+        log2stdout = True
+    if log2stdout:
+        hdlr = logging.StreamHandler()
+        hdlr.setFormatter(log_format)
+        logger.addHandler(hdlr)
+        logger.warn("Logging to STDOUT")
+    logger = _debug_set_level(logger, level)
+    return logger
+
+# ################################ MONGODB ###################################
+
+SSL_PEM = os.path.join(ETC_DIR, 'metrique.pem')
+
+READ_PREFERENCE = {
+    'PRIMARY_PREFERRED': ReadPreference.PRIMARY,
+    'PRIMARY': ReadPreference.PRIMARY,
+    'SECONDARY': ReadPreference.SECONDARY,
+    'SECONDARY_PREFERRED': ReadPreference.SECONDARY_PREFERRED,
+    'NEAREST': ReadPreference.NEAREST,
+}
+
+INDEX_ENSURE_SECS = 60 * 60
+VALID_CUBE_SHARE_ROLES = ['read', 'readWrite', 'dbAdmin', 'userAdmin']
+CUBE_OWNER_ROLES = ['readWrite', 'dbAdmin', 'userAdmin']
+RESTRICTED_COLLECTION_NAMES = ['admin', 'local', 'system']
+INVALID_USERNAME_RE = re.compile('[^a-zA-Z_]')
+
+
+class MongoDBProxy(object):
+    '''
+        :param auth: Enable authentication
+        :param batch_size: The number of objs save at a time
+        :param password: mongodb password
+        :param username: mongodb username
+        :param host: mongodb host(s) to connect to
+        :param owner: mongodb owner user database cube is in
+        :param port: mongodb port to connect to
+        :param read_preference: default - NEAREST
+        :param replica_set: name of replica set, if any
+        :param ssl: enable ssl
+        :param ssl_certificate: path to ssl combined .pem
+        :param tz_aware: return back tz_aware dates?
+        :param write_concern: # of inst's to write to before finish
+
+    Takes kwargs, but ignores them.
+    '''
+    config = None
+    config_key = 'mongodb'
+    config_file = DEFAULT_CONFIG
+    default_fields = '~'
+    default_sort = [('_start', -1)]
+
+    def __init__(self, host=None, port=None, username=None, password=None,
+                 auth=None, ssl=None, ssl_certificate=None,
+                 index_ensure_secs=None, read_preference=None,
+                 replica_set=None, tz_aware=None, write_concern=None,
+                 batch_size=None, owner=None, cube=None,
+                 config_file=None, config_key=None, **kwargs):
+        options = dict(host=host,
+                       port=port,
+                       auth=auth,
+                       username=username,
+                       password=password,
+                       ssl=ssl,
+                       ssl_certificate=ssl_certificate,
+                       index_ensure_secs=index_ensure_secs,
+                       read_preference=read_preference,
+                       replica_set=replica_set,
+                       tz_aware=tz_aware,
+                       write_concern=write_concern,
+                       batch_size=batch_size,
+                       owner=owner,
+                       cube=cube,
+                       )
+        defaults = dict(host='127.0.0.1',
+                        port=27017,
+                        auth=False,
+                        username=getuser(),
+                        password='',
+                        ssl=False,
+                        ssl_certificate=SSL_PEM,
+                        index_ensure_secs=INDEX_ENSURE_SECS,
+                        read_preference='NEAREST',
+                        replica_set=None,
+                        tz_aware=True,
+                        write_concern=0,
+                        batch_size=10000,
+                        owner=None,
+                        cube=None,
+                        )
+        if not HAS_PYMONGO:
+            raise NotImplementedError('`pip install pymongo` required')
+        self.config = self.config or {}
+        config_file = config_file or self.config_file
+        config_key = config_key or self.config_key
+        self.config = configure(options, defaults,
+                                section_key=config_key,
+                                section_only=True,
+                                config_file=config_file,
+                                update=self.config)
+
+        # default owner == username if not set
+        self.config['owner'] = self.config['owner'] or defaults.get('username')
+
+    def __getitem__(self, query):
+        return self.find(query=query, fields=self.default_fields,
+                         date='~', merge_versions=False,
+                         sort=self.default_sort)
+
+    def keys(self, sample_size=1):
+        return self.sample_fields(sample_size=sample_size)
+
+    def values(self, sample_size=1):
+        return self.sample_docs(sample_size=sample_size)
+
+    @property
+    def proxy(self):
+        _proxy = getattr(self, '_proxy', None)
+        if not _proxy:
+            kwargs = {}
+            ssl = self.config.get('ssl')
+            if ssl:
+                cert = self.config.get('ssl_certificate')
+                # include ssl options only if it's enabled
+                # certfile is a combined key+cert
+                kwargs.update(dict(ssl=ssl, ssl_certfile=cert))
+            if self.config.get('replica_set'):
+                _proxy = self._load_mongo_replica_client(**kwargs)
+            else:
+                _proxy = self._load_mongo_client(**kwargs)
+            auth = self.config.get('auth')
+            username = self.config.get('username')
+            password = self.config.get('password')
+            if auth:
+                _proxy = self._authenticate(_proxy, username, password)
+            self._proxy = _proxy
+        return _proxy
+
+    def _authenticate(self, proxy, username, password):
+        if not (username and password):
+            raise ValueError(
+                "username:%s, password:%s required" % (username, password))
+        ok = proxy[username].authenticate(username, password)
+        if ok:
+            logger.debug('Authenticated as %s' % username)
+            return proxy
+        raise RuntimeError(
+            "MongoDB failed to authenticate user (%s)" % username)
+
+    def _load_mongo_client(self, **kwargs):
+        logger.debug('Loading new MongoClient connection')
+        host = self.config.get('host')
+        port = self.config.get('port')
+        tz_aware = self.config.get('tz_aware')
+        w = self.config.get('write_concern')
+        _proxy = MongoClient(host, port, tz_aware=tz_aware,
+                             w=w, **kwargs)
+        return _proxy
+
+    def _load_mongo_replica_client(self, **kwargs):
+        host = self.config.get('host')
+        port = self.config.get('port')
+        tz_aware = self.config.get('tz_aware')
+        w = self.config.get('write_concern')
+        replica_set = self.config.get('replica_set')
+        pref = self.config.get('read_preference')
+        read_preference = READ_PREFERENCE[pref]
+
+        logger.debug('Loading new MongoReplicaSetClient connection')
+        _proxy = MongoReplicaSetClient(host, port, tz_aware=tz_aware,
+                                       w=w, replicaSet=replica_set,
+                                       read_preference=read_preference,
+                                       **kwargs)
+        return _proxy
+
+    def get_db(self, owner=None):
+        owner = owner or self.config.get('owner')
+        if not owner:
+            raise RuntimeError("[%s] Invalid db!" % owner)
+        try:
+            return self.proxy[owner]
+        except OperationFailure as e:
+            raise RuntimeError("unable to get db! (%s)" % e)
+
+    def get_collection(self, owner=None, cube=None):
+        cube = cube or self.config.get('cube')
+        if not cube:
+            raise RuntimeError("[%s] Invalid cube!" % cube)
+        _cube = self.get_db(owner)[cube]
+        return _cube
+
+    def __repr__(self):
+        owner = self.config.get('owner')
+        cube = self.config.get('cube')
+        return '%s(owner="%s", cube="%s">)' % (self.__class__.__name__,
+                                               owner, cube)
+
+# ######################## User API ################################
+    def whoami(self, auth=False):
+        '''Local api call to check the username of running user'''
+        return self.config[self.config_key].get('username')
+
+    def _validate_password(self, password):
+        is_str = isinstance(password, basestring)
+        char_8_plus = len(password) >= 8
+        ok = all((is_str, char_8_plus))
+        if not ok:
+            raise ValueError("Invalid password; must be len(string) >= 8")
+        return password
+
+    def _validate_username(self, username):
+        if not isinstance(username, basestring):
+            raise TypeError("username must be a string")
+        elif INVALID_USERNAME_RE.search(username):
+            raise ValueError(
+                "Invalid username '%s'; "
+                "lowercase, ascii alpha [a-z_] characters only!" % username)
+        elif username in RESTRICTED_COLLECTION_NAMES:
+            raise ValueError(
+                "username '%s' is not permitted" % username)
+        else:
+            return username.lower()
+
+    def _validate_cube_roles(self, roles):
+        if isinstance(roles, basestring):
+            roles = [roles]
+        if not isinstance(roles, (list, tuple)):
+            raise TypeError("roles must be single string or list")
+        roles = set(map(str, roles))
+        if not roles <= set(VALID_CUBE_SHARE_ROLES):
+            raise ValueError("invalid roles %s, try: %s" % (
+                roles, VALID_CUBE_SHARE_ROLES))
+        return sorted(roles)
+
+    # FIXME: add 'user_update_roles()...
+    def user_register(self, username=None, password=None):
+        '''
+        Register new user.
+
+        :param user: Name of the user you're managing
+        :param password: Password (plain text), if any of user
+        '''
+        if username and not password:
+            raise RuntimeError('must specify password!')
+        password = password or self.config['mongodb'].get('password')
+        username = username or self.config['mongodb'].get('username')
+        username = self._validate_username(username)
+        password = self._validate_password(password)
+        logger.info('Registering new user %s' % username)
+        db = self.get_db(username)
+        self.db.add_user(username, password,
+                         roles=CUBE_OWNER_ROLES)
+        spec = parse_query('user == "%s"' % username)
+        result = db.system.users.find(spec).count()
+        return bool(result)
+
+    def user_remove(self, username, clear_db=False):
+        username = username or self.config['mongodb'].get('username')
+        username = self._validate_username(username)
+        logger.info('Removing user %s' % username)
+        db = self.get_db(username)
+        db.remove_user(username)
+        if clear_db:
+            db.drop_database(username)
+        spec = parse_query('user == "%s"' % username)
+        result = not bool(db.system.users.find(spec).count())
+        return result
+
+# ######################## Cube API ################################
+    def ls(self, startswith=None, owner=None):
+        '''
+        List all cubes available to the calling client.
+
+        :param startswith: string to use in a simple "startswith" query filter
+        :returns list: sorted list of cube names
+        '''
+        db = self.get_db(owner)
+        cubes = db.collection_names(include_system_collections=False)
+        startswith = unicode(startswith or '')
+        cubes = [name for name in cubes if name.startswith(startswith)]
+        RCN = RESTRICTED_COLLECTION_NAMES
+        not_restricted = lambda c: all(not c.startswith(name) for name in RCN)
+        cubes = filter(not_restricted, cubes)
+        logger.info('[%s] Listing available cubes starting with "%s")' % (
+            owner, startswith))
+        return sorted(cubes)
+
+    def share(self, with_user, roles=None, cube=None, owner=None):
+        '''
+        Give cube access rights to another user
+        '''
+        with_user = self._validate_username(with_user)
+        roles = self._validate_cube_roles(roles or ['read'])
+        _cube = self.get_db(owner)
+        logger.info(
+            '[%s] Sharing cube with %s (%s)' % (_cube, with_user, roles))
+        result = _cube.add_user(name=with_user, roles=roles,
+                                userSource=with_user)
+        return result
+
+    def drop(self, cube=None, owner=None):
+        '''
+        Drop (delete) cube.
+
+        :param quiet: ignore exceptions
+        :param owner: username of cube owner
+        :param cube: cube name
+        '''
+        _cube = self.get_collection(owner, cube)
+        logger.info('[%s] Dropping cube' % _cube)
+        name = _cube.name
+        _cube.drop()
+        db = self.get_db(owner)
+        result = not bool(name in db.collection_names())
+        return result
+
+    def index_list(self, cube=None, owner=None):
+        '''
+        List all cube indexes
+
+        :param cube: cube name
+        :param owner: username of cube owner
+        '''
+        _cube = self.get_collection(owner, cube)
+        logger.info('[%s] Listing indexes' % _cube)
+        result = _cube.index_information()
+        return result
+
+    def index(self, key_or_list, cube=None, owner=None, **kwargs):
+        '''
+        Build a new index on a cube.
+
+        Examples:
+            + ensure_index('field_name')
+            + ensure_index([('field_name', 1), ('other_field_name', -1)])
+
+        :param key_or_list: A single field or a list of (key, direction) pairs
+        :param name: (optional) Custom name to use for this index
+        :param background: MongoDB should create in the background
+        :param cube: cube name
+        :param owner: username of cube owner
+        '''
+        _cube = self.get_collection(owner, cube)
+        logger.info('[%s] Writing new index %s' % (_cube, key_or_list))
+        s = self.config['mongodb'].get('index_ensure_secs')
+        kwargs['cache_for'] = kwargs.get('cache_for', s)
+        result = _cube.ensure_index(key_or_list, **kwargs)
+        return result
+
+    def index_drop(self, index_or_name, cube=None, owner=None):
+        '''
+        Drops the specified index on this cube.
+
+        :param index_or_name: index (or name of index) to drop
+        :param cube: cube name
+        :param owner: username of cube owner
+        '''
+        _cube = self.get_collection(owner, cube)
+        logger.info('[%s] Droping index %s' % (_cube, index_or_name))
+        result = _cube.drop_index(index_or_name)
+        return result
+
+    ######## SAVE/REMOVE ########
+
+    def rename(self, new_name=None, new_owner=None, drop_target=False,
+               cube=None, owner=None):
+        '''
+        Rename a cube.
+
+        :param new_name: new cube name
+        :param new_owner: new cube owner (admin privleges required!)
+        :param cube: cube name
+        :param owner: username of cube owner
+        '''
+        if not (new_name or new_owner):
+            raise ValueError("must set either/or new_name or new_owner")
+        new_name = new_name or cube or self.name
+        if not new_name:
+            raise ValueError("new_name is not set!")
+        _cube = self.get_collection(owner, cube)
+        if new_owner:
+            _from = _cube.full_name
+            _to = '%s.%s' % (new_owner, new_name)
+            self.get_db('admin').command(
+                'renameCollection', _from, to=_to, dropTarget=drop_target)
+            # don't touch the new collection until after attempting
+            # the rename; collection would otherwise be created
+            # empty automatically then the rename fails because
+            # target already exists.
+            _new_db = self.get_db(new_owner)
+            result = bool(new_name in _new_db.collection_names())
+        else:
+            logger.info('[%s] Renaming cube -> %s' % (_cube, new_name))
+            _cube.rename(new_name, dropTarget=drop_target)
+            db = self.get_db(owner)
+            result = bool(new_name in db.collection_names())
+        if cube is None and result:
+            self.name = new_name
+        return result
+
+# ####################### ETL API ##################################
+    def get_last_field(self, field):
+        '''Shortcut for querying to get the last field value for
+        a given owner, cube.
+
+        :param field: field name to query
+        '''
+        last = self.find(query=None, fields=[field],
+                         sort=[(field, -1)], one=True, raw=True)
+        if last:
+            last = last.get(field)
+        logger.debug("last %s.%s: %s" % (self.name, field, last))
+        return last
+
+    def remove(self, query, date=None, cube=None, owner=None):
+        '''
+        Remove objects from a cube.
+
+        :param query: `pql` query to filter sample query with
+        :param cube: cube name
+        :param owner: username of cube owner
+        '''
+        spec = parse_query(query, date)
+        _cube = self.get_collection(owner, cube)
+        logger.info("[%s] Removing objects (%s): %s" % (_cube, date, query))
+        result = _cube.remove(spec)
+        return result
+
+# ####################### Query API ################################
+    def aggregate(self, pipeline, cube=None, owner=None):
+        '''
+        Run a pql mongodb aggregate pipeline on remote cube
+
+        :param pipeline: The aggregation pipeline. $match, $project, etc.
+        :param cube: cube name
+        :param owner: username of cube owner
+        '''
+        _cube = self.get_collection(owner, cube)
+        result = _cube.aggregate(pipeline)
+        return result
+
+    def count(self, query=None, date=None, cube=None, owner=None):
+        '''
+        Run a pql mongodb based query on the given cube and return only
+        the count of resulting matches.
+
+        :param query: The query in pql
+        :param date: date (metrique date range) that should be queried
+                    If date==None then the most recent versions of the
+                    objects will be queried.
+        :param cube: cube name
+        :param owner: username of cube owner
+        '''
+        _cube = self.get_collection(owner, cube)
+        spec = parse_query(query, date)
+        result = _cube.find(spec).count()
+        return result
+
+    def _parse_fields(self, fields):
+        _fields = {'_id': 0, '_start': 1, '_end': 1, '_oid': 1}
+        if fields in [None, False]:
+            _fields = None
+        elif fields in ['~', True]:
+            _fields = None
+        elif isinstance(fields, dict):
+            _fields.update(fields)
+        elif isinstance(fields, basestring):
+            _fields.update({s.strip(): 1 for s in fields.split(',')})
+        elif isinstance(fields, (list, tuple)):
+            _fields.update({s.strip(): 1 for s in fields})
+        else:
+            raise ValueError("invalid fields value")
+        return _fields
+
+    def find(self, query=None, fields=None, date=None, sort=None, one=False,
+             raw=False, explain=False, merge_versions=False, skip=0,
+             limit=0, as_cursor=False, cube=None, owner=None):
+        '''
+        Run a pql mongodb based query on the given cube.
+
+        :param query: The query in pql
+        :param fields: Fields that should be returned (comma-separated)
+        :param date: date (metrique date range) that should be queried.
+                    If date==None then the most recent versions of the
+                    objects will be queried.
+        :param explain: return execution plan instead of results
+        :param merge_versions: merge versions where fields values equal
+        :param one: return back only first matching object
+        :param sort: return back results sorted
+        :param raw: return back raw JSON results rather than pandas dataframe
+        :param skip: number of results matched to skip and not return
+        :param limit: number of results matched to return of total found
+        :param cube: cube name
+        :param owner: username of cube owner
+        '''
+        _cube = self.get_collection(owner, cube)
+        spec = parse_query(query, date)
+        fields = self._parse_fields(fields)
+
+        merge_versions = False if fields is None or one else merge_versions
+        if merge_versions:
+            fields = fields or {}
+            fields.update({'_start': 1, '_end': 1, '_oid': 1})
+
+        find = _cube.find_one if one else _cube.find
+        result = find(spec, fields=fields, sort=sort, explain=explain,
+                      skip=skip, limit=limit)
+
+        if one or explain or as_cursor:
+            return result
+        result = list(result)
+        if merge_versions:
+            result = self._merge_versions(result)
+        if raw:
+            return result
+        else:
+            return Result(result, date)
+
+    def _merge_versions(self, objects):
+        # contains a dummy document to avoid some condition
+        # checks in merge_doc
+        ret = [{'_oid': None}]
+        no_check = set(['_start', '_end'])
+
+        def merge_doc(doc):
+            '''
+            merges doc with the last document in ret if possible
+            '''
+            last = ret[-1]
+            ret.append(doc)
+            if doc['_oid'] == last['_oid'] and doc['_start'] == last['_end']:
+                if all(item in last.items() or item[0] in no_check
+                       for item in doc.iteritems()):
+                    # the fields of interest did not change, merge docs:
+                    last['_end'] = doc['_end']
+                    ret.pop()
+
+        objects = sorted(objects,
+                         key=itemgetter('_oid', '_start', '_end'))
+        logger.debug("merging doc versions...")
+        [merge_doc(obj) for obj in objects]
+        logger.debug('... done')
+        return ret[1:]
+
+    def history(self, query, by_field=None, date_list=None, cube=None,
+                owner=None):
+        '''
+        Run a pql mongodb based query on the given cube and return back the
+        aggregate historical counts of matching results.
+
+        :param query: The query in pql
+        :param by_field: Which field to slice/dice and aggregate from
+        :param date: list of dates that should be used to bin the results
+        :param cube: cube name
+        :param owner: username of cube owner
+        '''
+        query = '%s and _start < %s and (_end >= %s or _end == None)' % (
+                query, max(date_list), min(date_list))
+        spec = parse_query(query)
+
+        pipeline = [
+            {'$match': spec},
+            {'$group': {
+                '_id': '$%s' % by_field if by_field else '_id',
+                'starts': {'$push': '$_start'},
+                'ends': {'$push': '$_end'}}}]
+        data = self.aggregate(pipeline)['result']
+        data = self._history_accumulate(data, date_list)
+        data = self._history_convert(data, by_field)
+        return data
+
+    def _history_accumulate(self, data, date_list):
+        date_list = sorted(date_list)
+        # accumulate the counts
+        res = defaultdict(lambda: defaultdict(int))
+        for group in data:
+            starts = sorted(group['starts'])
+            ends = sorted([x for x in group['ends'] if x is not None])
+            _id = group['_id']
+            ind = 0
+            # assuming date_list is sorted
+            for date in date_list:
+                while ind < len(starts) and starts[ind] < date:
+                    ind += 1
+                res[date][_id] = ind
+            ind = 0
+            for date in date_list:
+                while ind < len(ends) and ends[ind] < date:
+                    ind += 1
+                res[date][_id] -= ind
+        return res
+
+    def _history_convert(self, data, by_field):
+        # convert to the return form
+        ret = []
+        for date, value in data.items():
+            if by_field:
+                vals = []
+                for field_val, count in value.items():
+                    vals.append({by_field: field_val,
+                                "count": count})
+                ret.append({"date": date,
+                            "values": vals})
+            else:
+                ret.append({"date": date,
+                            "count": value['id']})
+        return ret
+
+    def deptree(self, field, oids, date=None, level=None, cube=None,
+                owner=None):
+        '''
+        Dependency tree builder. Recursively fetchs objects that
+        are children of the initial set of parent object ids provided.
+
+        :param field: Field that contains the 'parent of' data
+        :param oids: Object oids to build depedency tree for
+        :param date: date (metrique date range) that should be queried.
+                    If date==None then the most recent versions of the
+                    objects will be queried.
+        :param level: limit depth of recursion
+        :param cube: cube name
+        :param owner: username of cube owner
+        '''
+        if not level or level < 1:
+            level = 1
+        if isinstance(oids, basestring):
+            oids = [s.strip() for s in oids.split(',')]
+        checked = set(oids)
+        fringe = oids
+        loop_k = 0
+        _cube = self.get_collection(owner, cube)
+        while len(fringe) > 0:
+            if level and loop_k == abs(level):
+                break
+            query = '_oid in %s and %s != None' % (fringe, field)
+            spec = parse_query(query, date)
+            fields = {'_id': -1, '_oid': 1, field: 1}
+            docs = _cube.find(spec, fields=fields)
+            fringe = set([oid for doc in docs for oid in doc[field]])
+            fringe = filter(lambda oid: oid not in checked, fringe)
+            checked |= set(fringe)
+            loop_k += 1
+        return sorted(checked)
+
+    def distinct(self, field, query=None, date=None, cube=None, owner=None):
+        '''
+        Return back a distinct (unique) list of field values
+        across the entire cube dataset
+
+        :param field: field to get distinct token values from
+        :param cube: cube name
+        :param owner: username of cube owner
+        '''
+        _cube = self.get_collection(owner, cube)
+        if query:
+            spec = parse_query(query, date)
+            result = _cube.find(spec).distinct(field)
+        else:
+            result = _cube.distinct(field)
+        return result
+
+    def sample_fields(self, sample_size=None, query=None, date=None,
+                      cube=None, owner=None):
+        '''
+        List a sample of all valid fields for a given cube.
+
+        Assuming all cube objects have the same exact fields, sampling
+        fields should result in a complete list of object fields.
+
+        However, if cube objects have different fields, sampling fields
+        might not result in a complete list of object fields, since
+        some object variants might not be included in the sample queried.
+
+        :param sample_size: number of random documents to query
+        :param query: `pql` query to filter sample query with
+        :param cube: cube name
+        :param owner: username of cube owner
+        :returns list: sorted list of fields
+        '''
+        docs = self.sample_docs(sample_size=sample_size, query=query,
+                                date=date, cube=cube, owner=owner)
+        result = sorted({k for d in docs for k in d.iterkeys()})
+        return result
+
+    def sample_docs(self, sample_size=None, query=None, date=None,
+                    cube=None, owner=None):
+        '''
+        Take a randomized sample of documents from a cube.
+
+        :param sample_size: number of random documents to query
+        :param query: `pql` query to filter sample query with
+        :param cube: cube name
+        :param owner: username of cube owner
+        :returns list: sorted list of fields
+        '''
+        sample_size = sample_size or 1
+        spec = parse_query(query, date)
+        _cube = self.get_collection(owner, cube)
+        docs = _cube.find(spec)
+        n = docs.count()
+        if n <= sample_size:
+            docs = list(docs)
+        else:
+            to_sample = sorted(set(random.sample(xrange(n), sample_size)))
+            docs = [docs[i] for i in to_sample]
+        return docs
+
+
+class MongoDBContainer(MetriqueContainer):
+    _objects = None
+    config = None
+    owner = None
+    cube = None
+
+    def __init__(self, objects=None, **kwargs):
+        super(MongoDBContainer, self).__init__(objects)
+        self.config = kwargs
+
+    @property
+    def proxy(self):
+        _proxy = getattr(self, '_proxy', None)
+        if not _proxy:
+            self._proxy = MongoDBProxy(**self.config)
+        try:
+            self._ensure_base_indexes()
+        except OperationFailure as e:
+            logger.debug(e)
+        return self._proxy
+
+    def flush(self, autosnap=True, batch_size=None, fast=True,
+              cube=None, owner=None):
+        '''
+        Persist a list of objects to MongoDB.
+
+        Returns back a list of object ids saved.
+
+        :param objects: list of dictionary-like objects to be stored
+        :param cube: cube name
+        :param owner: username of cube owner
+        :param start: ISO format datetime to apply as _start
+                      per object, serverside
+        :param autosnap: rotate _end:None's before saving new objects
+        :returns result: _ids saved
+        '''
+        batch_size = batch_size or self.proxy.config.get('batch_size')
+        _cube = self.proxy.get_collection(owner, cube)
+        _ids = []
+        for batch in batch_gen(self.store.values(), batch_size):
+            _ = self._flush(_cube=_cube, objects=batch, autosnap=autosnap,
+                            fast=fast, cube=cube, owner=owner)
+            _ids.extend(_)
+        return sorted(_ids)
+
+    def _flush_save(self, _cube, objects, fast=True):
+        objects = [dict(o) for o in objects if o['_end'] is None]
+        if not objects:
+            _ids = []
+        elif fast:
+            _ids = [o['_id'] for o in objects]
+            [_cube.save(o, manipulate=False) for o in objects]
+        else:
+            _ids = [_cube.save(dict(o), manipulate=True) for o in objects]
+        return _ids
+
+    def _flush_insert(self, _cube, objects, fast=True):
+        objects = [dict(o) for o in objects if o['_end'] is not None]
+        if not objects:
+            _ids = []
+        elif fast:
+            _ids = [o['_id'] for o in objects]
+            _cube.insert(objects, manipulate=False)
+        else:
+            _ids = _cube.insert(objects, manipulate=True)
+        return _ids
+
+    def _flush(self, _cube, objects, autosnap=True, fast=True,
+               cube=None, owner=None):
+        olen = len(objects)
+        if olen == 0:
+            logger.debug("No objects to flush!")
+            return []
+        logger.info("[%s] Flushing %s objects" % (_cube, olen))
+
+        objects, dup_ids = self._filter_dups(_cube, objects)
+        # remove dups from instance object container
+        [self.store.pop(_id) for _id in set(dup_ids)]
+
+        if objects and autosnap:
+            # append rotated versions to save over previous _end:None docs
+            objects = self._add_snap_objects(_cube, objects)
+
+        olen = len(objects)
+        _ids = []
+        if objects:
+            # save each object; overwrite existing
+            # (same _oid + _start or _oid if _end = None) or upsert
+            logger.debug('[%s] Saving %s versions' % (_cube, len(objects)))
+            _saved = self._flush_save(_cube, objects, fast)
+            _inserted = self._flush_insert(_cube, objects, fast)
+            _ids = set(_saved) | set(_inserted)
+            # pop those we're already flushed out of the instance container
+            failed = olen - len(_ids)
+            if failed > 0:
+                logger.warn("%s objects failed to flush!" % failed)
+            # new 'snapshoted' objects are included in _ids, but they
+            # aren't in self.store, so ignore them
+        [self.store.pop(_id) for _id in _ids if _id in self.store]
+        logger.debug(
+            "[%s] %s objects remaining" % (_cube, len(self.store)))
+        return _ids
+
+    def _filter_end_null_dups(self, _cube, objects):
+        # filter out dups which have null _end value
+        _hashes = [o['_hash'] for o in objects if o['_end'] is None]
+        if _hashes:
+            spec = parse_query('_hash in %s' % _hashes, date=None)
+            return set(_cube.find(spec).distinct('_id'))
+        else:
+            return set()
+
+    def _filter_end_not_null_dups(self, _cube, objects):
+        # filter out dups which have non-null _end value
+        tups = [(o['_id'], o['_hash']) for o in objects
+                if o['_end'] is not None]
+        _ids, _hashes = zip(*tups) if tups else [], []
+        if _ids:
+            spec = parse_query(
+                '_id in %s and _hash in %s' % (_ids, _hashes), date='~')
+            return set(_cube.find(spec).distinct('_id'))
+        else:
+            return set()
+
+    def _filter_dups(self, _cube, objects):
+        logger.debug('Filtering duplicate objects...')
+        olen = len(objects)
+
+        non_null_ids = self._filter_end_not_null_dups(_cube, objects)
+        null_ids = self._filter_end_null_dups(_cube, objects)
+        dup_ids = non_null_ids | null_ids
+
+        if dup_ids:
+            # update self.object container to contain only non-dups
+            objects = [o for o in objects if o['_id'] not in dup_ids]
+
+        _olen = len(objects)
+        diff = olen - _olen
+        logger.info(' ... %s objects filtered; %s remain' % (diff, _olen))
+        return objects, dup_ids
+
+    def _add_snap_objects(self, _cube, objects):
+        olen = len(objects)
+        _ids = [o['_id'] for o in objects if o['_end'] is None]
+
+        if not _ids:
+            logger.debug(
+                '[%s] 0 of %s objects need to be rotated' % (_cube, olen))
+            return objects
+
+        spec = parse_query('_id in %s' % _ids, date=None)
+        _objs = _cube.find(spec, {'_hash': 0})
+        k = _objs.count()
+        logger.debug(
+            '[%s] %s of %s objects need to be rotated' % (_cube, k, olen))
+        if k == 0:  # nothing to rotate...
+            return objects
+        for o in _objs:
+            # _end of existing obj where _end:None should get new's _start
+            # look this up in the instance objects mapping
+            _start = self.store[o['_id']]['_start']
+            o['_end'] = _start
+            del o['_id']
+            objects.append(MetriqueObject(**o))
+        return objects
+
+    def _ensure_base_indexes(self, ensure_time=90):
+        _cube = self.proxy.get_collection()
+        s = ensure_time
+        ensure_time = int(s) if s and s != 0 else 90
+        _cube.ensure_index('_oid', background=False, cache_for=s)
+        _cube.ensure_index('_hash', background=False, cache_for=s)
+        _cube.ensure_index([('_start', -1), ('_end', -1)],
+                           background=False, cache_for=s)
+        _cube.ensure_index([('_end', -1)],
+                           background=False, cache_for=s)
+
+
+def _date_pql_string(date):
+    '''
+    Generate a new pql date query component that can be used to
+    query for date (range) specific data in cubes.
+
+    :param date: metrique date (range) to apply to pql query
+
+    If date is None, the resulting query will be a current value
+    only query (_end == None)
+
+    The tilde '~' symbol is used as a date range separated.
+
+    A tilde by itself will mean 'all dates ranges possible'
+    and will therefore search all objects irrelevant of it's
+    _end date timestamp.
+
+    A date on the left with a tilde but no date on the right
+    will generate a query where the date range starts
+    at the date provide and ends 'today'.
+    ie, from date -> now.
+
+    A date on the right with a tilde but no date on the left
+    will generate a query where the date range starts from
+    the first date available in the past (oldest) and ends
+    on the date provided.
+    ie, from beginning of known time -> date.
+
+    A date on both the left and right will be a simple date
+    range query where the date range starts from the date
+    on the left and ends on the date on the right.
+    ie, from date to date.
+    '''
+    if date is None:
+        return '_end == None'
+    if date == '~':
+        return ''
+
+    before = lambda d: '_start <= date("%f")' % ts2dt(d)
+    after = lambda d: '(_end >= date("%f") or _end == None)' % ts2dt(d)
+    split = date.split('~')
+    # replace all occurances of 'T' with ' '
+    # this is used for when datetime is passed in
+    # like YYYY-MM-DDTHH:MM:SS instead of
+    #      YYYY-MM-DD HH:MM:SS as expected
+    # and drop all occurances of 'timezone' like substring
+    split = [re.sub('\+\d\d:\d\d', '', d.replace('T', ' ')) for d in split]
+    if len(split) == 1:
+        # 'dt'
+        return '%s and %s' % (before(split[0]), after(split[0]))
+    elif split[0] == '':
+        # '~dt'
+        return before(split[1])
+    elif split[1] == '':
+        # 'dt~'
+        return after(split[0])
+    else:
+        # 'dt~dt'
+        return '%s and %s' % (before(split[1]), after(split[0]))
+
+
+def _query_add_date(query, date):
+    '''
+    Take an existing pql query and append a date (range)
+    limiter.
+
+    :param query: pql query
+    :param date: metrique date (range) to append
+    '''
+    date_pql = _date_pql_string(date)
+    if query and date_pql:
+        return '%s and %s' % (query, date_pql)
+    return query or date_pql
+
+
+def parse_query(query, date=None):
+    '''
+    Given a pql based query string, parse it using
+    pql.SchemaFreeParser and return the resulting
+    pymongo 'spec' dictionary.
+
+    :param query: pql query
+    '''
+    _subpat = re.compile(' in \([^\)]+\)')
+    _q = _subpat.sub(' in (...)', query) if query else query
+    logger.debug('Query: %s' % _q)
+    query = _query_add_date(query, date)
+    if not query:
+        return {}
+    if not isinstance(query, basestring):
+        raise TypeError("query expected as a string")
+    pql_parser = pql.SchemaFreeParser()
+    try:
+        spec = pql_parser.parse(query)
+    except Exception as e:
+        raise SyntaxError("Invalid Query (%s)" % str(e))
+    return spec
+
+# ################################ SQL ALCHEMY ###############################
+
+
+TYPE_MAP = {
+    UnicodeText: UnicodeText, None: UnicodeText,
+    int: Integer, Integer: Integer,
+    float: Float, Float: Float,
+    long: BigInteger, BigInteger: BigInteger,
+    str: UnicodeText, UnicodeText: UnicodeText,
+    unicode: UnicodeText,
+    bool: Boolean, Boolean: Boolean,
+    datetime: DateTime, DateTime: DateTime,
+}
+
+
+class SQLAlchemyProxy(object):
+    config = None
+    config_key = 'sqlalchemy'
+    config_file = DEFAULT_CONFIG
+
+    def __init__(self, engine=None, schema=None, owner=None, batch_size=None,
+                 debug=None, drop_target=None, cache_dir=None, config_key=None,
+                 config_file=None, **kwargs):
+        if not HAS_SQLALCHEMY:
+            raise NotImplementedError('`pip install sqlalchemy` required')
+
+        cache_dir = cache_dir or CACHE_DIR
+        owner = owner or getuser()
+        default_db_path = os.path.join(cache_dir, '%s.db' % owner)
+        default_engine = 'sqlite:///%s' % default_db_path
+        options = dict(
+            engine=engine,
+            schema=schema,
+            owner=owner,
+            batch_size=batch_size,
+            debug=debug,
+            drop_target=drop_target,
+        )
+        defaults = dict(
+            engine=default_engine,
+            schema={},
+            owner=owner,
+            batch_size=1000,
+            debug=logging.INFO,
+            drop_target=False,
+        )
+        self.config = self.config or {}
+        config_file = config_file or DEFAULT_CONFIG
+        config_key = config_key or 'sqlalchemy'
+        self.config = configure(options, defaults,
+                                config_file=config_file,
+                                section_key=config_key,
+                                section_only=True,
+                                update=self.config)
+
+        self._debug_setup_sqlalchemy_logging()
+
+    def _debug_setup_sqlalchemy_logging(self):
+        logger = logging.getLogger('sqlalchemy')
+        level = self.config.get('debug')
+        # FIXME: replace sqlalchemy logger with metrique logger
+        # or load metyrique config and pass to logger config ...
+        debug_setup(logger=logger, level=level)
+
+######################### DB API ##################################
+    def get_engine(self, engine=None, connect=False, cached=True, **kwargs):
+        if not cached or not hasattr(self, '_sql_engine'):
+            _engine = self.config.get('engine')
+            engine = engine or _engine
+            if re.search('sqlite', engine):
+                uri, kwargs = self._sqla_sqlite(engine)
+            elif re.search('teiid', engine):
+                uri, kwargs = self._sqla_postgresql(engine)
+            elif re.search('postgresql', engine):
+                uri, kwargs = self._sqla_postgresql(engine)
+            else:
+                raise NotImplementedError("Unsupported engine: %s" % engine)
+            self._sql_engine = create_engine(uri, echo=False, **kwargs)
+            # SEE: http://docs.sqlalchemy.org/en/rel_0_9/orm/session.html
+            # ... #unitofwork-contextual
+            # scoped sessions
+            metadata = self.get_meta()
+            metadata.bind = self._sql_engine
+            self._sessionmaker = sessionmaker(bind=self._sql_engine)
+            if connect:
+                self._sql_engine.connect()
+        return self._sql_engine
+
+    def get_session(self, **kwargs):
+        return self._sessionmaker(**kwargs)
+
+    def get_meta(self):
+        return self.get_base().metadata
+
+    def get_base(self, cached=True):
+        if cached and not hasattr(self, '_Base'):
+            self._metadata = MetaData()
+            self._Base = declarative_base(metadata=self._metadata)
+        return self._Base
+
+    @property
+    def proxy(self):
+        engine = self.config.get('engine')
+        return self.get_engine(engine=engine, connect=True, cached=True)
+
+    def _sqla_sqlite(self, uri):
+        kwargs = {}
+        return uri, kwargs
+
+    def _sqla_postgresql(self, uri, version=None, iso_level="AUTOCOMMIT"):
+        '''
+        expected uri form:
+        postgresql+psycopg2://%s:%s@%s:%s/%s' % (
+            username, password, host, port, vdb)
+        '''
+        self._check_compatible(uri, 'postgresql+psycopg2')
+        iso_level = iso_level or "AUTOCOMMIT"
+        version = version or (8, 2)
+        if re.search('teiid', uri):
+            uri = re.sub('\+?teiid', '', uri)
+            # version normally comes "'Teiid 8.5.0.Final'", which sqlalchemy
+            # failed to parse
+            r_none = lambda *i: None
+            pg.base.PGDialect.description_encoding = str('utf8')
+            pg.base.PGDialect._check_unicode_returns = lambda *i: True
+            pg.base.PGDialect._get_server_version_info = lambda *i: version
+            pg.base.PGDialect.get_isolation_level = lambda *i: iso_level
+            pg.base.PGDialect._get_default_schema_name = r_none
+            pg.psycopg2.PGDialect_psycopg2.set_isolation_level = r_none
+        kwargs = dict(isolation_level=iso_level)
+        return uri, kwargs
+
+    # ######################## Cube API ################################
+    def ls(self, startswith=None):
+        '''
+        List all cubes available to the calling client.
+
+        :param startswith: string to use in a simple "startswith" query filter
+        :returns list: sorted list of cube names
+        '''
+        engine = self.get_engine()
+        cubes = engine.table_names()
+        startswith = unicode(startswith or '')
+        cubes = [name for name in cubes if name.startswith(startswith)]
+        logger.info(
+            '[%s] Listing cubes starting with "%s")' % (engine, startswith))
+        return sorted(cubes)
+
+    def drop(self, cube=None, engine=None):
+        _cube = self.get_table(cube, engine)
+        return _cube.drop()
+
+    def get_table(self, name):
+        return self.get_tables().get(name)
+
+    def get_tables(self):
+        return self.get_meta().tables
+
+
+class SQLAlchemyContainer(MetriqueContainer):
+    _objects = None
+    config = None
+    owner = None
+    cube = None
+
+    def __init__(self, objects=None, **kwargs):
+        super(SQLAlchemyContainer, self).__init__(objects)
+        self.config = kwargs
+
+    @property
+    def proxy(self):
+        _proxy = getattr(self, '_proxy', None)
+        if not _proxy:
+            self._proxy = SQLAlchemyProxy(**self.config)
+        return self._proxy
+
+    def _initiate_table(self):
+        config = self.proxy.config
+        engine = self.proxy.get_engine()
+        meta = self.proxy.get_meta()
+        cube = config.get('cube')
+        drop_target = config.get('drop_target')
+
+        if drop_target:
+            for table in reversed(meta.sorted_tables):
+                if table.name == cube:
+                    # FIXME: table is still in meta, so a second
+                    # call to this same func with drop_target=True
+                    # will fail with 'table already exists...'
+                    logger.debug("Dropping table...")
+                    table.drop(engine)
+                    break
+
+        logger.debug("Creating Table...")
+        table = self._schema2table()
+        setattr(self, cube, table)
+        meta.create_all(engine)
+
+    def _cube_factory(self, name, schema=None, cached=False):
+        # cubes can define schema in either schema or fields attr (alias)
+        schema = schema or getattr(self, 'schema') or getattr(self, 'fields')
+        if not schema:
+            raise ValueError('schema definition can not be null')
+        Base = self.get_base(cached=cached)
+
+        defaults = {
+            '__tablename__': name,
+            '__table_args__': {'useexisting': True},
+            'id': Column('id', Integer, primary_key=True),
+            '_id': Column(Unicode(40), nullable=False,
+                          index=True, unique=True),
+            '_hash': Column(Unicode(40), nullable=False,
+                            index=True, unique=False),
+            '_oid': Column(Integer, nullable=False,
+                           index=True, unique=False),
+            '_start': Column(DateTime, default=utcnow(), nullable=False,
+                             index=True, unique=False),
+            '_end': Column(DateTime, default=None, nullable=True,
+                           index=True, unique=False),
+        }
+
+        for k, v in schema.iteritems():
+            __type = v.get('type')
+            _type = TYPE_MAP.get(__type)
+            if v.get('container', False):
+                # FIXME: alternative association table implementation?
+                # FIXME: requires postgresql+psycopg2
+                schema[k] = Column(ARRAY(_type))
+            else:
+                schema[k] = Column(_type)
+        defaults.update(schema)
+        _cube = type(str(name), (Base,), defaults)
+        return _cube
+
+    def _check_compatible(self, uri, driver, msg=None):
+        msg = msg or '%s required!' % driver
+        if not HAS_PSYCOPG2:
+            raise NotImplementedError('`pip install psycopg2` required')
+        if uri[0:10] != 'postgresql':
+            raise RuntimeError(msg)
+        return True
+
+    def _schema2table(self, schema=None, name=None):
+        name = name or self.config.get('cube')
+        if not name:
+            raise RuntimeError("table name not defined!")
+        logger.debug("Creating Table from Schema: %s" % name)
+
+        schema = schema or self.config.get('schema') or {}
+        if isinstance(schema, dict):
+            table = self._cube_factory(name, schema)
+        else:
+            raise TypeError("unsupported schema type: %s" % type(schema))
+        return table
+
+    def _flush_save(self, _cube, objects, fast=True):
+        objects = [dict(o) for o in objects if o['_end'] is None]
+        if not objects:
+            _ids = []
+        elif fast:
+            _ids = [o['_id'] for o in objects]
+            [_cube.save(o, manipulate=False) for o in objects]
+        else:
+            _ids = [_cube.save(dict(o), manipulate=True) for o in objects]
+        return _ids
+
+    def _flush_insert(self, _cube, objects, fast=True):
+        objects = [dict(o) for o in objects if o['_end'] is not None]
+        if not objects:
+            _ids = []
+        elif fast:
+            _ids = [o['_id'] for o in objects]
+            _cube.insert(objects, manipulate=False)
+        else:
+            _ids = _cube.insert(objects, manipulate=True)
+        return _ids
+
+    def _flush(self, _cube, objects, autosnap=True, fast=True,
+               cube=None, owner=None):
+        olen = len(objects)
+        if olen == 0:
+            logger.debug("No objects to flush!")
+            return []
+        logger.info("[%s] Flushing %s objects" % (_cube, olen))
+
+        objects, dup_ids = self._filter_dups(_cube, objects)
+        # remove dups from instance object container
+        [self.store.pop(_id) for _id in set(dup_ids)]
+
+        if objects and autosnap:
+            # append rotated versions to save over previous _end:None docs
+            objects = self._add_snap_objects(_cube, objects)
+
+        olen = len(objects)
+        _ids = []
+        if objects:
+            # save each object; overwrite existing
+            # (same _oid + _start or _oid if _end = None) or upsert
+            logger.debug('[%s] Saving %s versions' % (_cube, len(objects)))
+            _saved = self._flush_save(_cube, objects, fast)
+            _inserted = self._flush_insert(_cube, objects, fast)
+            _ids = set(_saved) | set(_inserted)
+            # pop those we're already flushed out of the instance container
+            failed = olen - len(_ids)
+            if failed > 0:
+                logger.warn("%s objects failed to flush!" % failed)
+            # new 'snapshoted' objects are included in _ids, but they
+            # aren't in self.store, so ignore them
+        [self.store.pop(_id) for _id in _ids if _id in self.store]
+        logger.debug(
+            "[%s] %s objects remaining" % (_cube, len(self.store)))
+        return _ids
+
+    def _filter_end_null_dups(self, _cube, objects):
+        # filter out dups which have null _end value
+        _hashes = [o['_hash'] for o in objects if o['_end'] is None]
+        if _hashes:
+            spec = parse_query('_hash in %s' % _hashes, date=None)
+            return set(_cube.find(spec).distinct('_id'))
+        else:
+            return set()
+
+    def _filter_end_not_null_dups(self, _cube, objects):
+        # filter out dups which have non-null _end value
+        tups = [(o['_id'], o['_hash']) for o in objects
+                if o['_end'] is not None]
+        _ids, _hashes = zip(*tups) if tups else [], []
+        if _ids:
+            spec = parse_query(
+                '_id in %s and _hash in %s' % (_ids, _hashes), date='~')
+            return set(_cube.find(spec).distinct('_id'))
+        else:
+            return set()
+
+    def _filter_dups(self, _cube, objects):
+        logger.debug('Filtering duplicate objects...')
+        olen = len(objects)
+
+        non_null_ids = self._filter_end_not_null_dups(_cube, objects)
+        null_ids = self._filter_end_null_dups(_cube, objects)
+        dup_ids = non_null_ids | null_ids
+
+        if dup_ids:
+            # update self.object container to contain only non-dups
+            objects = [o for o in objects if o['_id'] not in dup_ids]
+
+        _olen = len(objects)
+        diff = olen - _olen
+        logger.info(' ... %s objects filtered; %s remain' % (diff, _olen))
+        return objects, dup_ids
+
+    def _add_snap_objects(self, _cube, objects):
+        olen = len(objects)
+        _ids = [o['_id'] for o in objects if o['_end'] is None]
+
+        if not _ids:
+            logger.debug(
+                '[%s] 0 of %s objects need to be rotated' % (_cube, olen))
+            return objects
+
+        spec = parse_query('_id in %s' % _ids, date=None)
+        _objs = _cube.find(spec, {'_hash': 0})
+        k = _objs.count()
+        logger.debug(
+            '[%s] %s of %s objects need to be rotated' % (_cube, k, olen))
+        if k == 0:  # nothing to rotate...
+            return objects
+        for o in _objs:
+            # _end of existing obj where _end:None should get new's _start
+            # look this up in the instance objects mapping
+            _start = self.store[o['_id']]['_start']
+            o['_end'] = _start
+            del o['_id']
+            objects.append(MetriqueObject(**o))
+        return objects
+
+    def flush(self, schema=None, autosnap=True, batch_size=None,
+              engine=None, cube=None):
+        batch_size = batch_size or self.config.get('batch_size')
+        _cube = self.get_table(cube, engine)
+        _ids = []
+        for batch in batch_gen(self.objects.values(), batch_size):
+            _ = self._flush(_cube=_cube, objects=batch, autosnap=autosnap,
+                            schema=schema)
+            _ids.extend(_)
+        return sorted(_ids)

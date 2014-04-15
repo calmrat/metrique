@@ -48,8 +48,6 @@ def configure(options, defaults, config_file=None,
     if not sk:
         sk = 'global'
         section_only = True
-    if not sk:
-        raise ValueError("section_key can't be null")
     elif sk in config and not force:
         # if 'sql' is already configured, ie, we initiated with
         # config set already, don't set defaults, only options
@@ -194,7 +192,7 @@ def load_config(path):
 
 
 def get_cube(cube, init=False, pkgs=None, cube_paths=None, config=None,
-             **kwargs):
+             backends=None, **kwargs):
     '''
     Dynamically locate and load a metrique cube
 
