@@ -77,10 +77,7 @@ from copy import deepcopy
 from datetime import datetime
 from getpass import getuser
 import glob
-try:
-    import simplejson as json
-except ImportError:
-    import json
+import simplejson as json
 import inspect
 import os
 from operator import itemgetter
@@ -99,8 +96,6 @@ except ImportError:
 try:
     import psycopg2
     psycopg2  # avoid pep8 'imported, not used' lint error
-    import sqlalchemy.dialects.postgresql as pg
-    from sqlalchemy.dialects.postgresql import ARRAY
     HAS_PSYCOPG2 = True
 except ImportError:
     logger.warn('psycopg2 not installed!')
@@ -117,10 +112,26 @@ try:
     from sqlalchemy import Float, BigInteger, Boolean, UnicodeText
     from sqlalchemy.orm import sessionmaker
     from sqlalchemy.ext.declarative import declarative_base
+
+    import sqlalchemy.dialects.postgresql as pg
+    from sqlalchemy.dialects.postgresql import ARRAY
+
+    TYPE_MAP = {
+        type(None): UnicodeText,
+        int: Integer,
+        float: Float,
+        long: BigInteger,
+        str: UnicodeText,
+        unicode: UnicodeText,
+        bool: Boolean,
+        datetime: DateTime,
+        list: ARRAY, tuple: ARRAY, set: ARRAY,
+    }
     HAS_SQLALCHEMY = True
 except ImportError:
     logger.warn('sqlalchemy not installed!')
     HAS_SQLALCHEMY = False
+    TYPE_MAP = {}
 
 import subprocess
 import tempfile
@@ -415,7 +426,8 @@ class BaseClient(object):
 
     '''
     config_file = DEFAULT_CONFIG
-    config_key = 'metrique'
+    config_key = None
+    global_config_key = 'metrique'
     name = None
     config = None
     _objects = None
@@ -465,7 +477,7 @@ class BaseClient(object):
         # with class assigned default or empty dict
         self.config = deepcopy(config) or self.config or {}
 
-        config_key = config_key or self.config_key
+        config_key = config_key or self.global_config_key
         # load defaults + set args passed in
         self.config = configure(options, defaults,
                                 config_file=config_file,
@@ -478,41 +490,48 @@ class BaseClient(object):
         # set name if passed in, but don't overwrite default if not
         self.name = name or self.name
 
-        level = self.config['metrique'].get('debug')
-        log2stdout = self.config['metrique'].get('log2stdout')
+        config = self.config[self.global_config_key]
+        level = config.get('debug')
+        log2stdout = config.get('log2stdout')
         log_format = None
-        log2file = self.config['metrique'].get('log2file')
-        log_dir = self.config['metrique'].get('log_dir', '')
-        log_file = self.config['metrique'].get('log_file', '')
+        log2file = config.get('log2file')
+        log_dir = config.get('log_dir', '')
+        log_file = config.get('log_file', '')
         log_file = os.path.join(log_dir, log_file)
         debug_setup(logger='metrique', level=level, log2stdout=log2stdout,
                     log_format=log_format, log2file=log2file,
                     log_dir=log_dir, log_file=log_file)
 
+        self._container = container
+        self._container_kwargs = container_kwargs or {}
+        self._set_container()
+
+    def _set_container(self, container=None, value=None, **kwargs):
+        container = container or self._container
+        self._container_kwargs.update(kwargs)
+        kwargs = self._container_kwargs
+        print kwargs
         if container:
             if inspect.isclass(container):
-                kwargs = container_kwargs or {}
                 kwargs['owner'] = kwargs.get('owner') or getuser()
                 kwargs['cube'] = kwargs.get('cube') or self.name
-                self._objects = container(**kwargs)
+                self._objects = container(objects=value, **kwargs)
             else:
-                self._objects = container
+                raise TypeError(
+                    "expected container class! got %s" % type(container))
         else:
-            self._set_container()
-
-    def _set_container(self, value=None):
-        cache_dir = self.config['metrique'].get('cache_dir')
-        self._objects = MetriqueContainer(objects=value, cache_dir=cache_dir)
+            cache_dir = self.config['metrique'].get('cache_dir')
+            self._objects = MetriqueContainer(objects=value,
+                                              cache_dir=cache_dir)
+        return self._objects
 
     @property
     def objects(self):
-        if self._objects is None:
-            BaseClient._set_container(self)
         return self._objects
 
     @objects.setter
     def objects(self, value):
-        self._set_container(value)
+        self._set_container(value=value)
 
     @objects.deleter
     def objects(self):
@@ -779,14 +798,14 @@ def debug_setup(logger=None, level=None, log2file=None,
         hdlr = logging.FileHandler(log_file)
         hdlr.setFormatter(log_format)
         logger.addHandler(hdlr)
-        logger.warn("Logging to %s" % log_file)
+        logger.debug("Logging to %s" % log_file)
     else:
         log2stdout = True
     if log2stdout:
         hdlr = logging.StreamHandler()
         hdlr.setFormatter(log_format)
         logger.addHandler(hdlr)
-        logger.warn("Logging to STDOUT")
+        logger.debug("Logging to STDOUT")
     logger = _debug_set_level(logger, level)
     return logger
 
@@ -1764,21 +1783,8 @@ def parse_query(query, date=None):
         raise SyntaxError("Invalid Query (%s)" % str(e))
     return spec
 
+
 # ################################ SQL ALCHEMY ###############################
-
-
-TYPE_MAP = {
-    UnicodeText: UnicodeText, None: UnicodeText,
-    int: Integer, Integer: Integer,
-    float: Float, Float: Float,
-    long: BigInteger, BigInteger: BigInteger,
-    str: UnicodeText, UnicodeText: UnicodeText,
-    unicode: UnicodeText,
-    bool: Boolean, Boolean: Boolean,
-    datetime: DateTime, DateTime: DateTime,
-}
-
-
 class SQLAlchemyProxy(object):
     config = None
     config_key = 'sqlalchemy'
@@ -1829,6 +1835,14 @@ class SQLAlchemyProxy(object):
         debug_setup(logger=logger, level=level)
 
 ######################### DB API ##################################
+    def _check_compatible(self, uri, driver, msg=None):
+        msg = msg or '%s required!' % driver
+        if not HAS_PSYCOPG2:
+            raise NotImplementedError('`pip install psycopg2` required')
+        if uri[0:10] != 'postgresql':
+            raise RuntimeError(msg)
+        return True
+
     def get_engine(self, engine=None, connect=False, cached=True, **kwargs):
         if not cached or not hasattr(self, '_sql_engine'):
             _engine = self.config.get('engine')
@@ -1836,7 +1850,7 @@ class SQLAlchemyProxy(object):
             if re.search('sqlite', engine):
                 uri, kwargs = self._sqla_sqlite(engine)
             elif re.search('teiid', engine):
-                uri, kwargs = self._sqla_postgresql(engine)
+                uri, kwargs = self._sqla_teiid(engine)
             elif re.search('postgresql', engine):
                 uri, kwargs = self._sqla_postgresql(engine)
             else:
@@ -1864,6 +1878,12 @@ class SQLAlchemyProxy(object):
             self._Base = declarative_base(metadata=self._metadata)
         return self._Base
 
+    def get_table(self, name):
+        return self.get_tables().get(name)
+
+    def get_tables(self):
+        return self.get_meta().tables
+
     @property
     def proxy(self):
         engine = self.config.get('engine')
@@ -1873,6 +1893,21 @@ class SQLAlchemyProxy(object):
         kwargs = {}
         return uri, kwargs
 
+    def _sqla_teiid(self, uri, version=None, iso_level="AUTOCOMMIT"):
+        uri = re.sub('^.*://', 'postgresql+psycopg2://', uri)
+        # version normally comes "'Teiid 8.5.0.Final'", which sqlalchemy
+        # failed to parse
+        version = version or (8, 2)
+        r_none = lambda *i: None
+        pg.base.PGDialect.description_encoding = str('utf8')
+        pg.base.PGDialect._check_unicode_returns = lambda *i: True
+        pg.base.PGDialect._get_server_version_info = lambda *i: version
+        pg.base.PGDialect.get_isolation_level = lambda *i: iso_level
+        pg.base.PGDialect._get_default_schema_name = r_none
+        pg.psycopg2.PGDialect_psycopg2.set_isolation_level = r_none
+        return self._sqla_postgresql(uri=uri, version=version,
+                                     iso_level=iso_level)
+
     def _sqla_postgresql(self, uri, version=None, iso_level="AUTOCOMMIT"):
         '''
         expected uri form:
@@ -1881,18 +1916,6 @@ class SQLAlchemyProxy(object):
         '''
         self._check_compatible(uri, 'postgresql+psycopg2')
         iso_level = iso_level or "AUTOCOMMIT"
-        version = version or (8, 2)
-        if re.search('teiid', uri):
-            uri = re.sub('\+?teiid', '', uri)
-            # version normally comes "'Teiid 8.5.0.Final'", which sqlalchemy
-            # failed to parse
-            r_none = lambda *i: None
-            pg.base.PGDialect.description_encoding = str('utf8')
-            pg.base.PGDialect._check_unicode_returns = lambda *i: True
-            pg.base.PGDialect._get_server_version_info = lambda *i: version
-            pg.base.PGDialect.get_isolation_level = lambda *i: iso_level
-            pg.base.PGDialect._get_default_schema_name = r_none
-            pg.psycopg2.PGDialect_psycopg2.set_isolation_level = r_none
         kwargs = dict(isolation_level=iso_level)
         return uri, kwargs
 
@@ -1916,12 +1939,6 @@ class SQLAlchemyProxy(object):
         _cube = self.get_table(cube, engine)
         return _cube.drop()
 
-    def get_table(self, name):
-        return self.get_tables().get(name)
-
-    def get_tables(self):
-        return self.get_meta().tables
-
 
 class SQLAlchemyContainer(MetriqueContainer):
     _objects = None
@@ -1929,6 +1946,7 @@ class SQLAlchemyContainer(MetriqueContainer):
     owner = None
     cube = None
 
+    # FIXME: accept config_file and config_key...
     def __init__(self, objects=None, **kwargs):
         super(SQLAlchemyContainer, self).__init__(objects)
         self.config = kwargs
@@ -1937,15 +1955,16 @@ class SQLAlchemyContainer(MetriqueContainer):
     def proxy(self):
         _proxy = getattr(self, '_proxy', None)
         if not _proxy:
+            print '*'*100
+            print self.config
             self._proxy = SQLAlchemyProxy(**self.config)
         return self._proxy
 
-    def _initiate_table(self):
-        config = self.proxy.config
+    def table_init(self, schema, cube=None):
         engine = self.proxy.get_engine()
         meta = self.proxy.get_meta()
-        cube = config.get('cube')
-        drop_target = config.get('drop_target')
+        cube = cube or self.config.get('cube')
+        drop_target = self.proxy.config.get('drop_target')
 
         if drop_target:
             for table in reversed(meta.sorted_tables):
@@ -1958,16 +1977,13 @@ class SQLAlchemyContainer(MetriqueContainer):
                     break
 
         logger.debug("Creating Table...")
-        table = self._schema2table()
+        print engine
+        table = self._schema2table(schema)
         setattr(self, cube, table)
         meta.create_all(engine)
 
-    def _cube_factory(self, name, schema=None, cached=False):
-        # cubes can define schema in either schema or fields attr (alias)
-        schema = schema or getattr(self, 'schema') or getattr(self, 'fields')
-        if not schema:
-            raise ValueError('schema definition can not be null')
-        Base = self.get_base(cached=cached)
+    def _cube_factory(self, name, schema, cached=False):
+        Base = self.proxy.get_base(cached=cached)
 
         defaults = {
             '__tablename__': name,
@@ -1987,6 +2003,8 @@ class SQLAlchemyContainer(MetriqueContainer):
 
         for k, v in schema.iteritems():
             __type = v.get('type')
+            if __type is None:
+                __type = type(None)
             _type = TYPE_MAP.get(__type)
             if v.get('container', False):
                 # FIXME: alternative association table implementation?
@@ -1998,26 +2016,44 @@ class SQLAlchemyContainer(MetriqueContainer):
         _cube = type(str(name), (Base,), defaults)
         return _cube
 
-    def _check_compatible(self, uri, driver, msg=None):
-        msg = msg or '%s required!' % driver
-        if not HAS_PSYCOPG2:
-            raise NotImplementedError('`pip install psycopg2` required')
-        if uri[0:10] != 'postgresql':
-            raise RuntimeError(msg)
-        return True
-
-    def _schema2table(self, schema=None, name=None):
+    def _schema2table(self, schema, name=None):
+        if not schema:
+            raise ValueError('schema definition can not be null')
         name = name or self.config.get('cube')
         if not name:
             raise RuntimeError("table name not defined!")
-        logger.debug("Creating Table from Schema: %s" % name)
+        logger.debug("Creating Table: %s" % name)
 
-        schema = schema or self.config.get('schema') or {}
-        if isinstance(schema, dict):
+        if not schema or isinstance(schema, dict):
             table = self._cube_factory(name, schema)
         else:
             raise TypeError("unsupported schema type: %s" % type(schema))
         return table
+
+    def _add_snap_objects(self, _cube, objects):
+        olen = len(objects)
+        _ids = [o['_id'] for o in objects if o['_end'] is None]
+
+        if not _ids:
+            logger.debug(
+                '[%s] 0 of %s objects need to be rotated' % (_cube, olen))
+            return objects
+
+        spec = parse_query('_id in %s' % _ids, date=None)
+        _objs = _cube.find(spec, {'_hash': 0})
+        k = _objs.count()
+        logger.debug(
+            '[%s] %s of %s objects need to be rotated' % (_cube, k, olen))
+        if k == 0:  # nothing to rotate...
+            return objects
+        for o in _objs:
+            # _end of existing obj where _end:None should get new's _start
+            # look this up in the instance objects mapping
+            _start = self.store[o['_id']]['_start']
+            o['_end'] = _start
+            del o['_id']
+            objects.append(MetriqueObject(**o))
+        return objects
 
     def _flush_save(self, _cube, objects, fast=True):
         objects = [dict(o) for o in objects if o['_end'] is None]
@@ -2039,42 +2075,6 @@ class SQLAlchemyContainer(MetriqueContainer):
             _cube.insert(objects, manipulate=False)
         else:
             _ids = _cube.insert(objects, manipulate=True)
-        return _ids
-
-    def _flush(self, _cube, objects, autosnap=True, fast=True,
-               cube=None, owner=None):
-        olen = len(objects)
-        if olen == 0:
-            logger.debug("No objects to flush!")
-            return []
-        logger.info("[%s] Flushing %s objects" % (_cube, olen))
-
-        objects, dup_ids = self._filter_dups(_cube, objects)
-        # remove dups from instance object container
-        [self.store.pop(_id) for _id in set(dup_ids)]
-
-        if objects and autosnap:
-            # append rotated versions to save over previous _end:None docs
-            objects = self._add_snap_objects(_cube, objects)
-
-        olen = len(objects)
-        _ids = []
-        if objects:
-            # save each object; overwrite existing
-            # (same _oid + _start or _oid if _end = None) or upsert
-            logger.debug('[%s] Saving %s versions' % (_cube, len(objects)))
-            _saved = self._flush_save(_cube, objects, fast)
-            _inserted = self._flush_insert(_cube, objects, fast)
-            _ids = set(_saved) | set(_inserted)
-            # pop those we're already flushed out of the instance container
-            failed = olen - len(_ids)
-            if failed > 0:
-                logger.warn("%s objects failed to flush!" % failed)
-            # new 'snapshoted' objects are included in _ids, but they
-            # aren't in self.store, so ignore them
-        [self.store.pop(_id) for _id in _ids if _id in self.store]
-        logger.debug(
-            "[%s] %s objects remaining" % (_cube, len(self.store)))
         return _ids
 
     def _filter_end_null_dups(self, _cube, objects):
@@ -2115,38 +2115,64 @@ class SQLAlchemyContainer(MetriqueContainer):
         logger.info(' ... %s objects filtered; %s remain' % (diff, _olen))
         return objects, dup_ids
 
-    def _add_snap_objects(self, _cube, objects):
+    def _flush(self, _cube, objects, autosnap=True, fast=True,
+               cube=None, owner=None):
         olen = len(objects)
-        _ids = [o['_id'] for o in objects if o['_end'] is None]
+        if olen == 0:
+            logger.debug("No objects to flush!")
+            return []
+        logger.info("[%s] Flushing %s objects" % (_cube, olen))
 
-        if not _ids:
-            logger.debug(
-                '[%s] 0 of %s objects need to be rotated' % (_cube, olen))
-            return objects
+        objects, dup_ids = self._filter_dups(_cube, objects)
+        # remove dups from instance object container
+        [self.store.pop(_id) for _id in set(dup_ids)]
 
-        spec = parse_query('_id in %s' % _ids, date=None)
-        _objs = _cube.find(spec, {'_hash': 0})
-        k = _objs.count()
-        logger.debug(
-            '[%s] %s of %s objects need to be rotated' % (_cube, k, olen))
-        if k == 0:  # nothing to rotate...
-            return objects
-        for o in _objs:
-            # _end of existing obj where _end:None should get new's _start
-            # look this up in the instance objects mapping
-            _start = self.store[o['_id']]['_start']
-            o['_end'] = _start
-            del o['_id']
-            objects.append(MetriqueObject(**o))
-        return objects
+        if objects and autosnap:
+            # append rotated versions to save over previous _end:None docs
+            objects = self._add_snap_objects(_cube, objects)
 
-    def flush(self, schema=None, autosnap=True, batch_size=None,
-              engine=None, cube=None):
-        batch_size = batch_size or self.config.get('batch_size')
-        _cube = self.get_table(cube, engine)
+        olen = len(objects)
         _ids = []
-        for batch in batch_gen(self.objects.values(), batch_size):
-            _ = self._flush(_cube=_cube, objects=batch, autosnap=autosnap,
-                            schema=schema)
+        if objects:
+            # save each object; overwrite existing
+            # (same _oid + _start or _oid if _end = None) or upsert
+            logger.debug('[%s] Saving %s versions' % (_cube, len(objects)))
+            _saved = self._flush_save(_cube, objects, fast)
+            _inserted = self._flush_insert(_cube, objects, fast)
+            _ids = set(_saved) | set(_inserted)
+            # pop those we're already flushed out of the instance container
+            failed = olen - len(_ids)
+            if failed > 0:
+                logger.warn("%s objects failed to flush!" % failed)
+            # new 'snapshoted' objects are included in _ids, but they
+            # aren't in self.store, so ignore them
+        [self.store.pop(_id) for _id in _ids if _id in self.store]
+        logger.debug(
+            "[%s] %s objects remaining" % (_cube, len(self.store)))
+        return _ids
+
+    def flush(self, schema=None, autosnap=True, batch_size=None, cube=None):
+        batch_size = batch_size or self.proxy.config.get('batch_size')
+        _ids = []
+
+        if not schema:
+            # auto generate
+            schema = defaultdict(dict)
+            for o in self.store.itervalues():
+                for k, v in o.iteritems():
+                    if k in schema:
+                        continue
+                    _type = type(v)
+                    if _type in (list, tuple, set):
+                        schema[k]['container'] = True
+                        schema[k]['type'] = type(None)
+                    else:
+                        schema[k]['type'] = _type
+
+        self.table_init(schema, cube=cube)
+
+        _cube = self.proxy.get_table(cube)
+        for batch in batch_gen(self.store.values(), batch_size):
+            _ = self._flush(_cube=_cube, objects=batch, autosnap=autosnap)
             _ids.extend(_)
         return sorted(_ids)

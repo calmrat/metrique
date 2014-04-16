@@ -247,7 +247,7 @@ def get_pids(pid_dir, prefix='', clear_stale=True):
     return map(int, pids)
 
 
-def get_timezone_converter(from_timezone):
+def get_timezone_converter(from_timezone, tz_aware=False):
     '''
     return a function that converts a given
     datetime object from a timezone to utc
@@ -273,6 +273,8 @@ def get_timezone_converter(from_timezone):
         else:
             # set tzinfo as from_tz then convert to utc
             dt = from_tz.localize(dt).astimezone(UTC)
+        if not tz_aware:
+            dt = dt.replace(tzinfo=None)
         return dt
     return timezone_converter
 

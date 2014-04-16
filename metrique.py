@@ -890,6 +890,10 @@ def _deploy_deps(args):
         call('%s install -U psycopg2' % pip)
     if args.all or args.celery:
         call('%s install -U celery' % pip)
+    if args.all or args.pymongo:
+        call('%s install -U pymongo pql' % pip)
+    if args.all or args.pandas:
+        call('%s install -U pandas' % pip)
 
 
 def deploy(args):
@@ -1160,6 +1164,10 @@ def main():
         '--postgres', action='store_true', help='install postgres')
     _deploy.add_argument(
         '--celery', action='store_true', help='install celery')
+    _deploy.add_argument(
+        '--pymongo', action='store_true', help='install pymongo, pql')
+    _deploy.add_argument(
+        '--pandas', action='store_true', help='install pandas')
     _deploy.add_argument(
         '--trash', action='store_true', help='fresh install (rm old virtenv)')
     _deploy.set_defaults(func=deploy)

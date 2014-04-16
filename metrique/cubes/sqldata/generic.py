@@ -31,25 +31,19 @@ try:
 except ImportError:
     HAS_JOBLIB = False
     logger.warn("joblib package not found!")
-try:
-    import sqlalchemy
-    HAS_SQLALCHEMY = True
-except ImportError:
-    logger.warn('sqlalchemy not installed!')
-    HAS_SQLALCHEMY = False
-
 
 import warnings
 
 from metrique import pyclient
-from metrique.utils import batch_gen
+from metrique.utils import batch_gen, configure
 
 
 def get_full_history(cube, oids, flush=False, cube_name=None, autosnap=False,
                      config=None, **kwargs):
     m = pyclient(cube=cube, name=cube_name, config=config, **kwargs)
     results = []
-    for batch in batch_gen(oids, m.config['sql'].get('batch_size')):
+    batch_size = m.config[m.config_key].get('batch_size')
+    for batch in batch_gen(oids, batch_size):
         _ = m._activity_get_objects(oids=batch, flush=flush, autosnap=autosnap)
         results.extend(_)
     return results
@@ -59,7 +53,8 @@ def get_objects(cube, oids, flush=False, cube_name=None, autosnap=True,
                 config=None, **kwargs):
     m = pyclient(cube=cube, name=cube_name, config=config, **kwargs)
     results = []
-    for batch in batch_gen(oids, m.config['sql'].get('batch_size')):
+    batch_size = m.config[m.config_key].get('batch_size')
+    for batch in batch_gen(oids, batch_size):
         _ = m._get_objects(oids=batch, flush=flush, autosnap=autosnap)
         results.extend(_)
     return results
@@ -84,32 +79,35 @@ class Generic(pyclient):
     :param sql_retries: number of times before we give up on a query
     :param sql_batch_size: how many objects to query at a time
     '''
-    sql_config_key = 'sql'
-    sql_backend = None
+    dialect = None
+    config_key = 'sqlalchemy'
     fields = None
 
-    def __init__(self, sql_host=None, sql_port=None, sql_vdb=None,
-                 sql_db=None, sql_retries=None, sql_batch_size=None,
-                 sql_username=None, sql_password=None,
-                 sql_debug=None, sql_worker_batch_size=None,
-                 sql_config_key=None,
-                 *args, **kwargs):
-        super(Generic, self).__init__(*args, **kwargs)
+    def __init__(self, vdb=None, retries=None, batch_size=None,
+                 worker_batch_size=None,
+                 config_key=None, config_file=None,
+                 **kwargs):
+        super(Generic, self).__init__(**kwargs)
+        # FIXME: alias == self.schema
         self.fields = self.fields or {}
-        options = dict(host=sql_host, port=sql_port, db=sql_db,
-                       vdb=sql_vdb, retries=sql_retries,
-                       username=sql_username, password=sql_password,
-                       batch_size=sql_batch_size, debug=sql_debug,
-                       worker_batch_size=sql_worker_batch_size,
-                       config_key=sql_config_key)
-        defaults = dict(host=None, port=None, db=None, vdb=None,
-                        retries=1, username=None, password=None,
-                        batch_size=1000, debug=logging.INFO,
+        options = dict(vdb=vdb,
+                       retries=retries,
+                       batch_size=batch_size,
+                       worker_batch_size=worker_batch_size
+                       )
+        defaults = dict(vdb=None,
+                        retries=1,
+                        batch_size=1000,
                         worker_batch_size=5000,
-                        config_key=self.sql_config_key,)
-        self.configure(sql_config_key, options, defaults)
+                        )
+        self.config = self.config or {}
+        config_key = config_key or self.config_key
+        self.config = configure(options, defaults,
+                                config_file=config_file,
+                                section_key=config_key,
+                                update=self.config)
         self.retry_on_error = (Exception, )
-        self.debug_setup()
+        self._setup_inconsistency_log()
 
     def activity_get(self, ids=None):
         '''
@@ -139,7 +137,7 @@ class Generic(pyclient):
             objs = self._activity_import_doc(doc, acts)
             self.objects.extend(objs)
         if flush:
-            return self.flush(autosnap=autosnap)
+            return self.objects.flush(autosnap=autosnap, schema=self.fields)
         else:
             return self.objects.values()
 
@@ -154,7 +152,8 @@ class Generic(pyclient):
         td_start = time_doc['_start']
         activities = filter(lambda act: (act[0] < td_start and
                                          act[1] in time_doc), activities)
-        creation_field = self.config['sql'].get('cfield')
+        config = self.config[self.config_key]
+        creation_field = config.get('cfield')
         # make sure that activities are sorted by when descending
         activities.sort(reverse=True, key=lambda o: o[0])
         new_doc = {}
@@ -236,17 +235,17 @@ class Generic(pyclient):
         return value
 
     def _delta_force(self, force=None, last_update=None, parse_timestamp=None):
-        force = force or self.config['sql'].get('force') or False
+        config = self.config[self.config_key]
+        force = force or config.get('force') or False
         oids = []
         if force is True:
             # get a list of all known object ids
             oids = self.sql_get_oids()
         elif not force:
-            c = self.config['sql']
-            if c.get('delta_new_ids', True):
+            if config.get('delta_new_ids', True):
                 # get all new (unknown) oids
                 oids.extend(self.get_new_oids())
-            if c.get('delta_mtime', False):
+            if config.get('delta_mtime', False):
                 # get only those oids that have changed since last update
                 oids.extend(self.get_changed_oids(last_update,
                                                   parse_timestamp))
@@ -256,11 +255,6 @@ class Generic(pyclient):
             force = [force]
         logger.debug("Delta Size: %s" % len(oids))
         return sorted(set(oids))
-
-    def debug_setup(self, *args, **kwargs):
-        super(Generic, self).debug_setup(*args, **kwargs)
-        self._setup_inconsistency_log()
-        self._setup_sqlalchemy_logging()
 
     def get_changed_oids(self, last_update=None, parse_timestamp=None):
         '''
@@ -280,7 +274,8 @@ class Generic(pyclient):
         :param mtime: datetime string used as 'change since date'
         '''
         mtime = self._fetch_mtime(last_update, parse_timestamp)
-        mtime_columns = self.config['sql'].get('delta_mtime', [])
+        config = self.config[self.config_key]
+        mtime_columns = config.get('delta_mtime', [])
         if not (mtime_columns and mtime):
             return []
         if isinstance(mtime_columns, basestring):
@@ -303,10 +298,10 @@ class Generic(pyclient):
 
         logger.debug("Last update mtime: %s" % mtime)
 
+        config = self.config[self.config_key]
         if mtime:
             if parse_timestamp is None:
-                parse_timestamp = self.config['sql'].get('parse_timestamp',
-                                                         True)
+                parse_timestamp = config.get('parse_timestamp', True)
             if parse_timestamp:
                 if not (hasattr(mtime, 'tzinfo') and mtime.tzinfo):
                     # We need the timezone, to readjust relative to the
@@ -336,12 +331,13 @@ class Generic(pyclient):
         return fieldmap
 
     def _generate_sql(self, _oids=None, sort=True):
-        db = self.config['sql'].get('db')
-        _oid = self.config['sql'].get('_oid')
-        table = self.config['sql'].get('table')
+        config = self.config[self.config_key]
+        db = config.get('db')
+        _oid = config.get('_oid')
+        table = config.get('table')
 
         if not all((_oid, table, db)):
-            raise ValueError("Must define db, table, _oid in config['sql']!")
+            raise ValueError("Must define db, table, _oid in config!")
         selects = []
         stmts = []
         for as_field, opts in self.fields.iteritems():
@@ -364,22 +360,6 @@ class Generic(pyclient):
         sql = re.sub('\s+', ' ', sql)
         return sql
 
-    def get_engine(self, backend=None, connect=True,
-                   cached=True, **kwargs):
-        if not HAS_SQLALCHEMY:
-            raise NotImplementedError('`pip install sqlalchemy` required')
-        if not cached or not hasattr(self, '_sql_engine'):
-            backend = backend or self.sql_backend
-            if backend == 'teiid':
-                uri, kwargs = self._sqla_teiid(**kwargs)
-            else:
-                raise NotImplementedError("Unsupported backend: %s" % backend)
-            self._sql_engine = sqlalchemy.create_engine(
-                uri, echo=False, **kwargs)
-            if connect:
-                self._sql_engine.connect()
-        return self._sql_engine
-
     def get_objects(self, force=None, last_update=None, parse_timestamp=None,
                     flush=False, autosnap=True):
         '''
@@ -395,8 +375,9 @@ class Generic(pyclient):
         # according to worker batchsize, then each worker will
         # break the batch into smaller sql batch size batches
         # otherwise, single threaded, use sql batch size
-        w_batch_size = self.config['sql'].get('worker_batch_size')
-        s_batch_size = self.config['sql'].get('batch_size')
+        config = self.config[self.config_key]
+        w_batch_size = config.get('worker_batch_size')
+        s_batch_size = config.get('batch_size')
         # set the 'index' of sql columns so we can extract
         # out the sql rows and know which column : field
         # determine which oids will we query
@@ -435,8 +416,9 @@ class Generic(pyclient):
             return self
 
     def _get_objects(self, oids, flush=False, autosnap=True):
-        retries = self.config['sql'].get('retries') or 1
-        _oid = self.config['sql'].get('_oid')
+        config = self.config[self.config_key]
+        retries = config.get('retries') or 1
+        _oid = config.get('_oid')
         sql = self._generate_sql(oids)
         while retries > 0:
             try:
@@ -456,7 +438,7 @@ class Generic(pyclient):
         [o.update({'_oid': o[_oid]}) for o in objects]
         self.objects = objects
         if flush:
-            return self.flush(autosnap=autosnap)
+            return self.objects.flush(autosnap=autosnap, schema=self.fields)
         else:
             return self.objects.values()
 
@@ -467,8 +449,9 @@ class Generic(pyclient):
         Essentially, a diff of distinct oids in the source database
         compared to cube.
         '''
-        table = self.config['sql'].get('table')
-        _oid = self.config['sql'].get('_oid')
+        config = self.config[self.config_key]
+        table = config.get('table')
+        _oid = config.get('_oid')
         last_id = self.get_last_field('_oid')
         ids = []
         if last_id:
@@ -489,9 +472,10 @@ class Generic(pyclient):
         hash values, so we need to always remove all existing object
         states and import fresh
         '''
-        workers = self.config['metrique'].get('workers')
-        w_batch_size = self.config['sql'].get('worker_batch_size')
-        s_batch_size = self.config['sql'].get('batch_size')
+        workers = self.config[self.global_config_key].get('workers')
+        config = self.config[self.config_key]
+        w_batch_size = config.get('worker_batch_size')
+        s_batch_size = config.get('batch_size')
         # determine which oids will we query
         oids = self._delta_force(force, last_update, parse_timestamp)
         if HAS_JOBLIB and workers > 1:
@@ -529,35 +513,24 @@ class Generic(pyclient):
 
     def _left_join(self, select_as, select_prop, join_prop, join_table,
                    on_col, on_db=None, on_table=None, join_db=None):
-        on_table = on_table or self.config['sql'].get('table')
-        on_db = on_db or self.config['sql'].get('db')
-        join_db = join_db or self.config['sql'].get('db')
+        config = self.config[self.config_key]
+        on_table = on_table or config.get('table')
+        on_db = on_db or config.get('db')
+        join_db = join_db or config.get('db')
         return {'select': '%s.%s' % (select_as, select_prop),
                 'sql': 'LEFT JOIN %s.%s %s ON %s.%s = %s.%s.%s' % (
                     join_db, join_table, select_as, select_as, join_prop,
                     on_db, on_table, on_col)}
 
-    def load(self, path, **kwargs):
-        if re.match('sql\+.+://', path):
-            match = re.match('sql\+(.+)://(.+)', path)
-            if match:
-                backend, sql = match.groups()
-                df = self._load_sql(backend, sql, as_dict=False, **kwargs)
-                return super(Generic, self).load(path=df)
-            else:
-                raise ValueError("invalid sql uri: %s" % path)
-        else:
-            return super(Generic, self).load(path, **kwargs)
-
     # FIXME: as_dict -> raw? we're returning a list... not dict
-    def _load_sql(self, sql, backend=None, as_dict=True,
+    def _load_sql(self, sql, dialect=None, as_dict=True,
                   cached=True, **kwargs):
-        backend = backend or self.sql_backend
+        dialect = dialect or self.dialect
         # load sql kwargs from instance config
-        _kwargs = deepcopy(self.config['sql'])
+        _kwargs = deepcopy(self.config[self.config_key])
         # override anything passed in
         _kwargs.update(kwargs)
-        engine = self.get_engine(backend=backend, cached=cached, **_kwargs)
+        engine = self.proxy.get_engine(cached=cached, **_kwargs)
         rows = engine.execute(sql)
         objects = [dict(row) for row in rows]
         if not as_dict:
@@ -602,6 +575,24 @@ class Generic(pyclient):
                 value = self._convert(field, value)
                 value = self._typecast(field, value)
                 o[field] = value
+
+    @property
+    def proxy(self):
+        print 'Z'*10
+        if not hasattr(self, '_sqldata_proxy'):
+            #url = 'dialect+driver://username:password@host:port/database'
+            dialect = self.dialect
+            config = self.config[self.config_key]
+            username = config.get('username')
+            password = config.get('password')
+            host = config.get('host')
+            port = config.get('port')
+            vdb = config.get('vdb')
+            engine = '%s://%s:%s@%s:%s/%s' % (
+                dialect, username, password, host, port, vdb
+            )
+            self._sqldata_proxy = self.sqla(engine=engine, **config)
+        return self._sqldata_proxy
 
     def _typecast(self, field, value):
         _type = self.fields[field].get('type')
@@ -658,16 +649,12 @@ class Generic(pyclient):
                 value = value.split('\n')
         return value
 
-    def _setup_sqlalchemy_logging(self):
-        logger = logging.getLogger('sqlalchemy')
-        level = self.config['sql'].get('debug')
-        super(Generic, self).debug_setup(logger=logger, level=level)
-
     def _setup_inconsistency_log(self):
-        _log_file = self.config['metrique'].get('log_file').split('.log')[0]
+        gconfig = self.config[self.global_config_key]
+        _log_file = gconfig.get('log_file').split('.log')[0]
         basename = _log_file + '.inconsistencies'
         log_file = basename + '.log'
-        log_dir = self.config['metrique'].get('log_dir')
+        log_dir = gconfig.get('log_dir')
         log_file = os.path.join(log_dir, log_file)
 
         logger_name = 'incon'
@@ -684,28 +671,12 @@ class Generic(pyclient):
         '''
         Query source database for a distinct list of oids.
         '''
-        table = self.config['sql'].get('table')
-        db = self.config['sql'].get('db')
-        _oid = self.config['sql'].get('_oid')
+        config = self.config[self.config_key]
+        table = config.get('table')
+        db = config.get('db')
+        _oid = config.get('_oid')
         sql = 'SELECT DISTINCT %s.%s FROM %s.%s' % (table, _oid, db, table)
         if where:
             where = [where] if isinstance(where, basestring) else list(where)
             sql += ' WHERE %s' % ' OR '.join(where)
         return sorted([r[_oid] for r in self._load_sql(sql)])
-
-    def _sqla_teiid(self, host, port, vdb, username, password, version=None,
-                    **kwargs):
-        version = version or (8, 2)
-        uri = 'postgresql+psycopg2://%s:%s@%s:%s/%s' % (
-            username, password, host, port, vdb)
-        import sqlalchemy.dialects.postgresql as p
-        # version normally comes "'Teiid 8.5.0.Final'", which sqlalchemy
-        # failed to parse
-        p.base.PGDialect.description_encoding = str('utf8')
-        p.base.PGDialect._check_unicode_returns = lambda *i: True
-        p.base.PGDialect._get_server_version_info = lambda *i: version
-        p.base.PGDialect.get_isolation_level = lambda *i: "AUTOCOMMIT"
-        p.psycopg2.PGDialect_psycopg2.set_isolation_level = lambda *i: None
-        p.base.PGDialect._get_default_schema_name = lambda *i: None
-        kwargs = dict(isolation_level="AUTOCOMMIT")
-        return uri, kwargs
