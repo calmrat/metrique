@@ -47,5 +47,9 @@ os.environ['METRIQUE_CACHE'] = os.environ.get(
 
 # ATTENTION: this is the main interface for clients!
 from metrique.core_api import BaseClient as pyclient
-from metrique.core_api import MongoDBContainer, SQLAlchemyContainer
-pyclient, MongoDBContainer, SQLAlchemyContainer
+from metrique.core_api import MongoDBContainer, MongoDBProxy
+from metrique.core_api import SQLAlchemyContainer, SQLAlchemyProxy
+# avoid lint 'defined by not used' error
+pyclient
+MongoDBProxy, MongoDBContainer
+SQLAlchemyProxy, SQLAlchemyContainer

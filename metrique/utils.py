@@ -37,10 +37,45 @@ DEFAULT_PKGS = ['metrique.cubes']
 SHA1_HEXDIGEST = lambda o: sha1(repr(o)).hexdigest()
 UTC = pytz.utc
 
+LOGS_DIR = os.environ.get('METRIQUE_LOGS')
 
-def configure(options, defaults, config_file=None,
+
+def batch_gen(data, batch_size):
+    '''
+    Usage::
+        for batch in batch_gen(iter, 100):
+            do_something(batch)
+    '''
+    data = data or []
+    for i in range(0, len(data), batch_size):
+        yield data[i:i + batch_size]
+
+
+def clear_stale_pids(pids, pid_dir, prefix=''):
+    'check for and remove any pids which have no corresponding process'
+    procs = os.listdir('/proc')
+    running = [pid for pid in pids if pid in procs]
+    _running = []
+    prefix = '%s.' % prefix if prefix else ''
+    for pid in pids:
+        if pid in running:
+            _running.append(pid)
+        else:
+            pid_file = '%s%s.pid' % (prefix, pid)
+            path = os.path.join(pid_dir, pid_file)
+            if os.path.exists(path):
+                try:
+                    os.remove(path)
+                except OSError as e:
+                    logger.debug(e)
+    return _running
+
+
+def configure(options=None, defaults=None, config_file=None,
               section_key=None, update=None, force=False,
               section_only=False):
+    options = options or {}
+    defaults = defaults or {}
     config = update or {}
     # FIXME: permit list of section keys to lookup values in
     sk = section_key
@@ -77,37 +112,6 @@ def configure(options, defaults, config_file=None,
         return config
 
 
-def batch_gen(data, batch_size):
-    '''
-    Usage::
-        for batch in batch_gen(iter, 100):
-            do_something(batch)
-    '''
-    data = data or []
-    for i in range(0, len(data), batch_size):
-        yield data[i:i + batch_size]
-
-
-def clear_stale_pids(pids, pid_dir, prefix=''):
-    'check for and remove any pids which have no corresponding process'
-    procs = os.listdir('/proc')
-    running = [pid for pid in pids if pid in procs]
-    _running = []
-    prefix = '%s.' % prefix if prefix else ''
-    for pid in pids:
-        if pid in running:
-            _running.append(pid)
-        else:
-            pid_file = '%s%s.pid' % (prefix, pid)
-            path = os.path.join(pid_dir, pid_file)
-            if os.path.exists(path):
-                try:
-                    os.remove(path)
-                except OSError as e:
-                    logger.debug(e)
-    return _running
-
-
 def csv2list(item):
     if isinstance(item, basestring):
         items = item.split(',')
@@ -137,6 +141,72 @@ def cube_pkg_mod_cls(cube):
     return pkg, mod, _cls
 
 
+def _debug_set_level(logger, level):
+    if level in [-1, False]:
+        logger.setLevel(logging.WARN)
+    elif level in [0, None]:
+        logger.setLevel(logging.INFO)
+    elif level is True:
+        logger.setLevel(logging.DEBUG)
+    else:
+        level = int(level)
+        logger.setLevel(level)
+    return logger
+
+
+def debug_setup(logger=None, level=None, log2file=None,
+                log_file=None, log_format=None, log_dir=None,
+                log2stdout=None, ):
+    '''
+    Local object instance logger setup.
+
+    Verbosity levels are determined as such::
+
+        if level in [-1, False]:
+            logger.setLevel(logging.WARN)
+        elif level in [0, None]:
+            logger.setLevel(logging.INFO)
+        elif level in [True, 1, 2]:
+            logger.setLevel(logging.DEBUG)
+
+    If (level == 2) `logging.DEBUG` will be set even for
+    the "root logger".
+
+    Configuration options available for customized logger behaivor:
+        * debug (bool)
+        * log2stdout (bool)
+        * log2file (bool)
+        * log_file (path)
+    '''
+    log2stdout = log2stdout or False
+    _log_format = "%(name)s.%(process)s:%(asctime)s:%(message)s"
+    _log_format = logging.Formatter(log_format, "%Y%m%dT%H%M%S")
+    log_format = log_format or _log_format
+
+    log2file = log2file or True
+    log_file = log_file or 'metrique.log'
+    log_dir = log_dir or LOGS_DIR or ''
+    log_file = os.path.join(log_dir, log_file)
+
+    if isinstance(logger, basestring):
+        logger = logging.getLogger(logger)
+    logger = logger or logging.getLogger('metrique')
+    logger.propagate = 0
+    logger.handlers = []
+    if log2file and log_file:
+        hdlr = logging.FileHandler(log_file)
+        hdlr.setFormatter(log_format)
+        logger.addHandler(hdlr)
+    else:
+        log2stdout = True
+    if log2stdout:
+        hdlr = logging.StreamHandler()
+        hdlr.setFormatter(log_format)
+        logger.addHandler(hdlr)
+    logger = _debug_set_level(logger, level)
+    return logger
+
+
 def dt2ts(dt, drop_micro=False, strict=False):
     ''' convert datetime objects to timestamp seconds (float) '''
     # the equals check to 'NaT' is hack to avoid adding pandas as a dependency
@@ -160,35 +230,6 @@ def dt2ts(dt, drop_micro=False, strict=False):
         return float(int(ts))
     else:
         return float(ts)
-
-
-def _load_cube_pkg(pkg, cube):
-    '''
-    NOTE: all items in fromlist must be strings
-    '''
-    try:
-        # First, assume the cube module is available
-        # with the name exactly as written
-        fromlist = map(str, [cube])
-        mcubes = __import__(pkg, fromlist=fromlist)
-        return getattr(mcubes, cube)
-    except AttributeError:
-        # if that fails, try to guess the cube module
-        # based on cube 'standard naming convention'
-        # ie, group_cube -> from group.cube import CubeClass
-        _pkg, _mod, _cls = cube_pkg_mod_cls(cube)
-        fromlist = map(str, [_cls])
-        mcubes = __import__('%s.%s.%s' % (pkg, _pkg, _mod),
-                            fromlist=fromlist)
-        return getattr(mcubes, _cls)
-
-
-def load_config(path):
-    if not path:
-        return {}
-    else:
-        config_file = os.path.expanduser(path)
-        return anyconfig.load(config_file)
 
 
 def get_cube(cube, init=False, pkgs=None, cube_paths=None, config=None,
@@ -319,6 +360,48 @@ def jsonhash(obj, root=True, exclude=None, hash_func=None):
     return result
 
 
+def _load_cube_pkg(pkg, cube):
+    '''
+    NOTE: all items in fromlist must be strings
+    '''
+    try:
+        # First, assume the cube module is available
+        # with the name exactly as written
+        fromlist = map(str, [cube])
+        mcubes = __import__(pkg, fromlist=fromlist)
+        return getattr(mcubes, cube)
+    except AttributeError:
+        # if that fails, try to guess the cube module
+        # based on cube 'standard naming convention'
+        # ie, group_cube -> from group.cube import CubeClass
+        _pkg, _mod, _cls = cube_pkg_mod_cls(cube)
+        fromlist = map(str, [_cls])
+        mcubes = __import__('%s.%s.%s' % (pkg, _pkg, _mod),
+                            fromlist=fromlist)
+        return getattr(mcubes, _cls)
+
+
+def load_config(path):
+    if not path:
+        return {}
+    else:
+        config_file = os.path.expanduser(path)
+        return anyconfig.load(config_file)
+
+
+def rupdate(d, u):
+    ''' recursively update nested dictionaries
+        see: http://stackoverflow.com/a/3233356/1289080
+    '''
+    for k, v in u.iteritems():
+        if isinstance(v, collections.Mapping):
+            r = rupdate(d.get(k, {}), v)
+            d[k] = r
+        else:
+            d[k] = u[k]
+    return d
+
+
 def to_encoding(ustring, encoding=None):
     encoding = encoding or locale.getpreferredencoding()
     if isinstance(ustring, basestring):
@@ -366,16 +449,3 @@ def utcnow(as_datetime=True, tz_aware=False, drop_micro=False):
         return now
     else:
         return dt2ts(now, drop_micro)
-
-
-def rupdate(d, u):
-    ''' recursively update nested dictionaries
-        see: http://stackoverflow.com/a/3233356/1289080
-    '''
-    for k, v in u.iteritems():
-        if isinstance(v, collections.Mapping):
-            r = rupdate(d.get(k, {}), v)
-            d[k] = r
-        else:
-            d[k] = u[k]
-    return d
