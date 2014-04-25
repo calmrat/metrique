@@ -20,15 +20,19 @@ import anyconfig
 anyconfig.set_loglevel(logging.WARN)  # too noisy...
 from calendar import timegm
 import collections
+import cProfile as profiler
 from datetime import datetime
 from dateutil.parser import parse as dt_parse
+import gc
 from hashlib import sha1
 import locale
 import os
+import pstats
 import pytz
 import re
 import simplejson as json
 import sys
+import time
 
 json_encoder = json.JSONEncoder()
 
@@ -188,9 +192,11 @@ def debug_setup(logger=None, level=None, log2file=None,
     log_dir = log_dir or LOGS_DIR or ''
     log_file = os.path.join(log_dir, log_file)
 
+    logger = logger or 'metrique'
     if isinstance(logger, basestring):
         logger = logging.getLogger(logger)
-    logger = logger or logging.getLogger('metrique')
+    else:
+        logger = logger or logging.getLogger(logger)
     logger.propagate = 0
     logger.handlers = []
     if log2file and log_file:
@@ -356,7 +362,7 @@ def jsonhash(obj, root=True, exclude=None, hash_func=None):
     else:
         result = obj
     if root:
-        result = hash_func(repr(result))
+        result = unicode(hash_func(repr(result)))
     return result
 
 
@@ -449,3 +455,28 @@ def utcnow(as_datetime=True, tz_aware=False, drop_micro=False):
         return now
     else:
         return dt2ts(now, drop_micro)
+
+
+# profile code snagged from http://stackoverflow.com/a/1175677/1289080
+def profile(fn):
+    def wrapper(*args, **kw):
+        elapsed, stat_loader, result = _profile("foo.txt", fn, *args, **kw)
+        stats = stat_loader()
+        stats.sort_stats('cumulative')
+        stats.print_stats()
+        # uncomment this to see who's calling what
+        # stats.print_callers()
+        return result
+    return wrapper
+
+
+def _profile(filename, fn, *args, **kw):
+    load_stats = lambda: pstats.Stats(filename)
+    gc.collect()
+
+    began = time.time()
+    profiler.runctx('result = fn(*args, **kw)', globals(), locals(),
+                    filename=filename)
+    ended = time.time()
+
+    return ended - began, load_stats, locals()['result']

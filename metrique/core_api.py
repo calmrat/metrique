@@ -77,7 +77,7 @@ from copy import deepcopy
 from datetime import datetime
 from getpass import getuser
 import glob
-import simplejson as json
+import inspect
 import os
 from operator import itemgetter
 import pandas as pd
@@ -104,19 +104,21 @@ import re
 import random
 import shlex
 import signal
+import simplejson as json
 
 try:
-    from sqlalchemy import create_engine, MetaData
+    from sqlalchemy import create_engine, MetaData, Table
     from sqlalchemy import Column, Integer, Unicode, DateTime
     from sqlalchemy import Float, BigInteger, Boolean, UnicodeText
-    from sqlalchemy import and_, insert, update
+    from sqlalchemy import insert, update
     from sqlalchemy.orm import sessionmaker
     from sqlalchemy.ext.declarative import declarative_base
 
     import sqlalchemy.dialects.postgresql as pg
-    from sqlalchemy.dialects.postgresql import ARRAY
+    from sqlalchemy.dialects.postgresql import ARRAY, JSON
 
     TYPE_MAP = {
+        None: UnicodeText,
         type(None): UnicodeText,
         int: Integer,
         float: Float,
@@ -126,7 +128,12 @@ try:
         bool: Boolean,
         datetime: DateTime,
         list: ARRAY, tuple: ARRAY, set: ARRAY,
+        dict: JSON, Mapping: JSON,
     }
+
+    sqla_metadata = MetaData()
+    sqla_Base = declarative_base(metadata=sqla_metadata)
+
     HAS_SQLALCHEMY = True
 except ImportError:
     logger.warn('sqlalchemy not installed!')
@@ -134,11 +141,12 @@ except ImportError:
     TYPE_MAP = {}
 
 import subprocess
+from time import time
 import tempfile
 import urllib
 
 from metrique.utils import get_cube, utcnow, jsonhash, load_config
-from metrique.utils import json_encode, batch_gen, ts2dt, configure
+from metrique.utils import json_encode, batch_gen, ts2dt, dt2ts, configure
 from metrique.utils import debug_setup
 from metrique.result import Result
 
@@ -148,16 +156,20 @@ ETC_DIR = os.environ.get('METRIQUE_ETC')
 CACHE_DIR = os.environ.get('METRIQUE_CACHE')
 DEFAULT_CONFIG = os.path.join(ETC_DIR, 'metrique.json')
 
+HASH_EXCLUDE_KEYS = ['_hash', '_id', '_start', '_end']
+IMMUTABLE_OBJ_KEYS = set(['_hash', '_id', '_oid'])
+SQLA_HASH_EXCLUDE_KEYS = HASH_EXCLUDE_KEYS + ['id']
+
 
 class MetriqueObject(Mapping):
     FIELDS_RE = re.compile('[\W]+')
     SPACE_RE = re.compile('\s+')
     UNDA_RE = re.compile('_')
-    HASH_EXCLUDE_KEYS = ['_hash', '_id', '_start', '_end']
-    IMMUTABLE_OBJ_KEYS = set(['_hash', '_id', '_oid'])
     #TIMESTAMP_OBJ_KEYS = set(['_end', '_start'])
 
     def __init__(self, _oid, strict=False, **kwargs):
+        if isinstance(_oid, basestring):
+            _oid = unicode(_oid)
         self._strict = strict
         self.store = {
             '_oid': _oid,
@@ -172,7 +184,7 @@ class MetriqueObject(Mapping):
     def _update(self, obj):
         for key, value in obj.iteritems():
             key = self.__keytransform__(key)
-            if key in self.IMMUTABLE_OBJ_KEYS:
+            if key in IMMUTABLE_OBJ_KEYS:
                 if self._strict:
                     raise KeyError("%s is immutable" % key)
                 else:
@@ -217,7 +229,7 @@ class MetriqueObject(Mapping):
             _start = self.store.get('_start')
             # if the object at the exact start/oid is later
             # updated, it's possible to just save(upsert=True)
-            _id = ':'.join(map(str, (_oid, _start)))
+            _id = ':'.join(map(str, (_oid, dt2ts(_start))))
         else:
             # if the object is 'current value' without _end,
             # use just str of _oid
@@ -226,8 +238,8 @@ class MetriqueObject(Mapping):
 
     def _gen_hash(self):
         o = deepcopy(self.store)
-        keys = set(o.iterkeys())
-        [o.pop(k) for k in self.HASH_EXCLUDE_KEYS if k in keys]
+        keys = set(o.keys())
+        [o.pop(k) for k in HASH_EXCLUDE_KEYS if k in keys]
         return jsonhash(o)
 
     def _validate_start_end(self):
@@ -235,7 +247,7 @@ class MetriqueObject(Mapping):
         if _start is None:
             raise ValueError("_start (%s) must be set!" % _start)
         _end = self.get('_end')
-        if _end and _end < _start:
+        if _end and ts2dt(_end) < ts2dt(_start):
             raise ValueError(
                 "_end (%s) is before _start (%s)!" % (_end, _start))
 
@@ -311,6 +323,7 @@ class MetriqueContainer(MutableMapping):
         return dict(self.store[key])
 
     def __setitem__(self, key, value):
+
         self.store[key] = value
 
     def __delitem__(self, key):
@@ -328,7 +341,7 @@ class MetriqueContainer(MutableMapping):
     def __repr__(self):
         return repr(self.store)
 
-    def _convert(self, item):
+    def _encode(self, item):
         if isinstance(item, self._object_cls):
             pass
         elif isinstance(item, (Mapping, dict)):
@@ -339,7 +352,7 @@ class MetriqueContainer(MutableMapping):
         return item
 
     def add(self, item):
-        item = self._convert(item)
+        item = self._encode(item)
         _id = item['_id']
         self.store[_id] = item
 
@@ -354,7 +367,8 @@ class MetriqueContainer(MutableMapping):
         return self.persist(**kwargs)
 
     def persist(self, itr=None, _type=None, _dir=None, name=None):
-        itr = itr or self.store.itervalues()
+        # FIXME: implement autosnap
+        itr = itr or self.itervalues()
         _type = _type or 'pickle'
         _dir = _dir or self._cache_dir
         name = '%s_' % (name or self.name)
@@ -389,6 +403,13 @@ class MetriqueContainer(MutableMapping):
             logger.warn("file is empty! (removing)")
             os.remove(path)
         return path
+
+    def clear(self):
+        self.store = {}
+
+    @property
+    def keys(self):
+        return {k for o in self.store.itervalues() for k in o.iterkeys()}
 
 
 class MetriqueFactory(type):
@@ -444,7 +465,8 @@ class BaseClient(object):
                  config_key=None, cube_pkgs=None, cube_paths=None,
                  debug=None, log_file=None, log2file=None, log2stdout=None,
                  workers=None, log_dir=None, cache_dir=None, etc_dir=None,
-                 tmp_dir=None, container=None, proxy=None):
+                 tmp_dir=None, container=None, container_kwargs=None,
+                 proxy=None, proxy_kwargs=None):
         '''
         :param cube_pkgs: list of package names where to search for cubes
         :param cube_paths: Additional paths to search for client cubes
@@ -458,6 +480,9 @@ class BaseClient(object):
 
         # default cube name is username unless otherwise provided
         self.name = name or self.name or getuser()
+
+        # cube class defined name
+        self._cube = type(self).name
 
         # set default config value as dict (from None set cls level)
         self.config_file = config_file or self.config_file
@@ -497,12 +522,6 @@ class BaseClient(object):
                                 section_key=config_key,
                                 update=self.config)
 
-        # cube class defined name
-        self._cube = type(self).name
-
-        # set name if passed in, but don't overwrite default if not
-        self.name = name or self.name
-
         config = self.config[self.global_config_key]
         level = config.get('debug')
         log2stdout = config.get('log2stdout')
@@ -514,9 +533,10 @@ class BaseClient(object):
         debug_setup(logger='metrique', level=level, log2stdout=log2stdout,
                     log_format=log_format, log2file=log2file,
                     log_dir=log_dir, log_file=log_file)
-
-        self._set_container(container)
-        self._set_proxy(proxy, quiet=True)
+        self._container_kwargs = container_kwargs or {}
+        self.set_container(container)
+        self._proxy_kwargs = proxy_kwargs or {}
+        self.set_proxy(proxy, quiet=True)
 
     @property
     def container(self):
@@ -529,12 +549,12 @@ class BaseClient(object):
 
     @objects.setter
     def objects(self, value):
-        self._set_container(value=value)
+        self.set_container(value=value)
 
     @objects.deleter
     def objects(self):
         # replacing existing container with a new, empty one
-        self._objects = self._set_container()
+        self._objects = self.set_container()
 
     def get_cube(self, cube, init=True, name=None, copy_config=True, **kwargs):
         '''wrapper for :func:`metrique.utils.get_cube`
@@ -554,9 +574,15 @@ class BaseClient(object):
         return get_cube(cube=cube, init=init, name=name, config=config,
                         config_file=config_file, **kwargs)
 
-    def _set_container(self, container=None, value=None):
+    def set_container(self, container=None, value=None, **kwargs):
+        _kwargs = deepcopy(self._container_kwargs)
+        _kwargs.update(kwargs)
+        _kwargs.setdefault('config_file', self.config_file)
         if container is not None:
-            self._objects = container
+            if inspect.isclass(container):
+                self._objects = container(name=self.name, **_kwargs)
+            else:
+                self._objects = container
         else:
             config = self.config[self.global_config_key]
             cache_dir = config.get('cache_dir')
@@ -565,9 +591,15 @@ class BaseClient(object):
                                               cache_dir=cache_dir)
         return self._objects
 
-    def _set_proxy(self, proxy=None, quiet=False):
+    def set_proxy(self, proxy=None, quiet=False, **kwargs):
+        _kwargs = deepcopy(self._proxy_kwargs)
+        _kwargs.update(kwargs)
+        _kwargs.setdefault('config_file', self.config_file)
         if proxy is not None:
-            self._proxy = proxy
+            if inspect.isclass(proxy):
+                self._proxy = proxy(**_kwargs)
+            else:
+                self._proxy = proxy
         elif quiet:
             pass
         else:
@@ -615,7 +647,7 @@ class BaseClient(object):
             return self.objects.flush(autosnap=autosnap)
         return self
 
-    def load(self, path, filetype=None, as_dict=True, raw=False,
+    def load(self, path, filetype=None, transform=True, raw=False,
              retries=None, **kwargs):
         '''Load multiple files from various file types automatically.
 
@@ -645,7 +677,8 @@ class BaseClient(object):
             _path, headers = self.urlretrieve(path, retries)
             logger.debug('Saved %s to tmp file: %s' % (path, _path))
             try:
-                df = self._load_file(_path, filetype, as_dict=False, **kwargs)
+                df = self._load_file(_path, filetype, transform=False,
+                                     **kwargs)
             finally:
                 os.remove(_path)
         else:
@@ -654,7 +687,7 @@ class BaseClient(object):
             datasets = glob.glob(os.path.expanduser(path))
             # buid up a single dataframe by concatting
             # all globbed files together
-            df = [self._load_file(ds, filetype, as_dict=False,
+            df = [self._load_file(ds, filetype, transform=False,
                                   **kwargs)
                   for ds in datasets]
             if df:
@@ -663,15 +696,16 @@ class BaseClient(object):
         if not hasattr(df, 'empty') or df.empty:
             raise ValueError("not data extracted!")
 
+        transformed = df.T.to_dict().values()
+        self.objects.extend(transformed)
         if raw:
             return df.to_dict()
-        # FIXME: rename to transform
-        if as_dict:
-            return df.T.to_dict().values()
+        if transform:
+            return transformed
         else:
             return df
 
-    def _load_file(self, path, filetype, as_dict=True, **kwargs):
+    def _load_file(self, path, filetype, transform=True, **kwargs):
         if not filetype:
             # try to get file extension
             filetype = path.split('.')[-1]
@@ -683,10 +717,13 @@ class BaseClient(object):
             result = self._load_pickle(path, **kwargs)
         else:
             raise TypeError("Invalid filetype: %s" % filetype)
-        if as_dict:
+        if transform and isinstance(result, pd.DataFrame):
             return result.T.as_dict.values()
         else:
-            return result
+            if isinstance(result, pd.DataFrame):
+                return result
+            else:
+                return pd.DataFrame(result)
 
     def _load_pickle(self, path, **kwargs):
         result = []
@@ -697,7 +734,7 @@ class BaseClient(object):
                     result.append(cPickle.load(f))
                 except EOFError:
                     break
-        return pd.DataFrame(result)
+        return result
 
     def _load_csv(self, path, **kwargs):
         # load the file according to filetype
@@ -735,15 +772,16 @@ class BaseClient(object):
             except Exception as e:
                 retries -= 1
                 logger.warn(
-                    'Failed getting %s: %s (retry:%s)' % (
+                    'Failed getting %s: %s (retry:%s in 1s)' % (
                         uri, e, retries))
+                time.sleep(1)
                 continue
             else:
                 break
         return _path, headers
 
     # ############################## Backends #################################
-    def mongodb(self, cached=True, owner=None, collection=None,
+    def mongodb(self, cached=True, owner=None, name=None,
                 config_file=None, config_key=None, **kwargs):
         # return cached unless kwargs are set, cached is False
         # or there isn't already an instance cached available
@@ -756,10 +794,11 @@ class BaseClient(object):
                            section_only=True)
         if not (kwargs and _mongodb and cached):
             owner = owner or getuser()
-            collection = collection or self.name
-            self._mongodb = MongoDBProxy(owner=owner, collection=collection,
+            name = name or self.name
+            self._mongodb = MongoDBProxy(owner=owner, collection=name,
+                                         config_file=self.config_file,
                                          **config)
-            self._set_proxy(self._mongodb)
+            self.set_proxy(self._mongodb)
         return self._mongodb
 
     def sqlalchemy(self, cached=True, owner=None, table=None,
@@ -778,7 +817,7 @@ class BaseClient(object):
             table = table or self.name
             self._sqlalchemy = SQLAlchemyProxy(owner=owner, table=table,
                                                **config)
-            self._set_proxy(self._sqlalchemy)
+            self.set_proxy(self._sqlalchemy)
         return self._sqlalchemy
 
 
@@ -954,23 +993,23 @@ class MongoDBProxy(object):
         except OperationFailure as e:
             raise RuntimeError("unable to get db! (%s)" % e)
 
-    def get_collection(self, owner=None, collection=None):
-        collection = collection or self.config.get('collection')
-        if not collection:
+    def get_collection(self, owner=None, name=None):
+        name = name or self.config.get('collection')
+        if not name:
             raise RuntimeError("collection name can not be null!")
-        _cube = self.get_db(owner)[collection]
+        _cube = self.get_db(owner)[name]
         return _cube
 
-    def set_collection(self, collection):
-        if not collection:
+    def set_collection(self, name):
+        if not name:
             raise RuntimeError("collection name can not be null!")
-        self.config['collection'] = collection
+        self.config['name'] = name
 
     def __repr__(self):
         owner = self.config.get('owner')
-        collection = self.config.get('collection')
-        return '%s(owner="%s", collection="%s">)' % (
-            self.__class__.__name__, owner, collection)
+        name = self.config.get('collection')
+        return '%s(owner="%s", name="%s">)' % (
+            self.__class__.__name__, owner, name)
 
     # ######################## User API ################################
     def whoami(self, auth=False):
@@ -1590,7 +1629,7 @@ class MongoDBContainer(MetriqueContainer):
     owner = None
     name = None
 
-    def __init__(self, collection, objects=None, proxy=None, batch_size=None,
+    def __init__(self, name, objects=None, proxy=None, batch_size=None,
                  host=None, port=None, username=None, password=None,
                  auth=None, ssl=None, ssl_certificate=None,
                  index_ensure_secs=None, read_preference=None,
@@ -1599,14 +1638,14 @@ class MongoDBContainer(MetriqueContainer):
         if not HAS_PYMONGO:
             raise NotImplementedError('`pip install pymongo` 2.6+ required')
 
-        super(MongoDBContainer, self).__init__(name=collection,
+        super(MongoDBContainer, self).__init__(name=name,
                                                objects=objects)
 
         options = dict(auth=auth,
                        batch_size=batch_size,
                        host=host,
                        index_ensure_secs=index_ensure_secs,
-                       collection=collection,
+                       name=name,
                        owner=owner,
                        password=password,
                        port=port,
@@ -1624,7 +1663,7 @@ class MongoDBContainer(MetriqueContainer):
                         batch_size=None,
                         host=None,
                         index_ensure_secs=None,
-                        collection=self.name,
+                        name=self.name,
                         owner=None,
                         password=None,
                         port=None,
@@ -1658,7 +1697,10 @@ class MongoDBContainer(MetriqueContainer):
     @property
     def proxy(self):
         if not getattr(self, '_proxy', None):
-            self._proxy = MongoDBProxy(**self.config)
+            name = self.config.get('name')
+            self._proxy = MongoDBProxy(collection=name,
+                                       config_file=self.config_file,
+                                       **self.config)
         return self._proxy
 
     def flush(self, autosnap=True, batch_size=None, fast=True,
@@ -1803,7 +1845,7 @@ class MongoDBContainer(MetriqueContainer):
             _start = self.store[o['_id']]['_start']
             o['_end'] = _start
             del o['_id']
-            objects.append(MetriqueObject(**o))
+            objects.append(self._object_cls(**o))
         return objects
 
     def _ensure_base_indexes(self, ensure_time=90):
@@ -1867,7 +1909,6 @@ class SQLAlchemyProxy(object):
                                 section_only=True,
                                 update=self.config)
         self.config['owner'] = self.config['owner'] or defaults.get('username')
-
         self._debug_setup_sqlalchemy_logging()
 
     @staticmethod
@@ -1896,11 +1937,8 @@ class SQLAlchemyProxy(object):
         return '%s://%s%s:%s/%s' % (dialect, u_p, host, port, db)
 
     def _debug_setup_sqlalchemy_logging(self):
-        logger = logging.getLogger('sqlalchemy')
         level = self.config.get('debug')
-        # FIXME: replace sqlalchemy logger with metrique logger
-        # or load metyrique config and pass to logger config ...
-        debug_setup(logger=logger, level=level)
+        debug_setup(logger='sqlalchemy', level=level)
 
     ######################### DB API ##################################
     def _check_compatible(self, uri, driver, msg=None):
@@ -1934,20 +1972,32 @@ class SQLAlchemyProxy(object):
                 self._sql_engine.connect()
         return self._sql_engine
 
-    def get_session(self, **kwargs):
-        return self._sessionmaker(**kwargs)
+    def get_session(self, bind=None, autoflush=False, autocommit=False,
+                    expire_on_commit=False, **kwargs):
+        bind = bind or self._sql_engine
+        return self._sessionmaker(bind=bind, autoflush=autoflush,
+                                  autocommit=autocommit,
+                                  expire_on_commit=expire_on_commit, **kwargs)
 
-    def get_meta(self):
-        return self.get_base().metadata
+    def get_meta(self, cached=True):
+        return self.get_base(cached=cached).metadata
 
     def get_base(self, cached=True):
-        if cached and not hasattr(self, '_Base'):
-            self._metadata = MetaData()
-            self._Base = declarative_base(metadata=self._metadata)
+        if not cached:
+            metadata = MetaData()
+            Base = declarative_base(metadata=sqla_metadata)
+        else:
+            metadata = sqla_metadata
+            Base = sqla_Base
+        if not hasattr(self, '_Base'):
+            self._metadata = metadata
+            self._Base = Base
         return self._Base
 
     def get_table(self, table=None):
-        table = table or self.config.get('table')
+        table = table if table is not None else self.config.get('table')
+        if not table:
+            raise ValueError("table can not be null")
         return self.get_tables().get(table)
 
     def get_tables(self):
@@ -2011,13 +2061,9 @@ class SQLAlchemyProxy(object):
             '[%s] Listing cubes starting with "%s")' % (engine, startswith))
         return sorted(cubes)
 
-    def drop(self, name=None, engine=None):
-        _cube = self.get_table(name, engine)
-        return _cube.drop()
-
-
-#class SQLAlchemyObject(MetriqueObject):
-#    pass
+    def drop(self, table=None, engine=None, quiet=True):
+        table = self.get_table(table)
+        return table.drop()
 
 
 class SQLAlchemyContainer(MetriqueContainer):
@@ -2027,13 +2073,11 @@ class SQLAlchemyContainer(MetriqueContainer):
     config_key = 'sqlalchemy'
     owner = None
     name = None
-    _table_created = False
-    #_object_cls = SQLAlchemyObject
 
     def __init__(self, name, objects=None, proxy=None,
                  engine=None, schema=None, owner=None,
-                 drop_target=None, batch_size=None,
-                 config_file=None, config_key=None, debug=None,
+                 batch_size=None, config_file=None,
+                 config_key=None, debug=None,
                  cache_dir=None, dialect=None, driver=None,
                  host=None, port=None, username=None,
                  password=None, table=None, **kwargs):
@@ -2049,14 +2093,12 @@ class SQLAlchemyContainer(MetriqueContainer):
             debug=debug,
             dialect=dialect,
             driver=driver,
-            drop_target=drop_target,
             engine=engine,
             host=host,
             owner=owner,
             password=password,
             port=port,
             schema=schema,
-            table=table,
             username=username,
         )
         # set defaults to None for proxy related args
@@ -2068,14 +2110,12 @@ class SQLAlchemyContainer(MetriqueContainer):
             debug=None,
             dialect=None,
             driver=None,
-            drop_target=False,
             engine=None,
             host=None,
             owner=None,
             password=None,
             port=None,
             schema=None,
-            table=self.name,
             username=getuser(),
         )
         self.config = self.config or {}
@@ -2088,16 +2128,10 @@ class SQLAlchemyContainer(MetriqueContainer):
                                 update=self.config)
         self.config['owner'] = self.config['owner'] or defaults.get('username')
         self.config['db'] = self.config['db'] or self.config.get('owner')
-
         if proxy:
             self._proxy = proxy
 
-        if schema:
-            self.ensure_table(schema=schema, name=name)
-
-    def __getitem__(self, key):
-        item = self.store[key]
-        return self._table(**item)
+        self.ensure_table(schema=schema, name=name)
 
     @property
     def proxy(self):
@@ -2110,67 +2144,117 @@ class SQLAlchemyContainer(MetriqueContainer):
                                           **self.config)
         return self._proxy
 
-    def _ensure_table_auto(self):
+    def _table_auto_schema(self):
         if not self.store:
             raise RuntimeError(
-                'ensure table failed: schema ^ objects are null!')
+                'ensure_auto_table failed: objects undefined!')
         schema = defaultdict(dict)
         for o in self.store.itervalues():
             for k, v in o.iteritems():
                 # FIXME: option to check rigerously all objects
                 # consistency; raise exception if values are of
                 # different type given same key, etc...
-                if k in schema:
+                if k in schema or k in SQLA_HASH_EXCLUDE_KEYS:
                     continue
                 _type = type(v)
                 if _type in (list, tuple, set):
                     schema[k]['container'] = True
-                    schema[k]['type'] = type(None)
+                    # FIXME: if the first object happens to be null
+                    # we auto set to UnicodeText type...
+                    # (default for type(None))
+                    # but this isn't always going to be accurate...
+                    if len(v) > 1:
+                        _t = type(v[0])
+                    else:
+                        _t = type(None)
+                    schema[k]['type'] = _t
                 else:
                     schema[k]['type'] = _type
         return schema
 
-    def ensure_table(self, schema=None, table=None, force=False):
-        if self._table_created and not force:
-            logger.debug("Table Init: Already Completed. Skip.")
+    def ensure_table(self, schema=None, name=None, force=False):
+        if getattr(self, '_table', None) is not None and not force:
             return None
 
-        if not schema:  # autogenerate
-            schema = self._ensure_table_auto()
-
-        engine = self.proxy.get_engine()
+        name = name or self.name
         meta = self.proxy.get_meta()
-        table = table or self.config.get('table')
-        drop_target = self.proxy.config.get('drop_target')
+        engine = self.proxy.get_engine()
 
-        if drop_target:
-            for _table in reversed(meta.sorted_tables):
-                if _table.name == table:
-                    # FIXME: table is still in meta, so a second
-                    # call to this same func with drop_target=True
-                    # will fail with 'table already exists...'
-                    logger.debug("Dropping table...")
-                    _table.drop(engine)
-                    break
+        # try to reflect the table
+        try:
+            logger.debug("Attempting to reflect table: %s..." % name)
+            _table = Table(name, meta, autoload=True,
+                           autoload_with=engine)
+        except Exception as e:
+            logger.debug("Failed to reflect table %s: %s" % (name, e))
+            _table = None
 
-        logger.debug("Attempting to create table: %s..." % table)
-        _table = self._schema2table(schema)
-        setattr(self, table, _table)  # named alias for table class
-        self._table = _table  # generic alias to table class
-        meta.create_all(engine)
-        self._table_created = True
-        return True
+        if _table is None:
+            if schema:
+                _table = self._schema2table(schema=schema)
+            elif self.store:
+                # try to autogenerate
+                _table = self._schema2table()
+            else:
+                pass
 
-    def _table_factory(self, table_name, schema, cached=False):
+        if _table is not None:
+            meta.create_all(engine)
+            setattr(self, name, _table)  # named alias for table class
+            self._table = _table  # generic alias to table class
+            return True
+        else:
+            return False
+
+    @staticmethod
+    def _gen_id(context):
+        obj = context.current_parameters
+        _oid = obj.get('_oid')
+        if obj['_end']:
+            _start = obj.get('_start')
+            # if the object at the exact start/oid is later
+            # updated, it's possible to just save(upsert=True)
+            _id = ':'.join(map(str, (_oid, dt2ts(_start))))
+        else:
+            # if the object is 'current value' without _end,
+            # use just str of _oid
+            _id = _oid
+        return unicode(_id)
+
+    @staticmethod
+    def _gen_hash(context):
+        o = deepcopy(context.current_parameters)
+        keys = set(o.iterkeys())
+        [o.pop(k) for k in SQLA_HASH_EXCLUDE_KEYS if k in keys]
+        return jsonhash(o)
+
+    def _table_factory(self, name, schema, cached=False):
+        schema = schema or {}
+        if not schema:
+            raise TypeError("schema can not be null")
+
         Base = self.proxy.get_base(cached=cached)
 
+        __repr__ = lambda s: '%s(%s)' % (
+            s.__tablename__,
+            ', '.join(['%s=%s' % (k, v) for k, v in s.__dict__.iteritems()
+                      if k != '_sa_instance_state']))
+
+        _ignore_keys = set(['_id', '_hash'])
+        __init__ = lambda s, kw: [setattr(s, k, v) for k, v in kw.iteritems()
+                                  if k not in _ignore_keys]
         defaults = {
-            '__tablename__': table_name,
+            '__tablename__': name,
             '__table_args__': {'useexisting': True},
             'id': Column('id', Integer, primary_key=True),
-            '_id': Column(Unicode(40), nullable=False,
-                          index=True, unique=True),
+            '_id': Column(Unicode(120), nullable=False,
+                          onupdate=self._gen_id,
+                          default=self._gen_id,
+                          index=True, unique=True,
+                          primary_key=True),
             '_hash': Column(Unicode(40), nullable=False,
+                            onupdate=self._gen_hash,
+                            default=self._gen_hash,
                             index=True, unique=False),
             '_oid': Column(Integer, nullable=False,
                            index=True, unique=False),
@@ -2178,6 +2262,8 @@ class SQLAlchemyContainer(MetriqueContainer):
                              index=True, unique=False),
             '_end': Column(DateTime, default=None, nullable=True,
                            index=True, unique=False),
+            '__init__': __init__,
+            '__repr__': __repr__,
         }
 
         for k, v in schema.iteritems():
@@ -2193,173 +2279,102 @@ class SQLAlchemyContainer(MetriqueContainer):
                 schema[k] = Column(_type)
         defaults.update(schema)
 
-        def __repr__(self):
-
-            def filter_properties(obj):
-                # this function decides which properties should be exposed
-                # through repr
-                # todo: don't show methods
-                properties = obj.__dict__.keys()
-                for prop in properties:
-                    if prop[0] != "_":
-                        yield (getattr(obj, prop), prop)
-                return
-
-            prop_tuples = filter_properties(self)
-            prop_string_tuples = (": ".join(prop) for prop in prop_tuples)
-            prop_output_string = " | ".join(prop_string_tuples)
-            cls_name = self.__class__.__name__
-            return "<%s('%s')>" % (cls_name, prop_output_string)
-
-        defaults['__repr__'] = __repr__
-
-        _cube = type(str(table_name), (Base,), defaults)
+        _cube = type(str(name), (Base,), defaults)
         return _cube
 
-    def _schema2table(self, schema, table=None):
-        if not schema:
-            raise ValueError('schema definition can not be null')
-        table = table or self.config.get('table')
-        if not table:
+    def _schema2table(self, schema=None, name=None):
+        name = name or self.name
+        if not name:
             raise RuntimeError("table name not defined!")
-        logger.debug("Creating Table: %s" % table)
-
-        if not schema or isinstance(schema, dict):
-            _table = self._table_factory(table, schema)
-        else:
-            raise TypeError("unsupported schema type: %s" % type(schema))
+        logger.debug("Attempting to create table: %s..." % name)
+        if not schema:
+            schema = self._table_auto_schema()
+        logger.debug("Creating Table: %s" % name)
+        _table = self._table_factory(name=name, schema=schema).__table__
         return _table
 
-    def _add_snap_objects(self, _cube, objects):
-        olen = len(objects)
-        _ids = [o['_id'] for o in objects if o['_end'] is None]
+    def _exec_transaction(self, func, **kwargs):
+        engine = self.proxy.get_engine()
+        with engine.connect() as connection:
+            with connection.begin() as transaction:
+                try:
+                    result = func(connection, transaction, **kwargs)
+                except:
+                    transaction.rollback()
+                    raise
+                else:
+                    transaction.commit()
+                    return result
 
-        if not _ids:
-            logger.debug(
-                '[%s] 0 of %s objects need to be rotated' % (_cube, olen))
-            return objects
-
-        tbl = self._table
-        _objs = self.query().filter(tbl._id.in_(_ids)).all()
-        k = len(_objs)
-        logger.debug(
-            '[%s] %s of %s objects need to be rotated' % (_cube, k, olen))
-        if k == 0:  # nothing to rotate...
-            return objects
-        for o in _objs:
-            # _end of existing obj where _end:None should get new's _start
-            # look this up in the instance objects mapping
-            _start = self.store[o['_id']]['_start']
-            o['_end'] = _start
-            del o['_id']
-            objects.append(self._object_cls(**o))
-        return objects
-
-    def _flush_save(self, _cube, objects):
-        objects = [dict(o) for o in objects if o['_end'] is None]
-        if not objects:
-            _ids = []
-        else:
-            _ids = [o['_id'] for o in objects]
-            [self.update().values(**o).where(self._table._id == o['_id'])
-             for o in objects]
-        return _ids
-
-    def _flush_insert(self, _cube, objects):
-        objects = [dict(o) for o in objects if o['_end'] is not None]
-        if not objects:
-            _ids = []
-        else:
-            _ids = [o['_id'] for o in objects]
-            [self.insert().values(**o) for o in objects]
-
-        return _ids
-
-    def _filter_end_null_dups(self, _cube, objects):
-        # filter out dups which have null _end value
-        _hashes = [o['_hash'] for o in objects if o['_end'] is None]
-        if _hashes:
-            tbl = self._table
-            __hashes = self.query('_id').filter(tbl._id.in_(_hashes)).all()
-        else:
-            __hashes = []
-        return set(__hashes)
-
-    def _filter_end_not_null_dups(self, _cube, objects):
-        # filter out dups which have non-null _end value
-        tups = [(o['_id'], o['_hash']) for o in objects
-                if o['_end'] is not None]
-        _ids, _hashes = zip(*tups) if tups else [], []
-        if _ids:
-            tbl = self._table
-            __ids = self.query('_id').filter(
-                and_(tbl._id.in_(_ids),
-                     tbl._hash.in_(_hashes))).all()
-        else:
-            __ids = []
-        return set(__ids)
-
-    def _filter_dups(self, _cube, objects):
-        logger.debug('Filtering duplicate objects...')
-        olen = len(objects)
-
-        non_null_ids = self._filter_end_not_null_dups(_cube, objects)
-        null_ids = self._filter_end_null_dups(_cube, objects)
-        dup_ids = non_null_ids | null_ids
-
-        if dup_ids:
-            # update self.object container to contain only non-dups
-            objects = [o for o in objects if o['_id'] not in dup_ids]
-
-        _olen = len(objects)
-        diff = olen - _olen
-        logger.info(' ... %s objects filtered; %s remain' % (diff, _olen))
-        return objects, dup_ids
-
-    def _flush(self, _cube, objects, autosnap=True, name=None, owner=None):
+    def _flush(self, objects, **kwargs):
         olen = len(objects)
         if olen == 0:
             logger.debug("No objects to flush!")
             return []
-        logger.info("[%s] Flushing %s objects" % (_cube, olen))
+        logger.info("Flushing %s objects" % (olen))
 
-        objects, dup_ids = self._filter_dups(_cube, objects)
-        # remove dups from instance object container
-        [self.store.pop(_id) for _id in set(dup_ids)]
+        _ids = self._exec_transaction(self.__flush, objects=objects, **kwargs)
+        [self.store.pop(_id) for _id in _ids]
+        return _ids
 
-        if objects and autosnap:
-            # append rotated versions to save over previous _end:None docs
-            objects = self._add_snap_objects(_cube, objects)
+    def __flush(self, connection, transaction, objects, **kwargs):
+        autosnap = kwargs.get('autosnap', True)
+        tbl = self._table
+        _ids = [o['_id'] for o in objects]
 
-        olen = len(objects)
-        _ids = []
-        if objects:
-            # save each object; overwrite existing
-            # (same _oid + _start or _oid if _end = None) or upsert
-            logger.debug('[%s] Saving %s versions' % (_cube, len(objects)))
-            _saved = self._flush_save(_cube, objects)
-            _inserted = self._flush_insert(_cube, objects)
-            _ids = set(_saved) | set(_inserted)
-            # pop those we're already flushed out of the instance container
-            failed = olen - len(_ids)
-            if failed > 0:
-                logger.warn("%s objects failed to flush!" % failed)
-            # new 'snapshoted' objects are included in _ids, but they
-            # aren't in self.store, so ignore them
-        [self.store.pop(_id) for _id in _ids if _id in self.store]
-        logger.debug(
-            "[%s] %s objects remaining" % (_cube, len(self.store)))
+        q = self.query()
+        t1 = time()
+        dups = {o._id: o for o in q.filter(tbl.c._id.in_(_ids)).all()}
+        diff = int(time() - t1)
+        logger.debug('dup query completed in %s seconds' % diff)
+
+        dup_k = 0
+        inserts = []
+        updates = {}
+        for i, o in enumerate(objects):
+            _id = o['_id']
+            _end = o['_end']
+            dup = dups.get(_id)
+            if dup:
+                dup = dup._asdict()
+                if o['_hash'] == dup['_hash']:
+                    dup_k += 1
+                elif _end is None and autosnap:
+                    dup['_end'] = o['_start']
+                    updates[_id] = self._object_cls(**dup)
+                    inserts.append(o)
+                else:
+                    updates[_id] = self._object_cls(**o)
+            else:
+                inserts.append(o)
+
+        cnx = connection
+        if updates:
+            t1 = time()
+            _id = tbl.c._id
+            o_id = o['_id']
+            u = self.update()
+            [cnx.execute(u.where(_id == o_id).values(**o))
+             for o in updates.itervalues()]
+            diff = int(time() - t1)
+            logger.debug('%s updates in %s seconds' % (len(updates), diff))
+        if inserts:
+            t1 = time()
+            cnx.execute(self.insert(), inserts)
+            diff = int(time() - t1)
+            logger.debug('%s inserts in %s seconds' % (len(inserts), diff))
+        logger.debug('%s duplicates not re-saved' % dup_k)
         return _ids
 
     def flush(self, schema=None, autosnap=True, batch_size=None, table=None):
         batch_size = batch_size or self.config.get('batch_size')
         _ids = []
 
-        self.ensure_table(schema=schema, table=table)
+        self.ensure_table(schema=schema, name=table)
 
-        _cube = self.proxy.get_table(table)
-        for batch in batch_gen(self.store.values(), batch_size):
-            _ = self._flush(_cube=_cube, objects=batch, autosnap=autosnap)
+        # get store converted as table instances
+        for batch in batch_gen(self.values(), batch_size):
+            _ = self._flush(objects=batch, autosnap=autosnap)
             _ids.extend(_)
         return sorted(_ids)
 
@@ -2386,3 +2401,9 @@ class SQLAlchemyContainer(MetriqueContainer):
             return session.query(table, col)
         else:
             return session.query(table)
+
+    def drop(self, table=None):
+        table = table or self.name
+        result = self.proxy.drop(table=table)
+        self._table = None
+        return result

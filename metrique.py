@@ -183,6 +183,7 @@ DEFAULT_METRIQUE_JSON = '''{
         "write_concern": 0
     },
     "sql": {
+      "engine": "teiid",
       "port": 0,
       "host": "",
       "password": "",

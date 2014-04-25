@@ -80,14 +80,14 @@ class Generic(pyclient):
     :param sql_batch_size: how many objects to query at a time
     '''
     dialect = None
-    config_key = 'sqlalchemy'
+    config_key = 'sql'
     fields = None
 
     def __init__(self, vdb=None, retries=None, batch_size=None,
                  worker_batch_size=None,
                  config_key=None, config_file=None,
                  **kwargs):
-        super(Generic, self).__init__(**kwargs)
+        super(Generic, self).__init__(config_file=config_file, **kwargs)
         # FIXME: alias == self.schema
         self.fields = self.fields or {}
         options = dict(vdb=vdb,
@@ -323,7 +323,8 @@ class Generic(pyclient):
             fieldmap = self._sql_fieldmap
         else:
             fieldmap = defaultdict(str)
-            for field, opts in self.fields.iteritems():
+            fields = deepcopy(self.fields)
+            for field, opts in fields.iteritems():
                 field_id = opts.get('what')
                 if field_id is not None:
                     fieldmap[field_id] = field
@@ -418,7 +419,6 @@ class Generic(pyclient):
     def _get_objects(self, oids, flush=False, autosnap=True):
         config = self.config[self.config_key]
         retries = config.get('retries') or 1
-        _oid = config.get('_oid')
         sql = self._generate_sql(oids)
         while retries > 0:
             try:
@@ -434,9 +434,8 @@ class Generic(pyclient):
             raise RuntimeError(
                 "Failed to fetch any objects from %s!" % len(oids))
         # set _oid
-        self.objects = self._prep_objects(objects)
-        [o.update({'_oid': o[_oid]}) for o in objects]
-        self.objects = objects
+        objects = self._prep_objects(objects)
+        [self.objects.add(o) for o in objects]
         if flush:
             return self.objects.flush(autosnap=autosnap, schema=self.fields)
         else:
@@ -523,9 +522,7 @@ class Generic(pyclient):
                     on_db, on_table, on_col)}
 
     # FIXME: as_dict -> raw? we're returning a list... not dict
-    def _load_sql(self, sql, dialect=None, as_dict=True,
-                  cached=True, **kwargs):
-        dialect = dialect or self.dialect
+    def _load_sql(self, sql, transform=True, cached=True, **kwargs):
         # load sql kwargs from instance config
         _kwargs = deepcopy(self.config[self.config_key])
         # override anything passed in
@@ -533,7 +530,7 @@ class Generic(pyclient):
         engine = self.proxy.get_engine(cached=cached, **_kwargs)
         rows = engine.execute(sql)
         objects = [dict(row) for row in rows]
-        if not as_dict:
+        if not transform:
             objects = pd.DataFrame(objects)
         return objects
 
@@ -568,6 +565,7 @@ class Generic(pyclient):
             return value
 
     def _prep_objects(self, objects):
+        _oid = self.config[self.config_key].get('_oid')
         for o in objects:
             for field, value in o.iteritems():
                 value = self._unwrap(field, value)
@@ -575,23 +573,24 @@ class Generic(pyclient):
                 value = self._convert(field, value)
                 value = self._typecast(field, value)
                 o[field] = value
+            o['_oid'] = o[_oid]  # map _oid
+        return objects
 
     @property
     def proxy(self):
-        print 'Z'*10
         if not hasattr(self, '_sqldata_proxy'):
-            #url = 'dialect+driver://username:password@host:port/database'
-            dialect = self.dialect
             config = self.config[self.config_key]
+            dialect = config.get('dialect')
             username = config.get('username')
             password = config.get('password')
             host = config.get('host')
             port = config.get('port')
             vdb = config.get('vdb')
+            #url = 'dialect+driver://username:password@host:port/database'
             engine = '%s://%s:%s@%s:%s/%s' % (
                 dialect, username, password, host, port, vdb
             )
-            self._sqldata_proxy = self.sqla(engine=engine, **config)
+            self._sqldata_proxy = self.sqlalchemy(engine=engine, **config)
         return self._sqldata_proxy
 
     def _typecast(self, field, value):
