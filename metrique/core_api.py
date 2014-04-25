@@ -110,21 +110,33 @@ try:
     from sqlalchemy import create_engine, MetaData, Table
     from sqlalchemy import Column, Integer, Unicode, DateTime
     from sqlalchemy import Float, BigInteger, Boolean, UnicodeText
-    from sqlalchemy import insert, update
+    from sqlalchemy import insert, update, UniqueConstraint, TypeDecorator
     from sqlalchemy.orm import sessionmaker
     from sqlalchemy.ext.declarative import declarative_base
 
     import sqlalchemy.dialects.postgresql as pg
     from sqlalchemy.dialects.postgresql import ARRAY, JSON
 
+    class CoerceUTF8(TypeDecorator):
+        """Safely coerce Python bytestrings to Unicode
+        before passing off to the database."""
+
+        impl = UnicodeText
+
+        def process_bind_param(self, value, dialect):
+            if isinstance(value, str):
+                value = value.decode('utf-8')
+            return value
+
+    HAS_SQLALCHEMY = True
     TYPE_MAP = {
-        None: UnicodeText,
-        type(None): UnicodeText,
+        None: CoerceUTF8,
+        type(None): CoerceUTF8,
         int: Integer,
         float: Float,
         long: BigInteger,
-        str: UnicodeText,
-        unicode: UnicodeText,
+        str: CoerceUTF8,
+        unicode: CoerceUTF8,
         bool: Boolean,
         datetime: DateTime,
         list: ARRAY, tuple: ARRAY, set: ARRAY,
@@ -134,7 +146,6 @@ try:
     sqla_metadata = MetaData()
     sqla_Base = declarative_base(metadata=sqla_metadata)
 
-    HAS_SQLALCHEMY = True
 except ImportError:
     logger.warn('sqlalchemy not installed!')
     HAS_SQLALCHEMY = False
@@ -168,11 +179,11 @@ class MetriqueObject(Mapping):
     #TIMESTAMP_OBJ_KEYS = set(['_end', '_start'])
 
     def __init__(self, _oid, strict=False, **kwargs):
-        if isinstance(_oid, basestring):
-            _oid = unicode(_oid)
+        #if isinstance(_oid, basestring):
+        #    _oid = unicode(_oid)
         self._strict = strict
         self.store = {
-            '_oid': _oid,
+            '_oid': int(_oid),  # FIXME: must _oid always be int?
             '_id': None,
             '_hash': None,
             '_start': utcnow(),
@@ -204,6 +215,9 @@ class MetriqueObject(Mapping):
     def __getitem__(self, key):
         return self.store[self.__keytransform__(key)]
 
+    def __delitem__(self, key):
+        del self.store[key]
+
     def __iter__(self):
         return iter(self.store)
 
@@ -233,8 +247,8 @@ class MetriqueObject(Mapping):
         else:
             # if the object is 'current value' without _end,
             # use just str of _oid
-            _id = unicode(_oid)
-        return _id
+            _id = _oid
+        return unicode(_id)
 
     def _gen_hash(self):
         o = deepcopy(self.store)
@@ -266,6 +280,9 @@ class MetriqueObject(Mapping):
         if pop:
             [store.pop(key, None) for key in pop]
         return store
+
+    def pop(self, key):
+        return self.store.pop(key)
 
 
 class MetriqueContainer(MutableMapping):
@@ -647,8 +664,7 @@ class BaseClient(object):
             return self.objects.flush(autosnap=autosnap)
         return self
 
-    def load(self, path, filetype=None, transform=True, raw=False,
-             retries=None, **kwargs):
+    def load(self, path, filetype=None, as_df=False, retries=None, **kwargs):
         '''Load multiple files from various file types automatically.
 
         Supports glob paths, eg::
@@ -677,8 +693,7 @@ class BaseClient(object):
             _path, headers = self.urlretrieve(path, retries)
             logger.debug('Saved %s to tmp file: %s' % (path, _path))
             try:
-                df = self._load_file(_path, filetype, transform=False,
-                                     **kwargs)
+                data = self._load_file(_path, filetype, **kwargs)
             finally:
                 os.remove(_path)
         else:
@@ -687,25 +702,22 @@ class BaseClient(object):
             datasets = glob.glob(os.path.expanduser(path))
             # buid up a single dataframe by concatting
             # all globbed files together
-            df = [self._load_file(ds, filetype, transform=False,
-                                  **kwargs)
-                  for ds in datasets]
-            if df:
-                df = pd.concat(df)
+            data = []
+            [data.extend(self._load_file(ds, filetype, **kwargs))
+             for ds in datasets]
 
-        if not hasattr(df, 'empty') or df.empty:
+        if not data:
             raise ValueError("not data extracted!")
-
-        transformed = df.T.to_dict().values()
-        self.objects.extend(transformed)
-        if raw:
-            return df.to_dict()
-        if transform:
-            return transformed
         else:
-            return df
+            self.objects.extend(data)
+            logger.debug("Data loaded successfully.")
 
-    def _load_file(self, path, filetype, transform=True, **kwargs):
+        if as_df:
+            return pd.DataFrame(data)
+        else:
+            return data
+
+    def _load_file(self, path, filetype, as_df=False, **kwargs):
         if not filetype:
             # try to get file extension
             filetype = path.split('.')[-1]
@@ -717,13 +729,17 @@ class BaseClient(object):
             result = self._load_pickle(path, **kwargs)
         else:
             raise TypeError("Invalid filetype: %s" % filetype)
-        if transform and isinstance(result, pd.DataFrame):
-            return result.T.as_dict.values()
-        else:
+
+        if as_df:
             if isinstance(result, pd.DataFrame):
                 return result
             else:
                 return pd.DataFrame(result)
+        else:
+            if isinstance(result, pd.DataFrame):
+                return result.T.as_dict.values()
+            else:
+                return result
 
     def _load_pickle(self, path, **kwargs):
         result = []
@@ -1950,18 +1966,19 @@ class SQLAlchemyProxy(object):
         return True
 
     def get_engine(self, engine=None, connect=False, cached=True, **kwargs):
-        if not cached or not hasattr(self, '_sql_engine'):
+        if kwargs or not cached or not hasattr(self, '_sql_engine'):
             _engine = self.config.get('engine')
             engine = engine or _engine
             if re.search('sqlite', engine):
-                uri, kwargs = self._sqla_sqlite(engine)
+                uri, _kwargs = self._sqla_sqlite(engine)
             elif re.search('teiid', engine):
-                uri, kwargs = self._sqla_teiid(engine)
+                uri, _kwargs = self._sqla_teiid(engine)
             elif re.search('postgresql', engine):
-                uri, kwargs = self._sqla_postgresql(engine)
+                uri, _kwargs = self._sqla_postgresql(engine)
             else:
                 raise NotImplementedError("Unsupported engine: %s" % engine)
-            self._sql_engine = create_engine(uri, echo=False, **kwargs)
+            _kwargs.update(kwargs)
+            self._sql_engine = create_engine(uri, echo=False, **_kwargs)
             # SEE: http://docs.sqlalchemy.org/en/rel_0_9/orm/session.html
             # ... #unitofwork-contextual
             # scoped sessions
@@ -1973,7 +1990,7 @@ class SQLAlchemyProxy(object):
         return self._sql_engine
 
     def get_session(self, bind=None, autoflush=False, autocommit=False,
-                    expire_on_commit=False, **kwargs):
+                    expire_on_commit=True, **kwargs):
         bind = bind or self._sql_engine
         return self._sessionmaker(bind=bind, autoflush=autoflush,
                                   autocommit=autocommit,
@@ -2019,7 +2036,7 @@ class SQLAlchemyProxy(object):
         kwargs = {}
         return uri, kwargs
 
-    def _sqla_teiid(self, uri, version=None, iso_level="AUTOCOMMIT"):
+    def _sqla_teiid(self, uri, version=None, isolation_level="AUTOCOMMIT"):
         uri = re.sub('^.*://', 'postgresql+psycopg2://', uri)
         # version normally comes "'Teiid 8.5.0.Final'", which sqlalchemy
         # failed to parse
@@ -2028,21 +2045,22 @@ class SQLAlchemyProxy(object):
         pg.base.PGDialect.description_encoding = str('utf8')
         pg.base.PGDialect._check_unicode_returns = lambda *i: True
         pg.base.PGDialect._get_server_version_info = lambda *i: version
-        pg.base.PGDialect.get_isolation_level = lambda *i: iso_level
+        pg.base.PGDialect.get_isolation_level = lambda *i: isolation_level
         pg.base.PGDialect._get_default_schema_name = r_none
         pg.psycopg2.PGDialect_psycopg2.set_isolation_level = r_none
         return self._sqla_postgresql(uri=uri, version=version,
-                                     iso_level=iso_level)
+                                     isolation_level=isolation_level)
 
-    def _sqla_postgresql(self, uri, version=None, iso_level="AUTOCOMMIT"):
+    def _sqla_postgresql(self, uri, version=None,
+                         isolation_level="READ COMMITTED"):
         '''
         expected uri form:
         postgresql+psycopg2://%s:%s@%s:%s/%s' % (
             username, password, host, port, vdb)
         '''
         self._check_compatible(uri, 'postgresql+psycopg2')
-        iso_level = iso_level or "AUTOCOMMIT"
-        kwargs = dict(isolation_level=iso_level)
+        isolation_level = isolation_level or "READ COMMITTED"
+        kwargs = dict(isolation_level=isolation_level)
         return uri, kwargs
 
     # ######################## Cube API ################################
@@ -2104,7 +2122,7 @@ class SQLAlchemyContainer(MetriqueContainer):
         # set defaults to None for proxy related args
         # since proxy will apply its' defaults if None
         defaults = dict(
-            batch_size=1000,
+            batch_size=10000,
             cache_dir=None,
             db=None,
             debug=None,
@@ -2179,6 +2197,8 @@ class SQLAlchemyContainer(MetriqueContainer):
         name = name or self.name
         meta = self.proxy.get_meta()
         engine = self.proxy.get_engine()
+        # it's a dict... don't mutate original instance
+        schema = deepcopy(schema)
 
         # try to reflect the table
         try:
@@ -2245,13 +2265,14 @@ class SQLAlchemyContainer(MetriqueContainer):
                                   if k not in _ignore_keys]
         defaults = {
             '__tablename__': name,
-            '__table_args__': {'useexisting': True},
+            '__table_args__': (UniqueConstraint('_id', deferrable=True,
+                                                initially='DEFERRED'),
+                               {'useexisting': False}),
             'id': Column('id', Integer, primary_key=True),
             '_id': Column(Unicode(120), nullable=False,
                           onupdate=self._gen_id,
                           default=self._gen_id,
-                          index=True, unique=True,
-                          primary_key=True),
+                          index=True),
             '_hash': Column(Unicode(40), nullable=False,
                             onupdate=self._gen_hash,
                             default=self._gen_hash,
@@ -2294,7 +2315,8 @@ class SQLAlchemyContainer(MetriqueContainer):
         return _table
 
     def _exec_transaction(self, func, **kwargs):
-        engine = self.proxy.get_engine()
+        isolation_level = kwargs.get('isolation_level')
+        engine = self.proxy.get_engine(isolation_level=isolation_level)
         with engine.connect() as connection:
             with connection.begin() as transaction:
                 try:
@@ -2344,7 +2366,10 @@ class SQLAlchemyContainer(MetriqueContainer):
                     updates[_id] = self._object_cls(**dup)
                     inserts.append(o)
                 else:
-                    updates[_id] = self._object_cls(**o)
+                    o = self._object_cls(**o)
+                    __id = o.pop('_id')  # don't try to update _id
+                    assert __id == dup['_id']
+                    updates[_id] = o
             else:
                 inserts.append(o)
 
@@ -2352,9 +2377,8 @@ class SQLAlchemyContainer(MetriqueContainer):
         if updates:
             t1 = time()
             _id = tbl.c._id
-            o_id = o['_id']
             u = self.update()
-            [cnx.execute(u.where(_id == o_id).values(**o))
+            [cnx.execute(u.where(_id == __id).values(**o))
              for o in updates.itervalues()]
             diff = int(time() - t1)
             logger.debug('%s updates in %s seconds' % (len(updates), diff))
@@ -2366,7 +2390,8 @@ class SQLAlchemyContainer(MetriqueContainer):
         logger.debug('%s duplicates not re-saved' % dup_k)
         return _ids
 
-    def flush(self, schema=None, autosnap=True, batch_size=None, table=None):
+    def flush(self, schema=None, autosnap=True, batch_size=None, table=None,
+              **kwargs):
         batch_size = batch_size or self.config.get('batch_size')
         _ids = []
 
@@ -2374,7 +2399,7 @@ class SQLAlchemyContainer(MetriqueContainer):
 
         # get store converted as table instances
         for batch in batch_gen(self.values(), batch_size):
-            _ = self._flush(objects=batch, autosnap=autosnap)
+            _ = self._flush(objects=batch, autosnap=autosnap, **kwargs)
             _ids.extend(_)
         return sorted(_ids)
 
@@ -2393,12 +2418,13 @@ class SQLAlchemyContainer(MetriqueContainer):
 
     def query(self, col=None, table=None, session=None):
         session = session or self.get_session()
-        table = table or self._table
-        if col and isinstance(col, basestring):
-            col = getattr(table, col)
-
-        if col:
-            return session.query(table, col)
+        table = table if table is not None else self._table
+        if col is not None and isinstance(col, basestring):
+            _col = getattr(table.c, col)
+            if _col is None:
+                raise ValueError("invalid column: %s" % col)
+            else:
+                return session.query(table).add_columns(_col)
         else:
             return session.query(table)
 

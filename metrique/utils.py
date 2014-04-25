@@ -183,6 +183,8 @@ def debug_setup(logger=None, level=None, log2file=None,
         * log_file (path)
     '''
     log2stdout = log2stdout or False
+    if isinstance(log_format, basestring):
+        log_format = logging.Formatter(log_format, "%Y%m%dT%H%M%S")
     _log_format = "%(name)s.%(process)s:%(asctime)s:%(message)s"
     _log_format = logging.Formatter(log_format, "%Y%m%dT%H%M%S")
     log_format = log_format or _log_format
