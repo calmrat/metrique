@@ -539,13 +539,12 @@ class BaseClient(object):
                                 section_key=config_key,
                                 update=self.config)
 
-        config = self.config[self.global_config_key]
-        level = config.get('debug')
-        log2stdout = config.get('log2stdout')
+        level = self.gconfig.get('debug')
+        log2stdout = self.gconfig.get('log2stdout')
         log_format = None
-        log2file = config.get('log2file')
-        log_dir = config.get('log_dir', '')
-        log_file = config.get('log_file', '')
+        log2file = self.gconfig.get('log2file')
+        log_dir = self.gconfig.get('log_dir', '')
+        log_file = self.gconfig.get('log_file', '')
         log_file = os.path.join(log_dir, log_file)
         debug_setup(logger='metrique', level=level, log2stdout=log2stdout,
                     log_format=log_format, log2file=log2file,
@@ -586,7 +585,7 @@ class BaseClient(object):
         :param kwargs: additional :func:`metrique.utils.get_cube`
         '''
         name = name or cube
-        config = self.config if copy_config else {}
+        config = deepcopy(self.config) if copy_config else {}
         config_file = self.config_file
         return get_cube(cube=cube, init=init, name=name, config=config,
                         config_file=config_file, **kwargs)
@@ -601,8 +600,7 @@ class BaseClient(object):
             else:
                 self._objects = container
         else:
-            config = self.config[self.global_config_key]
-            cache_dir = config.get('cache_dir')
+            cache_dir = self.gconfig.get('cache_dir')
             name = self.name
             self._objects = MetriqueContainer(name=name, objects=value,
                                               cache_dir=cache_dir)
@@ -627,6 +625,10 @@ class BaseClient(object):
     def proxy(self):
         return self._proxy
 
+    @property
+    def gconfig(self):
+        return self.config.get(self.global_config_key) or {}
+
     def git_clone(self, uri, pull=True):
         '''
         Given a git repo, clone (cache) it locally.
@@ -634,7 +636,7 @@ class BaseClient(object):
         :param uri: git repo uri
         :param pull: whether to pull after cloning (or loading cache)
         '''
-        cache_dir = self.config['metrique'].get('cache_dir')
+        cache_dir = self.gconfig.get('cache_dir')
         # make the uri safe for filesystems
         _uri = "".join(x for x in uri if x.isalnum())
         repo_path = os.path.expanduser(os.path.join(cache_dir, _uri))
@@ -663,6 +665,10 @@ class BaseClient(object):
         if flush:
             return self.objects.flush(autosnap=autosnap)
         return self
+
+    @property
+    def lconfig(self):
+        return self.config.get(self.config_key) or {}
 
     def load(self, path, filetype=None, as_df=False, retries=None, **kwargs):
         '''Load multiple files from various file types automatically.

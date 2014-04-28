@@ -151,8 +151,7 @@ class Generic(pyclient):
         td_start = time_doc['_start']
         activities = filter(lambda act: (act[0] < td_start and
                                          act[1] in time_doc), activities)
-        config = self.config[self.config_key]
-        creation_field = config.get('cfield')
+        creation_field = self.lconfig.get('cfield')
         # make sure that activities are sorted by when descending
         activities.sort(reverse=True, key=lambda o: o[0])
         new_doc = {}
@@ -234,17 +233,16 @@ class Generic(pyclient):
         return value
 
     def _delta_force(self, force=None, last_update=None, parse_timestamp=None):
-        config = self.config[self.config_key]
-        force = force or config.get('force') or False
+        force = force or self.lconfig.get('force') or False
         oids = []
         if force is True:
             # get a list of all known object ids
             oids = self.sql_get_oids()
         elif not force:
-            if config.get('delta_new_ids', True):
+            if self.lconfig.get('delta_new_ids', True):
                 # get all new (unknown) oids
                 oids.extend(self.get_new_oids())
-            if config.get('delta_mtime', False):
+            if self.lconfig.get('delta_mtime', False):
                 # get only those oids that have changed since last update
                 oids.extend(self.get_changed_oids(last_update,
                                                   parse_timestamp))
@@ -273,8 +271,7 @@ class Generic(pyclient):
         :param mtime: datetime string used as 'change since date'
         '''
         mtime = self._fetch_mtime(last_update, parse_timestamp)
-        config = self.config[self.config_key]
-        mtime_columns = config.get('delta_mtime', [])
+        mtime_columns = self.lconfig.get('delta_mtime', [])
         if not (mtime_columns and mtime):
             return []
         if isinstance(mtime_columns, basestring):
@@ -297,10 +294,9 @@ class Generic(pyclient):
 
         logger.debug("Last update mtime: %s" % mtime)
 
-        config = self.config[self.config_key]
         if mtime:
             if parse_timestamp is None:
-                parse_timestamp = config.get('parse_timestamp', True)
+                parse_timestamp = self.lconfig.get('parse_timestamp', True)
             if parse_timestamp:
                 if not (hasattr(mtime, 'tzinfo') and mtime.tzinfo):
                     # We need the timezone, to readjust relative to the
@@ -331,12 +327,11 @@ class Generic(pyclient):
         return fieldmap
 
     def _generate_sql(self, _oids=None, sort=True):
-        config = self.config[self.config_key]
-        db = config.get('db')
-        _oid = config.get('_oid')
+        db = self.lconfig.get('db')
+        _oid = self.lconfig.get('_oid')
         if isinstance(_oid, (list, tuple)):
             _oid = _oid[0]  # get the db column, not the field alias
-        table = config.get('table')
+        table = self.lconfig.get('table')
 
         if not all((_oid, table, db)):
             raise ValueError("Must define db, table, _oid in config!")
@@ -375,14 +370,13 @@ class Generic(pyclient):
         :param last_update: manual override for 'changed since date'
         :param parse_timestamp: flag to convert timestamp timezones in-line
         '''
-        workers = self.config['metrique'].get('workers')
+        workers = self.gconfig.get('workers')
         # if we're using multiple workers, break the oids
         # according to worker batchsize, then each worker will
         # break the batch into smaller sql batch size batches
         # otherwise, single threaded, use sql batch size
-        config = self.config[self.config_key]
-        w_batch_size = config.get('worker_batch_size')
-        s_batch_size = config.get('batch_size')
+        w_batch_size = self.lconfig.get('worker_batch_size')
+        s_batch_size = self.lconfig.get('batch_size')
         # set the 'index' of sql columns so we can extract
         # out the sql rows and know which column : field
         # determine which oids will we query
@@ -419,8 +413,7 @@ class Generic(pyclient):
             return self
 
     def _get_objects(self, oids, flush=False):
-        config = self.config[self.config_key]
-        retries = config.get('retries') or 1
+        retries = self.lconfig.get('retries') or 1
         sql = self._generate_sql(oids)
         while retries > 0:
             try:
@@ -450,9 +443,8 @@ class Generic(pyclient):
         Essentially, a diff of distinct oids in the source database
         compared to cube.
         '''
-        config = self.config[self.config_key]
-        table = config.get('table')
-        _oid = config.get('_oid')
+        table = self.lconfig.get('table')
+        _oid = self.lconfig.get('_oid')
         if isinstance(_oid, (list, tuple)):
             _oid = _oid[0]  # get the db column, not the field alias
         last_id = self.get_last_field('_oid')
@@ -475,10 +467,9 @@ class Generic(pyclient):
         hash values, so we need to always remove all existing object
         states and import fresh
         '''
-        workers = self.config[self.global_config_key].get('workers')
-        config = self.config[self.config_key]
-        w_batch_size = config.get('worker_batch_size')
-        s_batch_size = config.get('batch_size')
+        workers = self.gconfig.get('workers')
+        w_batch_size = self.lconfig.get('worker_batch_size')
+        s_batch_size = self.lconfig.get('batch_size')
         # determine which oids will we query
         oids = self._delta_force(force, last_update, parse_timestamp)
         if HAS_JOBLIB and workers > 1:
@@ -514,10 +505,9 @@ class Generic(pyclient):
 
     def _left_join(self, select_as, select_prop, join_prop, join_table,
                    on_col, on_db=None, on_table=None, join_db=None):
-        config = self.config[self.config_key]
-        on_table = on_table or config.get('table')
-        on_db = on_db or config.get('db')
-        join_db = join_db or config.get('db')
+        on_table = on_table or self.lconfig.get('table')
+        on_db = on_db or self.lconfig.get('db')
+        join_db = join_db or self.lconfig.get('db')
         return {'select': '%s.%s' % (select_as, select_prop),
                 'sql': 'LEFT JOIN %s.%s %s ON %s.%s = %s.%s.%s' % (
                     join_db, join_table, select_as, select_as, join_prop,
@@ -561,7 +551,7 @@ class Generic(pyclient):
             return value
 
     def _prep_objects(self, objects):
-        _oid = self.config[self.config_key].get('_oid')
+        _oid = self.lconfig.get('_oid')
         if isinstance(_oid, (list, tuple)):
             _oid = _oid[1]  # get the field name, not the actual db column
         fields = set(self.fields.keys())
@@ -588,18 +578,18 @@ class Generic(pyclient):
     @property
     def proxy(self):
         if not hasattr(self, '_sqldata_proxy'):
-            config = self.config[self.config_key]
-            dialect = config.get('dialect')
-            username = config.get('username')
-            password = config.get('password')
-            host = config.get('host')
-            port = config.get('port')
-            vdb = config.get('vdb')
+            dialect = self.lconfig.get('dialect')
+            username = self.lconfig.get('username')
+            password = self.lconfig.get('password')
+            host = self.lconfig.get('host')
+            port = self.lconfig.get('port')
+            vdb = self.lconfig.get('vdb')
             #url = 'dialect+driver://username:password@host:port/database'
             engine = '%s://%s:%s@%s:%s/%s' % (
                 dialect, username, password, host, port, vdb
             )
-            self._sqldata_proxy = self.sqlalchemy(engine=engine, **config)
+            self._sqldata_proxy = self.sqlalchemy(engine=engine,
+                                                  **self.lconfig)
         return self._sqldata_proxy
 
     def _typecast(self, field, value):
@@ -658,11 +648,10 @@ class Generic(pyclient):
         return value
 
     def _setup_inconsistency_log(self):
-        gconfig = self.config[self.global_config_key]
-        _log_file = gconfig.get('log_file').split('.log')[0]
+        _log_file = self.gconfig.get('log_file').split('.log')[0]
         basename = _log_file + '.inconsistencies'
         log_file = basename + '.log'
-        log_dir = gconfig.get('log_dir')
+        log_dir = self.gconfig.get('log_dir')
         log_file = os.path.join(log_dir, log_file)
 
         log_format = "%(message)s"
@@ -676,10 +665,9 @@ class Generic(pyclient):
         '''
         Query source database for a distinct list of oids.
         '''
-        config = self.config[self.config_key]
-        table = config.get('table')
-        db = config.get('db')
-        _oid = config.get('_oid')
+        table = self.lconfig.get('table')
+        db = self.lconfig.get('db')
+        _oid = self.lconfig.get('_oid')
         if isinstance(_oid, (list, tuple)):
             _oid = _oid[0]  # get the db column, not the field alias
         sql = 'SELECT DISTINCT %s.%s FROM %s.%s' % (table, _oid, db, table)
