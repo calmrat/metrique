@@ -1224,7 +1224,7 @@ class MongoDBProxy(object):
         result = _cube.drop_index(index_or_name)
         return result
 
-    ######## SAVE/REMOVE ########
+    # ####### SAVE/REMOVE ########
 
     def rename(self, new_name=None, new_owner=None, drop_target=False,
                collection=None, owner=None):
@@ -1263,19 +1263,6 @@ class MongoDBProxy(object):
         return result
 
     # ####################### ETL API ##################################
-    def get_last_field(self, field):
-        '''Shortcut for querying to get the last field value for
-        a given owner, cube.
-
-        :param field: field name to query
-        '''
-        last = self.find(query=None, fields=[field],
-                         sort=[(field, -1)], one=True, raw=True)
-        if last:
-            last = last.get(field)
-        logger.debug("last %s.%s: %s" % (self.name, field, last))
-        return last
-
     def remove(self, query, date=None, collection=None, owner=None):
         '''
         Remove objects from a cube.
@@ -1904,6 +1891,19 @@ class MongoDBContainer(MetriqueContainer):
         _cube.ensure_index([('_end', -1)],
                            background=False, cache_for=s)
 
+    def get_last_field(self, field):
+        '''Shortcut for querying to get the last field value for
+        a given owner, cube.
+
+        :param field: field name to query
+        '''
+        last = self.find(query=None, fields=[field],
+                         sort=[(field, -1)], one=True, raw=True)
+        if last:
+            last = last.get(field)
+        logger.debug("last %s.%s: %s" % (self.name, field, last))
+        return last
+
 
 # ################################ SQL ALCHEMY ###############################
 class SQLAlchemyProxy(object):
@@ -1985,7 +1985,7 @@ class SQLAlchemyProxy(object):
         level = self.config.get('debug')
         debug_setup(logger='sqlalchemy', level=level)
 
-    ######################### DB API ##################################
+    # ######################## DB API ##################################
     def _check_compatible(self, uri, driver, msg=None):
         msg = msg or '%s required!' % driver
         if not HAS_PSYCOPG2:
@@ -2024,7 +2024,7 @@ class SQLAlchemyProxy(object):
 
     def get_session(self, bind=None, autoflush=False, autocommit=False,
                     expire_on_commit=True, **kwargs):
-        bind = bind or self._sql_engine
+        bind = bind or self.get_engine()
         return self._sessionmaker(bind=bind, autoflush=autoflush,
                                   autocommit=autocommit,
                                   expire_on_commit=expire_on_commit, **kwargs)
@@ -2119,19 +2119,6 @@ class SQLAlchemyProxy(object):
     def drop(self, table=None, engine=None, quiet=True):
         table = self.get_table(table)
         return table.drop()
-
-    def get_last_field(self, field):
-        '''Shortcut for querying to get the last field value for
-        a given owner, cube.
-
-        :param field: field name to query
-        '''
-        q = self.session.query(self._table.c.id)
-        last = q.order_by(self._table.c.id).first()
-        if last:
-            last = last.get(field)
-        logger.debug("last %s.%s: %s" % (self.name, field, last))
-        return last
 
 
 class SQLAlchemyContainer(MetriqueContainer):
@@ -2489,3 +2476,16 @@ class SQLAlchemyContainer(MetriqueContainer):
         result = self.proxy.drop(table=table)
         self._table = None
         return result
+
+    def get_last_field(self, field):
+        '''Shortcut for querying to get the last field value for
+        a given owner, cube.
+
+        :param field: field name to query
+        '''
+        # FIXME: find field based on
+        q = self.query(field)
+        last = q.order_by(field).first()
+        print last
+        logger.debug("last %s.%s: %s" % (self.name, field, last))
+        return last

@@ -300,7 +300,7 @@ class Generic(pyclient):
             else:
                 mtime = last_update
         else:
-            mtime = self.proxy.get_last_field('_start')
+            mtime = self.container.get_last_field('_start')
 
         logger.debug("Last update mtime: %s" % mtime)
 
@@ -465,7 +465,7 @@ class Generic(pyclient):
         _oid = self.lconfig.get('_oid')
         if isinstance(_oid, (list, tuple)):
             _oid = _oid[0]  # get the db column, not the field alias
-        last_id = self.proxy.get_last_field('_oid')
+        last_id = self.container.get_last_field('_oid')
         ids = []
         if last_id:
             try:  # try to convert to integer... if not, assume unicode value
@@ -608,7 +608,7 @@ class Generic(pyclient):
             host = self.lconfig.get('host')
             port = self.lconfig.get('port')
             vdb = self.lconfig.get('vdb')
-            #url = 'dialect+driver://username:password@host:port/database'
+            # url = 'dialect+driver://username:password@host:port/database'
             engine = '%s://%s:%s@%s:%s/%s' % (
                 dialect, username, password, host, port, vdb
             )
