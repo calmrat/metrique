@@ -2096,6 +2096,10 @@ class SQLAlchemyProxy(object):
         kwargs = dict(isolation_level=isolation_level)
         return uri, kwargs
 
+    @property
+    def session(self):
+        return self.get_session()
+
     # ######################## Cube API ################################
     def ls(self, startswith=None):
         '''
@@ -2115,6 +2119,19 @@ class SQLAlchemyProxy(object):
     def drop(self, table=None, engine=None, quiet=True):
         table = self.get_table(table)
         return table.drop()
+
+    def get_last_field(self, field):
+        '''Shortcut for querying to get the last field value for
+        a given owner, cube.
+
+        :param field: field name to query
+        '''
+        q = self.session.query(self._table.c.id)
+        last = q.order_by(self._table.c.id).first()
+        if last:
+            last = last.get(field)
+        logger.debug("last %s.%s: %s" % (self.name, field, last))
+        return last
 
 
 class SQLAlchemyContainer(MetriqueContainer):
