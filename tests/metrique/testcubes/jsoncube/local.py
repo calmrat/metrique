@@ -21,14 +21,8 @@ class Local(pyclient):
 
     def get_objects(self, uri=JSON_FILE, **kwargs):
         content = self.load(uri, filetype='json', raw=True)
-        print content
         # the content needs to be re-grouped
         for k, obj in content.items():
             obj.update({'_oid': k})
             self.objects.add(obj)
         return super(Local, self).get_objects(**kwargs)
-
-
-if __name__ == '__main__':
-    from metrique.argparsers import cube_cli
-    cube_cli(Local)

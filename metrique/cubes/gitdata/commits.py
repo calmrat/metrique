@@ -28,6 +28,7 @@ import os
 import re
 
 from metrique import pyclient
+from metrique.utils import ts2dt
 
 related_re = re.compile('Related: (.+)$', re.I)
 resolves_re = re.compile('Resolves: (.+)$', re.I)
@@ -82,8 +83,8 @@ class Commits(pyclient):
             c = repo.get_object(sha)
 
             # FIXME: not normalizing to UTC
-            _start = c.commit_time
-            _end = _start
+            _start = ts2dt(c.commit_time)
+            _end = None  # once was true, always is true...
             # and some basic stuff...
             obj = dict(_oid=sha, _start=_start, _end=_end,
                        repo_uri=uri, tree=c.tree, parents=c.parents,
@@ -93,24 +94,23 @@ class Commits(pyclient):
 
             for _file in all_changes.split('\n'):
                 _file = _file.strip()
-                obj.setdefault('files', [])
+                obj.setdefault('files', {})
                 if not _file:
                     added, removed, fname = 0, 0, None
-                    obj['files'].append({})
                 else:
                     added, removed, fname = _file.split('\t')
                     added = 0 if added == '-' else int(added)
                     removed = 0 if removed == '-' else int(removed)
-                    changes = {'name': fname,
-                               'added': added,
+                    # FIXME: sql doesn't nest well..
+                    changes = {'added': added,
                                'removed': removed}
-                    obj['files'].append(changes)
+                    obj['files'][fname] = changes
 
             # file +/- totals
             obj['added'] = sum(
-                [v.get('added', 0) for v in obj['files']])
+                [v.get('added', 0) for v in obj['files'].itervalues()])
             obj['removed'] = sum(
-                [v.get('removed', 0) for v in obj['files']])
+                [v.get('removed', 0) for v in obj['files'].itervalues()])
 
             # extract interesting bits from the message
             obj['acked_by'] = acked_by_re.findall(c.message)
@@ -120,8 +120,3 @@ class Commits(pyclient):
             self.objects.add(obj)
 
         return super(Commits, self).get_objects(**kwargs)
-
-
-if __name__ == '__main__':
-    from metrique.argparsers import cube_cli
-    cube_cli(Commits)

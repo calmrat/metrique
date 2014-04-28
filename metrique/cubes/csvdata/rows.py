@@ -84,8 +84,3 @@ class Rows(pyclient):
             self.objects.add(obj)
 
         return super(Rows, self).get_objects(**kwargs)
-
-
-if __name__ == '__main__':
-    from metrique.argparsers import cube_cli
-    cube_cli(Rows)

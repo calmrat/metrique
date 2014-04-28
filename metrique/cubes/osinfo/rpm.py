@@ -112,11 +112,6 @@ class Rpm(pyclient):
                 if item == '(none)':
                     item = None
                 obj[self.fields[i]] = item
-            obj['_oid'] = '%s__%s' % (host, obj['name'])
+            obj['_oid'] = '%s__%s' % (host, obj['nvra'])
             self.objects.add(obj)
         return super(Rpm, self).get_objects(**kwargs)
-
-
-if __name__ == '__main__':
-    from metrique.argparsers import cube_cli
-    cube_cli(Rpm)

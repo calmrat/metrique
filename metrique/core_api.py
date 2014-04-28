@@ -117,6 +117,7 @@ try:
     import sqlalchemy.dialects.postgresql as pg
     from sqlalchemy.dialects.postgresql import ARRAY, JSON
 
+    # for 2.7 to ensure all strings are unicode
     class CoerceUTF8(TypeDecorator):
         """Safely coerce Python bytestrings to Unicode
         before passing off to the database."""
@@ -156,6 +157,7 @@ from time import time
 import tempfile
 import urllib
 
+from metrique import __version__
 from metrique.utils import get_cube, utcnow, jsonhash, load_config
 from metrique.utils import json_encode, batch_gen, ts2dt, dt2ts, configure
 from metrique.utils import debug_setup
@@ -171,23 +173,27 @@ HASH_EXCLUDE_KEYS = ['_hash', '_id', '_start', '_end']
 IMMUTABLE_OBJ_KEYS = set(['_hash', '_id', '_oid'])
 SQLA_HASH_EXCLUDE_KEYS = HASH_EXCLUDE_KEYS + ['id']
 
+# FIXME: RFE: clear all oids on update of obj, delete all objects
+# with same oid first, then insert. Requires 'transaction' support
+
 
 class MetriqueObject(Mapping):
     FIELDS_RE = re.compile('[\W]+')
     SPACE_RE = re.compile('\s+')
     UNDA_RE = re.compile('_')
-    #TIMESTAMP_OBJ_KEYS = set(['_end', '_start'])
+    TIMESTAMP_OBJ_KEYS = set(['_end', '_start'])
 
-    def __init__(self, _oid, strict=False, **kwargs):
-        #if isinstance(_oid, basestring):
-        #    _oid = unicode(_oid)
+    def __init__(self, _oid, strict=False, _version=None, **kwargs):
         self._strict = strict
+        self._version = _version or 0
         self.store = {
-            '_oid': int(_oid),  # FIXME: must _oid always be int?
+            '_oid': _oid,
             '_id': None,
             '_hash': None,
             '_start': utcnow(),
             '_end': None,
+            '_v': _version,
+            '__v__': __version__,
         }
         self._update(kwargs)
         self._re_hash()
@@ -317,13 +323,18 @@ class MetriqueContainer(MutableMapping):
 
     '''
     _object_cls = MetriqueObject
+    name = None
+    _version = 0
+    store = None
 
-    def __init__(self, name, objects=None, cache_dir=CACHE_DIR):
+    def __init__(self, name, _version=None, objects=None,
+                 cache_dir=CACHE_DIR):
         if not name:
             raise RuntimeError("name argument must be non-null")
         self.name = unicode(name)
+        self._version = int(_version or self._version or 0)
         self._cache_dir = cache_dir or CACHE_DIR
-        self.store = {}
+        self.store = self.store or {}
         if objects is None:
             pass
         elif isinstance(objects, (list, tuple)):
@@ -340,8 +351,8 @@ class MetriqueContainer(MutableMapping):
         return dict(self.store[key])
 
     def __setitem__(self, key, value):
-
         self.store[key] = value
+        # FIXME: re_hash?
 
     def __delitem__(self, key):
         del self.store[key]
@@ -362,7 +373,7 @@ class MetriqueContainer(MutableMapping):
         if isinstance(item, self._object_cls):
             pass
         elif isinstance(item, (Mapping, dict)):
-            item = self._object_cls(**item)
+            item = self._object_cls(_version=self._version, **item)
         else:
             raise TypeError(
                 "object values must be dict-like; got %s" % type(item))
@@ -473,6 +484,7 @@ class BaseClient(object):
     mongodb_config_key = 'mongodb'
     sqlalchemy_config_key = 'sqlalchemy'
     name = None
+    _version = None
     config = None
     _objects = None
     _proxy = None
@@ -572,7 +584,10 @@ class BaseClient(object):
         # replacing existing container with a new, empty one
         self._objects = self.set_container()
 
-    def get_cube(self, cube, init=True, name=None, copy_config=True, **kwargs):
+    def get_cube(self, cube, init=True, name=None, copy_config=True,
+                 container=None, container_kwargs=None,
+                 proxy=None, proxy_kwargs=None, config_file=None,
+                 **kwargs):
         '''wrapper for :func:`metrique.utils.get_cube`
 
         Locates and loads a metrique cube
@@ -586,11 +601,17 @@ class BaseClient(object):
         '''
         name = name or cube
         config = deepcopy(self.config) if copy_config else {}
-        config_file = self.config_file
+        config_file = config_file or self.config_file
+        container = container or type(self.objects)
+        container_kwargs = container_kwargs or self._container_kwargs
+        proxy_kwargs = proxy_kwargs or self._proxy_kwargs
         return get_cube(cube=cube, init=init, name=name, config=config,
-                        config_file=config_file, **kwargs)
+                        config_file=config_file,
+                        container=container, container_kwargs=container_kwargs,
+                        proxy=proxy, proxy_kwargs=proxy_kwargs, **kwargs)
 
-    def set_container(self, container=None, value=None, **kwargs):
+    def set_container(self, container=None, value=None,
+                      **kwargs):
         _kwargs = deepcopy(self._container_kwargs)
         _kwargs.update(kwargs)
         _kwargs.setdefault('config_file', self.config_file)
@@ -603,6 +624,7 @@ class BaseClient(object):
             cache_dir = self.gconfig.get('cache_dir')
             name = self.name
             self._objects = MetriqueContainer(name=name, objects=value,
+                                              _version=self._version,
                                               cache_dir=cache_dir)
         return self._objects
 
@@ -656,7 +678,7 @@ class BaseClient(object):
             self._sys_call(cmd)
         return repo_path
 
-    def get_objects(self, flush=False, autosnap=True):
+    def get_objects(self, flush=False, autosnap=True, **kwargs):
         '''
         Main API method for sub-classed cubes to override for the
         generation of the objects which are to (potentially) be added
@@ -715,7 +737,6 @@ class BaseClient(object):
         if not data:
             raise ValueError("not data extracted!")
         else:
-            self.objects.extend(data)
             logger.debug("Data loaded successfully.")
 
         if as_df:
@@ -743,7 +764,7 @@ class BaseClient(object):
                 return pd.DataFrame(result)
         else:
             if isinstance(result, pd.DataFrame):
-                return result.T.as_dict.values()
+                return result.T.to_dict().values()
             else:
                 return result
 
@@ -769,7 +790,7 @@ class BaseClient(object):
         return load_config(path)
 
     @staticmethod
-    def _sys_call(self, cmd, sig=None, sig_func=None, quiet=True):
+    def _sys_call(cmd, sig=None, sig_func=None, quiet=True):
         if not quiet:
             logger.debug(cmd)
         if isinstance(cmd, basestring):
@@ -1656,12 +1677,14 @@ class MongoDBContainer(MetriqueContainer):
                  auth=None, ssl=None, ssl_certificate=None,
                  index_ensure_secs=None, read_preference=None,
                  replica_set=None, tz_aware=None, write_concern=None,
-                 owner=None, config_file=None, config_key=None, **kwargs):
+                 owner=None, config_file=None, config_key=None,
+                 _version=None, **kwargs):
         if not HAS_PYMONGO:
             raise NotImplementedError('`pip install pymongo` 2.6+ required')
 
         super(MongoDBContainer, self).__init__(name=name,
-                                               objects=objects)
+                                               objects=objects,
+                                               _version=_version)
 
         options = dict(auth=auth,
                        batch_size=batch_size,
@@ -1677,8 +1700,7 @@ class MongoDBContainer(MetriqueContainer):
                        ssl_certificate=ssl_certificate,
                        tz_aware=tz_aware,
                        username=username,
-                       write_concern=write_concern,
-                       )
+                       write_concern=write_concern)
         # set to None because these are passed to proxy
         # which sets defaults accordingly
         defaults = dict(auth=None,
@@ -1695,8 +1717,7 @@ class MongoDBContainer(MetriqueContainer):
                         ssl_certificate=None,
                         tz_aware=None,
                         username=None,
-                        write_concern=None,
-                        )
+                        write_concern=None)
         self.config = self.config or {}
         config_file = config_file or self.config_file
         config_key = config_key or self.config_key
@@ -1867,7 +1888,7 @@ class MongoDBContainer(MetriqueContainer):
             _start = self.store[o['_id']]['_start']
             o['_end'] = _start
             del o['_id']
-            objects.append(self._object_cls(**o))
+            objects.append(self._object_cls(_version=self._version, **o))
         return objects
 
     def _ensure_base_indexes(self, ensure_time=90):
@@ -1970,6 +1991,10 @@ class SQLAlchemyProxy(object):
         if uri[0:10] != 'postgresql':
             raise RuntimeError(msg)
         return True
+
+    @property
+    def engine(self):
+        return self.get_engine()
 
     def get_engine(self, engine=None, connect=False, cached=True, **kwargs):
         if kwargs or not cached or not hasattr(self, '_sql_engine'):
@@ -2104,11 +2129,14 @@ class SQLAlchemyContainer(MetriqueContainer):
                  config_key=None, debug=None,
                  cache_dir=None, dialect=None, driver=None,
                  host=None, port=None, username=None,
-                 password=None, table=None, **kwargs):
+                 password=None, table=None, _version=None,
+                 **kwargs):
         if not HAS_SQLALCHEMY:
             raise NotImplementedError('`pip install sqlalchemy` required')
 
-        super(SQLAlchemyContainer, self).__init__(name=name, objects=objects)
+        super(SQLAlchemyContainer, self).__init__(name=name,
+                                                  objects=objects,
+                                                  _version=_version)
 
         options = dict(
             batch_size=batch_size,
@@ -2224,10 +2252,10 @@ class SQLAlchemyContainer(MetriqueContainer):
             else:
                 pass
 
+        self._table = _table  # generic alias to table class
         if _table is not None:
             meta.create_all(engine)
             setattr(self, name, _table)  # named alias for table class
-            self._table = _table  # generic alias to table class
             return True
         else:
             return False
@@ -2275,6 +2303,7 @@ class SQLAlchemyContainer(MetriqueContainer):
                                                 initially='DEFERRED'),
                                {'useexisting': False}),
             'id': Column('id', Integer, primary_key=True),
+            # FIXME: use hybrid properties? for _id and _hash?
             '_id': Column(Unicode(120), nullable=False,
                           onupdate=self._gen_id,
                           default=self._gen_id,
@@ -2283,8 +2312,6 @@ class SQLAlchemyContainer(MetriqueContainer):
                             onupdate=self._gen_hash,
                             default=self._gen_hash,
                             index=True, unique=False),
-            '_oid': Column(Integer, nullable=False,
-                           index=True, unique=False),
             '_start': Column(DateTime, default=utcnow(), nullable=False,
                              index=True, unique=False),
             '_end': Column(DateTime, default=None, nullable=True,
@@ -2303,8 +2330,18 @@ class SQLAlchemyContainer(MetriqueContainer):
                 # FIXME: requires postgresql+psycopg2
                 schema[k] = Column(ARRAY(_type))
             else:
-                schema[k] = Column(_type)
+                if k == '_oid':
+                    # in case _oid is defined in the schema,
+                    # make sure we index it and it's unique
+                    schema[k] = Column(_type, nullable=False, index=True,
+                                       unique=False)
+                else:
+                    schema[k] = Column(_type)
         defaults.update(schema)
+
+        # in case _oid isn't set yet, default to big int column
+        defaults.setdefault('_oid', Column(BigInteger, nullable=False,
+                                           index=True, unique=False))
 
         _cube = type(str(name), (Base,), defaults)
         return _cube
@@ -2356,9 +2393,10 @@ class SQLAlchemyContainer(MetriqueContainer):
         diff = int(time() - t1)
         logger.debug('dup query completed in %s seconds' % diff)
 
+        u = self.update()
+        cnx = connection
         dup_k = 0
         inserts = []
-        updates = {}
         for i, o in enumerate(objects):
             _id = o['_id']
             _end = o['_end']
@@ -2369,25 +2407,18 @@ class SQLAlchemyContainer(MetriqueContainer):
                     dup_k += 1
                 elif _end is None and autosnap:
                     dup['_end'] = o['_start']
-                    updates[_id] = self._object_cls(**dup)
+                    dup = self._object_cls(_version=self.version, **dup)
+                    cnx.execute(u.where(_id == dup['_id']).values(**dup))
                     inserts.append(o)
                 else:
-                    o = self._object_cls(**o)
-                    __id = o.pop('_id')  # don't try to update _id
+                    o = self._object_cls(_version=self.version, **o)
+                    # don't try to set _id
+                    __id = o.pop('_id')
                     assert __id == dup['_id']
-                    updates[_id] = o
+                    cnx.execute(u.where(_id == __id).values(**o))
             else:
                 inserts.append(o)
 
-        cnx = connection
-        if updates:
-            t1 = time()
-            _id = tbl.c._id
-            u = self.update()
-            [cnx.execute(u.where(_id == __id).values(**o))
-             for o in updates.itervalues()]
-            diff = int(time() - t1)
-            logger.debug('%s updates in %s seconds' % (len(updates), diff))
         if inserts:
             t1 = time()
             cnx.execute(self.insert(), inserts)

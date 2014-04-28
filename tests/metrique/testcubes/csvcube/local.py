@@ -23,8 +23,3 @@ class Local(csvdata_rows):
 
     def get_objects(self, uri=DEFAULT_URI, _oid=DEFAULT_ID, **kwargs):
         return super(Local, self).get_objects(uri=uri, _oid=_oid, **kwargs)
-
-
-if __name__ == '__main__':
-    from metrique.argparsers import cube_cli
-    cube_cli(Local)

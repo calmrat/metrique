@@ -106,7 +106,7 @@ def configure(options=None, defaults=None, config_file=None,
             defaults = rupdate(defaults, section)
         # set option to value passed in, if any
         for k, v in options.iteritems():
-            v = v if v is not None else defaults[k]
+            v = v if v is not None else defaults.get(k)
             section[unicode(k)] = v
         config.setdefault(sk, {})
         config[sk] = rupdate(config[sk], section)

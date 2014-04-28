@@ -38,10 +38,15 @@ from metrique.utils import batch_gen, configure, debug_setup
 
 
 def get_full_history(cube, oids, flush=False, cube_name=None,
-                     config=None, **kwargs):
-    m = pyclient(cube=cube, name=cube_name, config=config, **kwargs)
+                     config=None, config_file=None, config_key=None,
+                     container=None, container_kwargs=None,
+                     proxy=None, proxy_kwargs=None, **kwargs):
+    m = pyclient(cube=cube, name=cube_name, config=config,
+                 config_file=config_file, config_key=config_key,
+                 container=container, container_kwargs=container_kwargs,
+                 proxy=proxy, proxy_kwargs=proxy_kwargs, **kwargs)
     results = []
-    batch_size = m.config[m.config_key].get('batch_size')
+    batch_size = m.lconfig.get('batch_size')
     for batch in batch_gen(oids, batch_size):
         _ = m._activity_get_objects(oids=batch, flush=flush)
         results.extend(_)
@@ -49,10 +54,15 @@ def get_full_history(cube, oids, flush=False, cube_name=None,
 
 
 def get_objects(cube, oids, flush=False, cube_name=None,
-                config=None, **kwargs):
-    m = pyclient(cube=cube, name=cube_name, config=config, **kwargs)
+                config=None, config_file=None, config_key=None,
+                container=None, container_kwargs=None,
+                proxy=None, proxy_kwargs=None, **kwargs):
+    m = pyclient(cube=cube, name=cube_name, config=config,
+                 config_file=config_file, config_key=config_key,
+                 container=container, container_kwargs=container_kwargs,
+                 proxy=proxy, proxy_kwargs=proxy_kwargs, **kwargs)
     results = []
-    batch_size = m.config[m.config_key].get('batch_size')
+    batch_size = m.lconfig.get('batch_size')
     for batch in batch_gen(oids, batch_size):
         _ = m._get_objects(oids=batch, flush=flush)
         results.extend(_)
@@ -394,7 +404,13 @@ class Generic(pyclient):
                 warnings.simplefilter("ignore")
                 result = runner(func(
                     cube=self._cube, oids=batch, flush=flush,
-                    cube_name=self.name, config=self.config)
+                    cube_name=self.name, config=self.config,
+                    config_file=self.config_file,
+                    config_key=self.config_key,
+                    container=type(self.objects),
+                    container_kwargs=self._container_kwargs,
+                    proxy=type(self.proxy),
+                    proxy_kwargs=self._proxy_kwargs)
                     for batch in batch_gen(oids, w_batch_size))
             # merge list of lists (batched) into single list
             result = [i for l in result for i in l]
@@ -406,6 +422,7 @@ class Generic(pyclient):
             for batch in batch_gen(oids, s_batch_size):
                 _ = self._get_objects(oids=batch, flush=flush)
                 result.extend(_)
+
         if flush:
             return result
         else:
@@ -484,7 +501,13 @@ class Generic(pyclient):
                 warnings.simplefilter("ignore")
                 result = runner(func(
                     cube=self._cube, oids=batch, flush=flush,
-                    cube_name=self.name, config=self.config)
+                    cube_name=self.name, config=self.config,
+                    config_file=self.config_file,
+                    config_key=self.config_key,
+                    container=type(self.objects),
+                    container_kwargs=self._container_kwargs,
+                    proxy=type(self.proxy),
+                    proxy_kwargs=self._proxy_kwargs)
                     for batch in batch_gen(oids, w_batch_size))
             # merge list of lists (batched) into single list
             result = [i for l in result for i in l]

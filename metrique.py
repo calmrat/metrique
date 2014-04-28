@@ -749,7 +749,7 @@ def postgresql(args):
 
 def postgresql_start():
     if os.path.exists(POSTGRESQL_PIDFILE):
-        logger.info('MongoDB pid found not starting...')
+        logger.info('PostgreSQL pid found not starting...')
         return False
 
     cmd = 'pg_ctl -D %s -l %s -o "-k %s" start' % (POSTGRESQL_PGDATA_PATH,
