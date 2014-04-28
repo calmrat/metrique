@@ -267,7 +267,9 @@ class MetriqueObject(Mapping):
         if _start is None:
             raise ValueError("_start (%s) must be set!" % _start)
         _end = self.get('_end')
-        if _end and ts2dt(_end) < ts2dt(_start):
+        _start = ts2dt(_start)
+        _end = ts2dt(_end)
+        if _end and _end < _start:
             raise ValueError(
                 "_end (%s) is before _start (%s)!" % (_end, _start))
 
@@ -2407,11 +2409,11 @@ class SQLAlchemyContainer(MetriqueContainer):
                     dup_k += 1
                 elif _end is None and autosnap:
                     dup['_end'] = o['_start']
-                    dup = self._object_cls(_version=self.version, **dup)
+                    dup = self._object_cls(_version=self._version, **dup)
                     cnx.execute(u.where(_id == dup['_id']).values(**dup))
                     inserts.append(o)
                 else:
-                    o = self._object_cls(_version=self.version, **o)
+                    o = self._object_cls(_version=self._version, **o)
                     # don't try to set _id
                     __id = o.pop('_id')
                     assert __id == dup['_id']

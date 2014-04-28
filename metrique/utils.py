@@ -435,7 +435,8 @@ def ts2dt(ts, milli=False, tz_aware=True):
         ts = float(ts)  # already in seconds
     if tz_aware:
         if isinstance(ts, datetime):
-            ts.replace(tzinfo=UTC)
+            #pytz.utc.localize(ts)
+            ts = ts.replace(tzinfo=UTC)
             return ts
         else:
             return datetime.fromtimestamp(ts, tz=UTC)
