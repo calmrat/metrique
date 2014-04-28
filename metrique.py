@@ -153,6 +153,12 @@ SUPERVISORD_PIDFILE = pjoin(PIDS_DIR, 'supervisord.pid')
 SUPERVISORD_LOGFILE = pjoin(LOGS_DIR, 'supervisord.log')
 SUPERVISORD_HISTORYFILE = pjoin(TMP_DIR, 'supervisord_history')
 
+POSTGRESQL_FIRSTBOOT_PATH = pjoin(USER_DIR, '.firstboot_postgresql')
+POSTGRESQL_PGDATA_PATH = pjoin(USER_DIR, 'postgresql_db')
+POSTGRESQL_CONF = pjoin(ETC_DIR, 'pg_hba.conf')
+POSTGRESQL_PIDFILE = pjoin(POSTGRESQL_PGDATA_PATH, 'postmaster.pid')
+POSTGRESQL_LOGFILE = pjoin(LOGS_DIR, 'postgresql-server.log')
+
 ############################## DEFAULT CONFS #################################
 DEFAULT_METRIQUE_JSON = '''{
     "metrique": {
@@ -177,6 +183,7 @@ DEFAULT_METRIQUE_JSON = '''{
         "write_concern": 0
     },
     "sql": {
+      "engine": "teiid",
       "port": 0,
       "host": "",
       "password": "",
@@ -488,19 +495,6 @@ def adjust_options(options, args):
 virtualenv.adjust_options = adjust_options
 
 
-def firstboot(args, force=False, trash=False, no_auth=False):
-    # make sure we have some basic defaults configured in the environment
-    trash = getattr(args, 'trash', trash)
-    force = getattr(args, 'force', force)
-    auth = not getattr(args, 'no_auth', no_auth)
-    sys_firstboot(force)
-    mongodb_firstboot(force, auth=auth)
-    metrique_firstboot(force)
-    celery_firstboot(force)
-    supervisord_firstboot(force)
-    nginx_firstboot(force)
-
-
 def backup(saveas, path):
     gzip = system('which pigz') or system('which gzip')
     cmd = 'tar -c --use-compress-program=%s -f %s %s' % (gzip, saveas, path)
@@ -728,8 +722,68 @@ def mongodb(args):
         mongodb_clean()
     elif args.command == 'trash':
         mongodb_trash()
+    elif args.command == 'firstboot':
+        mongodb_firstboot()
     else:
         raise ValueError("unknown command %s" % args.command)
+
+
+def postgresql(args):
+    # FIXME: disabling fork not possible at this time
+    if args.command == 'start':
+        postgresql_start()
+    elif args.command == 'stop':
+        postgresql_stop()
+    elif args.command == 'restart':
+        postgresql_stop()
+        postgresql_start()
+    elif args.command == 'clean':
+        postgresql_clean()
+    elif args.command == 'firstboot':
+        postgresql_firstboot()
+    elif args.command == 'trash':
+        postgresql_trash()
+    else:
+        raise ValueError("unknown command %s" % args.command)
+
+
+def postgresql_start():
+    if os.path.exists(POSTGRESQL_PIDFILE):
+        logger.info('PostgreSQL pid found not starting...')
+        return False
+
+    cmd = 'pg_ctl -D %s -l %s -o "-k %s" start' % (POSTGRESQL_PGDATA_PATH,
+                                                   POSTGRESQL_LOGFILE,
+                                                   PIDS_DIR)
+    call(cmd, sig=signal.SIGTERM, sig_func=postgresql_terminate)
+    return True
+
+
+def postgresql_stop(quiet=True):
+    try:
+        cmd = 'pg_ctl -D %s stop' % (POSTGRESQL_PGDATA_PATH)
+        call(cmd)
+    except OSError:
+        if not quiet:
+            raise
+        else:
+            return False
+
+
+def postgresql_terminate(sig=None, frame=None):
+    terminate(POSTGRESQL_PIDFILE)
+
+
+def postgresql_clean():
+    remove(POSTGRESQL_PIDFILE)
+
+
+def postgresql_trash():
+    postgresql_stop()
+    dest = pjoin(TRASH_DIR, 'postgresql-%s' % NOW)
+    move(POSTGRESQL_PGDATA_PATH, dest)
+    remove(POSTGRESQL_FIRSTBOOT_PATH)
+    makedirs(POSTGRESQL_PGDATA_PATH)
 
 
 def rsync(args):
@@ -756,10 +810,12 @@ def trash(args=None):
     celeryd_terminate()
     nginx_terminate()
     mongodb_terminate()
+    postgresql_stop()
 
     dest = pjoin(TRASH_DIR, 'metrique-%s' % NOW)
     for f in [ETC_DIR, PIDS_DIR, LOGS_DIR, CACHE_DIR,
-              TMP_DIR, CELERY_DIR, MONGODB_DIR]:
+              TMP_DIR, CELERY_DIR, MONGODB_DIR,
+              POSTGRESQL_PGDATA_PATH]:
         _dest = os.path.join(dest, os.path.basename(f))
         try:
             shutil.move(f, _dest)
@@ -837,6 +893,10 @@ def _deploy_deps(args):
         call('%s install -U celery' % pip)
     if args.all or args.sqlalchemy:
         call('%s install -U sqlalchemy' % pip)
+    if args.all or args.pymongo:
+        call('%s install -U pymongo pql' % pip)
+    if args.all or args.pandas:
+        call('%s install -U pandas' % pip)
 
 
 def deploy(args):
@@ -910,6 +970,46 @@ def default_conf(path, template):
     with open(path, 'w') as f:
         f.write(template)
     logger.info("Installed %s ..." % path)
+
+
+def firstboot(args, force=False, trash=False, no_auth=False):
+    # make sure we have some basic defaults configured in the environment
+    trash = getattr(args, 'trash', trash)
+    force = getattr(args, 'force', force)
+    auth = not getattr(args, 'no_auth', no_auth)
+    sys_firstboot(force)
+    mongodb_firstboot(force, auth=auth)
+    postgresql_firstboot(force)
+    metrique_firstboot(force)
+    celery_firstboot(force)
+    supervisord_firstboot(force)
+    nginx_firstboot(force)
+
+
+def postgresql_firstboot(force=False):
+    exists = os.path.exists(POSTGRESQL_FIRSTBOOT_PATH)
+    if exists and not force:
+        # skip if we have already run this before
+        return
+    makedirs(POSTGRESQL_PGDATA_PATH)
+
+    cmd = 'pg_ctl -D %s -l %s init' % (POSTGRESQL_PGDATA_PATH,
+                                       POSTGRESQL_LOGFILE)
+    call(cmd)
+
+    started = False
+    try:
+        started = postgresql_start()
+        time.sleep(1)
+        cmd = 'createdb -h 127.0.0.1'
+        call(cmd)
+    finally:
+        if started:
+            postgresql_stop()
+
+    with open(POSTGRESQL_FIRSTBOOT_PATH, 'w') as f:
+        f.write(NOW)
+    return True
 
 
 def mongodb_firstboot(force, auth=True):
@@ -1070,6 +1170,10 @@ def main():
     _deploy.add_argument(
         '--celery', action='store_true', help='install celery')
     _deploy.add_argument(
+        '--pymongo', action='store_true', help='install pymongo, pql')
+    _deploy.add_argument(
+        '--pandas', action='store_true', help='install pandas')
+    _deploy.add_argument(
         '--trash', action='store_true', help='fresh install (rm old virtenv)')
     _deploy.set_defaults(func=deploy)
 
@@ -1168,6 +1272,13 @@ def main():
     _supervisord.add_argument('command', choices=['start', 'stop',
                                                   'clean', 'reload'])
     _supervisord.set_defaults(func=supervisord)
+
+    # postgresql server
+    _postgresql = _sub.add_parser('postgresql')
+    _postgresql.add_argument('command', choices=['start', 'stop', 'firstboot',
+                                                 'trash', 'clean', 'reload'])
+    _postgresql.add_argument('-F', '--nofork', action='store_true')
+    _postgresql.set_defaults(func=postgresql)
 
     # SSL creation
     _ssl = _sub.add_parser('ssl')

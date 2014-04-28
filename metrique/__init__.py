@@ -40,12 +40,16 @@ os.environ['METRIQUE_CACHE'] = os.environ.get(
 # ... http://stackoverflow.com/questions/492483/
 
 # Force all writes to stdout to be done with utf8
-# This causes output coruption in Ipython shell;
-# disabling.
+# This causes output coruption (in Ipython shell)
 #import sys
 #import codecs
 #sys.stdout = codecs.getwriter('utf8')(sys.stdout)
 
 # ATTENTION: this is the main interface for clients!
-from metrique.mongodb_api import MongoDBClient as pyclient
+from metrique.core_api import BaseClient as pyclient
+from metrique.core_api import MongoDBContainer, MongoDBProxy
+from metrique.core_api import SQLAlchemyContainer, SQLAlchemyProxy
+# avoid lint 'defined by not used' error
 pyclient
+MongoDBProxy, MongoDBContainer
+SQLAlchemyProxy, SQLAlchemyContainer

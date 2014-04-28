@@ -20,16 +20,19 @@ import anyconfig
 anyconfig.set_loglevel(logging.WARN)  # too noisy...
 from calendar import timegm
 import collections
+import cProfile as profiler
 from datetime import datetime
 from dateutil.parser import parse as dt_parse
+import gc
 from hashlib import sha1
 import locale
 import os
-import pql
+import pstats
 import pytz
 import re
 import simplejson as json
 import sys
+import time
 
 json_encoder = json.JSONEncoder()
 
@@ -37,6 +40,8 @@ DEFAULT_PKGS = ['metrique.cubes']
 
 SHA1_HEXDIGEST = lambda o: sha1(repr(o)).hexdigest()
 UTC = pytz.utc
+
+LOGS_DIR = os.environ.get('METRIQUE_LOGS')
 
 
 def batch_gen(data, batch_size):
@@ -70,6 +75,47 @@ def clear_stale_pids(pids, pid_dir, prefix=''):
     return _running
 
 
+def configure(options=None, defaults=None, config_file=None,
+              section_key=None, update=None, force=False,
+              section_only=False):
+    options = options or {}
+    defaults = defaults or {}
+    config = update or {}
+    # FIXME: permit list of section keys to lookup values in
+    sk = section_key
+    sk = sk or options.get('config_key') or defaults.get('config_key')
+    if not sk:
+        sk = 'global'
+        section_only = True
+    elif sk in config and not force:
+        # if 'sql' is already configured, ie, we initiated with
+        # config set already, don't set defaults, only options
+        # not set as None
+        config.setdefault(sk, {})
+        [config[sk].update({k: v})
+         for k, v in options.iteritems() if v is not None]
+    else:
+        # load the config options from disk, if path provided
+        section = {}
+        if config_file:
+            raw_config = load_config(config_file)
+            section = raw_config.get(sk, {})
+            if not isinstance(section, dict):
+                # convert mergeabledict (anyconfig) to dict of dicts
+                section = section.convert_to(section)
+            defaults = rupdate(defaults, section)
+        # set option to value passed in, if any
+        for k, v in options.iteritems():
+            v = v if v is not None else defaults.get(k)
+            section[unicode(k)] = v
+        config.setdefault(sk, {})
+        config[sk] = rupdate(config[sk], section)
+    if section_only:
+        return config.get(sk)
+    else:
+        return config
+
+
 def csv2list(item):
     if isinstance(item, basestring):
         items = item.split(',')
@@ -99,6 +145,76 @@ def cube_pkg_mod_cls(cube):
     return pkg, mod, _cls
 
 
+def _debug_set_level(logger, level):
+    if level in [-1, False]:
+        logger.setLevel(logging.WARN)
+    elif level in [0, None]:
+        logger.setLevel(logging.INFO)
+    elif level is True:
+        logger.setLevel(logging.DEBUG)
+    else:
+        level = int(level)
+        logger.setLevel(level)
+    return logger
+
+
+def debug_setup(logger=None, level=None, log2file=None,
+                log_file=None, log_format=None, log_dir=None,
+                log2stdout=None, ):
+    '''
+    Local object instance logger setup.
+
+    Verbosity levels are determined as such::
+
+        if level in [-1, False]:
+            logger.setLevel(logging.WARN)
+        elif level in [0, None]:
+            logger.setLevel(logging.INFO)
+        elif level in [True, 1, 2]:
+            logger.setLevel(logging.DEBUG)
+
+    If (level == 2) `logging.DEBUG` will be set even for
+    the "root logger".
+
+    Configuration options available for customized logger behaivor:
+        * debug (bool)
+        * log2stdout (bool)
+        * log2file (bool)
+        * log_file (path)
+    '''
+    log2stdout = log2stdout or False
+    if isinstance(log_format, basestring):
+        log_format = logging.Formatter(log_format, "%Y%m%dT%H%M%S")
+    _log_format = "%(name)s.%(process)s:%(asctime)s:%(message)s"
+    _log_format = logging.Formatter(log_format, "%Y%m%dT%H%M%S")
+    log_format = log_format or _log_format
+
+    log2file = log2file or True
+    log_file = log_file or 'metrique.log'
+    log_dir = log_dir or LOGS_DIR or ''
+    log_file = os.path.join(log_dir, log_file)
+
+    logger = logger or 'metrique'
+    if isinstance(logger, basestring):
+        logger = logging.getLogger(logger)
+    else:
+        logger = logger or logging.getLogger(logger)
+    logger.propagate = 0
+    logger.handlers = []
+    if log2file and log_file:
+        hdlr = logging.FileHandler(log_file)
+        hdlr.setFormatter(log_format)
+        logger.addHandler(hdlr)
+    else:
+        log2stdout = True
+    if log2stdout:
+        hdlr = logging.StreamHandler()
+        hdlr.setFormatter(log_format)
+        logger.addHandler(hdlr)
+    logger = _debug_set_level(logger, level)
+    return logger
+
+
 def dt2ts(dt, drop_micro=False, strict=False):
     ''' convert datetime objects to timestamp seconds (float) '''
     # the equals check to 'NaT' is hack to avoid adding pandas as a dependency
@@ -124,37 +240,8 @@ def dt2ts(dt, drop_micro=False, strict=False):
         return float(ts)
 
 
-def _load_cube_pkg(pkg, cube):
-    '''
-    NOTE: all items in fromlist must be strings
-    '''
-    try:
-        # First, assume the cube module is available
-        # with the name exactly as written
-        fromlist = map(str, [cube])
-        mcubes = __import__(pkg, fromlist=fromlist)
-        return getattr(mcubes, cube)
-    except AttributeError:
-        # if that fails, try to guess the cube module
-        # based on cube 'standard naming convention'
-        # ie, group_cube -> from group.cube import CubeClass
-        _pkg, _mod, _cls = cube_pkg_mod_cls(cube)
-        fromlist = map(str, [_cls])
-        mcubes = __import__('%s.%s.%s' % (pkg, _pkg, _mod),
-                            fromlist=fromlist)
-        return getattr(mcubes, _cls)
-
-
-def load_config(path):
-    if not path:
-        return {}
-    else:
-        config_file = os.path.expanduser(path)
-        return anyconfig.load(config_file)
-
-
 def get_cube(cube, init=False, pkgs=None, cube_paths=None, config=None,
-             **kwargs):
+             backends=None, **kwargs):
     '''
     Dynamically locate and load a metrique cube
 
@@ -209,7 +296,7 @@ def get_pids(pid_dir, prefix='', clear_stale=True):
     return map(int, pids)
 
 
-def get_timezone_converter(from_timezone):
+def get_timezone_converter(from_timezone, tz_aware=False):
     '''
     return a function that converts a given
     datetime object from a timezone to utc
@@ -235,6 +322,8 @@ def get_timezone_converter(from_timezone):
         else:
             # set tzinfo as from_tz then convert to utc
             dt = from_tz.localize(dt).astimezone(UTC)
+        if not tz_aware:
+            dt = dt.replace(tzinfo=None)
         return dt
     return timezone_converter
 
@@ -275,106 +364,50 @@ def jsonhash(obj, root=True, exclude=None, hash_func=None):
     else:
         result = obj
     if root:
-        result = hash_func(repr(result))
+        result = unicode(hash_func(repr(result)))
     return result
 
 
-def date_pql_string(date):
+def _load_cube_pkg(pkg, cube):
     '''
-    Generate a new pql date query component that can be used to
-    query for date (range) specific data in cubes.
-
-    :param date: metrique date (range) to apply to pql query
-
-    If date is None, the resulting query will be a current value
-    only query (_end == None)
-
-    The tilde '~' symbol is used as a date range separated.
-
-    A tilde by itself will mean 'all dates ranges possible'
-    and will therefore search all objects irrelevant of it's
-    _end date timestamp.
-
-    A date on the left with a tilde but no date on the right
-    will generate a query where the date range starts
-    at the date provide and ends 'today'.
-    ie, from date -> now.
-
-    A date on the right with a tilde but no date on the left
-    will generate a query where the date range starts from
-    the first date available in the past (oldest) and ends
-    on the date provided.
-    ie, from beginning of known time -> date.
-
-    A date on both the left and right will be a simple date
-    range query where the date range starts from the date
-    on the left and ends on the date on the right.
-    ie, from date to date.
+    NOTE: all items in fromlist must be strings
     '''
-    if date is None:
-        return '_end == None'
-    if date == '~':
-        return ''
-
-    before = lambda d: '_start <= %f' % dt2ts(d)
-    after = lambda d: '(_end >= %f or _end == None)' % dt2ts(d)
-    split = date.split('~')
-    # replace all occurances of 'T' with ' '
-    # this is used for when datetime is passed in
-    # like YYYY-MM-DDTHH:MM:SS instead of
-    #      YYYY-MM-DD HH:MM:SS as expected
-    # and drop all occurances of 'timezone' like substring
-    split = [re.sub('\+\d\d:\d\d', '', d.replace('T', ' ')) for d in split]
-    if len(split) == 1:
-        # 'dt'
-        return '%s and %s' % (before(split[0]), after(split[0]))
-    elif split[0] == '':
-        # '~dt'
-        return before(split[1])
-    elif split[1] == '':
-        # 'dt~'
-        return after(split[0])
-    else:
-        # 'dt~dt'
-        return '%s and %s' % (before(split[1]), after(split[0]))
-
-
-def parse_pql_query(query, date=None):
-    '''
-    Given a pql based query string, parse it using
-    pql.SchemaFreeParser and return the resulting
-    pymongo 'spec' dictionary.
-
-    :param query: pql query
-    '''
-    _query = re.sub(' in \([^\)]+\)', ' in (...)', query) if query else query
-    logger.debug('Query: %s' % _query)
-    query = query_add_date(query, date)
-    if not query:
-        return {}
-    if not isinstance(query, basestring):
-        raise TypeError("query expected as a string")
-    pql_parser = pql.SchemaFreeParser()
     try:
-        spec = pql_parser.parse(query)
-    except Exception as e:
-        raise SyntaxError("Invalid Query (%s)" % str(e))
-    #logger.debug('mongo spec: %s' % spec)
-    return spec
+        # First, assume the cube module is available
+        # with the name exactly as written
+        fromlist = map(str, [cube])
+        mcubes = __import__(pkg, fromlist=fromlist)
+        return getattr(mcubes, cube)
+    except AttributeError:
+        # if that fails, try to guess the cube module
+        # based on cube 'standard naming convention'
+        # ie, group_cube -> from group.cube import CubeClass
+        _pkg, _mod, _cls = cube_pkg_mod_cls(cube)
+        fromlist = map(str, [_cls])
+        mcubes = __import__('%s.%s.%s' % (pkg, _pkg, _mod),
+                            fromlist=fromlist)
+        return getattr(mcubes, _cls)
 
 
-def query_add_date(query, date):
+def load_config(path):
+    if not path:
+        return {}
+    else:
+        config_file = os.path.expanduser(path)
+        return anyconfig.load(config_file)
+
+
+def rupdate(d, u):
+    ''' recursively update nested dictionaries
+        see: http://stackoverflow.com/a/3233356/1289080
     '''
-    Take an existing pql query and append a date (range)
-    limiter.
-
-    :param query: pql query
-    :param date: metrique date (range) to append
-    '''
-    date_pql = date_pql_string(date)
-    if query and date_pql:
-        return '%s and %s' % (query, date_pql)
-    return query or date_pql
+    for k, v in u.iteritems():
+        if isinstance(v, collections.Mapping):
+            r = rupdate(d.get(k, {}), v)
+            d[k] = r
+        else:
+            d[k] = u[k]
+    return d
 
 
 def to_encoding(ustring, encoding=None):
@@ -426,14 +459,26 @@ def utcnow(as_datetime=True, tz_aware=False, drop_micro=False):
         return dt2ts(now, drop_micro)
 
 
-def rupdate(d, u):
-    ''' recursively update nested dictionaries
-        see: http://stackoverflow.com/a/3233356/1289080
-    '''
-    for k, v in u.iteritems():
-        if isinstance(v, collections.Mapping):
-            r = rupdate(d.get(k, {}), v)
-            d[k] = r
-        else:
-            d[k] = u[k]
-    return d
+# profile code snagged from http://stackoverflow.com/a/1175677/1289080
+def profile(fn):
+    def wrapper(*args, **kw):
+        elapsed, stat_loader, result = _profile("foo.txt", fn, *args, **kw)
+        stats = stat_loader()
+        stats.sort_stats('cumulative')
+        stats.print_stats()
+        # uncomment this to see who's calling what
+        # stats.print_callers()
+        return result
+    return wrapper
+
+
+def _profile(filename, fn, *args, **kw):
+    load_stats = lambda: pstats.Stats(filename)
+    gc.collect()
+
+    began = time.time()
+    profiler.runctx('result = fn(*args, **kw)', globals(), locals(),
+                    filename=filename)
+    ended = time.time()
+
+    return ended - began, load_stats, locals()['result']
