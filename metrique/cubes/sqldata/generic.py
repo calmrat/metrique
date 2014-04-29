@@ -253,6 +253,7 @@ class Generic(pyclient):
                 # get all new (unknown) oids
                 oids.extend(self.get_new_oids())
             if self.lconfig.get('delta_mtime', False):
+                last_update = self._fetch_mtime(last_update, parse_timestamp)
                 # get only those oids that have changed since last update
                 oids.extend(self.get_changed_oids(last_update,
                                                   parse_timestamp))
@@ -280,15 +281,14 @@ class Generic(pyclient):
 
         :param mtime: datetime string used as 'change since date'
         '''
-        mtime = self._fetch_mtime(last_update, parse_timestamp)
         mtime_columns = self.lconfig.get('delta_mtime', [])
-        if not (mtime_columns and mtime):
+        if not (mtime_columns and last_update):
             return []
         if isinstance(mtime_columns, basestring):
             mtime_columns = [mtime_columns]
         where = []
         for _column in mtime_columns:
-            _sql = "%s > %s" % (_column, mtime)
+            _sql = "%s > %s" % (_column, last_update)
             where.append(_sql)
         return self.sql_get_oids(where)
 

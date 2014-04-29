@@ -70,6 +70,7 @@ from __future__ import unicode_literals
 import logging
 logger = logging.getLogger('metrique')
 
+import ast
 from collections import Mapping, MutableMapping
 import cPickle
 from collections import defaultdict
@@ -107,12 +108,14 @@ import signal
 import simplejson as json
 
 try:
-    from sqlalchemy import create_engine, MetaData, Table
+    from sqlalchemy import create_engine, MetaData, Table, select, desc
     from sqlalchemy import Column, Integer, Unicode, DateTime
     from sqlalchemy import Float, BigInteger, Boolean, UnicodeText
     from sqlalchemy import insert, update, UniqueConstraint, TypeDecorator
     from sqlalchemy.orm import sessionmaker
     from sqlalchemy.ext.declarative import declarative_base
+    from sqlalchemy.sql import and_, or_, not_, operators
+    from sqlalchemy.sql.expression import func
 
     import sqlalchemy.dialects.postgresql as pg
     from sqlalchemy.dialects.postgresql import ARRAY, JSON
@@ -128,6 +131,9 @@ try:
             if isinstance(value, str):
                 value = value.decode('utf-8')
             return value
+
+        def python_type(self):
+            return unicode
 
     HAS_SQLALCHEMY = True
     TYPE_MAP = {
@@ -440,6 +446,86 @@ class MetriqueContainer(MutableMapping):
     @property
     def keys(self):
         return {k for o in self.store.itervalues() for k in o.iterkeys()}
+
+    def _parse_fields(self, fields, meta=True, as_dict=False):
+        if meta:
+            _fields = {'_id': 0, '_start': 1, '_end': 1, '_oid': 1}
+        else:
+            _fields = {}
+        if fields in [None, False]:
+            _fields = {}
+        elif fields in ['~', True]:
+            _fields = {}
+        elif isinstance(fields, dict):
+            _fields.update(fields)
+        elif isinstance(fields, basestring):
+            _fields.update({s.strip(): 1 for s in fields.split(',')})
+        elif isinstance(fields, (list, tuple)):
+            _fields.update({s.strip(): 1 for s in fields})
+        else:
+            raise ValueError("invalid fields value")
+        if as_dict:
+            return _fields
+        else:
+            return sorted(_fields.keys())
+
+    def _parse_date(self, date):
+        '''
+        return back start and end dates given date string
+
+        :param date: metrique date (range) to apply to pql query
+
+        The tilde '~' symbol is used as a date range separated.
+
+        A tilde by itself will mean 'all dates ranges possible'
+        and will therefore search all objects irrelevant of it's
+        _end date timestamp.
+
+        A date on the left with a tilde but no date on the right
+        will generate a query where the date range starts
+        at the date provide and ends 'today'.
+        ie, from date -> now.
+
+        A date on the right with a tilde but no date on the left
+        will generate a query where the date range starts from
+        the first date available in the past (oldest) and ends
+        on the date provided.
+        ie, from beginning of known time -> date.
+
+        A date on both the left and right will be a simple date
+        range query where the date range starts from the date
+        on the left and ends on the date on the right.
+        ie, from date to date.
+        '''
+        if isinstance(date, basestring):
+            date = date.strip()
+        if not date:
+            return '_end == None'
+        if date == '~':
+            return ''
+
+        before = lambda d: '_start <= date("%s")' % ts2dt(d) if d else None
+        _after = '(_end >= date("%s") or _end == None)'
+        after = lambda d: _after % ts2dt(d) if d else None
+        split = date.split('~')
+        # replace all occurances of 'T' with ' '
+        # this is used for when datetime is passed in
+        # like YYYY-MM-DDTHH:MM:SS instead of
+        #      YYYY-MM-DD HH:MM:SS as expected
+        # and drop all occurances of 'timezone' like substring
+        split = [re.sub('\+\d\d:\d\d', '', d.replace('T', ' ')) for d in split]
+        if len(split) == 1:
+            # 'dt'
+            return '%s and %s' % (before(split[0]), after(split[0]))
+        elif split[0] in ['', None]:
+            # '~dt'
+            return before(split[1])
+        elif split[1] in ['', None]:
+            # 'dt~'
+            return after(split[0])
+        else:
+            # 'dt~dt'
+            return '%s and %s' % (before(split[1]), after(split[0]))
 
 
 class MetriqueFactory(type):
@@ -1307,12 +1393,13 @@ class MongoDBProxy(object):
         result = _cube.find(spec).count()
         return result
 
-    def _parse_fields(self, fields):
+    def _parse_fields(self, fields, as_dict=False):
+        # FIXME: REMOVE, already added to MetriqueContainer
         _fields = {'_id': 0, '_start': 1, '_end': 1, '_oid': 1}
         if fields in [None, False]:
-            _fields = None
+            _fields = {}
         elif fields in ['~', True]:
-            _fields = None
+            _fields = {}
         elif isinstance(fields, dict):
             _fields.update(fields)
         elif isinstance(fields, basestring):
@@ -1321,7 +1408,10 @@ class MongoDBProxy(object):
             _fields.update({s.strip(): 1 for s in fields})
         else:
             raise ValueError("invalid fields value")
-        return _fields
+        if as_dict:
+            return _fields
+        else:
+            return sorted(_fields.keys())
 
     def find(self, query=None, fields=None, date=None, sort=None, one=False,
              raw=False, explain=False, merge_versions=False, skip=0,
@@ -2477,15 +2567,183 @@ class SQLAlchemyContainer(MetriqueContainer):
         self._table = None
         return result
 
+    def _parse_fields(self, fields=None, table=None, meta=True, **kwargs):
+        fields = super(SQLAlchemyContainer, self)._parse_fields(fields,
+                                                                meta=meta)
+        table = table if table is not None else self._table
+        parser = SQLAlchemySQLParser(table)
+        fields = [parser.parse(f) for f in fields]
+        return fields
+
+    def _parse_query(self, table=None, query=None, fields=None, date=None):
+        table = table if table is not None else self._table
+        fields = fields if fields is not None else ''
+        query = query or ''
+        date = date or ''
+        parser = SQLAlchemySQLParser(table)
+
+        if query:
+            query += self._parse_date(date)
+        else:
+            query = self._parse_date(date)
+        where = parser.parse(query)
+
+        return select(fields).where(where)
+
+    def _rows2dicts(self, rows):
+        return [self._row2dict(r) for r in rows]
+
+    def _row2dict(self, row):
+        return dict(row)
+
+    def find(self, query=None, fields=None, date=None, sort=None,
+             descending=False, one=False, raw=False, limit=0,
+             as_cursor=False, scalar=False, table=None):
+        table = table or self._table
+        fields = self._parse_fields(fields, table=table, meta=False)
+        query = self._parse_query(table, query, fields, date)
+        if sort:
+            order_by = self._parse_fields(sort, table=table, meta=False)[0]
+            if descending:
+                query = query.order_by(desc(order_by))
+            else:
+                query = query.order_by(order_by)
+
+        rows = self.proxy.session.execute(query)
+        if scalar:
+            return rows.scalar()
+        elif one or limit == 1:
+            return rows.first()
+        elif limit > 1:
+            return rows.fetchmany(limit)
+        elif as_cursor:
+            return rows
+        else:
+            rows = self._rows2dicts(rows)
+            if raw:
+                return rows
+            else:
+                return pd.DataFrame(rows)
+
     def get_last_field(self, field):
         '''Shortcut for querying to get the last field value for
         a given owner, cube.
 
         :param field: field name to query
         '''
-        # FIXME: find field based on
-        q = self.query(field)
-        last = q.order_by(field).first()
-        print last
+        last = self.find(fields=field, scalar=True, sort='_start',
+                         descending=True)
         logger.debug("last %s.%s: %s" % (self.name, field, last))
         return last
+
+
+class SQLAlchemySQLParser(object):
+    def __init__(self, table):
+        '''
+        :param sqlalchemy.Table table:
+            the table definition
+        '''
+        if table is None:
+            raise ValueError('table can not be null')
+        # TODO regexes, datetimes
+        self.table = table
+        self.scalars = []
+        self.arrays = []
+        for field in table.c:
+            if field.type.python_type is list:
+                self.arrays.append(field.name)
+            else:
+                self.scalars.append(field.name)
+
+    def parse(self, s):
+        tree = ast.parse(s, mode='eval').body
+        return self.p(tree)
+
+    def p(self, node):
+        try:
+            p = getattr(self, 'p_' + node.__class__.__name__)
+        except:
+            raise ValueError('Cannot parse: %s' % node)
+        return p(node)
+
+    def p_BoolOp(self, node):
+        return self.p(node.op)(*map(self.p, node.values))
+
+    def p_UnaryOp(self, node):
+        return self.p(node.op)(self.p(node.operand))
+
+    def p_And(self, node):
+        return and_
+
+    def p_Or(self, node):
+        return or_
+
+    def p_Not(self, node):
+        return not_
+
+    op_dict = {
+        'Eq': lambda (left, right):  left == right,
+        'NotEq': lambda (left, right):  left != right,
+        'Gt': lambda (left, right):  left > right,
+        'GtE': lambda (left, right):  left >= right,
+        'Lt': lambda (left, right):  left < right,
+        'LtE': lambda (left, right):  left <= right,
+        'In': lambda (left, right):  left.in_(right),
+        'NotIn': lambda (left, right):  not_(left.in_(right)),
+    }
+
+    arr_op_dict = {
+        'Eq': lambda (left, right):  left.any(right, operator=operators.eq),
+        'NotEq': lambda (left, right):  left.all(right,
+                                                 operator=operators.ne),
+        'In': lambda (left, right):  or_(*[
+            left.any(v, operator=operators.eq) for v in right]),
+        'NotIn': lambda (left, right):  and_(*[
+            left.all(v, operator=operators.ne) for v in right]),
+    }
+
+    def p_Compare(self, node):
+        if len(node.comparators) != 1:
+            raise ValueError('Wrong number of comparators: %s' % node.ops)
+        left = self.p(node.left)
+        right = self.p(node.comparators[0])
+        op = node.ops[0].__class__.__name__
+        # Eq, NotEq, Gt, GtE, Lt, LtE, In, NotIn
+        if node.left.id in self.arrays:
+            return self.arr_op_dict[op]((left, right))
+        else:
+            return self.op_dict[op]((left, right))
+        raise ValueError('Unsupported operation: %s' % op)
+
+    def p_Num(self, node):
+        return node.n
+
+    def p_Str(self, node):
+        return node.s
+
+    def p_List(self, node):
+        return map(self.p, node.elts)
+
+    def p_Name(self, node):
+        if node.id in ['None', 'True', 'False']:
+            return eval(node.id)
+        if node.id in self.scalars + self.arrays:
+            return self.table.c[node.id]
+        raise ValueError('Unknown field: %s' % node.id)
+
+    def p_array_name(self, node):
+        if node.id in self.arrays:
+            return self.table.c[node.id]
+        raise ValueError('Expected array field: %s' % node.id)
+
+    def p_Call(self, node):
+        if node.func.id == 'empty':
+            if len(node.args) != 1:
+                raise ValueError('empty expects 1 argument.')
+            name = self.p_array_name(node.args[0])
+            return name == '{}'
+        elif node.func.id == 'date':
+            if len(node.args) != 1:
+                raise ValueError('date expects 1 argument.')
+            return func.date(node.args[0])
+        raise ValueError('Unknown function: %s' % node.func.id)
