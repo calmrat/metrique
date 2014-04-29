@@ -108,10 +108,11 @@ import signal
 import simplejson as json
 
 try:
-    from sqlalchemy import create_engine, MetaData, Table, select, desc
+    from sqlalchemy import create_engine, MetaData, Table
     from sqlalchemy import Column, Integer, Unicode, DateTime
     from sqlalchemy import Float, BigInteger, Boolean, UnicodeText
-    from sqlalchemy import insert, update, UniqueConstraint, TypeDecorator
+    from sqlalchemy import UniqueConstraint, TypeDecorator
+    from sqlalchemy import select, insert, update, desc
     from sqlalchemy.orm import sessionmaker
     from sqlalchemy.ext.declarative import declarative_base
     from sqlalchemy.sql import and_, or_, not_, operators
@@ -189,7 +190,7 @@ class MetriqueObject(Mapping):
     UNDA_RE = re.compile('_')
     TIMESTAMP_OBJ_KEYS = set(['_end', '_start'])
 
-    def __init__(self, _oid, strict=False, _version=None, **kwargs):
+    def __init__(self, _oid, _version=None, strict=False, **kwargs):
         self._strict = strict
         self._version = _version or 0
         self.store = {
@@ -504,9 +505,10 @@ class MetriqueContainer(MutableMapping):
         if date == '~':
             return ''
 
-        before = lambda d: '_start <= date("%s")' % ts2dt(d) if d else None
+        _b4 = '_start <= date("%s")'
+        before = lambda d: _b4 % ts2dt(d, tz_aware=True) if d else None
         _after = '(_end >= date("%s") or _end == None)'
-        after = lambda d: _after % ts2dt(d) if d else None
+        after = lambda d: _after % ts2dt(d, tz_aware=True) if d else None
         split = date.split('~')
         # replace all occurances of 'T' with ' '
         # this is used for when datetime is passed in
@@ -698,21 +700,23 @@ class BaseClient(object):
                         container=container, container_kwargs=container_kwargs,
                         proxy=proxy, proxy_kwargs=proxy_kwargs, **kwargs)
 
-    def set_container(self, container=None, value=None,
+    def set_container(self, container=None, value=None, _version=None,
                       **kwargs):
+        _version = _version or getattr(self, '_version', 0)
         _kwargs = deepcopy(self._container_kwargs)
         _kwargs.update(kwargs)
         _kwargs.setdefault('config_file', self.config_file)
         if container is not None:
             if inspect.isclass(container):
-                self._objects = container(name=self.name, **_kwargs)
+                self._objects = container(name=self.name, _version=_version,
+                                          **_kwargs)
             else:
                 self._objects = container
         else:
             cache_dir = self.gconfig.get('cache_dir')
             name = self.name
             self._objects = MetriqueContainer(name=name, objects=value,
-                                              _version=self._version,
+                                              _version=_version,
                                               cache_dir=cache_dir)
         return self._objects
 
@@ -2046,6 +2050,23 @@ class SQLAlchemyProxy(object):
         self.config['owner'] = self.config['owner'] or defaults.get('username')
         self._debug_setup_sqlalchemy_logging()
 
+    def _debug_setup_sqlalchemy_logging(self):
+        level = self.config.get('debug')
+        debug_setup(logger='sqlalchemy', level=level)
+
+    # ######################## DB API ##################################
+    def _check_compatible(self, uri, driver, msg=None):
+        msg = msg or '%s required!' % driver
+        if not HAS_PSYCOPG2:
+            raise NotImplementedError('`pip install psycopg2` required')
+        if uri[0:10] != 'postgresql':
+            raise RuntimeError(msg)
+        return True
+
+    @property
+    def engine(self):
+        return self.get_engine()
+
     @staticmethod
     def get_engine_uri(db, host=None, port=None, driver=None, dialect=None,
                        username=None, password=None):
@@ -2071,23 +2092,6 @@ class SQLAlchemyProxy(object):
         port = port or 5432
         return '%s://%s%s:%s/%s' % (dialect, u_p, host, port, db)
 
-    def _debug_setup_sqlalchemy_logging(self):
-        level = self.config.get('debug')
-        debug_setup(logger='sqlalchemy', level=level)
-
-    # ######################## DB API ##################################
-    def _check_compatible(self, uri, driver, msg=None):
-        msg = msg or '%s required!' % driver
-        if not HAS_PSYCOPG2:
-            raise NotImplementedError('`pip install psycopg2` required')
-        if uri[0:10] != 'postgresql':
-            raise RuntimeError(msg)
-        return True
-
-    @property
-    def engine(self):
-        return self.get_engine()
-
     def get_engine(self, engine=None, connect=False, cached=True, **kwargs):
         if kwargs or not cached or not hasattr(self, '_sql_engine'):
             _engine = self.config.get('engine')
@@ -2105,22 +2109,25 @@ class SQLAlchemyProxy(object):
             # SEE: http://docs.sqlalchemy.org/en/rel_0_9/orm/session.html
             # ... #unitofwork-contextual
             # scoped sessions
-            metadata = self.get_meta()
-            metadata.bind = self._sql_engine
             self._sessionmaker = sessionmaker(bind=self._sql_engine)
             if connect:
                 self._sql_engine.connect()
         return self._sql_engine
 
-    def get_session(self, bind=None, autoflush=False, autocommit=False,
-                    expire_on_commit=True, **kwargs):
-        bind = bind or self.get_engine()
-        return self._sessionmaker(bind=bind, autoflush=autoflush,
-                                  autocommit=autocommit,
-                                  expire_on_commit=expire_on_commit, **kwargs)
+    def get_session(self, autoflush=False, autocommit=False,
+                    expire_on_commit=True, cached=True, **kwargs):
+        if not (cached and hasattr(self, '_session')):
+            self._session = self._sessionmaker(
+                autoflush=autoflush, autocommit=autocommit,
+                expire_on_commit=expire_on_commit, **kwargs)
+        return self._session
 
-    def get_meta(self, cached=True):
-        return self.get_base(cached=cached).metadata
+    def get_meta(self, bind=None, cached=True):
+        if not hasattr(self, '_meta'):
+            metadata = self.get_base(cached=cached).metadata
+            metadata.bind = bind or getattr(self, '_sql_engine', None)
+            self._meta = metadata
+        return self._meta
 
     def get_base(self, cached=True):
         if not cached:
@@ -2208,7 +2215,8 @@ class SQLAlchemyProxy(object):
 
     def drop(self, table=None, engine=None, quiet=True):
         table = self.get_table(table)
-        return table.drop()
+        self.session.close()
+        table.drop()
 
 
 class SQLAlchemyContainer(MetriqueContainer):
@@ -2325,8 +2333,8 @@ class SQLAlchemyContainer(MetriqueContainer):
             return None
 
         name = name or self.name
-        meta = self.proxy.get_meta()
         engine = self.proxy.get_engine()
+        meta = self.proxy.get_meta()
         # it's a dict... don't mutate original instance
         schema = deepcopy(schema)
 
@@ -2408,10 +2416,15 @@ class SQLAlchemyContainer(MetriqueContainer):
                             onupdate=self._gen_hash,
                             default=self._gen_hash,
                             index=True, unique=False),
-            '_start': Column(DateTime, default=utcnow(), nullable=False,
-                             index=True, unique=False),
+            '_start': Column(DateTime, default=utcnow(tz_aware=True),
+                             nullable=False, index=True, unique=False),
             '_end': Column(DateTime, default=None, nullable=True,
                            index=True, unique=False),
+            '_v': Column(Integer, default=0, nullable=False,
+                         index=True, unique=False),
+            '__v__': Column(Unicode(40), default=__version__,
+                            on_update=lambda x: __version__,
+                            nullable=False, index=True, unique=False),
             '__init__': __init__,
             '__repr__': __repr__,
         }
@@ -2480,16 +2493,16 @@ class SQLAlchemyContainer(MetriqueContainer):
 
     def __flush(self, connection, transaction, objects, **kwargs):
         autosnap = kwargs.get('autosnap', True)
-        tbl = self._table
         _ids = [o['_id'] for o in objects]
 
-        q = self.query()
+        q = '_id in %s' % _ids
         t1 = time()
-        dups = {o._id: o for o in q.filter(tbl.c._id.in_(_ids)).all()}
+        dups = {o._id: dict(o) for o in self.find(q, fields='~',
+                                                  date='~', as_cursor=True)}
         diff = int(time() - t1)
         logger.debug('dup query completed in %s seconds' % diff)
 
-        u = self.update()
+        u = update(self._table)
         cnx = connection
         dup_k = 0
         inserts = []
@@ -2498,7 +2511,6 @@ class SQLAlchemyContainer(MetriqueContainer):
             _end = o['_end']
             dup = dups.get(_id)
             if dup:
-                dup = dup._asdict()
                 if o['_hash'] == dup['_hash']:
                     dup_k += 1
                 elif _end is None and autosnap:
@@ -2545,22 +2557,6 @@ class SQLAlchemyContainer(MetriqueContainer):
         table = table or self._table
         return insert(table)
 
-    def update(self, table=None):
-        table = table or self._table
-        return update(table)
-
-    def query(self, col=None, table=None, session=None):
-        session = session or self.get_session()
-        table = table if table is not None else self._table
-        if col is not None and isinstance(col, basestring):
-            _col = getattr(table.c, col)
-            if _col is None:
-                raise ValueError("invalid column: %s" % col)
-            else:
-                return session.query(table).add_columns(_col)
-        else:
-            return session.query(table)
-
     def drop(self, table=None):
         table = table or self.name
         result = self.proxy.drop(table=table)
@@ -2568,27 +2564,26 @@ class SQLAlchemyContainer(MetriqueContainer):
         return result
 
     def _parse_fields(self, fields=None, table=None, meta=True, **kwargs):
+        table = table if table is not None else self._table
         fields = super(SQLAlchemyContainer, self)._parse_fields(fields,
                                                                 meta=meta)
-        table = table if table is not None else self._table
-        parser = SQLAlchemySQLParser(table)
-        fields = [parser.parse(f) for f in fields]
+        if fields in ([], {}):
+            fields = [c.name for c in table.columns]
+            #fields = deepcopy(table.columns)
+        #else:
+        #    fields = [f for f in table.columns if f in fields]
         return fields
 
     def _parse_query(self, table=None, query=None, fields=None, date=None):
         table = table if table is not None else self._table
-        fields = fields if fields is not None else ''
-        query = query or ''
-        date = date or ''
+        fields = fields if fields is not None else self._table
         parser = SQLAlchemySQLParser(table)
-
         if query:
             query += self._parse_date(date)
         else:
             query = self._parse_date(date)
         where = parser.parse(query)
-
-        return select(fields).where(where)
+        return select(fields, whereclause=where)
 
     def _rows2dicts(self, rows):
         return [self._row2dict(r) for r in rows]
@@ -2601,7 +2596,8 @@ class SQLAlchemyContainer(MetriqueContainer):
              as_cursor=False, scalar=False, table=None):
         table = table or self._table
         fields = self._parse_fields(fields, table=table, meta=False)
-        query = self._parse_query(table, query, fields, date)
+        query = self._parse_query(table=table, query=query, fields=fields,
+                                  date=date)
         if sort:
             order_by = self._parse_fields(sort, table=table, meta=False)[0]
             if descending:
