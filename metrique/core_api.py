@@ -109,7 +109,7 @@ import simplejson as json
 
 try:
     from sqlalchemy import create_engine, MetaData, Table
-    from sqlalchemy import Column, Integer, Unicode, DateTime
+    from sqlalchemy import Column, Integer, DateTime
     from sqlalchemy import Float, BigInteger, Boolean, UnicodeText
     from sqlalchemy import UniqueConstraint, TypeDecorator
     from sqlalchemy import select, insert, update, desc
@@ -136,6 +136,15 @@ try:
         def python_type(self):
             return unicode
 
+    class JSONTyped(TypeDecorator):
+        """Safely coerce Python bytestrings to Unicode
+        before passing off to the database."""
+
+        impl = JSON
+
+        def python_type(self):
+            return dict
+
     HAS_SQLALCHEMY = True
     TYPE_MAP = {
         None: CoerceUTF8,
@@ -148,7 +157,7 @@ try:
         bool: Boolean,
         datetime: DateTime,
         list: ARRAY, tuple: ARRAY, set: ARRAY,
-        dict: JSON, Mapping: JSON,
+        dict: JSONTyped, Mapping: JSONTyped,
     }
 
     sqla_metadata = MetaData()
@@ -527,6 +536,10 @@ class MetriqueContainer(MutableMapping):
         else:
             # 'dt~dt'
             return '%s and %s' % (before(split[1]), after(split[0]))
+
+    @property
+    def oids(self):
+        return self.store.keys()
 
 
 class MetriqueFactory(type):
@@ -2386,23 +2399,22 @@ class SQLAlchemyContainer(MetriqueContainer):
                                {'useexisting': False}),
             'id': Column('id', Integer, primary_key=True),
             # FIXME: use hybrid properties? for _id and _hash?
-            '_id': Column(Unicode(120), nullable=False,
+            '_id': Column(CoerceUTF8, nullable=False,
                           onupdate=self._gen_id,
                           default=self._gen_id,
                           index=True),
-            '_hash': Column(Unicode(40), nullable=False,
+            '_hash': Column(CoerceUTF8, nullable=False,
                             onupdate=self._gen_hash,
                             default=self._gen_hash,
-                            index=True, unique=False),
+                            index=True),
             '_start': Column(DateTime, default=utcnow(),
-                             nullable=False, index=True, unique=False),
-            '_end': Column(DateTime, default=None, nullable=True,
-                           index=True, unique=False),
-            '_v': Column(Integer, default=0, nullable=False,
-                         index=True, unique=False),
-            '__v__': Column(Unicode(40), default=__version__,
-                            on_update=lambda x: __version__,
-                            nullable=False, index=True, unique=False),
+                             index=True, nullable=False),
+            '_end': Column(DateTime, default=None, index=True,
+                           nullable=True),
+            '_v': Column(Integer, default=0),
+            '__v__': Column(CoerceUTF8, default=__version__,
+                            onupdate=lambda x: __version__),
+            '_e': Column(JSONTyped, default=None),
             '__init__': __init__,
             '__repr__': __repr__,
         }
@@ -2470,7 +2482,14 @@ class SQLAlchemyContainer(MetriqueContainer):
         return _ids
 
     def __flush(self, connection, transaction, objects, **kwargs):
-        autosnap = kwargs.get('autosnap', True)
+        autosnap = kwargs.get('autosnap')
+        if autosnap is None:
+            # assume autosnap:True if all objects have _end:None
+            # otherwise, false (all objects have _end:non-null or
+            # a mix of both)
+            autosnap = all([o['_end'] is None for o in objects])
+            logger.warn('flush.AUTOSNAP auto-set to: %s' % autosnap)
+
         _ids = [o['_id'] for o in objects]
 
         q = '_id in %s' % _ids
@@ -2518,16 +2537,17 @@ class SQLAlchemyContainer(MetriqueContainer):
         logger.debug('%s duplicates not re-saved' % dup_k)
         return _ids
 
-    def flush(self, schema=None, autosnap=True, batch_size=None, table=None,
+    def flush(self, schema=None, autosnap=None, batch_size=None, table=None,
               **kwargs):
         batch_size = batch_size or self.config.get('batch_size')
         _ids = []
 
         self.ensure_table(schema=schema, name=table)
 
+        kwargs['autosnap'] = autosnap
         # get store converted as table instances
         for batch in batch_gen(self.values(), batch_size):
-            _ = self._flush(objects=batch, autosnap=autosnap, **kwargs)
+            _ = self._flush(objects=batch, **kwargs)
             _ids.extend(_)
         return sorted(_ids)
 
@@ -2636,7 +2656,12 @@ class SQLAlchemySQLParser(object):
         self.scalars = []
         self.arrays = []
         for field in table.c:
-            if field.type.python_type is list:
+            try:
+                ptype = field.type.python_type
+            except NotImplementedError:
+                raise NotImplementedError(
+                    "%s (%s) has no python_type defined" % (field, field.type))
+            if ptype is list:
                 self.arrays.append(field.name)
             else:
                 self.scalars.append(field.name)

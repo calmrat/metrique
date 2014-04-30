@@ -188,10 +188,10 @@ class Generic(pyclient):
             if inconsistent:
                 self._log_inconsistency(last_doc, last_val, field,
                                         removed, added, when)
-                new_doc.setdefault('_corrupted', {})
+                new_doc.setdefault('_e', {})
                 # set curreupted field value to the the value that was added
                 # and continue processing as if that issue didn't exist
-                new_doc['_corrupted'][field] = added
+                new_doc['_e'][field] = added
             # Add the objects to the batch
             batch_updates.extend([last_doc, new_doc])
         # try to set the _start of the first version to the creation time
