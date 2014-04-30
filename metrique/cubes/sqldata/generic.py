@@ -589,7 +589,8 @@ class Generic(pyclient):
                 value = self._convert(field, value)
                 value = self._typecast(field, value)
                 o[field] = value
-            for field, value in o.iteritems():
+            for field, value in o.items():
+                # note: no iteritems because we're changing o as we loop
                 if field not in fields:
                     # skip over unexpected (meta) fields
                     continue
