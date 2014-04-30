@@ -197,7 +197,7 @@ class MetriqueObject(Mapping):
             '_oid': _oid,
             '_id': None,
             '_hash': None,
-            '_start': utcnow(tz_aware=True),
+            '_start': utcnow(),
             '_end': None,
             '_v': _version,
             '__v__': __version__,
@@ -213,14 +213,13 @@ class MetriqueObject(Mapping):
                     raise KeyError("%s is immutable" % key)
                 else:
                     continue
-            # if key in TIMESTAMP_OBJ_KEYS and value is not None:
-            #    # ensure normalized timestamp
-            #    value = dt2ts(value)
-            # # FIXME: use ts2dt()? we need to normalize to datetime()
-            if isinstance(value, str):
+            elif key in self.TIMESTAMP_OBJ_KEYS:
+                # ensure normalized timestamp
+                value = ts2dt(value)
+            elif isinstance(value, str):
                 value = unicode(value, 'utf8')
-            if value == '' or value != value:
-                # Normalize empty strings and NaN objects to None
+            if value == '' or value != value or repr(value) == 'NaT':
+                # Normalize empty strings and NaN/NaT objects to None
                 # NaN objects do not equal themselves...
                 value = None
             self.store[key] = value
@@ -506,9 +505,9 @@ class MetriqueContainer(MutableMapping):
             return ''
 
         _b4 = '_start <= date("%s")'
-        before = lambda d: _b4 % ts2dt(d, tz_aware=True) if d else None
+        before = lambda d: _b4 % ts2dt(d) if d else None
         _after = '(_end >= date("%s") or _end == None)'
-        after = lambda d: _after % ts2dt(d, tz_aware=True) if d else None
+        after = lambda d: _after % ts2dt(d) if d else None
         split = date.split('~')
         # replace all occurances of 'T' with ' '
         # this is used for when datetime is passed in
@@ -653,6 +652,7 @@ class BaseClient(object):
                     log_dir=log_dir, log_file=log_file)
         self._container_kwargs = container_kwargs or {}
         self.set_container(container)
+        # FIXME: set default proxy to container's proxy if set?
         self._proxy_kwargs = proxy_kwargs or {}
         self.set_proxy(proxy, quiet=True)
 
@@ -955,6 +955,10 @@ class BaseClient(object):
             self.set_proxy(self._sqlalchemy)
         return self._sqlalchemy
 
+    def whoami(self):
+        '''check the username of running user'''
+        return self.lconfig.get('username') or getuser()
+
 
 # ################################ MONGODB ###################################
 class MongoDBProxy(object):
@@ -978,8 +982,6 @@ class MongoDBProxy(object):
     config = None
     config_key = 'mongodb'
     config_file = DEFAULT_CONFIG
-    default_fields = '~'
-    default_sort = [('_start', -1)]
 
     SSL_PEM = os.path.join(ETC_DIR, 'metrique.pem')
 
@@ -990,12 +992,6 @@ class MongoDBProxy(object):
         'SECONDARY_PREFERRED': ReadPreference.SECONDARY_PREFERRED,
         'NEAREST': ReadPreference.NEAREST,
     }
-
-    INDEX_ENSURE_SECS = 60 * 60
-    VALID_CUBE_SHARE_ROLES = ['read', 'readWrite', 'dbAdmin', 'userAdmin']
-    CUBE_OWNER_ROLES = ['readWrite', 'dbAdmin', 'userAdmin']
-    RESTRICTED_COLLECTION_NAMES = ['admin', 'local', 'system']
-    INVALID_USERNAME_RE = re.compile('[^a-zA-Z_]')
 
     def __init__(self, host=None, port=None, username=None, password=None,
                  auth=None, ssl=None, ssl_certificate=None,
@@ -1009,7 +1005,6 @@ class MongoDBProxy(object):
         options = dict(auth=auth,
                        collection=collection,
                        host=host,
-                       index_ensure_secs=index_ensure_secs,
                        owner=owner,
                        password=password,
                        port=port,
@@ -1024,7 +1019,6 @@ class MongoDBProxy(object):
         defaults = dict(auth=False,
                         collection=None,
                         host='127.0.0.1',
-                        index_ensure_secs=self.INDEX_ENSURE_SECS,
                         owner=None,
                         password='',
                         port=27017,
@@ -1052,12 +1046,6 @@ class MongoDBProxy(object):
         return self.find(query=query, fields=self.default_fields,
                          date='~', merge_versions=False,
                          sort=self.default_sort)
-
-    def keys(self, sample_size=1):
-        return self.sample_fields(sample_size=sample_size)
-
-    def values(self, sample_size=1):
-        return self.sample_docs(sample_size=sample_size)
 
     @property
     def proxy(self):
@@ -1147,9 +1135,268 @@ class MongoDBProxy(object):
             self.__class__.__name__, owner, name)
 
     # ######################## User API ################################
-    def whoami(self, auth=False):
-        '''Local api call to check the username of running user'''
-        return self.config[self.config_key].get('username')
+
+
+class MongoDBContainer(MetriqueContainer):
+    _objects = None
+    config = None
+    config_key = 'mongodb'
+    config_file = DEFAULT_CONFIG
+    default_fields = '~'
+    default_sort = [('_start', -1)]
+    owner = None
+    name = None
+    INDEX_ENSURE_SECS = 60 * 60
+    INVALID_USERNAME_RE = re.compile('[^a-zA-Z_]')
+    RESTRICTED_COLLECTION_NAMES = ['admin', 'local', 'system']
+    VALID_CUBE_SHARE_ROLES = ['read', 'readWrite', 'dbAdmin', 'userAdmin']
+    CUBE_OWNER_ROLES = ['readWrite', 'dbAdmin', 'userAdmin']
+
+    def __init__(self, name, objects=None, proxy=None, batch_size=None,
+                 host=None, port=None, username=None, password=None,
+                 auth=None, ssl=None, ssl_certificate=None,
+                 index_ensure_secs=None, read_preference=None,
+                 replica_set=None, tz_aware=None, write_concern=None,
+                 owner=None, config_file=None, config_key=None,
+                 _version=None, **kwargs):
+        if not HAS_PYMONGO:
+            raise NotImplementedError('`pip install pymongo` 2.6+ required')
+
+        super(MongoDBContainer, self).__init__(name=name,
+                                               objects=objects,
+                                               _version=_version)
+
+        options = dict(auth=auth,
+                       batch_size=batch_size,
+                       host=host,
+                       index_ensure_secs=index_ensure_secs,
+                       name=name,
+                       owner=owner,
+                       password=password,
+                       port=port,
+                       read_preference=read_preference,
+                       replica_set=replica_set,
+                       ssl=ssl,
+                       ssl_certificate=ssl_certificate,
+                       tz_aware=tz_aware,
+                       username=username,
+                       write_concern=write_concern)
+        # set to None because these are passed to proxy
+        # which sets defaults accordingly
+        defaults = dict(auth=None,
+                        batch_size=None,
+                        host=None,
+                        index_ensure_secs=self.INDEX_ENSURE_SECS,
+                        name=self.name,
+                        owner=None,
+                        password=None,
+                        port=None,
+                        read_preference=None,
+                        replica_set=None,
+                        ssl=None,
+                        ssl_certificate=None,
+                        tz_aware=None,
+                        username=None,
+                        write_concern=None)
+        self.config = self.config or {}
+        config_file = config_file or self.config_file
+        config_key = config_key or self.config_key
+        self.config = configure(options, defaults,
+                                section_key=config_key,
+                                section_only=True,
+                                config_file=config_file,
+                                update=self.config)
+        self.config['owner'] = self.config['owner'] or defaults.get('username')
+
+        # if we get proxy, should we update .config with proxy.config?
+        if proxy:
+            self._proxy = proxy
+
+    @property
+    def proxy(self):
+        if not getattr(self, '_proxy', None):
+            name = self.config.get('name')
+            self._proxy = MongoDBProxy(collection=name,
+                                       config_file=self.config_file,
+                                       **self.config)
+        return self._proxy
+
+    def flush(self, autosnap=True, batch_size=None, fast=True,
+              name=None, owner=None, **kwargs):
+        '''
+        Persist a list of objects to MongoDB.
+
+        Returns back a list of object ids saved.
+
+        :param objects: list of dictionary-like objects to be stored
+        :param name: cube name
+        :param owner: username of cube owner
+        :param start: ISO format datetime to apply as _start
+                      per object, serverside
+        :param autosnap: rotate _end:None's before saving new objects
+        :returns result: _ids saved
+        '''
+        self._ensure_base_indexes()
+
+        batch_size = batch_size or self.config.get('batch_size')
+        _cube = self.proxy.get_collection(owner, name)
+        _ids = []
+        for batch in batch_gen(self.store.values(), batch_size):
+            _ = self._flush(_cube=_cube, objects=batch, autosnap=autosnap,
+                            fast=fast, name=name, owner=owner)
+            _ids.extend(_)
+        return sorted(_ids)
+
+    def _flush_save(self, _cube, objects, fast=True):
+        objects = [dict(o) for o in objects if o['_end'] is None]
+        if not objects:
+            _ids = []
+        elif fast:
+            _ids = [o['_id'] for o in objects]
+            [_cube.save(o, manipulate=False) for o in objects]
+        else:
+            _ids = [_cube.save(dict(o), manipulate=True) for o in objects]
+        return _ids
+
+    def _flush_insert(self, _cube, objects, fast=True):
+        objects = [dict(o) for o in objects if o['_end'] is not None]
+        if not objects:
+            _ids = []
+        elif fast:
+            _ids = [o['_id'] for o in objects]
+            _cube.insert(objects, manipulate=False)
+        else:
+            _ids = _cube.insert(objects, manipulate=True)
+        return _ids
+
+    def _flush(self, _cube, objects, autosnap=True, fast=True,
+               name=None, owner=None):
+        olen = len(objects)
+        if olen == 0:
+            logger.debug("No objects to flush!")
+            return []
+        logger.info("[%s] Flushing %s objects" % (_cube, olen))
+
+        objects, dup_ids = self._filter_dups(_cube, objects)
+        # remove dups from instance object container
+        [self.store.pop(_id) for _id in set(dup_ids)]
+
+        if objects and autosnap:
+            # append rotated versions to save over previous _end:None docs
+            objects = self._add_snap_objects(_cube, objects)
+
+        olen = len(objects)
+        _ids = []
+        if objects:
+            # save each object; overwrite existing
+            # (same _oid + _start or _oid if _end = None) or upsert
+            logger.debug('[%s] Saving %s versions' % (_cube, len(objects)))
+            _saved = self._flush_save(_cube, objects, fast)
+            _inserted = self._flush_insert(_cube, objects, fast)
+            _ids = set(_saved) | set(_inserted)
+            # pop those we're already flushed out of the instance container
+            failed = olen - len(_ids)
+            if failed > 0:
+                logger.warn("%s objects failed to flush!" % failed)
+            # new 'snapshoted' objects are included in _ids, but they
+            # aren't in self.store, so ignore them
+        [self.store.pop(_id) for _id in _ids if _id in self.store]
+        logger.debug(
+            "[%s] %s objects remaining" % (_cube, len(self.store)))
+        return _ids
+
+    def _filter_end_null_dups(self, _cube, objects):
+        # filter out dups which have null _end value
+        _hashes = [o['_hash'] for o in objects if o['_end'] is None]
+        if _hashes:
+            spec = self.proxy.parse_query('_hash in %s' % _hashes, date=None)
+            return set(_cube.find(spec).distinct('_id'))
+        else:
+            return set()
+
+    def _filter_end_not_null_dups(self, _cube, objects):
+        # filter out dups which have non-null _end value
+        tups = [(o['_id'], o['_hash']) for o in objects
+                if o['_end'] is not None]
+        _ids, _hashes = zip(*tups) if tups else [], []
+        if _ids:
+            spec = self.proxy.parse_query(
+                '_id in %s and _hash in %s' % (_ids, _hashes), date='~')
+            return set(_cube.find(spec).distinct('_id'))
+        else:
+            return set()
+
+    def _filter_dups(self, _cube, objects):
+        logger.debug('Filtering duplicate objects...')
+        olen = len(objects)
+
+        non_null_ids = self._filter_end_not_null_dups(_cube, objects)
+        null_ids = self._filter_end_null_dups(_cube, objects)
+        dup_ids = non_null_ids | null_ids
+
+        if dup_ids:
+            # update self.object container to contain only non-dups
+            objects = [o for o in objects if o['_id'] not in dup_ids]
+
+        _olen = len(objects)
+        diff = olen - _olen
+        logger.info(' ... %s objects filtered; %s remain' % (diff, _olen))
+        return objects, dup_ids
+
+    def _add_snap_objects(self, _cube, objects):
+        olen = len(objects)
+        _ids = [o['_id'] for o in objects if o['_end'] is None]
+
+        if not _ids:
+            logger.debug(
+                '[%s] 0 of %s objects need to be rotated' % (_cube, olen))
+            return objects
+
+        spec = self.proxy.parse_query('_id in %s' % _ids, date=None)
+        _objs = _cube.find(spec, {'_hash': 0})
+        k = _objs.count()
+        logger.debug(
+            '[%s] %s of %s objects need to be rotated' % (_cube, k, olen))
+        if k == 0:  # nothing to rotate...
+            return objects
+        for o in _objs:
+            # _end of existing obj where _end:None should get new's _start
+            # look this up in the instance objects mapping
+            _start = self.store[o['_id']]['_start']
+            o['_end'] = _start
+            o = self._object_cls(_version=self._version, **o)
+            objects.append(o)
+        return objects
+
+    def _ensure_base_indexes(self, ensure_time=90):
+        _cube = self.proxy.get_collection()
+        s = ensure_time
+        ensure_time = int(s) if s and s != 0 else 90
+        _cube.ensure_index('_oid', background=False, cache_for=s)
+        _cube.ensure_index('_hash', background=False, cache_for=s)
+        _cube.ensure_index([('_start', -1), ('_end', -1)],
+                           background=False, cache_for=s)
+        _cube.ensure_index([('_end', -1)],
+                           background=False, cache_for=s)
+
+    def get_last_field(self, field):
+        '''Shortcut for querying to get the last field value for
+        a given owner, cube.
+
+        :param field: field name to query
+        '''
+        last = self.find(query=None, fields=[field],
+                         sort=[(field, -1)], one=True, raw=True)
+        if last:
+            last = last.get(field)
+        logger.debug("last %s.%s: %s" % (self.name, field, last))
+        return last
+
+    def keys(self, sample_size=1):
+        return self.sample_fields(sample_size=sample_size)
+
+    def values(self, sample_size=1):
+        return self.sample_docs(sample_size=sample_size)
 
     def _validate_password(self, password):
         is_str = isinstance(password, basestring)
@@ -1193,23 +1440,23 @@ class MongoDBProxy(object):
         '''
         if username and not password:
             raise RuntimeError('must specify password!')
-        password = password or self.config['mongodb'].get('password')
-        username = username or self.config['mongodb'].get('username')
+        password = password or self.config.get('password')
+        username = username or self.config.get('username')
         username = self._validate_username(username)
         password = self._validate_password(password)
         logger.info('Registering new user %s' % username)
-        db = self.get_db(username)
-        self.db.add_user(username, password,
-                         roles=self.CUBE_OWNER_ROLES)
+        db = self.proxy.get_db(username)
+        db.add_user(username, password,
+                    roles=self.CUBE_OWNER_ROLES)
         spec = self.parse_query('user == "%s"' % username)
         result = db.system.users.find(spec).count()
         return bool(result)
 
     def user_remove(self, username, clear_db=False):
-        username = username or self.config['mongodb'].get('username')
+        username = username or self.config.get('username')
         username = self._validate_username(username)
         logger.info('Removing user %s' % username)
-        db = self.get_db(username)
+        db = self.proxy.get_db(username)
         db.remove_user(username)
         if clear_db:
             db.drop_database(username)
@@ -1225,7 +1472,7 @@ class MongoDBProxy(object):
         :param startswith: string to use in a simple "startswith" query filter
         :returns list: sorted list of cube names
         '''
-        db = self.get_db(owner)
+        db = self.proxy.get_db(owner)
         cubes = db.collection_names(include_system_collections=False)
         startswith = unicode(startswith or '')
         cubes = [name for name in cubes if name.startswith(startswith)]
@@ -1242,7 +1489,7 @@ class MongoDBProxy(object):
         '''
         with_user = self._validate_username(with_user)
         roles = self._validate_cube_roles(roles or ['read'])
-        _cube = self.get_db(owner)
+        _cube = self.proxy.get_db(owner)
         logger.info(
             '[%s] Sharing cube with %s (%s)' % (_cube, with_user, roles))
         result = _cube.add_user(name=with_user, roles=roles,
@@ -1257,11 +1504,11 @@ class MongoDBProxy(object):
         :param owner: username of cube owner
         :param collection: cube name
         '''
-        _cube = self.get_collection(owner, collection)
+        _cube = self.proxy.get_collection(owner, collection)
         logger.info('[%s] Dropping cube' % _cube)
         name = _cube.name
         _cube.drop()
-        db = self.get_db(owner)
+        db = self.proxy.get_db(owner)
         result = not bool(name in db.collection_names())
         return result
 
@@ -1272,7 +1519,7 @@ class MongoDBProxy(object):
         :param collection: cube name
         :param owner: username of cube owner
         '''
-        _cube = self.get_collection(owner, collection)
+        _cube = self.proxy.get_collection(owner, collection)
         logger.info('[%s] Listing indexes' % _cube)
         result = _cube.index_information()
         return result
@@ -1292,9 +1539,9 @@ class MongoDBProxy(object):
         :param collection: cube name
         :param owner: username of cube owner
         '''
-        _cube = self.get_collection(owner, collection)
+        _cube = self.proxy.get_collection(owner, collection)
         logger.info('[%s] Writing new index %s' % (_cube, key_or_list))
-        s = self.config['mongodb'].get('index_ensure_secs')
+        s = self.config.get('index_ensure_secs')
         kwargs['cache_for'] = kwargs.get('cache_for', s)
         if name:
             kwargs['name'] = name
@@ -1309,7 +1556,7 @@ class MongoDBProxy(object):
         :param collection: cube name
         :param owner: username of cube owner
         '''
-        _cube = self.get_collection(owner, collection)
+        _cube = self.proxy.get_collection(owner, collection)
         logger.info('[%s] Droping index %s' % (_cube, index_or_name))
         result = _cube.drop_index(index_or_name)
         return result
@@ -1331,22 +1578,22 @@ class MongoDBProxy(object):
         new_name = new_name or collection or self.name
         if not new_name:
             raise ValueError("new_name is not set!")
-        _cube = self.get_collection(owner, collection)
+        _cube = self.proxy.get_collection(owner, collection)
         if new_owner:
             _from = _cube.full_name
             _to = '%s.%s' % (new_owner, new_name)
-            self.get_db('admin').command(
+            self.proxy.get_db('admin').command(
                 'renameCollection', _from, to=_to, dropTarget=drop_target)
             # don't touch the new collection until after attempting
             # the rename; collection would otherwise be created
             # empty automatically then the rename fails because
             # target already exists.
-            _new_db = self.get_db(new_owner)
+            _new_db = self.proxy.get_db(new_owner)
             result = bool(new_name in _new_db.collection_names())
         else:
             logger.info('[%s] Renaming cube -> %s' % (_cube, new_name))
             _cube.rename(new_name, dropTarget=drop_target)
-            db = self.get_db(owner)
+            db = self.proxy.get_db(owner)
             result = bool(new_name in db.collection_names())
         if collection is None and result:
             self.name = new_name
@@ -1362,7 +1609,7 @@ class MongoDBProxy(object):
         :param owner: username of cube owner
         '''
         spec = self.parse_query(query, date)
-        _cube = self.get_collection(owner, collection)
+        _cube = self.proxy.get_collection(owner, collection)
         logger.info("[%s] Removing objects (%s): %s" % (_cube, date, query))
         result = _cube.remove(spec)
         return result
@@ -1376,7 +1623,7 @@ class MongoDBProxy(object):
         :param collection: cube name
         :param owner: username of cube owner
         '''
-        _cube = self.get_collection(owner, collection)
+        _cube = self.proxy.get_collection(owner, collection)
         result = _cube.aggregate(pipeline)
         return result
 
@@ -1392,30 +1639,10 @@ class MongoDBProxy(object):
         :param collection: cube name
         :param owner: username of cube owner
         '''
-        _cube = self.get_collection(owner, collection)
+        _cube = self.proxy.get_collection(owner, collection)
         spec = self.parse_query(query, date)
         result = _cube.find(spec).count()
         return result
-
-    def _parse_fields(self, fields, as_dict=False):
-        # FIXME: REMOVE, already added to MetriqueContainer
-        _fields = {'_id': 0, '_start': 1, '_end': 1, '_oid': 1}
-        if fields in [None, False]:
-            _fields = {}
-        elif fields in ['~', True]:
-            _fields = {}
-        elif isinstance(fields, dict):
-            _fields.update(fields)
-        elif isinstance(fields, basestring):
-            _fields.update({s.strip(): 1 for s in fields.split(',')})
-        elif isinstance(fields, (list, tuple)):
-            _fields.update({s.strip(): 1 for s in fields})
-        else:
-            raise ValueError("invalid fields value")
-        if as_dict:
-            return _fields
-        else:
-            return sorted(_fields.keys())
 
     def find(self, query=None, fields=None, date=None, sort=None, one=False,
              raw=False, explain=False, merge_versions=False, skip=0,
@@ -1438,9 +1665,9 @@ class MongoDBProxy(object):
         :param collection: cube name
         :param owner: username of cube owner
         '''
-        _cube = self.get_collection(owner, collection)
+        _cube = self.proxy.get_collection(owner, collection)
         spec = self.parse_query(query, date)
-        fields = self._parse_fields(fields)
+        fields = self._parse_fields(fields, as_dict=True) or None
 
         merge_versions = False if fields is None or one else merge_versions
         if merge_versions:
@@ -1573,7 +1800,7 @@ class MongoDBProxy(object):
         checked = set(oids)
         fringe = oids
         loop_k = 0
-        _cube = self.get_collection(owner, collection)
+        _cube = self.proxy.get_collection(owner, collection)
         while len(fringe) > 0:
             if level and loop_k == abs(level):
                 break
@@ -1597,7 +1824,7 @@ class MongoDBProxy(object):
         :param collection: cube name
         :param owner: username of cube owner
         '''
-        _cube = self.get_collection(owner, collection)
+        _cube = self.proxy.get_collection(owner, collection)
         if query:
             spec = self.parse_query(query, date)
             result = _cube.find(spec).distinct(field)
@@ -1641,7 +1868,7 @@ class MongoDBProxy(object):
         '''
         sample_size = sample_size or 1
         spec = self.parse_query(query, date)
-        _cube = self.get_collection(owner, collection)
+        _cube = self.proxy.get_collection(owner, collection)
         docs = _cube.find(spec)
         n = docs.count()
         if n <= sample_size:
@@ -1745,258 +1972,6 @@ class MongoDBProxy(object):
         except Exception as e:
             raise SyntaxError("Invalid Query (%s)" % str(e))
         return spec
-
-
-class MongoDBContainer(MetriqueContainer):
-    _objects = None
-    config = None
-    config_key = 'mongodb'
-    config_file = DEFAULT_CONFIG
-    owner = None
-    name = None
-
-    def __init__(self, name, objects=None, proxy=None, batch_size=None,
-                 host=None, port=None, username=None, password=None,
-                 auth=None, ssl=None, ssl_certificate=None,
-                 index_ensure_secs=None, read_preference=None,
-                 replica_set=None, tz_aware=None, write_concern=None,
-                 owner=None, config_file=None, config_key=None,
-                 _version=None, **kwargs):
-        if not HAS_PYMONGO:
-            raise NotImplementedError('`pip install pymongo` 2.6+ required')
-
-        super(MongoDBContainer, self).__init__(name=name,
-                                               objects=objects,
-                                               _version=_version)
-
-        options = dict(auth=auth,
-                       batch_size=batch_size,
-                       host=host,
-                       index_ensure_secs=index_ensure_secs,
-                       name=name,
-                       owner=owner,
-                       password=password,
-                       port=port,
-                       read_preference=read_preference,
-                       replica_set=replica_set,
-                       ssl=ssl,
-                       ssl_certificate=ssl_certificate,
-                       tz_aware=tz_aware,
-                       username=username,
-                       write_concern=write_concern)
-        # set to None because these are passed to proxy
-        # which sets defaults accordingly
-        defaults = dict(auth=None,
-                        batch_size=None,
-                        host=None,
-                        index_ensure_secs=None,
-                        name=self.name,
-                        owner=None,
-                        password=None,
-                        port=None,
-                        read_preference=None,
-                        replica_set=None,
-                        ssl=None,
-                        ssl_certificate=None,
-                        tz_aware=None,
-                        username=None,
-                        write_concern=None)
-        self.config = self.config or {}
-        config_file = config_file or self.config_file
-        config_key = config_key or self.config_key
-        self.config = configure(options, defaults,
-                                section_key=config_key,
-                                section_only=True,
-                                config_file=config_file,
-                                update=self.config)
-        self.config['owner'] = self.config['owner'] or defaults.get('username')
-
-        # if we get proxy, should we update .config with proxy.config?
-        if proxy:
-            self._proxy = proxy
-
-        try:
-            self._ensure_base_indexes()
-        except OperationFailure as e:
-            logger.debug(e)
-
-    @property
-    def proxy(self):
-        if not getattr(self, '_proxy', None):
-            name = self.config.get('name')
-            self._proxy = MongoDBProxy(collection=name,
-                                       config_file=self.config_file,
-                                       **self.config)
-        return self._proxy
-
-    def flush(self, autosnap=True, batch_size=None, fast=True,
-              name=None, owner=None):
-        '''
-        Persist a list of objects to MongoDB.
-
-        Returns back a list of object ids saved.
-
-        :param objects: list of dictionary-like objects to be stored
-        :param name: cube name
-        :param owner: username of cube owner
-        :param start: ISO format datetime to apply as _start
-                      per object, serverside
-        :param autosnap: rotate _end:None's before saving new objects
-        :returns result: _ids saved
-        '''
-        batch_size = batch_size or self.config.get('batch_size')
-        _cube = self.proxy.get_collection(owner, name)
-        _ids = []
-        for batch in batch_gen(self.store.values(), batch_size):
-            _ = self._flush(_cube=_cube, objects=batch, autosnap=autosnap,
-                            fast=fast, name=name, owner=owner)
-            _ids.extend(_)
-        return sorted(_ids)
-
-    def _flush_save(self, _cube, objects, fast=True):
-        objects = [dict(o) for o in objects if o['_end'] is None]
-        if not objects:
-            _ids = []
-        elif fast:
-            _ids = [o['_id'] for o in objects]
-            [_cube.save(o, manipulate=False) for o in objects]
-        else:
-            _ids = [_cube.save(dict(o), manipulate=True) for o in objects]
-        return _ids
-
-    def _flush_insert(self, _cube, objects, fast=True):
-        objects = [dict(o) for o in objects if o['_end'] is not None]
-        if not objects:
-            _ids = []
-        elif fast:
-            _ids = [o['_id'] for o in objects]
-            _cube.insert(objects, manipulate=False)
-        else:
-            _ids = _cube.insert(objects, manipulate=True)
-        return _ids
-
-    def _flush(self, _cube, objects, autosnap=True, fast=True,
-               name=None, owner=None):
-        olen = len(objects)
-        if olen == 0:
-            logger.debug("No objects to flush!")
-            return []
-        logger.info("[%s] Flushing %s objects" % (_cube, olen))
-
-        objects, dup_ids = self._filter_dups(_cube, objects)
-        # remove dups from instance object container
-        [self.store.pop(_id) for _id in set(dup_ids)]
-
-        if objects and autosnap:
-            # append rotated versions to save over previous _end:None docs
-            objects = self._add_snap_objects(_cube, objects)
-
-        olen = len(objects)
-        _ids = []
-        if objects:
-            # save each object; overwrite existing
-            # (same _oid + _start or _oid if _end = None) or upsert
-            logger.debug('[%s] Saving %s versions' % (_cube, len(objects)))
-            _saved = self._flush_save(_cube, objects, fast)
-            _inserted = self._flush_insert(_cube, objects, fast)
-            _ids = set(_saved) | set(_inserted)
-            # pop those we're already flushed out of the instance container
-            failed = olen - len(_ids)
-            if failed > 0:
-                logger.warn("%s objects failed to flush!" % failed)
-            # new 'snapshoted' objects are included in _ids, but they
-            # aren't in self.store, so ignore them
-        [self.store.pop(_id) for _id in _ids if _id in self.store]
-        logger.debug(
-            "[%s] %s objects remaining" % (_cube, len(self.store)))
-        return _ids
-
-    def _filter_end_null_dups(self, _cube, objects):
-        # filter out dups which have null _end value
-        _hashes = [o['_hash'] for o in objects if o['_end'] is None]
-        if _hashes:
-            spec = self.proxy.parse_query('_hash in %s' % _hashes, date=None)
-            return set(_cube.find(spec).distinct('_id'))
-        else:
-            return set()
-
-    def _filter_end_not_null_dups(self, _cube, objects):
-        # filter out dups which have non-null _end value
-        tups = [(o['_id'], o['_hash']) for o in objects
-                if o['_end'] is not None]
-        _ids, _hashes = zip(*tups) if tups else [], []
-        if _ids:
-            spec = self.proxy.parse_query(
-                '_id in %s and _hash in %s' % (_ids, _hashes), date='~')
-            return set(_cube.find(spec).distinct('_id'))
-        else:
-            return set()
-
-    def _filter_dups(self, _cube, objects):
-        logger.debug('Filtering duplicate objects...')
-        olen = len(objects)
-
-        non_null_ids = self._filter_end_not_null_dups(_cube, objects)
-        null_ids = self._filter_end_null_dups(_cube, objects)
-        dup_ids = non_null_ids | null_ids
-
-        if dup_ids:
-            # update self.object container to contain only non-dups
-            objects = [o for o in objects if o['_id'] not in dup_ids]
-
-        _olen = len(objects)
-        diff = olen - _olen
-        logger.info(' ... %s objects filtered; %s remain' % (diff, _olen))
-        return objects, dup_ids
-
-    def _add_snap_objects(self, _cube, objects):
-        olen = len(objects)
-        _ids = [o['_id'] for o in objects if o['_end'] is None]
-
-        if not _ids:
-            logger.debug(
-                '[%s] 0 of %s objects need to be rotated' % (_cube, olen))
-            return objects
-
-        spec = self.proxy.parse_query('_id in %s' % _ids, date=None)
-        _objs = _cube.find(spec, {'_hash': 0})
-        k = _objs.count()
-        logger.debug(
-            '[%s] %s of %s objects need to be rotated' % (_cube, k, olen))
-        if k == 0:  # nothing to rotate...
-            return objects
-        for o in _objs:
-            # _end of existing obj where _end:None should get new's _start
-            # look this up in the instance objects mapping
-            _start = self.store[o['_id']]['_start']
-            o['_end'] = _start
-            del o['_id']
-            objects.append(self._object_cls(_version=self._version, **o))
-        return objects
-
-    def _ensure_base_indexes(self, ensure_time=90):
-        _cube = self.proxy.get_collection()
-        s = ensure_time
-        ensure_time = int(s) if s and s != 0 else 90
-        _cube.ensure_index('_oid', background=False, cache_for=s)
-        _cube.ensure_index('_hash', background=False, cache_for=s)
-        _cube.ensure_index([('_start', -1), ('_end', -1)],
-                           background=False, cache_for=s)
-        _cube.ensure_index([('_end', -1)],
-                           background=False, cache_for=s)
-
-    def get_last_field(self, field):
-        '''Shortcut for querying to get the last field value for
-        a given owner, cube.
-
-        :param field: field name to query
-        '''
-        last = self.find(query=None, fields=[field],
-                         sort=[(field, -1)], one=True, raw=True)
-        if last:
-            last = last.get(field)
-        logger.debug("last %s.%s: %s" % (self.name, field, last))
-        return last
 
 
 # ################################ SQL ALCHEMY ###############################
@@ -2117,6 +2092,7 @@ class SQLAlchemyProxy(object):
     def get_session(self, autoflush=False, autocommit=False,
                     expire_on_commit=True, cached=True, **kwargs):
         if not (cached and hasattr(self, '_session')):
+            self.get_engine()  # make sure we have our engine setup
             self._session = self._sessionmaker(
                 autoflush=autoflush, autocommit=autocommit,
                 expire_on_commit=expire_on_commit, **kwargs)
@@ -2219,6 +2195,8 @@ class SQLAlchemyProxy(object):
         table.drop()
 
 
+# FIXME: container should be tied to single table
+# remove 'table' kwargs and always set table to self._table
 class SQLAlchemyContainer(MetriqueContainer):
     _objects = None
     config = None
@@ -2416,7 +2394,7 @@ class SQLAlchemyContainer(MetriqueContainer):
                             onupdate=self._gen_hash,
                             default=self._gen_hash,
                             index=True, unique=False),
-            '_start': Column(DateTime, default=utcnow(tz_aware=True),
+            '_start': Column(DateTime, default=utcnow(),
                              nullable=False, index=True, unique=False),
             '_end': Column(DateTime, default=None, nullable=True,
                            index=True, unique=False),
@@ -2488,7 +2466,7 @@ class SQLAlchemyContainer(MetriqueContainer):
         logger.info("Flushing %s objects" % (olen))
 
         _ids = self._exec_transaction(self.__flush, objects=objects, **kwargs)
-        [self.store.pop(_id) for _id in _ids]
+        [self.store.pop(_id) for _id in _ids if _id in self.store]
         return _ids
 
     def __flush(self, connection, transaction, objects, **kwargs):
@@ -2507,23 +2485,28 @@ class SQLAlchemyContainer(MetriqueContainer):
         dup_k = 0
         inserts = []
         for i, o in enumerate(objects):
-            _id = o['_id']
-            _end = o['_end']
-            dup = dups.get(_id)
+            dup = dups.get(o['_id'])
             if dup:
+                _id = o.pop('_id')
                 if o['_hash'] == dup['_hash']:
                     dup_k += 1
-                elif _end is None and autosnap:
+                elif o['_end'] is None and autosnap:
+                    # remove dup primary key, it will get a new one
+                    del dup['id']
+                    # set existing objects _end to new objects _start
                     dup['_end'] = o['_start']
+                    # update _id, _hash, etc
                     dup = self._object_cls(_version=self._version, **dup)
-                    cnx.execute(u.where(_id == dup['_id']).values(**dup))
-                    inserts.append(o)
+                    # insert the new object
+                    _ids.append(dup['_id'])
+                    inserts.append(dup)
+                    # replace the existing _end:None object with new values
+                    cnx.execute(u.where(self._table.c._id == _id).values(**o))
                 else:
                     o = self._object_cls(_version=self._version, **o)
                     # don't try to set _id
-                    __id = o.pop('_id')
-                    assert __id == dup['_id']
-                    cnx.execute(u.where(_id == __id).values(**o))
+                    assert _id == dup['_id']
+                    cnx.execute(u.where(self._table.c._id == _id).values(**o))
             else:
                 inserts.append(o)
 
@@ -2582,8 +2565,11 @@ class SQLAlchemyContainer(MetriqueContainer):
             query += self._parse_date(date)
         else:
             query = self._parse_date(date)
-        where = parser.parse(query)
-        return select(fields, whereclause=where)
+        if query:
+            where = parser.parse(query)
+            return select(fields, from_obj=table, whereclause=where)
+        else:
+            return select(fields, from_obj=table)
 
     def _rows2dicts(self, rows):
         return [self._row2dict(r) for r in rows]
@@ -2592,8 +2578,9 @@ class SQLAlchemyContainer(MetriqueContainer):
         return dict(row)
 
     def find(self, query=None, fields=None, date=None, sort=None,
-             descending=False, one=False, raw=False, limit=0,
+             descending=False, one=False, raw=False, limit=None,
              as_cursor=False, scalar=False, table=None):
+        limit = limit if limit and limit > 1 else 0
         table = table or self._table
         fields = self._parse_fields(fields, table=table, meta=False)
         query = self._parse_query(table=table, query=query, fields=fields,
@@ -2608,18 +2595,21 @@ class SQLAlchemyContainer(MetriqueContainer):
         rows = self.proxy.session.execute(query)
         if scalar:
             return rows.scalar()
-        elif one or limit == 1:
-            return rows.first()
-        elif limit > 1:
-            return rows.fetchmany(limit)
         elif as_cursor:
             return rows
+        elif one or limit == 1:
+            row = self._row2dict(rows.first())
+            # implies raw
+            return row
+        elif limit > 1:
+            rows = rows.fetchmany(limit)
         else:
-            rows = self._rows2dicts(rows)
-            if raw:
-                return rows
-            else:
-                return pd.DataFrame(rows)
+            rows = rows.fetchall()
+        rows = self._rows2dicts(rows)
+        if raw:
+            return rows
+        else:
+            return pd.DataFrame(rows)
 
     def get_last_field(self, field):
         '''Shortcut for querying to get the last field value for
@@ -2652,6 +2642,8 @@ class SQLAlchemySQLParser(object):
                 self.scalars.append(field.name)
 
     def parse(self, s):
+        if not s:
+            raise ValueError("query string can not be null!")
         tree = ast.parse(s, mode='eval').body
         return self.p(tree)
 

@@ -421,11 +421,11 @@ def to_encoding(ustring, encoding=None):
         raise ValueError('basestring type required')
 
 
-def ts2dt(ts, milli=False, tz_aware=True):
+def ts2dt(ts, milli=False, tz_aware=False):
     ''' convert timestamp int's (seconds) to datetime objects '''
     # anything already a datetime will still be returned
     # tz_aware, if set to true
-    if not ts or ts != ts:
+    if ts != ts or repr(ts) == 'NaT' or not ts:
         return None  # its not a timestamp
     elif isinstance(ts, datetime):
         pass
@@ -435,14 +435,15 @@ def ts2dt(ts, milli=False, tz_aware=True):
         ts = float(ts)  # already in seconds
     if tz_aware:
         if isinstance(ts, datetime):
-            #pytz.utc.localize(ts)
-            ts = ts.replace(tzinfo=UTC)
-            return ts
+            return ts.replace(tzinfo=UTC)
         else:
             return datetime.fromtimestamp(ts, tz=UTC)
     else:
         if isinstance(ts, datetime):
-            return ts
+            if ts.tzinfo:
+                return ts.astimezone(UTC).replace(tzinfo=None)
+            else:
+                return ts
         else:
             return datetime.utcfromtimestamp(ts)
 
