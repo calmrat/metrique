@@ -31,10 +31,12 @@ except ImportError:
     HAS_JOBLIB = False
     logger.warn("joblib package not found!")
 
+from types import NoneType
 import warnings
 
 from metrique import pyclient
 from metrique.utils import batch_gen, configure, debug_setup, ts2dt
+from metrique.utils import is_null, to_encoding
 
 
 def get_full_history(cube, oids, flush=False, cube_name=None,
@@ -574,30 +576,41 @@ class Generic(pyclient):
         else:
             return value
 
-    def _prep_objects(self, objects):
+    def _prep_object(self, obj):
+        fields = set(self.fields.keys())
+        for field, value in obj.iteritems():
+            if field not in fields:
+                # skip over unexpected (meta) fields
+                continue
+            value = self._unwrap(field, value)
+            value = self._normalize_container(field, value)
+            value = self._convert(field, value)
+            value = self._typecast(field, value)
+            obj[field] = value
+
+        for field, value in obj.items():
+            # note: no iteritems because we're changing o as we loop
+            if field not in fields:
+                # skip over unexpected (meta) fields
+                continue
+            variants = self.fields[field].get('variants') or {}
+            for _field, func in variants.iteritems():
+                obj[_field] = func(obj)
+
         _oid = self.lconfig.get('_oid')
         if isinstance(_oid, (list, tuple)):
             _oid = _oid[1]  # get the field name, not the actual db column
-        fields = set(self.fields.keys())
-        for o in objects:
-            for field, value in o.iteritems():
-                if field not in fields:
-                    # skip over unexpected (meta) fields
-                    continue
-                value = self._unwrap(field, value)
-                value = self._normalize_container(field, value)
-                value = self._convert(field, value)
-                value = self._typecast(field, value)
-                o[field] = value
-            for field, value in o.items():
-                # note: no iteritems because we're changing o as we loop
-                if field not in fields:
-                    # skip over unexpected (meta) fields
-                    continue
-                variants = self.fields[field].get('variants') or {}
-                for _field, func in variants.iteritems():
-                    o[_field] = func(o)
-            o['_oid'] = o[_oid]  # map _oid
+        obj['_oid'] = obj[_oid]  # map _oid
+
+        return obj
+
+    def _prep_objects(self, objects):
+        for i, obj in enumerate(objects):
+            try:
+                objects[i] = self._prep_object(obj)
+            except Exception as e:
+                logger.error('Failed to prep object: %s\n%s' % (e, obj))
+                raise
         return objects
 
     @property
@@ -637,23 +650,21 @@ class Generic(pyclient):
 
     def _type_single(self, value, _type):
         ' apply type to the single value '
+        _type = NoneType if _type is None else _type
         if value is None:  # don't convert null values
             pass
-        elif value == '':
+        elif is_null(value):
             value = None
-        elif _type is None:
-            if isinstance(value, unicode):
-                value = value.encode('utf8')
-            else:
-                value = unicode(str(value), 'utf8')
         elif isinstance(value, _type):  # or values already of correct type
             pass
+        elif _type is NoneType:
+            value = to_encoding(value)
         else:
             value = _type(value)
             if isinstance(value, unicode):
-                value = value.encode('utf8')
+                value = to_encoding(value)
             elif isinstance(value, str):
-                value = unicode(value, 'utf8')
+                value = to_encoding(value)
             else:
                 pass  # leave as-is
         return value

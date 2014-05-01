@@ -25,7 +25,6 @@ from datetime import datetime
 from dateutil.parser import parse as dt_parse
 import gc
 from hashlib import sha1
-import locale
 import os
 import pstats
 import pytz
@@ -328,6 +327,13 @@ def get_timezone_converter(from_timezone, tz_aware=False):
     return timezone_converter
 
 
+def is_null(value):
+    return (bool(value is None) or
+            bool(value == '') or
+            bool(value != value) or
+            repr(value) == 'NaT')
+
+
 def json_encode(obj):
     '''
     Convert datetime.datetime to timestamp
@@ -411,12 +417,12 @@ def rupdate(d, u):
 
 
 def to_encoding(ustring, encoding=None):
-    encoding = encoding or locale.getpreferredencoding()
+    encoding = encoding or 'utf-8'
     if isinstance(ustring, basestring):
         if not isinstance(ustring, unicode):
             return unicode(ustring, encoding, 'replace')
         else:
-            return ustring.encode(encoding, 'replace')
+            return ustring.encode(encoding, 'replace').decode('utf8')
     else:
         raise ValueError('basestring type required')
 

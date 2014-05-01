@@ -176,7 +176,7 @@ import urllib
 from metrique import __version__
 from metrique.utils import get_cube, utcnow, jsonhash, load_config
 from metrique.utils import json_encode, batch_gen, ts2dt, dt2ts, configure
-from metrique.utils import debug_setup
+from metrique.utils import debug_setup, is_null
 from metrique.result import Result
 
 # if HOME environment variable is set, use that
@@ -210,6 +210,7 @@ class MetriqueObject(Mapping):
             '_end': None,
             '_v': _version,
             '__v__': __version__,
+            '_e': {},  # errors should be added here
         }
         self._update(kwargs)
         self._re_hash()
@@ -227,7 +228,7 @@ class MetriqueObject(Mapping):
                 value = ts2dt(value)
             elif isinstance(value, str):
                 value = unicode(value, 'utf8')
-            if value == '' or value != value or repr(value) == 'NaT':
+            if is_null(value):
                 # Normalize empty strings and NaN/NaT objects to None
                 # NaN objects do not equal themselves...
                 value = None
@@ -2572,8 +2573,8 @@ class SQLAlchemyContainer(MetriqueContainer):
                                                                 meta=meta)
         if fields in ([], {}):
             fields = [c.name for c in table.columns]
-            #fields = deepcopy(table.columns)
-        #else:
+            # fields = deepcopy(table.columns)
+        # else:
         #    fields = [f for f in table.columns if f in fields]
         return fields
 
@@ -2637,8 +2638,8 @@ class SQLAlchemyContainer(MetriqueContainer):
 
         :param field: field name to query
         '''
-        last = self.find(fields=field, scalar=True, sort='_start',
-                         descending=True)
+        last = self.find(fields=field, scalar=True, sort=field,
+                         descending=True, date='~')
         logger.debug("last %s.%s: %s" % (self.name, field, last))
         return last
 
@@ -2659,8 +2660,10 @@ class SQLAlchemySQLParser(object):
             try:
                 ptype = field.type.python_type
             except NotImplementedError:
-                raise NotImplementedError(
+                logger.warn(
                     "%s (%s) has no python_type defined" % (field, field.type))
+                ptype = None
+
             if ptype is list:
                 self.arrays.append(field.name)
             else:
