@@ -584,8 +584,16 @@ class Generic(pyclient):
                 continue
             value = self._unwrap(field, value)
             value = self._normalize_container(field, value)
-            value = self._convert(field, value)
-            value = self._typecast(field, value)
+            try:
+                value = self._convert(field, value)
+                value = self._typecast(field, value)
+            except Exception as e:
+                logger.error('convert/typcast of (%s) failed: %s' % (
+                    value, e))
+                # set error field with original values
+                # set fallback value to None
+                obj['_e'].update({field: value})
+                value = None
             obj[field] = value
 
         for field, value in obj.items():
