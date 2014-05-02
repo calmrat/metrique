@@ -91,7 +91,7 @@ class Generic(pyclient):
     :param sql_batch_size: how many objects to query at a time
     '''
     dialect = None
-    config_key = 'sql'
+    config_key = 'sqldata'
     fields = None
 
     def __init__(self, vdb=None, retries=None, batch_size=None,
@@ -539,13 +539,6 @@ class Generic(pyclient):
                     join_db, join_table, select_as, select_as, join_prop,
                     on_db, on_table, on_col)}
 
-    def _load_sql(self, sql):
-        # load sql kwargs from instance config
-        engine = self.proxy.get_engine()
-        rows = engine.execute(sql)
-        objects = [dict(row) for row in rows]
-        return objects
-
     def _log_inconsistency(self, last_doc, last_val, field, removed, added,
                            when):
         incon = {'oid': last_doc['_oid'],
@@ -562,6 +555,9 @@ class Generic(pyclient):
         m += u' ... on {when}'
         msg = m.format(**incon)
         self.log_inconsistency(msg)
+
+    def _load_sql(self, sql):
+        return self.proxy._load_sql(sql)
 
     def _normalize_container(self, field, value):
         container = self.fields[field].get('container')

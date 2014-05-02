@@ -78,7 +78,7 @@ from copy import deepcopy
 from datetime import datetime
 from getpass import getuser
 import glob
-import inspect
+from inspect import isclass
 import os
 from operator import itemgetter
 import pandas as pd
@@ -109,10 +109,11 @@ import simplejson as json
 
 try:
     from sqlalchemy import create_engine, MetaData, Table
-    from sqlalchemy import Column, Integer, DateTime
+    from sqlalchemy import Index, Column, Integer, DateTime
     from sqlalchemy import Float, BigInteger, Boolean, UnicodeText
     from sqlalchemy import UniqueConstraint, TypeDecorator
     from sqlalchemy import select, insert, update, desc
+    from sqlalchemy import inspect
     from sqlalchemy.orm import sessionmaker
     from sqlalchemy.ext.declarative import declarative_base
     from sqlalchemy.sql import and_, or_, not_, operators
@@ -290,9 +291,6 @@ class MetriqueObject(Mapping):
                 "_end (%s) is before _start (%s)!" % (_end, _start))
 
     def _re_hash(self):
-        # object is 'current value' continuous
-        # so update _start to reflect the time when
-        # object's current state was (re)set
         self._validate_start_end()
         # _id depends on _hash
         # so first, _hash, then _id
@@ -457,11 +455,9 @@ class MetriqueContainer(MutableMapping):
     def keys(self):
         return {k for o in self.store.itervalues() for k in o.iterkeys()}
 
-    def _parse_fields(self, fields, meta=True, as_dict=False):
-        if meta:
-            _fields = {'_id': 0, '_start': 1, '_end': 1, '_oid': 1}
-        else:
-            _fields = {}
+    def _parse_fields(self, fields, as_dict=False):
+        # _fields = {'_id': 0, '_start': 1, '_end': 1, '_oid': 1}
+        _fields = {}
         if fields in [None, False]:
             _fields = {}
         elif fields in ['~', True]:
@@ -469,9 +465,9 @@ class MetriqueContainer(MutableMapping):
         elif isinstance(fields, dict):
             _fields.update(fields)
         elif isinstance(fields, basestring):
-            _fields.update({s.strip(): 1 for s in fields.split(',')})
+            _fields.update({unicode(s).strip(): 1 for s in fields.split(',')})
         elif isinstance(fields, (list, tuple)):
-            _fields.update({s.strip(): 1 for s in fields})
+            _fields.update({unicode(s).strip(): 1 for s in fields})
         else:
             raise ValueError("invalid fields value")
         if as_dict:
@@ -670,10 +666,19 @@ class BaseClient(object):
         self._proxy_kwargs = proxy_kwargs or {}
         self.set_proxy(proxy, quiet=True)
 
+    # 'container' is alias for 'objects'
     @property
     def container(self):
-        # alias for self.objects
         return self._objects
+
+    @container.setter
+    def container(self, value):
+        self.set_container(value=value)
+
+    @container.deleter
+    def container(self):
+        # replacing existing container with a new, empty one
+        self._objects = self.set_container()
 
     @property
     def objects(self):
@@ -721,7 +726,7 @@ class BaseClient(object):
         _kwargs.update(kwargs)
         _kwargs.setdefault('config_file', self.config_file)
         if container is not None:
-            if inspect.isclass(container):
+            if isclass(container):
                 self._objects = container(name=self.name, _version=_version,
                                           **_kwargs)
             else:
@@ -739,7 +744,7 @@ class BaseClient(object):
         _kwargs.update(kwargs)
         _kwargs.setdefault('config_file', self.config_file)
         if proxy is not None:
-            if inspect.isclass(proxy):
+            if isclass(proxy):
                 self._proxy = proxy(**_kwargs)
             else:
                 self._proxy = proxy
@@ -751,6 +756,7 @@ class BaseClient(object):
 
     @property
     def proxy(self):
+        # FIXME: return back container proxy if local proxy not set?
         return self._proxy
 
     @property
@@ -2147,6 +2153,13 @@ class SQLAlchemyProxy(object):
         engine = 'sqlite:///%s' % db_path
         return engine
 
+    def _load_sql(self, sql):
+        # load sql kwargs from instance config
+        engine = self.get_engine()
+        rows = engine.execute(sql)
+        objects = [dict(row) for row in rows]
+        return objects
+
     @property
     def proxy(self):
         engine = self.config.get('engine')
@@ -2209,9 +2222,8 @@ class SQLAlchemyProxy(object):
         table.drop()
 
 
-# FIXME: container should be tied to single table
-# remove 'table' kwargs and always set table to self._table
 class SQLAlchemyContainer(MetriqueContainer):
+    __indexes = None
     _objects = None
     config = None
     config_file = DEFAULT_CONFIG
@@ -2280,6 +2292,7 @@ class SQLAlchemyContainer(MetriqueContainer):
             self._proxy = proxy
 
         self.ensure_table(schema=schema, name=name)
+        self.__indexes = self.__indexes or {}
 
     @property
     def proxy(self):
@@ -2507,7 +2520,6 @@ class SQLAlchemyContainer(MetriqueContainer):
         for i, o in enumerate(objects):
             dup = dups.get(o['_id'])
             if dup:
-                _id = o.pop('_id')
                 if o['_hash'] == dup['_hash']:
                     dup_k += 1
                 elif o['_end'] is None and autosnap:
@@ -2521,10 +2533,12 @@ class SQLAlchemyContainer(MetriqueContainer):
                     _ids.append(dup['_id'])
                     inserts.append(dup)
                     # replace the existing _end:None object with new values
-                    cnx.execute(u.where(self._table.c._id == _id).values(**o))
+                    cnx.execute(
+                        u.where(self._table.c._id == o['_id']).values(**o))
                 else:
                     o = self._object_cls(_version=self._version, **o)
                     # don't try to set _id
+                    _id = o.pop('_id')
                     assert _id == dup['_id']
                     cnx.execute(u.where(self._table.c._id == _id).values(**o))
             else:
@@ -2538,12 +2552,11 @@ class SQLAlchemyContainer(MetriqueContainer):
         logger.debug('%s duplicates not re-saved' % dup_k)
         return _ids
 
-    def flush(self, schema=None, autosnap=None, batch_size=None, table=None,
-              **kwargs):
+    def flush(self, schema=None, autosnap=None, batch_size=None, **kwargs):
         batch_size = batch_size or self.config.get('batch_size')
         _ids = []
 
-        self.ensure_table(schema=schema, name=table)
+        self.ensure_table(schema=schema)
 
         kwargs['autosnap'] = autosnap
         # get store converted as table instances
@@ -2557,40 +2570,50 @@ class SQLAlchemyContainer(MetriqueContainer):
             self._session = self.proxy.get_session()
         return self._session
 
-    def insert(self, table=None):
-        table = table or self._table
-        return insert(table)
+    def insert(self):
+        return insert(self._table)
 
-    def drop(self, table=None):
-        table = table or self.name
-        result = self.proxy.drop(table=table)
+    def drop(self):
+        result = self.proxy.drop(table=self._table)
         self._table = None
         return result
 
-    def _parse_fields(self, fields=None, table=None, meta=True, **kwargs):
-        table = table if table is not None else self._table
-        fields = super(SQLAlchemyContainer, self)._parse_fields(fields,
-                                                                meta=meta)
+    def _parse_fields(self, fields=None, reflect=False, **kwargs):
+        fields = super(SQLAlchemyContainer, self)._parse_fields(fields)
         if fields in ([], {}):
-            fields = [c.name for c in table.columns]
-            # fields = deepcopy(table.columns)
-        # else:
-        #    fields = [f for f in table.columns if f in fields]
+            fields = [c.name for c in self._table.columns]
+        if reflect:
+            fields = [c for c in self._table.columns if c.name in fields]
         return fields
 
-    def _parse_query(self, table=None, query=None, fields=None, date=None):
-        table = table if table is not None else self._table
+    def _parse_query(self, query=None, fields=None, date=None, alias=None,
+                     distinct=None, limit=None):
+        fields = self._parse_fields(fields)
         fields = fields if fields is not None else self._table
-        parser = SQLAlchemySQLParser(table)
-        if query:
-            query += self._parse_date(date)
-        else:
+        parser = SQLAlchemySQLParser(self._table)
+        if query and date:
+            date = self._parse_date(date)
+            if date:
+                query = '%s and %s' % (query, date)
+            else:
+                pass  # date is '~', return all avilable rows
+        elif date:
             query = self._parse_date(date)
+        else:  # date is null, query is not
+            pass  # use query as-is
+
+        kwargs = {}
         if query:
             where = parser.parse(query)
-            return select(fields, from_obj=table, whereclause=where)
-        else:
-            return select(fields, from_obj=table)
+            kwargs['whereclause'] = where
+        if distinct:
+            kwargs['distinct'] = distinct
+        query = select(fields, from_obj=self._table, **kwargs)
+        if limit >= 1:
+            query = query.limit(limit)
+        if alias:
+            query = query.alias(alias)
+        return query
 
     def _rows2dicts(self, rows):
         return [self._row2dict(r) for r in rows]
@@ -2598,16 +2621,49 @@ class SQLAlchemyContainer(MetriqueContainer):
     def _row2dict(self, row):
         return dict(row)
 
+    def count(self, query=None, date=None):
+        '''
+        Run a pql mongodb based query on the given cube and return only
+        the count of resulting matches.
+
+        :param query: The query in pql
+        :param date: date (metrique date range) that should be queried
+                    If date==None then the most recent versions of the
+                    objects will be queried.
+        :param collection: cube name
+        :param owner: username of cube owner
+        '''
+        if query:
+            query = self._parse_query(query=query, date=date, fields='id',
+                                      alias='anon_x')
+            query = select([func.count()]).select_from(query)
+        else:
+            query = select([func.count()])
+            query = query.select_from(self._table)
+        return self.proxy.session.execute(query).scalar()
+
+    def distinct(self, fields, query=None, date=None):
+        '''
+        Return back a distinct (unique) list of field values
+        across the entire cube dataset
+
+        :param field: field to get distinct token values from
+        :param query: query to filter results by
+        '''
+        fields = self._parse_fields(fields)
+        query = self._parse_query(query=query, date=date, fields=fields,
+                                  alias='anon_x', distinct=True)
+        return sorted({r[0] for r in self.proxy.session.execute(query)})
+
     def find(self, query=None, fields=None, date=None, sort=None,
              descending=False, one=False, raw=False, limit=None,
-             as_cursor=False, scalar=False, table=None):
-        limit = limit if limit and limit > 1 else 0
-        table = table or self._table
-        fields = self._parse_fields(fields, table=table, meta=False)
-        query = self._parse_query(table=table, query=query, fields=fields,
-                                  date=date)
+             as_cursor=False, scalar=False):
+        limit = limit if limit and limit >= 1 else 0
+        fields = self._parse_fields(fields)
+        query = self._parse_query(query=query, fields=fields, date=date,
+                                  limit=limit)
         if sort:
-            order_by = self._parse_fields(sort, table=table, meta=False)[0]
+            order_by = self._parse_fields(sort)[0]
             if descending:
                 query = query.order_by(desc(order_by))
             else:
@@ -2632,13 +2688,61 @@ class SQLAlchemyContainer(MetriqueContainer):
         else:
             return pd.DataFrame(rows)
 
+    def _index_default_name(self, columns, name=None):
+        if name:
+            return name
+        elif isinstance(columns, basestring):
+            return columns
+        elif isinstance(columns, (list, tuple)):
+            return '_'.join(columns)
+        else:
+            raise ValueError(
+                "unable to get default name from columns: %s" % columns)
+
+    def index(self, fields, name=None, **kwargs):
+        '''
+        Build a new index on a cube.
+
+        Examples:
+            + index('field_name')
+
+        :param fields: A single field or a list of (key, direction) pairs
+        :param name: (optional) Custom name to use for this index
+        :param background: MongoDB should create in the background
+        :param collection: cube name
+        :param owner: username of cube owner
+        '''
+        s = self.config.get('index_ensure_secs')
+        name = self._index_default_name(fields, name)
+        fields = self._parse_fields(fields, reflect=True)
+        engine = self.proxy.get_engine()
+        if name not in self.__indexes or (time() - self.__indexes[name]) <= s:
+            index = Index(name, *fields)
+            logger.info('Writing new index %s: %s' % (name, fields))
+            result = index.create(engine)
+            self.__indexes[name] = time()
+        return result
+
+    def index_list(self):
+        '''
+        List all cube indexes
+
+        :param collection: cube name
+        :param owner: username of cube owner
+        '''
+        logger.info('Listing indexes')
+        engine = self.proxy.get_engine()
+        _i = inspect(engine)
+        ix = [i for n in _i.get_table_names() for i in _i.get_indexes(n)]
+        return ix
+
     def get_last_field(self, field):
         '''Shortcut for querying to get the last field value for
         a given owner, cube.
 
         :param field: field name to query
         '''
-        last = self.find(fields=field, scalar=True, sort=field,
+        last = self.find(fields=field, scalar=True, sort=field, limit=1,
                          descending=True, date='~')
         logger.debug("last %s.%s: %s" % (self.name, field, last))
         return last

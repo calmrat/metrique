@@ -87,7 +87,7 @@ def configure(options=None, defaults=None, config_file=None,
         sk = 'global'
         section_only = True
     elif sk in config and not force:
-        # if 'sql' is already configured, ie, we initiated with
+        # if section key is already configured, ie, we initiated with
         # config set already, don't set defaults, only options
         # not set as None
         config.setdefault(sk, {})
