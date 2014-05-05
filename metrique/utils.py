@@ -214,16 +214,11 @@ def debug_setup(logger=None, level=None, log2file=None,
     return logger
 
 
-def dt2ts(dt, drop_micro=False, strict=False):
+def dt2ts(dt, drop_micro=False):
     ''' convert datetime objects to timestamp seconds (float) '''
     # the equals check to 'NaT' is hack to avoid adding pandas as a dependency
-    if dt != dt or repr(dt) == 'NaT' or not dt:
-        msg = "invalid datetime '%s'" % dt
-        if strict:
-            raise ValueError(msg)
-        else:
-            logger.debug(msg)
-            return None
+    if is_null(dt):
+        return None
     elif isinstance(dt, (int, long, float)):  # its a ts already
         ts = dt
     elif isinstance(dt, basestring):  # convert to datetime first
@@ -431,10 +426,20 @@ def ts2dt(ts, milli=False, tz_aware=False):
     ''' convert timestamp int's (seconds) to datetime objects '''
     # anything already a datetime will still be returned
     # tz_aware, if set to true
-    if ts != ts or repr(ts) == 'NaT' or not ts:
+    if is_null(ts):
         return None  # its not a timestamp
     elif isinstance(ts, datetime):
         pass
+    elif isinstance(ts, basestring):
+        try:
+            ts = float(ts)
+        except (TypeError, ValueError):
+            # maybe we have a date like string already?
+            try:
+                ts = dt_parse(ts)
+            except Exception:
+                raise TypeError(
+                    "unable to derive datetime from timestamp string: %s" % ts)
     elif milli:
         ts = float(ts) / 1000.  # convert milli to seconds
     else:
