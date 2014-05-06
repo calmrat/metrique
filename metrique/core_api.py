@@ -79,6 +79,7 @@ from datetime import datetime
 from getpass import getuser
 import glob
 from inspect import isclass
+from lockfile import LockFile
 import os
 from operator import itemgetter
 import pandas as pd
@@ -169,15 +170,15 @@ except ImportError:
     HAS_SQLALCHEMY = False
     TYPE_MAP = {}
 
+import shelve
 import subprocess
 from time import time
 import tempfile
-import urllib
 
 from metrique import __version__
 from metrique.utils import get_cube, utcnow, jsonhash, load_config
 from metrique.utils import json_encode, batch_gen, ts2dt, dt2ts, configure
-from metrique.utils import debug_setup, is_null
+from metrique.utils import debug_setup, is_null, urlretrieve
 from metrique.result import Result
 
 # if HOME environment variable is set, use that
@@ -189,9 +190,6 @@ DEFAULT_CONFIG = os.path.join(ETC_DIR, 'metrique.json')
 HASH_EXCLUDE_KEYS = ['_hash', '_id', '_start', '_end']
 IMMUTABLE_OBJ_KEYS = set(['_hash', '_id', '_oid'])
 SQLA_HASH_EXCLUDE_KEYS = HASH_EXCLUDE_KEYS + ['id']
-
-# FIXME: RFE: clear all oids on update of obj, delete all objects
-# with same oid first, then insert. Requires 'transaction' support
 
 
 class MetriqueObject(Mapping):
@@ -342,6 +340,8 @@ class MetriqueContainer(MutableMapping):
     name = None
     _version = 0
     store = None
+    INVALID_USERNAME_RE = re.compile('[^a-zA-Z_]')
+    RESTRICTED_NAMES = []
 
     def __init__(self, name, _version=None, objects=None,
                  cache_dir=CACHE_DIR):
@@ -367,8 +367,7 @@ class MetriqueContainer(MutableMapping):
         return dict(self.store[key])
 
     def __setitem__(self, key, value):
-        self.store[key] = value
-        # FIXME: re_hash?
+        self.store[key] = self._object_cls(**value)
 
     def __delitem__(self, key):
         del self.store[key]
@@ -408,45 +407,203 @@ class MetriqueContainer(MutableMapping):
         return pd.DataFrame(tuple(self.store))
 
     def flush(self, **kwargs):
-        return self.persist(**kwargs)
+        _ids = self.persist(**kwargs)
+        keys = set(self.store.keys())
+        [self.store.pop(_id) for _id in _ids if _id in keys]
+        return _ids
 
-    def persist(self, itr=None, _type=None, _dir=None, name=None):
-        # FIXME: implement autosnap
-        itr = itr or self.itervalues()
-        _type = _type or 'pickle'
+    def persist(self, objects=None, _type=None, _dir=None, name=None,
+                autosnap=True, timeout=5):
+        objects = objects or self.itervalues()
+        _type = _type or 'shelve'
         _dir = _dir or self._cache_dir
-        name = '%s_' % (name or self.name)
+        name = name or self.name
         if _type == 'pickle':
-            path = self._persist_pickle(itr, _dir=_dir, prefix=name)
+            _ids = self._persist_pickle(objects, _dir=_dir, prefix=name)
         elif _type == 'json':
-            path = self._persist_json(itr, _dir=_dir, prefix=name)
+            _ids = self._persist_json(objects, _dir=_dir, prefix=name)
+        elif _type == 'shelve':
+            _ids = self._persist_shelve(objects, _dir=_dir, prefix=name,
+                                        autosnap=autosnap)
         else:
             raise ValueError("Unknown persist type: %s" % _type)
-        return path
+        return _ids
 
-    def _persist_json(self, itr, _dir, prefix):
+    def load(self, path, filetype=None, as_df=False, retries=None, **kwargs):
+        '''Load multiple files from various file types automatically.
+
+        Supports glob paths, eg::
+
+            path = 'data/*.csv'
+
+        Filetypes are autodetected by common extension strings.
+
+        Currently supports loadings from:
+            * csv (pd.read_csv)
+            * json (pd.read_json)
+
+        :param path: path to config json file
+        :param filetype: override filetype autodetection
+        :param kwargs: additional filetype loader method kwargs
+        '''
+        # kwargs are for passing ftype load options (csv.delimiter, etc)
+        # expect the use of globs; eg, file* might result in fileN (file1,
+        # file2, file3), etc
+        if not isinstance(path, basestring):
+            # assume we're getting a raw dataframe
+            df = path
+            if not isinstance(df, pd.DataFrame):
+                raise ValueError("loading raw values must be DataFrames")
+        elif re.match('https?://', path):
+            _path, headers = urlretrieve(path, retries)
+            logger.debug('Saved %s to tmp file: %s' % (path, _path))
+            try:
+                data = self._load_file(_path, filetype, **kwargs)
+            finally:
+                os.remove(_path)
+        else:
+            path = re.sub('^file://', '', path)
+            path = os.path.expanduser(path)
+            datasets = glob.glob(os.path.expanduser(path))
+            # buid up a single dataframe by concatting
+            # all globbed files together
+            data = []
+            [data.extend(self._load_file(ds, filetype, **kwargs))
+             for ds in datasets]
+
+        if not data:
+            raise ValueError("not data extracted!")
+        else:
+            logger.debug("Data loaded successfully from %s" % path)
+
+        if as_df:
+            return pd.DataFrame(data)
+        else:
+            return data
+
+    def _data_export(self, data, as_df=False):
+        if as_df:
+            if isinstance(data, pd.DataFrame):
+                return data
+            else:
+                return pd.DataFrame(data)
+        else:
+            if isinstance(data, pd.DataFrame):
+                return data.T.to_dict().values()
+            else:
+                return data
+
+    def _load_file(self, path, filetype, as_df=False, **kwargs):
+        if not filetype:
+            # try to get file extension
+            filetype = path.split('.')[-1]
+        if filetype in ['csv', 'txt']:
+            result = self._load_csv(path, **kwargs)
+        elif filetype in ['json']:
+            result = self._load_json(path, **kwargs)
+        elif filetype in ['pickle']:
+            result = self._load_pickle(path, **kwargs)
+        elif filetype in ['db']:
+            result = self._load_shelve(path, **kwargs)
+        else:
+            raise TypeError("Invalid filetype: %s" % filetype)
+        return self._data_export(result, as_df=as_df)
+
+    def _load_pickle(self, path, **kwargs):
+        result = []
+        with open(path) as f:
+            while 1:
+                # in case we have multiple pickles dumped
+                try:
+                    result.append(cPickle.load(f))
+                except EOFError:
+                    break
+        return result
+
+    def _load_csv(self, path, **kwargs):
+        # load the file according to filetype
+        return pd.read_csv(path, **kwargs)
+
+    def _load_json(self, path, **kwargs):
+        return pd.read_json(path, **kwargs)
+
+    def _load_shelve(self, path, as_list=True, **kwargs):
+        kwargs.setdefault('flag', 'c')
+        kwargs.setdefault('protocol', 2)
+        if as_list:
+            return [o for o in shelve.open(path, **kwargs).itervalues()]
+        else:
+            return shelve.open(path, **kwargs)
+
+    def _persist_shelve(self, objects, _dir, prefix, suffix='.db',
+                        autosnap=True):
+        # FIXME: implement basic filebased locking
+        _ids = []
+
+        suffix = suffix or '.db'
+        fname = '%s%s' % (prefix, suffix)
+        path = os.path.join(_dir, fname)
+
+        with LockFile(path):
+            _cube = self._load_shelve(path, as_list=False)
+            dup_ids = set(_cube.keys())
+            k = 0
+            for i, o in enumerate(objects, start=1):
+                _id = str(o['_id'])
+                _ids.append(_id)
+                # check for dups already persisted
+                if _id in dup_ids:
+                    dup = dict(_cube[_id])
+                    if dup['_hash'] == o['_hash']:
+                        k += 1
+                        continue  # exact duplicate, skip
+                    elif o['_end'] is None and autosnap:
+                        # rotate the dup object's _end to new objects _start
+                        dup['_end'] = o['_start']
+                        dup = self._object_cls(**dup)
+                        d_id = str(dup['_id'])
+                        _ids.append(d_id)
+                        _cube[d_id] = dup
+                        _cube[_id] = self._object_cls(**o)
+                    else:
+                        _cube[_id] = self._object_cls(**o)
+                else:
+                    _cube[_id] = self._object_cls(**o)
+        logger.debug("%s duplicate objects skipped of %s total" % (k, i))
+        return _ids
+
+    def _persist_json(self, objects, _dir, prefix):
+        prefix = prefix.rstrip('_') + '_'
         suffix = '.json'
         handle, path = tempfile.mkstemp(dir=_dir, prefix=prefix, suffix=suffix)
         _sep = (',', ':')
+        _ids = []
         with os.fdopen(handle, 'w') as f:
-            [json.dump(doc, f, separators=_sep, default=json_encode)
-             for doc in itr]
+            for i, o in enumerate(objects, start=1):
+                _ids.append(o['_id'])
+                json.dump(o, f, separators=_sep, default=json_encode)
         file_is_empty = bool(os.stat(path).st_size == 0)
         if file_is_empty:
             logger.warn("file is empty! (removing)")
             os.remove(path)
-        return path
+        logger.info("%s objects exported to %s" % (i, path))
+        return _ids
 
-    def _persist_pickle(self, itr, _dir, prefix):
+    def _persist_pickle(self, objects, _dir, prefix):
+        prefix = prefix.rstrip('_') + '_'
         suffix = '.pickle'
         handle, path = tempfile.mkstemp(dir=_dir, prefix=prefix, suffix=suffix)
+        _ids = []
         with os.fdopen(handle, 'w') as f:
-            [cPickle.dump(doc, f, 2) for doc in itr]
+            for i, o in enumerate(objects, start=1):
+                _ids.append(o['_id'])
+                cPickle.dump(o, f, 2)
         file_is_empty = bool(os.stat(path).st_size == 0)
         if file_is_empty:
             logger.warn("file is empty! (removing)")
             os.remove(path)
-        return path
+        logger.info("%s objects exported to %s" % (i, path))
+        return _ids
 
     def clear(self):
         self.store = {}
@@ -533,6 +690,27 @@ class MetriqueContainer(MutableMapping):
         else:
             # 'dt~dt'
             return '%s and %s' % (before(split[1]), after(split[0]))
+
+    def _validate_password(self, password):
+        is_str = isinstance(password, basestring)
+        char_8_plus = len(password) >= 8
+        ok = all((is_str, char_8_plus))
+        if not ok:
+            raise ValueError("Invalid password; must be len(string) >= 8")
+        return password
+
+    def _validate_username(self, username):
+        if not isinstance(username, basestring):
+            raise TypeError("username must be a string")
+        elif self.INVALID_USERNAME_RE.search(username):
+            raise ValueError(
+                "Invalid username '%s'; "
+                "lowercase, ascii alpha [a-z_] characters only!" % username)
+        elif username in self.RESTRICTED_NAMES:
+            raise ValueError(
+                "username '%s' is not permitted" % username)
+        else:
+            return username.lower()
 
     @property
     def oids(self):
@@ -646,7 +824,7 @@ class BaseClient(object):
         config_key = config_key or self.global_config_key
         # load defaults + set args passed in
         self.config = configure(options, defaults,
-                                config_file=config_file,
+                                config_file=self.config_file,
                                 section_key=config_key,
                                 update=self.config)
 
@@ -797,106 +975,12 @@ class BaseClient(object):
         to the cube (assuming no duplicates)
         '''
         if flush:
-            return self.objects.flush(autosnap=autosnap)
+            return self.objects.flush(autosnap=autosnap, **kwargs)
         return self
 
     @property
     def lconfig(self):
         return self.config.get(self.config_key) or {}
-
-    def load(self, path, filetype=None, as_df=False, retries=None, **kwargs):
-        '''Load multiple files from various file types automatically.
-
-        Supports glob paths, eg::
-
-            path = 'data/*.csv'
-
-        Filetypes are autodetected by common extension strings.
-
-        Currently supports loadings from:
-            * csv (pd.read_csv)
-            * json (pd.read_json)
-
-        :param path: path to config json file
-        :param filetype: override filetype autodetection
-        :param kwargs: additional filetype loader method kwargs
-        '''
-        # kwargs are for passing ftype load options (csv.delimiter, etc)
-        # expect the use of globs; eg, file* might result in fileN (file1,
-        # file2, file3), etc
-        if not isinstance(path, basestring):
-            # assume we're getting a raw dataframe
-            df = path
-            if not isinstance(df, pd.DataFrame):
-                raise ValueError("loading raw values must be DataFrames")
-        elif re.match('https?://', path):
-            _path, headers = self.urlretrieve(path, retries)
-            logger.debug('Saved %s to tmp file: %s' % (path, _path))
-            try:
-                data = self._load_file(_path, filetype, **kwargs)
-            finally:
-                os.remove(_path)
-        else:
-            path = re.sub('^file://', '', path)
-            path = os.path.expanduser(path)
-            datasets = glob.glob(os.path.expanduser(path))
-            # buid up a single dataframe by concatting
-            # all globbed files together
-            data = []
-            [data.extend(self._load_file(ds, filetype, **kwargs))
-             for ds in datasets]
-
-        if not data:
-            raise ValueError("not data extracted!")
-        else:
-            logger.debug("Data loaded successfully.")
-
-        if as_df:
-            return pd.DataFrame(data)
-        else:
-            return data
-
-    def _load_file(self, path, filetype, as_df=False, **kwargs):
-        if not filetype:
-            # try to get file extension
-            filetype = path.split('.')[-1]
-        if filetype in ['csv', 'txt']:
-            result = self._load_csv(path, **kwargs)
-        elif filetype in ['json']:
-            result = self._load_json(path, **kwargs)
-        elif filetype in ['pickle']:
-            result = self._load_pickle(path, **kwargs)
-        else:
-            raise TypeError("Invalid filetype: %s" % filetype)
-
-        if as_df:
-            if isinstance(result, pd.DataFrame):
-                return result
-            else:
-                return pd.DataFrame(result)
-        else:
-            if isinstance(result, pd.DataFrame):
-                return result.T.to_dict().values()
-            else:
-                return result
-
-    def _load_pickle(self, path, **kwargs):
-        result = []
-        with open(path) as f:
-            while 1:
-                # in case we have multiple pickles dumped
-                try:
-                    result.append(cPickle.load(f))
-                except EOFError:
-                    break
-        return result
-
-    def _load_csv(self, path, **kwargs):
-        # load the file according to filetype
-        return pd.read_csv(path, **kwargs)
-
-    def _load_json(self, path, **kwargs):
-        return pd.read_json(path, **kwargs)
 
     def load_config(self, path):
         return load_config(path)
@@ -915,25 +999,6 @@ class BaseClient(object):
         if not quiet:
             logger.debug(output)
         return output
-
-    def urlretrieve(self, uri, saveas=None, retries=3):
-        '''urllib.urlretrieve wrapper'''
-        retries = int(retries) if retries else 3
-        # FIXME: make saveas load tempfile.mkstemp in
-        # self.config['metrique'].get('cache_dir')
-        while retries:
-            try:
-                _path, headers = urllib.urlretrieve(uri, saveas)
-            except Exception as e:
-                retries -= 1
-                logger.warn(
-                    'Failed getting %s: %s (retry:%s in 1s)' % (
-                        uri, e, retries))
-                time.sleep(1)
-                continue
-            else:
-                break
-        return _path, headers
 
     # ############################## Backends #################################
     def mongodb(self, cached=True, owner=None, name=None,
@@ -1051,12 +1116,12 @@ class MongoDBProxy(object):
                         write_concern=0,
                         )
         self.config = self.config or {}
-        config_file = config_file or self.config_file
+        self.config_file = config_file or self.config_file
         config_key = config_key or self.config_key
         self.config = configure(options, defaults,
                                 section_key=config_key,
                                 section_only=True,
-                                config_file=config_file,
+                                config_file=self.config_file,
                                 update=self.config)
 
         # default owner == username if not set
@@ -1167,8 +1232,7 @@ class MongoDBContainer(MetriqueContainer):
     owner = None
     name = None
     INDEX_ENSURE_SECS = 60 * 60
-    INVALID_USERNAME_RE = re.compile('[^a-zA-Z_]')
-    RESTRICTED_COLLECTION_NAMES = ['admin', 'local', 'system']
+    RESTRICTED_NAMES = ['admin', 'local', 'system']
     VALID_CUBE_SHARE_ROLES = ['read', 'readWrite', 'dbAdmin', 'userAdmin']
     CUBE_OWNER_ROLES = ['readWrite', 'dbAdmin', 'userAdmin']
 
@@ -1219,12 +1283,12 @@ class MongoDBContainer(MetriqueContainer):
                         username=None,
                         write_concern=None)
         self.config = self.config or {}
-        config_file = config_file or self.config_file
+        self.config_file = config_file or self.config_file
         config_key = config_key or self.config_key
         self.config = configure(options, defaults,
                                 section_key=config_key,
                                 section_only=True,
-                                config_file=config_file,
+                                config_file=self.config_file,
                                 update=self.config)
         self.config['owner'] = self.config['owner'] or defaults.get('username')
 
@@ -1320,9 +1384,13 @@ class MongoDBContainer(MetriqueContainer):
                 logger.warn("%s objects failed to flush!" % failed)
             # new 'snapshoted' objects are included in _ids, but they
             # aren't in self.store, so ignore them
+        # FIXME: this is redundant if we call super().flush(), which
+        # we should
         [self.store.pop(_id) for _id in _ids if _id in self.store]
         logger.debug(
             "[%s] %s objects remaining" % (_cube, len(self.store)))
+        # FIXME: this is redundant? ... if we call super().flush(), which we
+        # should...
         return _ids
 
     def _filter_end_null_dups(self, _cube, objects):
@@ -1418,27 +1486,6 @@ class MongoDBContainer(MetriqueContainer):
     def values(self, sample_size=1):
         return self.sample_docs(sample_size=sample_size)
 
-    def _validate_password(self, password):
-        is_str = isinstance(password, basestring)
-        char_8_plus = len(password) >= 8
-        ok = all((is_str, char_8_plus))
-        if not ok:
-            raise ValueError("Invalid password; must be len(string) >= 8")
-        return password
-
-    def _validate_username(self, username):
-        if not isinstance(username, basestring):
-            raise TypeError("username must be a string")
-        elif self.INVALID_USERNAME_RE.search(username):
-            raise ValueError(
-                "Invalid username '%s'; "
-                "lowercase, ascii alpha [a-z_] characters only!" % username)
-        elif username in self.RESTRICTED_COLLECTION_NAMES:
-            raise ValueError(
-                "username '%s' is not permitted" % username)
-        else:
-            return username.lower()
-
     def _validate_cube_roles(self, roles):
         if isinstance(roles, basestring):
             roles = [roles]
@@ -1458,10 +1505,10 @@ class MongoDBContainer(MetriqueContainer):
         :param user: Name of the user you're managing
         :param password: Password (plain text), if any of user
         '''
-        if username and not password:
-            raise RuntimeError('must specify password!')
         password = password or self.config.get('password')
         username = username or self.config.get('username')
+        if username and not password:
+            raise RuntimeError('must specify password!')
         username = self._validate_username(username)
         password = self._validate_password(password)
         logger.info('Registering new user %s' % username)
@@ -1496,7 +1543,7 @@ class MongoDBContainer(MetriqueContainer):
         cubes = db.collection_names(include_system_collections=False)
         startswith = unicode(startswith or '')
         cubes = [name for name in cubes if name.startswith(startswith)]
-        RCN = self.RESTRICTED_COLLECTION_NAMES
+        RCN = self.RESTRICTED_NAMES
         not_restricted = lambda c: all(not c.startswith(name) for name in RCN)
         cubes = filter(not_restricted, cubes)
         logger.info('[%s] Listing available cubes starting with "%s")' % (
@@ -2003,24 +2050,24 @@ class SQLAlchemyProxy(object):
     def __init__(self, engine=None, debug=None, cache_dir=None,
                  config_key=None, config_file=None, dialect=None,
                  driver=None, host=None, port=None, db=None,
-                 username=None, password=None, owner=None, table=None,
-                 **kwargs):
+                 username=None, password=None, table=None,
+                 connect_args=None, **kwargs):
         if not HAS_SQLALCHEMY:
             raise NotImplementedError('`pip install sqlalchemy` required')
 
         try:
             _engine = self.get_engine_uri(db=db, host=host, port=port,
                                           driver=driver, dialect=dialect,
-                                          username=username, password=password)
+                                          username=username, password=password,
+                                          connect_args=connect_args)
         except RuntimeError as e:
             if any((db, host, port, driver, dialect, username, password)):
                 raise RuntimeError("make sure to set db arg! (%s)" % e)
             else:
-                _engine = self._get_sqlite_engine_uri(owner, cache_dir)
+                _engine = self._get_sqlite_engine_uri(cache_dir)
 
         options = dict(
             engine=engine,
-            owner=owner,
             password=password,
             table=table,
             username=username,
@@ -2028,21 +2075,19 @@ class SQLAlchemyProxy(object):
         )
         defaults = dict(
             engine=_engine,
-            owner=None,
             password=None,
             table=None,
             username=getuser(),
             debug=logging.INFO,
         )
         self.config = self.config or {}
-        config_file = config_file or self.config_file
+        self.config_file = config_file or self.config_file
         config_key = config_key or 'sqlalchemy'
         self.config = configure(options, defaults,
-                                config_file=config_file,
+                                config_file=self.config_file,
                                 section_key=config_key,
                                 section_only=True,
                                 update=self.config)
-        self.config['owner'] = self.config['owner'] or defaults.get('username')
         self._debug_setup_sqlalchemy_logging()
 
     def _debug_setup_sqlalchemy_logging(self):
@@ -2064,7 +2109,8 @@ class SQLAlchemyProxy(object):
 
     @staticmethod
     def get_engine_uri(db, host=None, port=None, driver=None, dialect=None,
-                       username=None, password=None):
+                       username=None, password=None, connect_args=None):
+        connect_args = connect_args
         if not db:
             raise RuntimeError("db can not be null!")
 
@@ -2078,14 +2124,23 @@ class SQLAlchemyProxy(object):
 
         if username and password:
             u_p = '%s:%s@' % (username, password)
+            _u_p = '%s:XXX@' % username  # hide password from log
         elif username:
-            u_p = '%s@' % username
+            _u_p = u_p = '%s@' % username
         else:
-            u_p = ''
+            _u_p = u_p = ''
 
         host = host or '127.0.0.1'
         port = port or 5432
-        return '%s://%s%s:%s/%s' % (dialect, u_p, host, port, db)
+        uri = '%s://%s%s:%s/%s' % (dialect, u_p, host, port, db)
+        _uri = '%s://%s%s:%s/%s' % (dialect, _u_p, host, port, db)
+        if connect_args:
+            args = ['%s=%s' % (k, v) for k, v in connect_args.iteritems()]
+            args = '?%s' % '&'.join(args)
+            uri += args
+            _uri += args
+        logger.debug("Engine URI: %s" % _uri)
+        return uri
 
     def get_engine(self, engine=None, connect=False, cached=True, **kwargs):
         if kwargs or not cached or not hasattr(self, '_sql_engine'):
@@ -2146,10 +2201,10 @@ class SQLAlchemyProxy(object):
     def get_tables(self):
         return self.get_meta().tables
 
-    def _get_sqlite_engine_uri(self, owner=None, cache_dir=None):
+    def _get_sqlite_engine_uri(self, name=None, cache_dir=None):
         cache_dir = cache_dir or CACHE_DIR
-        owner = owner or getuser()
-        db_path = os.path.join(cache_dir, '%s.db' % owner)
+        name = name or getuser()
+        db_path = os.path.join(cache_dir, '%s.db' % name)
         engine = 'sqlite:///%s' % db_path
         return engine
 
@@ -2228,17 +2283,15 @@ class SQLAlchemyContainer(MetriqueContainer):
     config = None
     config_file = DEFAULT_CONFIG
     config_key = 'sqlalchemy'
-    owner = None
     name = None
 
     def __init__(self, name, objects=None, proxy=None,
-                 engine=None, schema=None, owner=None,
-                 batch_size=None, config_file=None,
-                 config_key=None, debug=None,
+                 engine=None, schema=None, batch_size=None,
+                 config_file=None, config_key=None, debug=None,
                  cache_dir=None, dialect=None, driver=None,
                  host=None, port=None, username=None,
                  password=None, table=None, _version=None,
-                 **kwargs):
+                 db=None, autoreflect=True, **kwargs):
         if not HAS_SQLALCHEMY:
             raise NotImplementedError('`pip install sqlalchemy` required')
 
@@ -2249,13 +2302,12 @@ class SQLAlchemyContainer(MetriqueContainer):
         options = dict(
             batch_size=batch_size,
             cache_dir=cache_dir,
-            db=owner,  # db is owner name
+            db=db,
             debug=debug,
             dialect=dialect,
             driver=driver,
             engine=engine,
             host=host,
-            owner=owner,
             password=password,
             port=port,
             schema=schema,
@@ -2272,26 +2324,27 @@ class SQLAlchemyContainer(MetriqueContainer):
             driver=None,
             engine=None,
             host=None,
-            owner=None,
             password=None,
             port=None,
             schema=None,
             username=getuser(),
         )
         self.config = self.config or {}
-        config_file = config_file or self.config_file
+        self.config_file = config_file or self.config_file
         config_key = config_key or 'sqlalchemy'
         self.config = configure(options, defaults,
-                                config_file=config_file,
+                                config_file=self.config_file,
                                 section_key=config_key,
                                 section_only=True,
                                 update=self.config)
-        self.config['owner'] = self.config['owner'] or defaults.get('username')
-        self.config['db'] = self.config['db'] or self.config.get('owner')
+
+        self.config['db'] = self.config['db'] or self.config['username']
         if proxy:
             self._proxy = proxy
 
-        self.ensure_table(schema=schema, name=name)
+        if autoreflect:
+            self.ensure_table(schema=schema, name=name)
+
         self.__indexes = self.__indexes or {}
 
     @property
@@ -2493,6 +2546,8 @@ class SQLAlchemyContainer(MetriqueContainer):
 
         _ids = self._exec_transaction(self.__flush, objects=objects, **kwargs)
         [self.store.pop(_id) for _id in _ids if _id in self.store]
+        # FIXME: this is redundant? if we call super().flush(), which
+        # we should
         return _ids
 
     def __flush(self, connection, transaction, objects, **kwargs):
@@ -2591,12 +2646,9 @@ class SQLAlchemyContainer(MetriqueContainer):
         fields = self._parse_fields(fields)
         fields = fields if fields is not None else self._table
         parser = SQLAlchemySQLParser(self._table)
+        date = self._parse_date(date)
         if query and date:
-            date = self._parse_date(date)
-            if date:
-                query = '%s and %s' % (query, date)
-            else:
-                pass  # date is '~', return all avilable rows
+            query = '%s and %s' % (query, date)
         elif date:
             query = self._parse_date(date)
         else:  # date is null, query is not
@@ -2746,6 +2798,23 @@ class SQLAlchemyContainer(MetriqueContainer):
                          descending=True, date='~')
         logger.debug("last %s.%s: %s" % (self.name, field, last))
         return last
+
+    def user_register(self, username=None, password=None):
+        password = password or self.config.get('password')
+        username = username or self.config.get('username')
+        if username and not password:
+            raise RuntimeError('must specify password!')
+        u = self._validate_username(username)
+        p = self._validate_password(password)
+        logger.info('Registering new user %s' % u)
+        sql = []
+        sql.append("create database %s;" % u)
+        sql.append("CREATE USER %s WITH PASSWORD '%s';" % (u, p))
+        sql.append("GRANT ALL ON DATABASE %s TO %s;" % (u, u))
+        session = self.proxy.get_session()
+        session.connection().connection.set_isolation_level(0)
+        [session.execute(s) for s in sql]
+        return True
 
 
 class SQLAlchemySQLParser(object):

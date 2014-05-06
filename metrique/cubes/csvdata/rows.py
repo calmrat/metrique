@@ -60,7 +60,7 @@ class Rows(pyclient):
         and the result of the function will be assigned to the _start
         or _oid, respectively.
         '''
-        objects = self.load(path=uri, filetype='csv')
+        objects = self.container.load(path=uri, filetype='csv')
 
         k = itertools.count(1)
         now = utcnow()

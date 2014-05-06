@@ -32,6 +32,7 @@ import re
 import simplejson as json
 import sys
 import time
+import urllib
 
 json_encoder = json.JSONEncoder()
 
@@ -41,6 +42,7 @@ SHA1_HEXDIGEST = lambda o: sha1(repr(o)).hexdigest()
 UTC = pytz.utc
 
 LOGS_DIR = os.environ.get('METRIQUE_LOGS')
+CACHE_DIR = os.environ.get('METRIQUE_CACHE') or '/tmp'
 
 
 def batch_gen(data, batch_size):
@@ -495,3 +497,23 @@ def _profile(filename, fn, *args, **kw):
     ended = time.time()
 
     return ended - began, load_stats, locals()['result']
+
+
+def urlretrieve(uri, saveas=None, retries=3, cache_dir=None):
+    '''urllib.urlretrieve wrapper'''
+    retries = int(retries) if retries else 3
+    # FIXME: make random filename (saveas) in cache_dir...
+    #cache_dir = cache_dir or CACHE_DIR
+    while retries:
+        try:
+            _path, headers = urllib.urlretrieve(uri, saveas)
+        except Exception as e:
+            retries -= 1
+            logger.warn(
+                'Failed getting %s: %s (retry:%s in 1s)' % (
+                    uri, e, retries))
+            time.sleep(1)
+            continue
+        else:
+            break
+    return _path, headers

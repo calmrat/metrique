@@ -875,28 +875,29 @@ def _deploy_deps(args):
     # install if we're not testing
     pip = _deploy_which_pip(args)
 
-    if args.all or args.ipython:
-        call('%s install -U ipython' % pip)
-    if args.all or args.test or args.pytest:
-        call('%s install -U pytest coveralls' % pip)
-    if args.all or args.docs:
-        call('%s install -U sphinx' % pip)
-        # pip-accel fails to install this package...
-        call('pip install -U sphinx_bootstrap_theme')
-    if args.all or args.supervisord:
-        call('%s install -U supervisor' % pip)
-    if args.all or args.joblib:
-        call('%s install -U joblib' % pip)
-    if args.all or args.postgres:
-        call('%s install -U psycopg2' % pip)
-    if args.all or args.celery:
-        call('%s install -U celery' % pip)
-    if args.all or args.sqlalchemy:
-        call('%s install -U sqlalchemy' % pip)
-    if args.all or args.pymongo:
-        call('%s install -U pymongo pql' % pip)
-    if args.all or args.pandas:
-        call('%s install -U pandas' % pip)
+    _all = args.all
+    _ = _all or args.ipython
+    call('%s install -U ipython' % pip) if _ else None
+    _ = _all or args.test or args.pytest
+    call('%s install -U pytest coveralls' % pip) if _ else None
+    _ = args.all or args.docs
+    call('%s install -U sphinx' % pip) if _ else None
+    # pip-accel fails to install this package...
+    call('pip install -U sphinx_bootstrap_theme') if _ else None
+    _ = _all or args.supervisord
+    call('%s install -U supervisor' % pip) if _ else None
+    _ = _all or args.joblib
+    call('%s install -U joblib' % pip) if _ else None
+    _ = _all or args.postgres
+    call('%s install -U psycopg2' % pip) if _ else None
+    _ = _all or args.celery
+    call('%s install -U celery' % pip) if _ else None
+    _ = _all or args.sqlalchemy
+    call('%s install -U sqlalchemy' % pip) if _ else None
+    _ = _all or args.pymong
+    call('%s install -U pymongo pql' % pip) if _ else None
+    _ = _all or args.pandas
+    call('%s install -U pandas' % pip) if _ else None
 
 
 def deploy(args):
@@ -962,6 +963,9 @@ def ssl(args=None):
             pem.write(''.join(cert.readlines()))
         with open(SSL_KEY) as key:
             pem.write(''.join(key.readlines()))
+    os.chmod(SSL_CERT, 0600)
+    os.chmod(SSL_KEY, 0600)
+    os.chmod(SSL_PEM, 0600)
 
 
 def default_conf(path, template):
@@ -1003,6 +1007,12 @@ def postgresql_firstboot(force=False):
         time.sleep(1)
         cmd = 'createdb -h 127.0.0.1'
         call(cmd)
+        cmd = 'psql -h 127.0.0.1 -c "%s"'
+        db = "CREATE DATABASE admin;"
+        P = PASSWORD
+        user = "CREATE ROLE admin WITH PASSWORD '%s' SUPERUSER LOGIN;" % P
+        grant = "GRANT ALL ON DATABASE admin TO admin;"
+        [call(cmd % sql) for sql in (db, user, grant)]
     finally:
         if started:
             postgresql_stop()

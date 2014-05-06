@@ -17,7 +17,6 @@ logger = logging.getLogger()
 logger.setLevel(logging.WARN)
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.WARN)
-
 import os
 # if HOME environment variable is set, use that
 # useful when running 'as user' with root (supervisord)
