@@ -19,7 +19,7 @@ Metrique
 .. image:: https://coveralls.io/repos/kejbaly2/metrique/badge.png 
    :target: https://coveralls.io/r/kejbaly2/metrique
 
-Python/MongoDB Data Warehouse and Information Platform
+Python Data Warehouse and Information Platform
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 metrique provides a simple python API to support
@@ -44,7 +44,7 @@ The instructions given below assume fedora rpm package names::
     sudo yum install git gcc gcc-c++ gcc-gfortran
     sudo yum install freetype-devel libpng-devel # matplotlib deps
 
-    sudo yum install mongodb mongodb-server
+    sudo yum install mongodb mongodb-server postgresql postgresql-devel
 
     # additional python global dependencies, from pip
     sudo pip install pip-accel  # faster cached pip installed
@@ -61,14 +61,17 @@ The instructions given below assume fedora rpm package names::
 
     # deploy metrique master branch into a virtual environment
     # including dependencies. 
-    # NOTE this takes 10-15 minutes to compile everything from source!
+    # NOTE this can take ~10 minutes to compile everything from source!
     ./metrique.py -V ~/metrique.master deploy --all
 
     # activate the virtual environment
     source ~/metrique.master/bin/activate
 
-    # to persist data, start mongodb
-    ./metrique mongodb firstboot
-    ./metrique mongodb start
+    # run firstboot config to setup default environment
+    ./metrique.py mongodb firstboot
+
+    # optionally, start mongodb or postgresql
+    ./metrique.py mongodb start
+    ./metrique.py postgresql start
 
     # launch ipython, connect to a metriqued instance and start mining!

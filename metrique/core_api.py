@@ -712,6 +712,17 @@ class MetriqueContainer(MutableMapping):
         else:
             return username.lower()
 
+    def _validate_roles(self, roles):
+        if isinstance(roles, basestring):
+            roles = [roles]
+        if not isinstance(roles, (list, tuple)):
+            raise TypeError("roles must be single string or list")
+        roles = set(map(str, roles))
+        if not roles <= set(self.VALID_SHARE_ROLES):
+            raise ValueError("invalid roles %s, try: %s" % (
+                roles, self.VALID_SHARE_ROLES))
+        return sorted(roles)
+
     @property
     def oids(self):
         return self.store.keys()
@@ -1233,7 +1244,7 @@ class MongoDBContainer(MetriqueContainer):
     name = None
     INDEX_ENSURE_SECS = 60 * 60
     RESTRICTED_NAMES = ['admin', 'local', 'system']
-    VALID_CUBE_SHARE_ROLES = ['read', 'readWrite', 'dbAdmin', 'userAdmin']
+    VALID_SHARE_ROLES = ['read', 'readWrite', 'dbAdmin', 'userAdmin']
     CUBE_OWNER_ROLES = ['readWrite', 'dbAdmin', 'userAdmin']
 
     def __init__(self, name, objects=None, proxy=None, batch_size=None,
@@ -1486,17 +1497,6 @@ class MongoDBContainer(MetriqueContainer):
     def values(self, sample_size=1):
         return self.sample_docs(sample_size=sample_size)
 
-    def _validate_cube_roles(self, roles):
-        if isinstance(roles, basestring):
-            roles = [roles]
-        if not isinstance(roles, (list, tuple)):
-            raise TypeError("roles must be single string or list")
-        roles = set(map(str, roles))
-        if not roles <= set(self.VALID_CUBE_SHARE_ROLES):
-            raise ValueError("invalid roles %s, try: %s" % (
-                roles, self.VALID_CUBE_SHARE_ROLES))
-        return sorted(roles)
-
     # FIXME: add 'user_update_roles()...
     def user_register(self, username=None, password=None):
         '''
@@ -1555,7 +1555,7 @@ class MongoDBContainer(MetriqueContainer):
         Give cube access rights to another user
         '''
         with_user = self._validate_username(with_user)
-        roles = self._validate_cube_roles(roles or ['read'])
+        roles = self._validate_roles(roles or ['read'])
         _cube = self.proxy.get_db(owner)
         logger.info(
             '[%s] Sharing cube with %s (%s)' % (_cube, with_user, roles))
@@ -2284,6 +2284,7 @@ class SQLAlchemyContainer(MetriqueContainer):
     config_file = DEFAULT_CONFIG
     config_key = 'sqlalchemy'
     name = None
+    VALID_SHARE_ROLES = ['SELECT', 'INSERT', 'UPDATE', 'DELETE']
 
     def __init__(self, name, objects=None, proxy=None,
                  engine=None, schema=None, batch_size=None,
@@ -2339,6 +2340,7 @@ class SQLAlchemyContainer(MetriqueContainer):
                                 update=self.config)
 
         self.config['db'] = self.config['db'] or self.config['username']
+
         if proxy:
             self._proxy = proxy
 
@@ -2738,7 +2740,7 @@ class SQLAlchemyContainer(MetriqueContainer):
         if raw:
             return rows
         else:
-            return pd.DataFrame(rows)
+            return Result(rows, date)
 
     def _index_default_name(self, columns, name=None):
         if name:
@@ -2800,6 +2802,7 @@ class SQLAlchemyContainer(MetriqueContainer):
         return last
 
     def user_register(self, username=None, password=None):
+        # FIXME: enable setting roles at creation time...
         password = password or self.config.get('password')
         username = username or self.config.get('username')
         if username and not password:
@@ -2807,6 +2810,7 @@ class SQLAlchemyContainer(MetriqueContainer):
         u = self._validate_username(username)
         p = self._validate_password(password)
         logger.info('Registering new user %s' % u)
+        # FIXME: make a generic method which runs list of sql statements
         sql = []
         sql.append("create database %s;" % u)
         sql.append("CREATE USER %s WITH PASSWORD '%s';" % (u, p))
@@ -2814,6 +2818,22 @@ class SQLAlchemyContainer(MetriqueContainer):
         session = self.proxy.get_session()
         session.connection().connection.set_isolation_level(0)
         [session.execute(s) for s in sql]
+        return True
+
+    def share(self, with_user, table=None, roles=None):
+        '''
+        Give cube access rights to another user
+        '''
+        table = table or self.name
+        with_user = self._validate_username(with_user)
+        roles = self._validate_roles(roles or ['SELECT'])
+        logger.info(
+            'Sharing cube with %s (%s)' % (with_user, roles))
+        roles = ','.join(roles)
+        sql = 'GRANT %s ON %s TO %s' % (roles, table, with_user)
+        session = self.proxy.get_session()
+        session.connection().connection.set_isolation_level(0)
+        session.execute(sql)
         return True
 
 

@@ -877,7 +877,7 @@ def _deploy_deps(args):
 
     _all = args.all
     _ = _all or args.ipython
-    call('%s install -U ipython' % pip) if _ else None
+    call('%s install -U ipython pyzmq jinja2' % pip) if _ else None
     _ = _all or args.test or args.pytest
     call('%s install -U pytest coveralls' % pip) if _ else None
     _ = args.all or args.docs
@@ -898,6 +898,8 @@ def _deploy_deps(args):
     call('%s install -U pymongo pql' % pip) if _ else None
     _ = _all or args.pandas
     call('%s install -U pandas' % pip) if _ else None
+    _ = _all or args.matplolib
+    call('%s install -U matplolib' % pip) if _ else None
 
 
 def deploy(args):
@@ -1183,6 +1185,8 @@ def main():
         '--pymongo', action='store_true', help='install pymongo, pql')
     _deploy.add_argument(
         '--pandas', action='store_true', help='install pandas')
+    _deploy.add_argument(
+        '--matplotlib', action='store_true', help='install matplotlib')
     _deploy.add_argument(
         '--trash', action='store_true', help='fresh install (rm old virtenv)')
     _deploy.set_defaults(func=deploy)

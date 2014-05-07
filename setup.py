@@ -5,10 +5,6 @@
 
 from setuptools import setup
 
-# FIXME: any way to add 'optional' 'extra' dependencies?
-# 'matplotlib (>=1.3.1)',
-# psycopg2, gittle, etc...
-
 VERSION_FILE = "metrique/_version.py"
 VERSION_EXEC = ''.join(open(VERSION_FILE).readlines())
 __version__ = ''
