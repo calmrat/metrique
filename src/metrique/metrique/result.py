@@ -57,6 +57,8 @@ class Result(DataFrame):
         else:
             self._lbound = self._rbound = None
             self.set_date_bounds(date)
+        # optimization:
+        self._end_isnull = self._end.isnull()
 
     def to_datetime(self, column):
         '''
@@ -115,7 +117,7 @@ class Result(DataFrame):
             raise ValueError('Date %s is not in the queried range.' % date)
         date = Timestamp(date)
         after_start = self._start <= date
-        before_end = (self._end > date) | self._end.isnull()
+        before_end = (self._end > date) | self._end_isnull
         if only_count:
             return np.sum(before_end & after_start)
         else:
@@ -254,7 +256,7 @@ class Result(DataFrame):
         Leaves only versions of those objects that has some version with
         `_end == None` or with `_end > right cutoff`.
         '''
-        mask = self._end.isnull()
+        mask = self._end_isnull
         if self._rbound is not None:
             mask = mask | (self._end > self._rbound)
         oids = set(self[mask]._oid.tolist())
