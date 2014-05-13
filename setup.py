@@ -29,7 +29,6 @@ __requires__ = [
     'anyconfig',
     'decorator (>=3.4.0)',
     'lockfile (>=0.9.0)',
-    # FIXME: make pandas an optional dependency
     'pandas (>=0.13.0)',
     'python_dateutil (>=2.2.0)',
     'pytz'

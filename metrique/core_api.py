@@ -112,7 +112,7 @@ try:
     from sqlalchemy import create_engine, MetaData, Table
     from sqlalchemy import Index, Column, Integer, DateTime
     from sqlalchemy import Float, BigInteger, Boolean, UnicodeText
-    from sqlalchemy import UniqueConstraint, TypeDecorator
+    from sqlalchemy import TypeDecorator
     from sqlalchemy import select, insert, update, desc
     from sqlalchemy import inspect
     from sqlalchemy.orm import sessionmaker
@@ -2463,14 +2463,13 @@ class SQLAlchemyContainer(MetriqueContainer):
                                   if k not in _ignore_keys]
         defaults = {
             '__tablename__': name,
-            '__table_args__': (UniqueConstraint('_id', deferrable=True,
-                                                initially='DEFERRED'),
-                               {'useexisting': False}),
+            '__table_args__': ({'useexisting': False}),
             'id': Column('id', Integer, primary_key=True),
             # FIXME: use hybrid properties? for _id and _hash?
             '_id': Column(CoerceUTF8, nullable=False,
                           onupdate=self._gen_id,
                           default=self._gen_id,
+                          unique=True,
                           index=True),
             '_hash': Column(CoerceUTF8, nullable=False,
                             onupdate=self._gen_hash,
@@ -2647,7 +2646,7 @@ class SQLAlchemyContainer(MetriqueContainer):
                      distinct=None, limit=None):
         fields = self._parse_fields(fields)
         fields = fields if fields is not None else self._table
-        parser = SQLAlchemySQLParser(self._table)
+        parser = SQLAlchemyMQLParser(self._table)
         date = self._parse_date(date)
         if query and date:
             query = '%s and %s' % (query, date)
@@ -2837,14 +2836,17 @@ class SQLAlchemyContainer(MetriqueContainer):
         return True
 
 
-class SQLAlchemySQLParser(object):
+class SQLAlchemyMQLParser(object):
+    '''
+    Simple sytax parser that converts to SQL
+    '''
     def __init__(self, table):
         '''
         :param sqlalchemy.Table table:
             the table definition
         '''
         if table is None:
-            raise ValueError('table can not be null')
+            raise RuntimeError('table can not be null')
         # TODO regexes, datetimes
         self.table = table
         self.scalars = []

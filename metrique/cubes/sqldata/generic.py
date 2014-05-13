@@ -253,7 +253,15 @@ class Generic(pyclient):
         elif not force:
             if self.lconfig.get('delta_new_ids', True):
                 # get all new (unknown) oids
-                oids.extend(self.get_new_oids())
+                try:
+                    new_oids = self.get_new_oids()
+                    oids.extend(new_oids)
+                except RuntimeError as e:
+                    logger.error(
+                        'Failed to get new oids, forcing all oids: %s' % e)
+                    # fall back to getting all oids, since we don't
+                    # have any ids to begin with
+                    oids = self.sql_get_oids()
             if self.lconfig.get('delta_mtime', False):
                 last_update = self._fetch_mtime(last_update, parse_timestamp)
                 # get only those oids that have changed since last update
