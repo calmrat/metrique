@@ -20,15 +20,21 @@ import anyconfig
 anyconfig.set_loglevel(logging.WARN)  # too noisy...
 from calendar import timegm
 import collections
+import cPickle
 import cProfile as profiler
 from datetime import datetime
 from dateutil.parser import parse as dt_parse
 import gc
+import glob
 from hashlib import sha1
+from inspect import isfunction
+import itertools
 import os
+import pandas as pd
 import pstats
 import pytz
 import re
+import shelve
 import simplejson as json
 import sys
 import time
@@ -371,6 +377,147 @@ def jsonhash(obj, root=True, exclude=None, hash_func=None):
     return result
 
 
+def _set_oid_func(_oid_func):
+    k = itertools.count(1)
+
+    def __oid_func(o):
+        ''' default __oid generator '''
+        o['_oid'] = o['_oid'] if '_oid' in o else k.next()
+        return o
+
+    if _oid_func:
+        if _oid_func is True:
+            _oid_func = __oid_func
+        elif isfunction(_oid_func):
+            pass
+        else:
+            raise TypeError("_oid must be a function!")
+    else:
+        _oid_func = None
+    return _oid_func
+
+
+def _load_file(path, filetype, as_df=False, **kwargs):
+    if not filetype:
+        # try to get file extension
+        filetype = path.split('.')[-1]
+    if filetype in ['csv', 'txt']:
+        result = _load_csv(path, **kwargs)
+    elif filetype in ['json']:
+        result = _load_json(path, **kwargs)
+    elif filetype in ['pickle']:
+        result = _load_pickle(path, **kwargs)
+    elif filetype in ['db']:
+        result = _load_shelve(path, **kwargs)
+    else:
+        raise TypeError("Invalid filetype: %s" % filetype)
+    return _data_export(result, as_df=as_df)
+
+
+def _load_pickle(path, **kwargs):
+    result = []
+    with open(path) as f:
+        while 1:
+            # in case we have multiple pickles dumped
+            try:
+                result.append(cPickle.load(f))
+            except EOFError:
+                break
+    return result
+
+
+def _load_csv(path, **kwargs):
+    # load the file according to filetype
+    return pd.read_csv(path, **kwargs)
+
+
+def _load_json(path, **kwargs):
+    return pd.read_json(path, **kwargs)
+
+
+def _load_shelve(path, as_list=True, **kwargs):
+    kwargs.setdefault('flag', 'c')
+    kwargs.setdefault('protocol', 2)
+    if as_list:
+        return [o for o in shelve.open(path, **kwargs).itervalues()]
+    else:
+        return shelve.open(path, **kwargs)
+
+
+def load(path, filetype=None, as_df=False, retries=None,
+         _oid=None, **kwargs):
+    '''Load multiple files from various file types automatically.
+
+    Supports glob paths, eg::
+
+        path = 'data/*.csv'
+
+    Filetypes are autodetected by common extension strings.
+
+    Currently supports loadings from:
+        * csv (pd.read_csv)
+        * json (pd.read_json)
+
+    :param path: path to config json file
+    :param filetype: override filetype autodetection
+    :param kwargs: additional filetype loader method kwargs
+    '''
+    set_oid = _set_oid_func(_oid)
+
+    # kwargs are for passing ftype load options (csv.delimiter, etc)
+    # expect the use of globs; eg, file* might result in fileN (file1,
+    # file2, file3), etc
+    if not isinstance(path, basestring):
+        # assume we're getting a raw dataframe
+        df = path
+        if not isinstance(df, pd.DataFrame):
+            raise ValueError("loading raw values must be DataFrames")
+    elif re.match('https?://', path):
+        logger.debug('Saving %s to tmp file' % path)
+        _path, headers = urlretrieve(path, retries)
+        logger.debug('%s saved to tmp file: %s' % (path, _path))
+        try:
+            objects = _load_file(_path, filetype, **kwargs)
+        finally:
+            os.remove(_path)
+    else:
+        path = re.sub('^file://', '', path)
+        path = os.path.expanduser(path)
+        datasets = glob.glob(os.path.expanduser(path))
+        # buid up a single dataframe by concatting
+        # all globbed files together
+        objects = []
+        [objects.extend(_load_file(ds, filetype, **kwargs))
+            for ds in datasets]
+
+    if not objects:
+        raise ValueError("not objects extracted!")
+    else:
+        logger.debug("Data loaded successfully from %s" % path)
+
+    if set_oid:
+        # set _oids, if we have a _oid generator func defined
+        objects = [set_oid(o) for o in objects]
+
+    if as_df:
+        return pd.DataFrame(objects)
+    else:
+        return objects
+
+
+def _data_export(data, as_df=False):
+    if as_df:
+        if isinstance(data, pd.DataFrame):
+            return data
+        else:
+            return pd.DataFrame(data)
+    else:
+        if isinstance(data, pd.DataFrame):
+            return data.T.to_dict().values()
+        else:
+            return data
+
+
 def _load_cube_pkg(pkg, cube):
     '''
     NOTE: all items in fromlist must be strings
@@ -446,19 +593,24 @@ def ts2dt(ts, milli=False, tz_aware=False):
         ts = float(ts) / 1000.  # convert milli to seconds
     else:
         ts = float(ts)  # already in seconds
+
+    return _get_datetime(ts, tz_aware)
+
+
+def _get_datetime(value, tz_aware=None):
     if tz_aware:
-        if isinstance(ts, datetime):
-            return ts.replace(tzinfo=UTC)
+        if isinstance(value, datetime):
+            return value.replace(tzinfo=UTC)
         else:
-            return datetime.fromtimestamp(ts, tz=UTC)
+            return datetime.fromtimestamp(value, tz=UTC)
     else:
-        if isinstance(ts, datetime):
-            if ts.tzinfo:
-                return ts.astimezone(UTC).replace(tzinfo=None)
+        if isinstance(value, datetime):
+            if value.tzinfo:
+                return value.astimezone(UTC).replace(tzinfo=None)
             else:
-                return ts
+                return value
         else:
-            return datetime.utcfromtimestamp(ts)
+            return datetime.utcfromtimestamp(value)
 
 
 def utcnow(as_datetime=True, tz_aware=False, drop_micro=False):
@@ -474,8 +626,8 @@ def utcnow(as_datetime=True, tz_aware=False, drop_micro=False):
         return dt2ts(now, drop_micro)
 
 
-# profile code snagged from http://stackoverflow.com/a/1175677/1289080
 def profile(fn):
+    # profile code snagged from http://stackoverflow.com/a/1175677/1289080
     def wrapper(*args, **kw):
         elapsed, stat_loader, result = _profile("foo.txt", fn, *args, **kw)
         stats = stat_loader()
@@ -503,7 +655,7 @@ def urlretrieve(uri, saveas=None, retries=3, cache_dir=None):
     '''urllib.urlretrieve wrapper'''
     retries = int(retries) if retries else 3
     # FIXME: make random filename (saveas) in cache_dir...
-    #cache_dir = cache_dir or CACHE_DIR
+    # cache_dir = cache_dir or CACHE_DIR
     while retries:
         try:
             _path, headers = urllib.urlretrieve(uri, saveas)

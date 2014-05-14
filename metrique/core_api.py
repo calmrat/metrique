@@ -77,7 +77,6 @@ from collections import defaultdict
 from copy import deepcopy
 from datetime import datetime
 from getpass import getuser
-import glob
 from inspect import isclass
 from lockfile import LockFile
 import os
@@ -144,6 +143,9 @@ try:
 
         impl = JSON
 
+        def process_bind_param(self, value, dialect):
+            return {str(k): v for k, v in value.iteritems()}
+
         def python_type(self):
             return dict
 
@@ -198,14 +200,16 @@ class MetriqueObject(Mapping):
     UNDA_RE = re.compile('_')
     TIMESTAMP_OBJ_KEYS = set(['_end', '_start'])
 
-    def __init__(self, _oid, _version=None, strict=False, **kwargs):
+    def __init__(self, _oid, _version=None, strict=False,
+                 as_datetime=True, **kwargs):
+        self._as_datetime = as_datetime
         self._strict = strict
         self._version = _version or 0
         self.store = {
             '_oid': _oid,
             '_id': None,
             '_hash': None,
-            '_start': utcnow(),
+            '_start': utcnow(as_datetime=as_datetime),
             '_end': None,
             '_v': _version,
             '__v__': __version__,
@@ -224,13 +228,21 @@ class MetriqueObject(Mapping):
                     continue
             elif key in self.TIMESTAMP_OBJ_KEYS:
                 # ensure normalized timestamp
-                value = ts2dt(value)
-            elif isinstance(value, str):
+                value = ts2dt(value) if self._as_datetime else dt2ts(value)
+            elif key == '_e':
+                # _e is expected to be dict
+                value = dict(value)
+            else:
+                pass
+
+            if isinstance(value, str):
                 value = unicode(value, 'utf8')
-            if is_null(value):
+            elif is_null(value):
                 # Normalize empty strings and NaN/NaT objects to None
                 # NaN objects do not equal themselves...
                 value = None
+            else:
+                pass
             self.store[key] = value
 
     def __getitem__(self, key):
@@ -364,7 +376,11 @@ class MetriqueContainer(MutableMapping):
                 "objs must be None, a list, tuple, dict or MetriqueContainer")
 
     def __getitem__(self, key):
-        return dict(self.store[key])
+        if isinstance(key, slice):
+            keys = sorted(self.store.keys())[key]
+            return [dict(self.store[i]) for i in keys]
+        else:
+            return dict(self.store[key])
 
     def __setitem__(self, key, value):
         self.store[key] = self._object_cls(**value)
@@ -399,6 +415,9 @@ class MetriqueContainer(MutableMapping):
         _id = item['_id']
         self.store[_id] = item
 
+    def clear(self):
+        self.store = {}
+
     def extend(self, items):
         [self.add(i) for i in items]
 
@@ -406,11 +425,50 @@ class MetriqueContainer(MutableMapping):
         '''Return a pandas dataframe from objects'''
         return pd.DataFrame(tuple(self.store))
 
+    @property
+    def _exists(self):
+        raise NotImplementedError("FIXME")
+
     def flush(self, **kwargs):
         _ids = self.persist(**kwargs)
         keys = set(self.store.keys())
         [self.store.pop(_id) for _id in _ids if _id in keys]
         return _ids
+
+    def get(self, where=None, *args, **kwargs):
+        if where:
+            if not isinstance(where, (dict, Mapping)):
+                raise ValueError("where must be a dict")
+            else:
+                result = []
+                for obj in self.store.itervalues():
+                    found = False
+                    for k, v in where.iteritems():
+                        if obj.get(k, '') == v:
+                            found = True
+                        else:
+                            found = False
+                    if found:
+                        result.append(obj)
+            return result
+        else:
+            return super(MetriqueContainer, self).get(*args, **kwargs)
+
+    @property
+    def keys(self):
+        return sorted(k for o in self.store.itervalues() for k in o.iterkeys())
+
+    @staticmethod
+    def load(**kwargs):
+        ''' wrapper for utils.load automated data loader '''
+        return load(**kwargs)
+
+    def ls(self):
+        raise NotImplementedError("FIXME")
+
+    @property
+    def oids(self):
+        return self.store.keys()
 
     def persist(self, objects=None, _type=None, _dir=None, name=None,
                 autosnap=True, timeout=5):
@@ -428,112 +486,6 @@ class MetriqueContainer(MutableMapping):
         else:
             raise ValueError("Unknown persist type: %s" % _type)
         return _ids
-
-    def load(self, path, filetype=None, as_df=False, retries=None, **kwargs):
-        '''Load multiple files from various file types automatically.
-
-        Supports glob paths, eg::
-
-            path = 'data/*.csv'
-
-        Filetypes are autodetected by common extension strings.
-
-        Currently supports loadings from:
-            * csv (pd.read_csv)
-            * json (pd.read_json)
-
-        :param path: path to config json file
-        :param filetype: override filetype autodetection
-        :param kwargs: additional filetype loader method kwargs
-        '''
-        # kwargs are for passing ftype load options (csv.delimiter, etc)
-        # expect the use of globs; eg, file* might result in fileN (file1,
-        # file2, file3), etc
-        if not isinstance(path, basestring):
-            # assume we're getting a raw dataframe
-            df = path
-            if not isinstance(df, pd.DataFrame):
-                raise ValueError("loading raw values must be DataFrames")
-        elif re.match('https?://', path):
-            _path, headers = urlretrieve(path, retries)
-            logger.debug('Saved %s to tmp file: %s' % (path, _path))
-            try:
-                data = self._load_file(_path, filetype, **kwargs)
-            finally:
-                os.remove(_path)
-        else:
-            path = re.sub('^file://', '', path)
-            path = os.path.expanduser(path)
-            datasets = glob.glob(os.path.expanduser(path))
-            # buid up a single dataframe by concatting
-            # all globbed files together
-            data = []
-            [data.extend(self._load_file(ds, filetype, **kwargs))
-             for ds in datasets]
-
-        if not data:
-            raise ValueError("not data extracted!")
-        else:
-            logger.debug("Data loaded successfully from %s" % path)
-
-        if as_df:
-            return pd.DataFrame(data)
-        else:
-            return data
-
-    def _data_export(self, data, as_df=False):
-        if as_df:
-            if isinstance(data, pd.DataFrame):
-                return data
-            else:
-                return pd.DataFrame(data)
-        else:
-            if isinstance(data, pd.DataFrame):
-                return data.T.to_dict().values()
-            else:
-                return data
-
-    def _load_file(self, path, filetype, as_df=False, **kwargs):
-        if not filetype:
-            # try to get file extension
-            filetype = path.split('.')[-1]
-        if filetype in ['csv', 'txt']:
-            result = self._load_csv(path, **kwargs)
-        elif filetype in ['json']:
-            result = self._load_json(path, **kwargs)
-        elif filetype in ['pickle']:
-            result = self._load_pickle(path, **kwargs)
-        elif filetype in ['db']:
-            result = self._load_shelve(path, **kwargs)
-        else:
-            raise TypeError("Invalid filetype: %s" % filetype)
-        return self._data_export(result, as_df=as_df)
-
-    def _load_pickle(self, path, **kwargs):
-        result = []
-        with open(path) as f:
-            while 1:
-                # in case we have multiple pickles dumped
-                try:
-                    result.append(cPickle.load(f))
-                except EOFError:
-                    break
-        return result
-
-    def _load_csv(self, path, **kwargs):
-        # load the file according to filetype
-        return pd.read_csv(path, **kwargs)
-
-    def _load_json(self, path, **kwargs):
-        return pd.read_json(path, **kwargs)
-
-    def _load_shelve(self, path, as_list=True, **kwargs):
-        kwargs.setdefault('flag', 'c')
-        kwargs.setdefault('protocol', 2)
-        if as_list:
-            return [o for o in shelve.open(path, **kwargs).itervalues()]
-        else:
-            return shelve.open(path, **kwargs)
 
     def _persist_shelve(self, objects, _dir, prefix, suffix='.db',
                         autosnap=True):
@@ -604,13 +556,6 @@ class MetriqueContainer(MutableMapping):
             os.remove(path)
         logger.info("%s objects exported to %s" % (i, path))
         return _ids
-
-    def clear(self):
-        self.store = {}
-
-    @property
-    def keys(self):
-        return {k for o in self.store.itervalues() for k in o.iterkeys()}
 
     def _parse_fields(self, fields, as_dict=False):
         # _fields = {'_id': 0, '_start': 1, '_end': 1, '_oid': 1}
@@ -722,10 +667,6 @@ class MetriqueContainer(MutableMapping):
             raise ValueError("invalid roles %s, try: %s" % (
                 roles, self.VALID_SHARE_ROLES))
         return sorted(roles)
-
-    @property
-    def oids(self):
-        return self.store.keys()
 
 
 class MetriqueFactory(type):
@@ -1478,6 +1419,10 @@ class MongoDBContainer(MetriqueContainer):
         _cube.ensure_index([('_end', -1)],
                            background=False, cache_for=s)
 
+    @property
+    def _exists(self):
+        return self.name in self.proxy.ls()
+
     def get_last_field(self, field):
         '''Shortcut for querying to get the last field value for
         a given owner, cube.
@@ -2142,7 +2087,7 @@ class SQLAlchemyProxy(object):
         logger.debug("Engine URI: %s" % _uri)
         return uri
 
-    def get_engine(self, engine=None, connect=False, cached=True, **kwargs):
+    def get_engine(self, engine=None, cached=True, **kwargs):
         if kwargs or not cached or not hasattr(self, '_sql_engine'):
             _engine = self.config.get('engine')
             engine = engine or _engine
@@ -2160,14 +2105,12 @@ class SQLAlchemyProxy(object):
             # ... #unitofwork-contextual
             # scoped sessions
             self._sessionmaker = sessionmaker(bind=self._sql_engine)
-            if connect:
-                self._sql_engine.connect()
         return self._sql_engine
 
     def get_session(self, autoflush=False, autocommit=False,
                     expire_on_commit=True, cached=True, **kwargs):
         if not (cached and hasattr(self, '_session')):
-            self.get_engine()  # make sure we have our engine setup
+            self.get_engine().dispose()  # make sure we have our engine setup
             self._session = self._sessionmaker(
                 autoflush=autoflush, autocommit=autocommit,
                 expire_on_commit=expire_on_commit, **kwargs)
@@ -2193,10 +2136,11 @@ class SQLAlchemyProxy(object):
         return self._Base
 
     def get_table(self, table=None):
-        table = table if table is not None else self.config.get('table')
-        if not table:
+        table = str(table) if table is not None else self.config.get('table')
+        if table is None:
             raise ValueError("table can not be null")
-        return self.get_tables().get(table)
+        tables = self.get_tables()
+        return tables.get(table)
 
     def get_tables(self):
         return self.get_meta().tables
@@ -2213,12 +2157,13 @@ class SQLAlchemyProxy(object):
         engine = self.get_engine()
         rows = engine.execute(sql)
         objects = [dict(row) for row in rows]
+        engine.dispose()
         return objects
 
     @property
     def proxy(self):
         engine = self.config.get('engine')
-        return self.get_engine(engine=engine, connect=True, cached=True)
+        return self.get_engine(engine=engine, cached=True)
 
     def _sqla_sqlite(self, uri):
         kwargs = {}
@@ -2265,6 +2210,7 @@ class SQLAlchemyProxy(object):
         '''
         engine = self.get_engine()
         cubes = engine.table_names()
+        engine.dispose()
         startswith = unicode(startswith or '')
         cubes = [name for name in cubes if name.startswith(startswith)]
         logger.info(
@@ -2273,8 +2219,12 @@ class SQLAlchemyProxy(object):
 
     def drop(self, table=None, engine=None, quiet=True):
         table = self.get_table(table)
-        self.session.close()
-        table.drop()
+        if table is not None:
+            self.session.close()
+            return table.drop()
+        else:
+            logger.warn('table (%s) not found!' % table)
+            return None
 
 
 class SQLAlchemyContainer(MetriqueContainer):
@@ -2392,7 +2342,7 @@ class SQLAlchemyContainer(MetriqueContainer):
         if getattr(self, '_table', None) is not None and not force:
             return None
 
-        name = name or self.name
+        name = str(name or self.name)  # Table() expects str()
         engine = self.proxy.get_engine()
         meta = self.proxy.get_meta()
         # it's a dict... don't mutate original instance
@@ -2401,8 +2351,9 @@ class SQLAlchemyContainer(MetriqueContainer):
         # try to reflect the table
         try:
             logger.debug("Attempting to reflect table: %s..." % name)
-            _table = Table(name, meta, autoload=True,
-                           autoload_with=engine)
+            _table = Table(name, meta, autoload=True, autoload_replace=True,
+                           extend_existing=True, autoload_with=engine)
+            logger.debug("Successfully refected table: %s" % name)
         except Exception as e:
             logger.debug("Failed to reflect table %s: %s" % (name, e))
             _table = None
@@ -2418,11 +2369,18 @@ class SQLAlchemyContainer(MetriqueContainer):
 
         self._table = _table  # generic alias to table class
         if _table is not None:
+            logger.debug("Creating Tables on %s" % engine)
             meta.create_all(engine)
             setattr(self, name, _table)  # named alias for table class
-            return True
+            result = True
         else:
-            return False
+            result = False
+        engine.dispose()
+        return result
+
+    @property
+    def _exists(self):
+        return self.name in self.proxy.ls()
 
     @staticmethod
     def _gen_id(context):
@@ -2527,6 +2485,7 @@ class SQLAlchemyContainer(MetriqueContainer):
     def _exec_transaction(self, func, **kwargs):
         isolation_level = kwargs.get('isolation_level')
         engine = self.proxy.get_engine(isolation_level=isolation_level)
+        result = None
         with engine.connect() as connection:
             with connection.begin() as transaction:
                 try:
@@ -2536,7 +2495,9 @@ class SQLAlchemyContainer(MetriqueContainer):
                     raise
                 else:
                     transaction.commit()
-                    return result
+                    result = result
+        engine.dispose()
+        return result
 
     def _flush(self, objects, **kwargs):
         olen = len(objects)
@@ -2774,6 +2735,7 @@ class SQLAlchemyContainer(MetriqueContainer):
             logger.info('Writing new index %s: %s' % (name, fields))
             result = index.create(engine)
             self.__indexes[name] = time()
+        engine.dispose()
         return result
 
     def index_list(self):
@@ -2787,6 +2749,7 @@ class SQLAlchemyContainer(MetriqueContainer):
         engine = self.proxy.get_engine()
         _i = inspect(engine)
         ix = [i for n in _i.get_table_names() for i in _i.get_indexes(n)]
+        engine.dispose()
         return ix
 
     def get_last_field(self, field):

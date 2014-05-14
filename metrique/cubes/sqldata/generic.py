@@ -247,30 +247,26 @@ class Generic(pyclient):
     def _delta_force(self, force=None, last_update=None, parse_timestamp=None):
         force = force or self.lconfig.get('force') or False
         oids = []
-        if force is True:
-            # get a list of all known object ids
-            oids = self.sql_get_oids()
+        _c = self.container
+        cube_does_not_exist = not (hasattr(_c, '_exists') and _c._exists)
+        if isinstance(force, (list, tuple, set)):
+            oids = list(force)
         elif not force:
             if self.lconfig.get('delta_new_ids', True):
                 # get all new (unknown) oids
-                try:
-                    new_oids = self.get_new_oids()
-                    oids.extend(new_oids)
-                except RuntimeError as e:
-                    logger.error(
-                        'Failed to get new oids, forcing all oids: %s' % e)
-                    # fall back to getting all oids, since we don't
-                    # have any ids to begin with
-                    oids = self.sql_get_oids()
+                new_oids = self.get_new_oids()
+                oids.extend(new_oids)
             if self.lconfig.get('delta_mtime', False):
                 last_update = self._fetch_mtime(last_update, parse_timestamp)
                 # get only those oids that have changed since last update
                 oids.extend(self.get_changed_oids(last_update,
                                                   parse_timestamp))
-        elif isinstance(force, (list, tuple, set)):
-            oids = list(force)
+        elif force is True or cube_does_not_exist:
+            # if force or if the container doesn't exist
+            # get a list of all known object ids
+            oids = self.sql_get_oids()
         else:
-            force = [force]
+            oids = [force]
         logger.debug("Delta Size: %s" % len(oids))
         return sorted(set(oids))
 
@@ -580,25 +576,35 @@ class Generic(pyclient):
         else:
             return value
 
+    @staticmethod
+    def _prep_try(func, field, value):
+        error = {}
+        try:
+            value = func(field, value)
+        except Exception as e:
+            logger.error('%s(field=%s, value=%s) failed: %s' % (
+                func.__name__, field, value, e))
+            # set error field with original values
+            # set fallback value to None
+            error = {field: value}
+            value = None
+        return value, error
+
     def _prep_object(self, obj):
         fields = set(self.fields.keys())
+
         for field, value in obj.iteritems():
+            error = {}
             if field not in fields:
                 # skip over unexpected (meta) fields
                 continue
             value = self._unwrap(field, value)
             value = self._normalize_container(field, value)
-            try:
-                value = self._convert(field, value)
-                value = self._typecast(field, value)
-            except Exception as e:
-                logger.error('convert/typcast of (%s) failed: %s' % (
-                    value, e))
-                # set error field with original values
-                # set fallback value to None
-                obj['_e'].update({field: value})
-                value = None
+            value, error = self._prep_try(self._convert, field, value)
+            value, error = self._prep_try(self._typecast, field, value)
             obj[field] = value
+        else:
+            obj.setdefault('_e', {}).update(error) if error else None
 
         for field, value in obj.items():
             # note: no iteritems because we're changing o as we loop
