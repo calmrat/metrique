@@ -445,7 +445,7 @@ def _load_shelve(path, as_list=True, **kwargs):
 
 
 def load(path, filetype=None, as_df=False, retries=None,
-         _oid=None, **kwargs):
+         _oid=None, quiet=False, **kwargs):
     '''Load multiple files from various file types automatically.
 
     Supports glob paths, eg::
@@ -490,7 +490,7 @@ def load(path, filetype=None, as_df=False, retries=None,
         [objects.extend(_load_file(ds, filetype, **kwargs))
             for ds in datasets]
 
-    if not objects:
+    if not (objects or quiet):
         raise ValueError("not objects extracted!")
     else:
         logger.debug("Data loaded successfully from %s" % path)

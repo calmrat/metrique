@@ -40,16 +40,17 @@ os.environ['METRIQUE_CACHE'] = os.environ.get(
 
 # Force all writes to stdout to be done with utf8
 # This causes output coruption (in Ipython shell)
-#import sys
-#import codecs
-#sys.stdout = codecs.getwriter('utf8')(sys.stdout)
+# import sys
+# import codecs
+# sys.stdout = codecs.getwriter('utf8')(sys.stdout)
 
 # ATTENTION: this is the main interface for clients!
 from metrique.core_api import BaseClient as pyclient
+from metrique.core_api import MetriqueContainer, MetriqueObject
 from metrique.core_api import MongoDBContainer, MongoDBProxy
 from metrique.core_api import SQLAlchemyContainer, SQLAlchemyProxy
 from metrique.core_api import SQLAlchemyMQLParser
 # avoid lint 'defined by not used' error
-pyclient
-MongoDBProxy, MongoDBContainer
+pyclient, MetriqueObject, MetriqueContainer
+MongoDBProxy, MongoDBContainer,
 SQLAlchemyProxy, SQLAlchemyContainer, SQLAlchemyMQLParser

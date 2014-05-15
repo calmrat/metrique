@@ -143,9 +143,6 @@ try:
 
         impl = JSON
 
-        def process_bind_param(self, value, dialect):
-            return {str(k): v for k, v in value.iteritems()}
-
         def python_type(self):
             return dict
 
@@ -178,9 +175,9 @@ from time import time
 import tempfile
 
 from metrique import __version__
-from metrique.utils import get_cube, utcnow, jsonhash, load_config
+from metrique.utils import get_cube, utcnow, jsonhash, load_config, load
 from metrique.utils import json_encode, batch_gen, ts2dt, dt2ts, configure
-from metrique.utils import debug_setup, is_null, urlretrieve
+from metrique.utils import debug_setup, is_null, urlretrieve, _load_shelve
 from metrique.result import Result
 
 # if HOME environment variable is set, use that
@@ -435,33 +432,30 @@ class MetriqueContainer(MutableMapping):
         [self.store.pop(_id) for _id in _ids if _id in keys]
         return _ids
 
-    def get(self, where=None, *args, **kwargs):
-        if where:
-            if not isinstance(where, (dict, Mapping)):
-                raise ValueError("where must be a dict")
-            else:
-                result = []
-                for obj in self.store.itervalues():
-                    found = False
-                    for k, v in where.iteritems():
-                        if obj.get(k, '') == v:
-                            found = True
-                        else:
-                            found = False
-                    if found:
-                        result.append(obj)
-            return result
+    def filter(self, where):
+        if not isinstance(where, (dict, Mapping)):
+            raise ValueError("where must be a dict")
         else:
-            return super(MetriqueContainer, self).get(*args, **kwargs)
+            result = []
+            for obj in self.store.itervalues():
+                found = False
+                for k, v in where.iteritems():
+                    if obj.get(k, '') == v:
+                        found = True
+                    else:
+                        found = False
+                if found:
+                    result.append(obj)
+        return result
 
     @property
     def keys(self):
         return sorted(k for o in self.store.itervalues() for k in o.iterkeys())
 
     @staticmethod
-    def load(**kwargs):
+    def load(*args, **kwargs):
         ''' wrapper for utils.load automated data loader '''
-        return load(**kwargs)
+        return load(*args, **kwargs)
 
     def ls(self):
         raise NotImplementedError("FIXME")
@@ -489,7 +483,6 @@ class MetriqueContainer(MutableMapping):
 
     def _persist_shelve(self, objects, _dir, prefix, suffix='.db',
                         autosnap=True):
-        # FIXME: implement basic filebased locking
         _ids = []
 
         suffix = suffix or '.db'
@@ -497,7 +490,7 @@ class MetriqueContainer(MutableMapping):
         path = os.path.join(_dir, fname)
 
         with LockFile(path):
-            _cube = self._load_shelve(path, as_list=False)
+            _cube = _load_shelve(path, as_list=False)
             dup_ids = set(_cube.keys())
             k = 0
             for i, o in enumerate(objects, start=1):
@@ -2235,6 +2228,7 @@ class SQLAlchemyContainer(MetriqueContainer):
     config_key = 'sqlalchemy'
     name = None
     VALID_SHARE_ROLES = ['SELECT', 'INSERT', 'UPDATE', 'DELETE']
+    RESERVED_WORDS = {'end'}
 
     def __init__(self, name, objects=None, proxy=None,
                  engine=None, schema=None, batch_size=None,
@@ -2298,6 +2292,21 @@ class SQLAlchemyContainer(MetriqueContainer):
             self.ensure_table(schema=schema, name=name)
 
         self.__indexes = self.__indexes or {}
+
+    def add(self, item, pop_id=True):
+        # id is reserved as sql primary key
+        # let sqlalchemy add 'id'; doc should already have _oid set
+        # and _id will be set automatically
+        if pop_id and 'id' in item:
+            item.pop('id')
+        super(SQLAlchemyContainer, self).add(item)
+
+    def columns(self, reflect=False):
+        if reflect:
+            columns = [c for c in self._table.columns]
+        else:
+            columns = [c.name for c in self._table.columns]
+        return columns
 
     @property
     def proxy(self):
@@ -2421,7 +2430,7 @@ class SQLAlchemyContainer(MetriqueContainer):
                                   if k not in _ignore_keys]
         defaults = {
             '__tablename__': name,
-            '__table_args__': ({'useexisting': False}),
+            '__table_args__': ({'extend_existing': True}),
             'id': Column('id', Integer, primary_key=True),
             # FIXME: use hybrid properties? for _id and _hash?
             '_id': Column(CoerceUTF8, nullable=False,
@@ -2445,7 +2454,8 @@ class SQLAlchemyContainer(MetriqueContainer):
             '__repr__': __repr__,
         }
 
-        for k, v in schema.iteritems():
+        schema_items = schema.items()
+        for k, v in schema_items:
             __type = v.get('type')
             if __type is None:
                 __type = type(None)
@@ -2461,7 +2471,15 @@ class SQLAlchemyContainer(MetriqueContainer):
                     schema[k] = Column(_type, nullable=False, index=True,
                                        unique=False)
                 else:
-                    schema[k] = Column(_type)
+                    quote = False
+                    if k in self.RESERVED_WORDS:
+                        # FIXME: Does the name actually have to include
+                        # quotes!?
+                        _k = '"%s"' % k
+                        quote = True
+                    else:
+                        _k = k
+                    schema[k] = Column(_type, name=_k, quote=quote)
         defaults.update(schema)
 
         # in case _oid isn't set yet, default to big int column
@@ -2612,7 +2630,7 @@ class SQLAlchemyContainer(MetriqueContainer):
         if query and date:
             query = '%s and %s' % (query, date)
         elif date:
-            query = self._parse_date(date)
+            query = date
         else:  # date is null, query is not
             pass  # use query as-is
 
@@ -2656,7 +2674,7 @@ class SQLAlchemyContainer(MetriqueContainer):
             query = query.select_from(self._table)
         return self.proxy.session.execute(query).scalar()
 
-    def distinct(self, fields, query=None, date=None):
+    def distinct(self, fields, query=None, date='~'):
         '''
         Return back a distinct (unique) list of field values
         across the entire cube dataset
@@ -2664,6 +2682,7 @@ class SQLAlchemyContainer(MetriqueContainer):
         :param field: field to get distinct token values from
         :param query: query to filter results by
         '''
+        date = date or '~'
         fields = self._parse_fields(fields)
         query = self._parse_query(query=query, date=date, fields=fields,
                                   alias='anon_x', distinct=True)
