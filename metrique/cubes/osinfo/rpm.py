@@ -16,7 +16,7 @@ for extracting installed RPM details on a RPM based system.
 from __future__ import unicode_literals
 
 import logging
-logger = logging.getLogger(__name__)
+logger = logging.getLogger('metrique')
 
 import getpass
 try:

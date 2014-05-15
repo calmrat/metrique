@@ -14,7 +14,7 @@ data from generic SQL data sources.
 from __future__ import unicode_literals
 
 import logging
-logger = logging.getLogger(__name__)
+logger = logging.getLogger('metrique')
 
 from copy import deepcopy
 from collections import defaultdict
@@ -534,14 +534,15 @@ class Generic(pyclient):
             return self
 
     def _left_join(self, select_as, select_prop, join_prop, join_table,
-                   on_col, on_db=None, on_table=None, join_db=None):
+                   on_col, on_db=None, on_table=None, join_db=None, **kwargs):
         on_table = on_table or self.lconfig.get('table')
         on_db = on_db or self.lconfig.get('db')
         join_db = join_db or self.lconfig.get('db')
-        return {'select': '%s.%s' % (select_as, select_prop),
-                'sql': 'LEFT JOIN %s.%s %s ON %s.%s = %s.%s.%s' % (
-                    join_db, join_table, select_as, select_as, join_prop,
-                    on_db, on_table, on_col)}
+        return dict(select='%s.%s' % (select_as, select_prop),
+                    sql='LEFT JOIN %s.%s %s ON %s.%s = %s.%s.%s' % (
+                        join_db, join_table, select_as, select_as, join_prop,
+                        on_db, on_table, on_col),
+                    **kwargs)
 
     def _log_inconsistency(self, last_doc, last_val, field, removed, added,
                            when):

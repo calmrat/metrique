@@ -112,7 +112,6 @@ BACKUP_DIR = env.get('METRIQUE_BACKUP', pjoin(USER_DIR, 'backup'))
 TMP_DIR = env.get('METRIQUE_TMP', pjoin(USER_DIR, 'tmp'))
 CACHE_DIR = env.get('METRIQUE_CACHE', pjoin(USER_DIR, 'cache'))
 MONGODB_DIR = env.get('METRIQUE_MONGODB', pjoin(USER_DIR, 'mongodb'))
-CELERY_DIR = env.get('METRIQUE_CELERY', pjoin(USER_DIR, 'celery'))
 STATIC_DIR = env.get('METRIQUE_STATIC', pjoin(USER_DIR, 'static'))
 
 METRIQUE_FIRSTBOOT_PATH = pjoin(USER_DIR, '.firstboot_metrique')
@@ -159,7 +158,7 @@ POSTGRESQL_CONF = pjoin(ETC_DIR, 'pg_hba.conf')
 POSTGRESQL_PIDFILE = pjoin(POSTGRESQL_PGDATA_PATH, 'postmaster.pid')
 POSTGRESQL_LOGFILE = pjoin(LOGS_DIR, 'postgresql-server.log')
 
-############################## DEFAULT CONFS #################################
+# ############################# DEFAULT CONFS ############################### #
 DEFAULT_METRIQUE_JSON = '''{
     "metrique": {
         "debug": true,
@@ -814,8 +813,7 @@ def trash(args=None):
 
     dest = pjoin(TRASH_DIR, 'metrique-%s' % NOW)
     for f in [ETC_DIR, PIDS_DIR, LOGS_DIR, CACHE_DIR,
-              TMP_DIR, CELERY_DIR, MONGODB_DIR,
-              POSTGRESQL_PGDATA_PATH]:
+              TMP_DIR, MONGODB_DIR, POSTGRESQL_PGDATA_PATH]:
         _dest = os.path.join(dest, os.path.basename(f))
         try:
             shutil.move(f, _dest)
@@ -1079,7 +1077,6 @@ def celery_firstboot(force=False):
     if exists and not force:
         # skip if we have already run this before
         return
-    makedirs(CELERY_DIR)
     global DEFAULT_CELERY_JSON
     DEFAULT_CELERY_JSON = DEFAULT_CELERY_JSON % (PASSWORD, PASSWORD, LOCAL_IP)
     default_conf(CELERY_JSON, DEFAULT_CELERY_JSON)

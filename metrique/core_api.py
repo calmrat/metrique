@@ -103,8 +103,6 @@ except ImportError:
 
 import re
 import random
-import shlex
-import signal
 import simplejson as json
 
 try:
@@ -169,15 +167,13 @@ except ImportError:
     HAS_SQLALCHEMY = False
     TYPE_MAP = {}
 
-import shelve
-import subprocess
 from time import time
 import tempfile
 
 from metrique import __version__
 from metrique.utils import get_cube, utcnow, jsonhash, load_config, load
 from metrique.utils import json_encode, batch_gen, ts2dt, dt2ts, configure
-from metrique.utils import debug_setup, is_null, urlretrieve, _load_shelve
+from metrique.utils import debug_setup, is_null, _load_shelve
 from metrique.result import Result
 
 # if HOME environment variable is set, use that
@@ -848,12 +844,25 @@ class BaseClient(object):
         _kwargs = deepcopy(self._container_kwargs)
         _kwargs.update(kwargs)
         _kwargs.setdefault('config_file', self.config_file)
-        if container is not None:
+        if container:
+            if isinstance(container, basestring):
+                # load the container from globals()
+                _container = globals().get(container)
+                if container:
+                    container = _container
+                else:
+                    raise RuntimeError(
+                        "Invalid container class: %s" % container)
+
             if isclass(container):
+                # FIXME: check it's specifically a MetriqueContainer class...
                 self._objects = container(name=self.name, _version=_version,
                                           **_kwargs)
-            else:
+            elif isinstance(container, MetriqueContainer):
                 self._objects = container
+            else:
+                raise RuntimeError("Invalid container class: %s" % container)
+
         else:
             cache_dir = self.gconfig.get('cache_dir')
             name = self.name
@@ -886,33 +895,6 @@ class BaseClient(object):
     def gconfig(self):
         return self.config.get(self.global_config_key) or {}
 
-    def git_clone(self, uri, pull=True):
-        '''
-        Given a git repo, clone (cache) it locally.
-
-        :param uri: git repo uri
-        :param pull: whether to pull after cloning (or loading cache)
-        '''
-        cache_dir = self.gconfig.get('cache_dir')
-        # make the uri safe for filesystems
-        _uri = "".join(x for x in uri if x.isalnum())
-        repo_path = os.path.expanduser(os.path.join(cache_dir, _uri))
-        if not os.path.exists(repo_path):
-            from_cache = False
-            logger.info(
-                'Locally caching git repo [%s] to [%s]' % (uri, repo_path))
-            cmd = 'git clone %s %s' % (uri, repo_path)
-            self._sys_call(cmd)
-        else:
-            from_cache = True
-            logger.info(
-                'GIT repo loaded from local cache [%s])' % (repo_path))
-        if pull and not from_cache:
-            os.chdir(repo_path)
-            cmd = 'git pull'
-            self._sys_call(cmd)
-        return repo_path
-
     def get_objects(self, flush=False, autosnap=True, **kwargs):
         '''
         Main API method for sub-classed cubes to override for the
@@ -930,21 +912,6 @@ class BaseClient(object):
     def load_config(self, path):
         return load_config(path)
 
-    @staticmethod
-    def _sys_call(cmd, sig=None, sig_func=None, quiet=True):
-        if not quiet:
-            logger.debug(cmd)
-        if isinstance(cmd, basestring):
-            cmd = re.sub('\s+', ' ', cmd)
-            cmd = cmd.strip()
-            cmd = shlex.split(cmd)
-        if sig and sig_func:
-            signal.signal(sig, sig_func)
-        output = subprocess.check_output(cmd, stderr=subprocess.STDOUT)
-        if not quiet:
-            logger.debug(output)
-        return output
-
     # ############################## Backends #################################
     def mongodb(self, cached=True, owner=None, name=None,
                 config_file=None, config_key=None, **kwargs):
@@ -961,7 +928,7 @@ class BaseClient(object):
             owner = owner or getuser()
             name = name or self.name
             self._mongodb = MongoDBProxy(owner=owner, collection=name,
-                                         config_file=self.config_file,
+                                         config_file=config_file,
                                          **config)
             self.set_proxy(self._mongodb)
         return self._mongodb
@@ -981,6 +948,7 @@ class BaseClient(object):
             owner = owner or getuser()
             table = table or self.name
             self._sqlalchemy = SQLAlchemyProxy(owner=owner, table=table,
+                                               config_file=config_file,
                                                **config)
             self.set_proxy(self._sqlalchemy)
         return self._sqlalchemy
@@ -2473,13 +2441,14 @@ class SQLAlchemyContainer(MetriqueContainer):
                 else:
                     quote = False
                     if k in self.RESERVED_WORDS:
+                        # FIXME: This isn't working!
                         # FIXME: Does the name actually have to include
                         # quotes!?
-                        _k = '"%s"' % k
+                        #_k = '"%s"' % k
                         quote = True
-                    else:
-                        _k = k
-                    schema[k] = Column(_type, name=_k, quote=quote)
+                    #else:
+                    #    _k = k
+                    schema[k] = Column(_type, name=k, quote=quote)
         defaults.update(schema)
 
         # in case _oid isn't set yet, default to big int column
@@ -2777,6 +2746,8 @@ class SQLAlchemyContainer(MetriqueContainer):
 
         :param field: field name to query
         '''
+        if not hasattr(self, '_table') or self._table is None:
+            return None
         last = self.find(fields=field, scalar=True, sort=field, limit=1,
                          descending=True, date='~')
         logger.debug("last %s.%s: %s" % (self.name, field, last))

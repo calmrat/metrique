@@ -19,7 +19,7 @@ import logging
 from metrique import pyclient
 from metrique.utils import utcnow
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger('metrique')
 
 
 class Rows(pyclient):
