@@ -2801,6 +2801,18 @@ class SQLAlchemyContainer(MetriqueContainer):
         [session.execute(s) for s in sql]
         return True
 
+    def user_disable(self, username=None):
+        username = username or self.config.get('username')
+        logger.info('Disabling existing user %s' % username)
+        session = self.proxy.get_session()
+        u = update('pg_database')
+        #update pg_database set datallowconn = false where datname = 'applogs';
+        sql = u.where(
+            "datname = '%s'" % username).values({'datallowconn': 'false'})
+        session.execute(sql)
+        session.commit()
+        return True
+
     def share(self, with_user, table=None, roles=None):
         '''
         Give cube access rights to another user
