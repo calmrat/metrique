@@ -60,6 +60,8 @@ class Result(DataFrame):
         else:
             self._lbound = self._rbound = None
             self.set_date_bounds(date)
+        # optimization:
+        self._end_isnull = self._end.isnull()
 
     def to_datetime(self, column):
         '''
@@ -115,7 +117,7 @@ class Result(DataFrame):
             raise ValueError('Date %s is not in the queried range.' % date)
         date = Timestamp(date)
         after_start = self._start <= date
-        before_end = (self._end > date) | self._end.isnull()
+        before_end = (self._end > date) | self._end_isnull
         if only_count:
             return np.sum(before_end & after_start)
         else:
@@ -257,7 +259,7 @@ class Result(DataFrame):
         Leaves only versions of those objects that has some version with
         `_end == None` or with `_end > right cutoff`.
         '''
-        mask = self._end.isnull()
+        mask = self._end_isnull
         if self._rbound is not None:
             mask = mask | (self._end > self._rbound)
         oids = set(self[mask]._oid.tolist())
@@ -401,20 +403,22 @@ class Result(DataFrame):
     def fhas(self, field, val):
         return self[self.has(field, val)]
 
-    def notin(self, field, vals):
-        return self[field].apply(lambda els:
-                                 not any([e in vals for e in (els or [])]))
-
-    @filtered
-    def fnotin(self, field, vals):
-        return self[self.notin(field, vals)]
+    def isin(self, field, vals):
+        return self[field].apply(lambda x:
+                                 any([e in vals for e in x])
+                                 if isinstance(x, list)
+                                 else x in vals)
 
     @filtered
     def fisin(self, field, vals):
-        return self[self[field].isin(vals)]
+        return self[self.isin(field, vals)]
+
+    @filtered
+    def fnotin(self, field, vals):
+        return self[~self.isin(field, vals)]
 
     def isempty(self, field):
-        return self[field].apply(lambda l: len(l or [])) == 0
+        return ~self[field].astype(bool)
 
     def notempty(self, field):
-        return ~self.isempty(field)
+        return self[field].astype(bool)
