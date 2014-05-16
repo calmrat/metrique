@@ -208,38 +208,21 @@ class MetriqueObject(Mapping):
             '__v__': __version__,
             '_e': {},  # errors should be added here
         }
-        self._update(kwargs)
+        self.update(kwargs)
         self._re_hash()
 
-    def _update(self, obj):
-        for key, value in obj.iteritems():
-            key = self.__keytransform__(key)
-            if key in IMMUTABLE_OBJ_KEYS:
-                if self._strict:
-                    raise KeyError("%s is immutable" % key)
-                else:
-                    continue
-            elif key in self.TIMESTAMP_OBJ_KEYS:
-                # ensure normalized timestamp
-                value = ts2dt(value) if self._as_datetime else dt2ts(value)
-            elif key == '_e':
-                # _e is expected to be dict
-                value = dict(value)
-            else:
-                pass
-
-            if isinstance(value, str):
-                value = unicode(value, 'utf8')
-            elif is_null(value):
-                # Normalize empty strings and NaN/NaT objects to None
-                # NaN objects do not equal themselves...
-                value = None
-            else:
-                pass
-            self.store[key] = value
+    def as_dict(self, pop=None):
+        store = deepcopy(self.store)
+        if pop:
+            [store.pop(key, None) for key in pop]
+        return store
 
     def __getitem__(self, key):
         return self.store[self.__keytransform__(key)]
+
+    def __setitem__(self, key, value):
+        self.update({key: value})
+        self._re_hash()
 
     def __delitem__(self, key):
         del self.store[key]
@@ -282,6 +265,40 @@ class MetriqueObject(Mapping):
         [o.pop(k) for k in HASH_EXCLUDE_KEYS if k in keys]
         return jsonhash(o)
 
+    def _re_hash(self):
+        self._validate_start_end()
+        # _id depends on _hash
+        # so first, _hash, then _id
+        self.store['_hash'] = self._gen_hash()
+        self.store['_id'] = self._gen_id()
+
+    def update(self, obj):
+        for key, value in obj.iteritems():
+            key = self.__keytransform__(key)
+            if key in IMMUTABLE_OBJ_KEYS:
+                if self._strict:
+                    raise KeyError("%s is immutable" % key)
+                else:
+                    continue
+            elif key in self.TIMESTAMP_OBJ_KEYS:
+                # ensure normalized timestamp
+                value = ts2dt(value) if self._as_datetime else dt2ts(value)
+            elif key == '_e':
+                # _e is expected to be dict
+                value = dict(value)
+            else:
+                pass
+
+            if isinstance(value, str):
+                value = unicode(value, 'utf8')
+            elif is_null(value):
+                # Normalize empty strings and NaN/NaT objects to None
+                # NaN objects do not equal themselves...
+                value = None
+            else:
+                pass
+            self.store[key] = value
+
     def _validate_start_end(self):
         _start = self.get('_start')
         if _start is None:
@@ -293,21 +310,13 @@ class MetriqueObject(Mapping):
             raise ValueError(
                 "_end (%s) is before _start (%s)!" % (_end, _start))
 
-    def _re_hash(self):
-        self._validate_start_end()
-        # _id depends on _hash
-        # so first, _hash, then _id
-        self.store['_hash'] = self._gen_hash()
-        self.store['_id'] = self._gen_id()
-
-    def as_dict(self, pop=None):
-        store = deepcopy(self.store)
-        if pop:
-            [store.pop(key, None) for key in pop]
-        return store
-
     def pop(self, key):
         return self.store.pop(key)
+
+    def setdefault(self, key, default):
+        if key not in self.store:
+            self.update({key, default})
+        return self
 
 
 class MetriqueContainer(MutableMapping):
@@ -1988,10 +1997,10 @@ class SQLAlchemyProxy(object):
         )
         self.config = self.config or {}
         self.config_file = config_file or self.config_file
-        config_key = config_key or 'sqlalchemy'
+        self.config_key = config_key or self.config_key or 'sqlalchemy'
         self.config = configure(options, defaults,
                                 config_file=self.config_file,
-                                section_key=config_key,
+                                section_key=self.config_key,
                                 section_only=True,
                                 update=self.config)
         self._debug_setup_sqlalchemy_logging()

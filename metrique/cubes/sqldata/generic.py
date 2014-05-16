@@ -112,10 +112,11 @@ class Generic(pyclient):
                         worker_batch_size=5000,
                         )
         self.config = self.config or {}
-        config_key = config_key or self.config_key
+        self.config_file = config_file or self.config_file
+        self.config_key = config_key or self.config_key
         self.config = configure(options, defaults,
-                                config_file=config_file,
-                                section_key=config_key,
+                                config_file=self.config_file,
+                                section_key=self.config_key,
                                 update=self.config)
         self.retry_on_error = (Exception, )
         self._setup_inconsistency_log()

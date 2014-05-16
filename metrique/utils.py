@@ -44,6 +44,7 @@ import pytz
 import re
 import shelve
 import shlex
+import signal
 import simplejson as json
 import subprocess
 import sys
@@ -245,7 +246,8 @@ def dt2ts(dt, drop_micro=False):
     elif isinstance(dt, (int, long, float)):  # its a ts already
         ts = dt
     elif isinstance(dt, basestring):  # convert to datetime first
-        ts = dt2ts(dt_parse(dt))
+        parsed_dt = dt_parse(dt)
+        ts = dt2ts(parsed_dt)
     else:
         # FIXME: microseconds/milliseconds are being dropped!
         # see: http://stackoverflow.com/questions/7031031
@@ -379,6 +381,8 @@ def git_clone(uri, pull=True, reflect=False, cache_dir=None):
 
 
 def is_null(value):
+    if isinstance(value, basestring):
+        value = value.strip()
     return (bool(value is None) or
             bool(value == '') or
             bool(value != value) or
