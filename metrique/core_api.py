@@ -2658,7 +2658,7 @@ class SQLAlchemyContainer(MetriqueContainer):
         ret = [r[0] for r in self.proxy.session.execute(query)]
         if ret and isinstance(ret[0], list):
             ret = reduce(add, ret, [])
-        return sorted(ret)
+        return sorted(set(ret))
 
     def find(self, query=None, fields=None, date=None, sort=None,
              descending=False, one=False, raw=False, limit=None,
@@ -2924,5 +2924,5 @@ class SQLAlchemyMQLParser(object):
         elif node.func.id == 'date':
             if len(node.args) != 1:
                 raise ValueError('date expects 1 argument.')
-            return func.date(node.args[0])
+            return func.date(self.p(node.args[0]))
         raise ValueError('Unknown function: %s' % node.func.id)
