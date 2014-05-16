@@ -23,7 +23,7 @@ import pandas.tseries.offsets as off
 from pandas.tslib import Timestamp
 import pandas as pd
 
-from metrique.utils import dt2ts, utcnow
+from metrique.utils import dt2ts, utcnow, ts2dt
 
 logger = logging.getLogger(__name__)
 
@@ -84,13 +84,13 @@ class Result(DataFrame):
         if date is not None:
             split = date.split('~')
             if len(split) == 1:
-                self._lbound = Timestamp(date)
-                self._rbound = Timestamp(date)
+                self._lbound = ts2dt(date)
+                self._rbound = ts2dt(date)
             elif len(split) == 2:
                 if split[0] != '':
-                    self._lbound = Timestamp(split[0])
+                    self._lbound = ts2dt(split[0])
                 if split[1] != '':
-                    self._rbound = Timestamp(split[1])
+                    self._rbound = ts2dt(split[1])
             else:
                 raise Exception('Date %s is not in the correct format' % date)
 

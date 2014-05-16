@@ -1775,6 +1775,7 @@ class MongoDBContainer(MetriqueContainer):
         :param collection: cube name
         :param owner: username of cube owner
         '''
+        # FIXME check
         if not level or level < 1:
             level = 1
         if isinstance(oids, basestring):
@@ -2652,6 +2653,34 @@ class SQLAlchemyContainer(MetriqueContainer):
             query = query.select_from(self._table)
         return self.proxy.session.execute(query).scalar()
 
+    def deptree(self, field, oids, date=None, level=None):
+        '''
+        Dependency tree builder. Recursively fetchs objects that
+        are children of the initial set of parent object ids provided.
+
+        :param field: Field that contains the 'parent of' data
+        :param oids: Object oids to build depedency tree for
+        :param date: date (metrique date range) that should be queried.
+                    If date==None then the most recent versions of the
+                    objects will be queried.
+        :param level: limit depth of recursion
+        '''
+        if isinstance(oids, basestring):
+            oids = [s.strip() for s in oids.split(',')]
+        checked = set(oids)
+        fringe = oids
+        loop_k = 0
+        while len(fringe) > 0:
+            if level and loop_k == abs(level):
+                break
+            query = '_oid in %s' % list(fringe)
+            docs = self.find(query, fields=[field], date=date, raw=True)
+            fringe = set([oid for doc in docs for oid in doc[field]
+                          if oid not in checked])
+            checked |= set(fringe)
+            loop_k += 1
+        return sorted(checked)
+
     def distinct(self, fields, query=None, date='~'):
         '''
         Return back a distinct (unique) list of field values
@@ -2910,6 +2939,9 @@ class SQLAlchemyMQLParser(object):
         return node.s
 
     def p_List(self, node):
+        return map(self.p, node.elts)
+
+    def p_Tuple(self, node):
         return map(self.p, node.elts)
 
     def p_Name(self, node):
