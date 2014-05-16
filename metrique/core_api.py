@@ -2928,6 +2928,13 @@ class SQLAlchemyMQLParser(object):
         # Eq, NotEq, Gt, GtE, Lt, LtE, In, NotIn
         if node.left.id in self.arrays:
             return self.arr_op_dict[op]((left, right))
+        elif isinstance(right, tuple) and right[0] == 'regex':
+            regex = right[1]
+            if op == 'Eq':
+                return left.op("~")(regex)
+            if op == 'NotEq':
+                return left.op("!~")(regex)
+            raise ValueError('Unsupported operation for regex: %s' % op)
         else:
             return self.op_dict[op]((left, right))
         raise ValueError('Unsupported operation: %s' % op)
@@ -2966,4 +2973,6 @@ class SQLAlchemyMQLParser(object):
             if len(node.args) != 1:
                 raise ValueError('date expects 1 argument.')
             return func.date(self.p(node.args[0]))
+        elif node.func.id == 'regex':
+            return ('regex', self.p(node.args[0]))
         raise ValueError('Unknown function: %s' % node.func.id)
