@@ -20,6 +20,7 @@ import anyconfig
 anyconfig.set_loglevel(logging.WARN)  # too noisy...
 from calendar import timegm
 import collections
+from copy import deepcopy
 import cPickle
 import cProfile as profiler
 from datetime import datetime
@@ -97,54 +98,39 @@ def clear_stale_pids(pids, pid_dir='/tmp', prefix=''):
 
 
 def configure(options=None, defaults=None, config_file=None,
-              section_key=None, update=None, force=False,
-              section_only=False):
-    options = options or {}
-    defaults = defaults or {}
-    config = update or {}
-    # FIXME: permit list of section keys to lookup values in
-    sk = section_key
-    sk = sk or options.get('config_key') or defaults.get('config_key')
-    if not sk:
-        sk = 'global'
-        section_only = True
+              section_key=None, update=None, section_only=False):
 
-    if sk in config and not force:
-        # if section key is already configured, ie, we initiated with
-        # config set already, set options not set as None
-        #
-        [config[sk].update({k: v})
-         for k, v in options.iteritems() if v is not None]
-        # and update and defaults where current config
-        # key doesn't exist yet or is set to None
-        [config[sk].update({k: v})
-         for k, v in defaults.iteritems()
-         if config[sk].get(k) is None]
-    else:
-        # load the config options from disk, if path provided
-        section = {}
-        if config_file:
-            raw_config = load_config(config_file)
-            section = raw_config.get(sk, {})
-            if not isinstance(section, dict):
-                # convert mergeabledict (anyconfig) to dict of dicts
-                section = section.convert_to(section)
-            defaults = rupdate(defaults, section)
-        # set option to value passed in, if any
-        for k, v in options.iteritems():
-            v = v if v is not None else defaults.get(k)
-            section[unicode(k)] = v
-        # set defaults
-        for k, v in defaults.iteritems():
-            section.setdefault(unicode(k), v)
-        # FIXME: move this into ELSE below; ie, only
-        # run if not section_only == True
-        config.setdefault(sk, {})
-        config[sk] = rupdate(config[sk], section)
+    config = load_config(config_file)
+    config = rupdate(config, deepcopy(update or {}))
+
+    opts = deepcopy(options or {})
+    defs = deepcopy(defaults or {})
+
+    sk = section_key
+
+    # apply the options/defaults to the section, if set
+    working_config = config
+    if sk in config:
+        working_config = config[sk]
+
+    # if section key is already configured, ie, we initiated with
+    # config set already, set options not set as None
+    for k, v in opts.iteritems():
+        if v is not None:
+            working_config.update({k: v})
+    # and update and defaults where current config
+    # key doesn't exist yet or is set to None
+    for k, v in defs.iteritems():
+        if working_config.get(k) is None:
+            working_config.update({k: v})
 
     if section_only:
-        return config.get(sk)
+        return working_config
     else:
+        if sk:
+            config[sk] = working_config
+        else:
+            config = working_config
         return config
 
 
@@ -605,7 +591,9 @@ def load_config(path):
         return {}
     else:
         config_file = os.path.expanduser(path)
-        return anyconfig.load(config_file)
+        conf = anyconfig.load(config_file)
+        # convert mergeabledict (anyconfig) to dict of dicts
+        return conf.convert_to(conf)
 
 
 def rupdate(d, u):
