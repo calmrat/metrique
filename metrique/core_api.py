@@ -770,12 +770,11 @@ class BaseClient(object):
         # if config is passed in, set it, otherwise start
         # with class assigned default or empty dict
         self.config = deepcopy(config) or self.config or {}
-
-        config_key = config_key or self.global_config_key
+        self.config_key = config_key or self.global_config_key
         # load defaults + set args passed in
         self.config = configure(options, defaults,
                                 config_file=self.config_file,
-                                section_key=config_key,
+                                section_key=self.config_key,
                                 update=self.config)
 
         level = self.gconfig.get('debug')
@@ -962,10 +961,6 @@ class BaseClient(object):
             self.set_proxy(self._sqlalchemy)
         return self._sqlalchemy
 
-    def whoami(self):
-        '''check the username of running user'''
-        return self.lconfig.get('username') or getuser()
-
 
 # ################################ MONGODB ###################################
 class MongoDBProxy(object):
@@ -1039,11 +1034,11 @@ class MongoDBProxy(object):
                         )
         self.config = self.config or {}
         self.config_file = config_file or self.config_file
-        config_key = config_key or self.config_key
+        self.config_key = config_key or MongoDBProxy.config_key
         self.config = configure(options, defaults,
-                                section_key=config_key,
-                                section_only=True,
                                 config_file=self.config_file,
+                                section_key=self.config_key,
+                                section_only=True,
                                 update=self.config)
 
         # default owner == username if not set
@@ -1206,11 +1201,11 @@ class MongoDBContainer(MetriqueContainer):
                         write_concern=None)
         self.config = self.config or {}
         self.config_file = config_file or self.config_file
-        config_key = config_key or self.config_key
+        self.config_key = config_key or MongoDBContainer.config_key
         self.config = configure(options, defaults,
-                                section_key=config_key,
-                                section_only=True,
                                 config_file=self.config_file,
+                                section_key=self.config_key,
+                                section_only=True,
                                 update=self.config)
         self.config['owner'] = self.config['owner'] or defaults.get('username')
 
@@ -1998,7 +1993,7 @@ class SQLAlchemyProxy(object):
         )
         self.config = self.config or {}
         self.config_file = config_file or self.config_file
-        self.config_key = config_key or self.config_key or 'sqlalchemy'
+        self.config_key = config_key or SQLAlchemyProxy.config_key
         self.config = configure(options, defaults,
                                 config_file=self.config_file,
                                 section_key=self.config_key,
@@ -2254,7 +2249,7 @@ class SQLAlchemyContainer(MetriqueContainer):
         )
         self.config = self.config or {}
         self.config_file = config_file or self.config_file
-        config_key = config_key or 'sqlalchemy'
+        config_key = config_key or SQLAlchemyContainer.config_key
         self.config = configure(options, defaults,
                                 config_file=self.config_file,
                                 section_key=config_key,
