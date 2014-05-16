@@ -14,7 +14,7 @@ metrique sub-modules
 from __future__ import unicode_literals
 
 import logging
-logger = logging.getLogger(__name__)
+logger = logging.getLogger('metrique')
 
 import anyconfig
 anyconfig.set_loglevel(logging.WARN)  # too noisy...
@@ -24,6 +24,14 @@ import cPickle
 import cProfile as profiler
 from datetime import datetime
 from dateutil.parser import parse as dt_parse
+
+try:
+    from dulwich.repo import Repo
+    HAS_DULWICH = True
+except ImportError:
+    HAS_DULWICH = False
+    logger.warn('dulwich module is not installed!')
+
 import gc
 import glob
 from hashlib import sha1
@@ -35,7 +43,9 @@ import pstats
 import pytz
 import re
 import shelve
+import shlex
 import simplejson as json
+import subprocess
 import sys
 import time
 import urllib
@@ -115,6 +125,11 @@ def configure(options=None, defaults=None, config_file=None,
         for k, v in options.iteritems():
             v = v if v is not None else defaults.get(k)
             section[unicode(k)] = v
+        # set defaults
+        for k, v in defaults.iteritems():
+            section.setdefault(unicode(k), v)
+        # FIXME: move this into ELSE below; ie, only
+        # run if not section_only == True
         config.setdefault(sk, {})
         config[sk] = rupdate(config[sk], section)
     if section_only:
@@ -328,6 +343,39 @@ def get_timezone_converter(from_timezone, tz_aware=False):
             dt = dt.replace(tzinfo=None)
         return dt
     return timezone_converter
+
+
+def git_clone(uri, pull=True, reflect=False, cache_dir=None):
+    '''
+    Given a git repo, clone (cache) it locally.
+
+    :param uri: git repo uri
+    :param pull: whether to pull after cloning (or loading cache)
+    '''
+    cache_dir = cache_dir or CACHE_DIR
+    # make the uri safe for filesystems
+    _uri = "".join(x for x in uri if x.isalnum())
+    repo_path = os.path.expanduser(os.path.join(cache_dir, _uri))
+    if not os.path.exists(repo_path):
+        from_cache = False
+        logger.info(
+            'Locally caching git repo [%s] to [%s]' % (uri, repo_path))
+        cmd = 'git clone %s %s' % (uri, repo_path)
+        sys_call(cmd)
+    else:
+        from_cache = True
+        logger.info(
+            'GIT repo loaded from local cache [%s])' % (repo_path))
+    if pull and not from_cache:
+        os.chdir(repo_path)
+        cmd = 'git pull'
+        sys_call(cmd)
+    if reflect:
+        if not HAS_DULWICH:
+            raise RuntimeError("`pip install dulwich` required!")
+        return Repo(repo_path)
+    else:
+        return repo_path
 
 
 def is_null(value):
@@ -649,6 +697,21 @@ def _profile(filename, fn, *args, **kw):
     ended = time.time()
 
     return ended - began, load_stats, locals()['result']
+
+
+def sys_call(cmd, sig=None, sig_func=None, quiet=True):
+    if not quiet:
+        logger.debug(cmd)
+    if isinstance(cmd, basestring):
+        cmd = re.sub('\s+', ' ', cmd)
+        cmd = cmd.strip()
+        cmd = shlex.split(cmd)
+    if sig and sig_func:
+        signal.signal(sig, sig_func)
+    output = subprocess.check_output(cmd, stderr=subprocess.STDOUT)
+    if not quiet:
+        logger.debug(output)
+    return output
 
 
 def urlretrieve(uri, saveas=None, retries=3, cache_dir=None):

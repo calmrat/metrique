@@ -17,7 +17,7 @@ from __future__ import unicode_literals
 import logging
 import simplejson as json
 import os
-logger = logging.getLogger(__name__)
+logger = logging.getLogger('metrique')
 
 
 # FIXME: @jniznan: add docstrings
