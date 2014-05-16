@@ -80,7 +80,7 @@ from getpass import getuser
 from inspect import isclass
 from lockfile import LockFile
 import os
-from operator import itemgetter
+from operator import itemgetter, add
 import pandas as pd
 import pql
 
@@ -2655,7 +2655,10 @@ class SQLAlchemyContainer(MetriqueContainer):
         fields = self._parse_fields(fields)
         query = self._parse_query(query=query, date=date, fields=fields,
                                   alias='anon_x', distinct=True)
-        return sorted({r[0] for r in self.proxy.session.execute(query)})
+        ret = [r[0] for r in self.proxy.session.execute(query)]
+        if ret and isinstance(ret[0], list):
+            ret = reduce(add, ret, [])
+        return sorted(ret)
 
     def find(self, query=None, fields=None, date=None, sort=None,
              descending=False, one=False, raw=False, limit=None,
