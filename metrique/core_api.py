@@ -1034,7 +1034,7 @@ class MongoDBProxy(object):
                         )
         self.config = self.config or {}
         self.config_file = config_file or self.config_file
-        self.config_key = config_key or self.config_key
+        self.config_key = config_key or MongoDBProxy.config_key
         self.config = configure(options, defaults,
                                 config_file=self.config_file,
                                 section_key=self.config_key,
@@ -1201,7 +1201,7 @@ class MongoDBContainer(MetriqueContainer):
                         write_concern=None)
         self.config = self.config or {}
         self.config_file = config_file or self.config_file
-        self.config_key = config_key or self.config_key or 'mongodb'
+        self.config_key = config_key or MongoDBContainer.config_key
         self.config = configure(options, defaults,
                                 config_file=self.config_file,
                                 section_key=self.config_key,
@@ -1992,7 +1992,7 @@ class SQLAlchemyProxy(object):
         )
         self.config = self.config or {}
         self.config_file = config_file or self.config_file
-        self.config_key = config_key or self.config_key or 'sqlalchemy'
+        self.config_key = config_key or SQLAlchemyProxy.config_key
         self.config = configure(options, defaults,
                                 config_file=self.config_file,
                                 section_key=self.config_key,
@@ -2248,7 +2248,7 @@ class SQLAlchemyContainer(MetriqueContainer):
         )
         self.config = self.config or {}
         self.config_file = config_file or self.config_file
-        config_key = config_key or 'sqlalchemy'
+        config_key = config_key or SQLAlchemyContainer.config_key
         self.config = configure(options, defaults,
                                 config_file=self.config_file,
                                 section_key=config_key,

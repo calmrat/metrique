@@ -113,7 +113,7 @@ class Generic(pyclient):
                         )
         self.config = self.config or {}
         self.config_file = config_file or self.config_file
-        self.config_key = config_key or self.config_key
+        self.config_key = config_key or 'sqldata'
         self.config = configure(options, defaults,
                                 config_file=self.config_file,
                                 section_key=self.config_key,
