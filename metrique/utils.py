@@ -73,24 +73,27 @@ def batch_gen(data, batch_size):
         yield data[i:i + batch_size]
 
 
-def clear_stale_pids(pids, pid_dir, prefix=''):
+def clear_stale_pids(pids, pid_dir='/tmp', prefix=''):
     'check for and remove any pids which have no corresponding process'
+    pids = [unicode(pid) for pid in pids]
     procs = os.listdir('/proc')
     running = [pid for pid in pids if pid in procs]
-    _running = []
+    logger.warn(
+        "Found %s pids running: %s" % (len(running),
+                                       running))
     prefix = '%s.' % prefix if prefix else ''
     for pid in pids:
+        # remove non-running procs
         if pid in running:
-            _running.append(pid)
-        else:
-            pid_file = '%s%s.pid' % (prefix, pid)
-            path = os.path.join(pid_dir, pid_file)
-            if os.path.exists(path):
-                try:
-                    os.remove(path)
-                except OSError as e:
-                    logger.debug(e)
-    return _running
+            continue
+        pid_file = '%s%s.pid' % (prefix, pid)
+        path = os.path.join(pid_dir, pid_file)
+        if os.path.exists(path):
+            try:
+                os.remove(path)
+            except OSError as e:
+                logger.warn(e)
+    return running
 
 
 def configure(options=None, defaults=None, config_file=None,
@@ -105,13 +108,18 @@ def configure(options=None, defaults=None, config_file=None,
     if not sk:
         sk = 'global'
         section_only = True
-    elif sk in config and not force:
+
+    if sk in config and not force:
         # if section key is already configured, ie, we initiated with
-        # config set already, don't set defaults, only options
-        # not set as None
-        config.setdefault(sk, {})
+        # config set already, set options not set as None
+        #
         [config[sk].update({k: v})
          for k, v in options.iteritems() if v is not None]
+        # and update and defaults where current config
+        # key doesn't exist yet or is set to None
+        [config[sk].update({k: v})
+         for k, v in defaults.iteritems()
+         if config[sk].get(k) is None]
     else:
         # load the config options from disk, if path provided
         section = {}
@@ -133,6 +141,7 @@ def configure(options=None, defaults=None, config_file=None,
         # run if not section_only == True
         config.setdefault(sk, {})
         config[sk] = rupdate(config[sk], section)
+
     if section_only:
         return config.get(sk)
     else:
