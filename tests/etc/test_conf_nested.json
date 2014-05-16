@@ -1,0 +1,6 @@
+{
+    "metrique": {
+        "debug": true,
+        "log2file": true
+    }
+}
