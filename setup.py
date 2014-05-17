@@ -3,6 +3,9 @@
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 # Author: "Chris Ward" <cward@redhat.com>
 
+# FIXME: make metrique cmd
+# http://pythonhosted.org/setuptools/pkg_resources.html#entry-points
+
 from setuptools import setup
 
 VERSION_FILE = "metrique/_version.py"
