@@ -3,6 +3,10 @@
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 # Author: "Chris Ward" <cward@redhat.com>
 
+# FIXME: add to *Container a 'sync' command which will export
+# across the network all data, persist to some other container
+# and enable future 'delta' syncs.
+
 '''
 metrique.core_api
 ~~~~~~~~~~~~~~~~~
@@ -182,31 +186,32 @@ ETC_DIR = os.environ.get('METRIQUE_ETC')
 CACHE_DIR = os.environ.get('METRIQUE_CACHE')
 DEFAULT_CONFIG = os.path.join(ETC_DIR, 'metrique.json')
 
+# FIXME: make sets?
 HASH_EXCLUDE_KEYS = ['_hash', '_id', '_start', '_end']
 IMMUTABLE_OBJ_KEYS = set(['_hash', '_id', '_oid'])
 SQLA_HASH_EXCLUDE_KEYS = HASH_EXCLUDE_KEYS + ['id']
 
 
+# FIXME: default __as_datetime -> False (epoch is default)
 class MetriqueObject(Mapping):
     FIELDS_RE = re.compile('[\W]+')
     SPACE_RE = re.compile('\s+')
     UNDA_RE = re.compile('_')
     TIMESTAMP_OBJ_KEYS = set(['_end', '_start'])
+    _VERSION = 0
 
-    def __init__(self, _oid, _version=None, strict=False,
-                 as_datetime=True, **kwargs):
-        self._as_datetime = as_datetime
-        self._strict = strict
-        self._version = _version or 0
+    def __init__(self, _oid, _id=None, _hash=None, _start=None, _end=None,
+                 _e=None, _version=None, __as_datetime=True, **kwargs):
+        self.__as_datetime = __as_datetime
         self.store = {
             '_oid': _oid,
             '_id': None,
             '_hash': None,
-            '_start': utcnow(as_datetime=as_datetime),
+            '_start': utcnow(as_datetime=__as_datetime),
             '_end': None,
-            '_v': _version,
+            '_v': _version or MetriqueObject._VERSION,
             '__v__': __version__,
-            '_e': {},  # errors should be added here
+            '_e': _e or {},
         }
         self.update(kwargs)
         self._re_hash()
@@ -216,6 +221,16 @@ class MetriqueObject(Mapping):
         if pop:
             [store.pop(key, None) for key in pop]
         return store
+
+    def __getattr__(self, key):
+        # try looking up the attr as a key of the dict
+        # first, return the value of the stored key's value
+        # if found, otherwise, assume it's actually a legitimate
+        # __getattr__ request
+        if key in self.store:
+            return self.store.get(key)
+        else:
+            return getattr(self, key)
 
     def __getitem__(self, key):
         key = self.__keytransform__(key)
@@ -269,6 +284,8 @@ class MetriqueObject(Mapping):
         return jsonhash(o)
 
     def _re_hash(self):
+        # FIXME: validate all meta fields; make sure typed
+        # correctly?
         self._validate_start_end()
         # _id depends on _hash
         # so first, _hash, then _id
@@ -279,13 +296,10 @@ class MetriqueObject(Mapping):
         for key, value in obj.iteritems():
             key = self.__keytransform__(key)
             if key in IMMUTABLE_OBJ_KEYS:
-                if self._strict:
-                    raise KeyError("%s is immutable" % key)
-                else:
-                    continue
+                key = '__%s' % key  # don't overwrite, but archive
             elif key in self.TIMESTAMP_OBJ_KEYS:
                 # ensure normalized timestamp
-                value = ts2dt(value) if self._as_datetime else dt2ts(value)
+                value = ts2dt(value) if self.__as_datetime else dt2ts(value)
             elif key == '_e':
                 # _e is expected to be dict
                 value = {} if value is None else dict(value)
@@ -475,6 +489,10 @@ class MetriqueContainer(MutableMapping):
     def _ids(self):
         return sorted(self.store.keys())
 
+    @property
+    def iter_oids(self):
+        return self.store.iterkeys()
+
     def persist(self, objects=None, _type=None, _dir=None, name=None,
                 autosnap=True, timeout=5):
         objects = objects or self.itervalues()
@@ -564,7 +582,6 @@ class MetriqueContainer(MutableMapping):
         return _ids
 
     def _parse_fields(self, fields, as_dict=False):
-        # _fields = {'_id': 0, '_start': 1, '_end': 1, '_oid': 1}
         _fields = {}
         if fields in [None, False]:
             _fields = {}
@@ -623,6 +640,7 @@ class MetriqueContainer(MutableMapping):
         _after = '(_end >= date("%s") or _end == None)'
         after = lambda d: _after % ts2dt(d) if d else None
         split = date.split('~')
+        # FIXME: should we adjust for the timezone info we're dropping?
         # replace all occurances of 'T' with ' '
         # this is used for when datetime is passed in
         # like YYYY-MM-DDTHH:MM:SS instead of
@@ -666,8 +684,8 @@ class MetriqueContainer(MutableMapping):
     def _validate_roles(self, roles):
         if isinstance(roles, basestring):
             roles = [roles]
-        if not isinstance(roles, (list, tuple)):
-            raise TypeError("roles must be single string or list")
+        else:
+            roles = list(roles)
         roles = set(map(str, roles))
         if not roles <= set(self.VALID_SHARE_ROLES):
             raise ValueError("invalid roles %s, try: %s" % (
@@ -795,10 +813,10 @@ class BaseClient(object):
         debug_setup(logger='metrique', level=level, log2stdout=log2stdout,
                     log_format=log_format, log2file=log2file,
                     log_dir=log_dir, log_file=log_file)
-        self._container_kwargs = container_kwargs or {}
+        self._container_kwargs = deepcopy(container_kwargs or {})
         self.set_container(container)
         # FIXME: set default proxy to container's proxy if set?
-        self._proxy_kwargs = proxy_kwargs or {}
+        self._proxy_kwargs = deepcopy(proxy_kwargs or {})
         self.set_proxy(proxy, quiet=True)
 
     # 'container' is alias for 'objects'
@@ -940,7 +958,7 @@ class BaseClient(object):
                            config_file=config_file,
                            section_key=config_key,
                            section_only=True)
-        if not (kwargs and _mongodb and cached):
+        if kwargs or not (_mongodb and cached):
             owner = owner or getuser()
             name = name or self.name
             self._mongodb = MongoDBProxy(owner=owner, collection=name,
@@ -960,7 +978,7 @@ class BaseClient(object):
                            config_file=config_file,
                            section_key=config_key,
                            section_only=True)
-        if not (kwargs and _sqlalchemy and cached):
+        if kwargs or not (_sqlalchemy and cached):
             owner = owner or getuser()
             table = table or self.name
             self._sqlalchemy = SQLAlchemyProxy(owner=owner, table=table,
@@ -1457,6 +1475,10 @@ class MongoDBContainer(MetriqueContainer):
         :param startswith: string to use in a simple "startswith" query filter
         :returns list: sorted list of cube names
         '''
+        # FIXME: move this to Proxy?
+        # FIXME: this only shows cubes in users db,
+        #        get all dbs and collections in each db
+
         db = self.proxy.get_db(owner)
         cubes = db.collection_names(include_system_collections=False)
         startswith = unicode(startswith or '')
@@ -1961,6 +1983,7 @@ class MongoDBContainer(MetriqueContainer):
 
 
 # ################################ SQL ALCHEMY ###############################
+# FIXME: add  SQLAlchemyObject which
 class SQLAlchemyProxy(object):
     config = None
     config_key = 'sqlalchemy'
@@ -2062,7 +2085,8 @@ class SQLAlchemyProxy(object):
         return uri
 
     def get_engine(self, engine=None, cached=True, **kwargs):
-        if kwargs or not cached or not hasattr(self, '_sql_engine'):
+        _sql_engine = getattr(self, '_sql_engine')
+        if kwargs or not (cached and _sql_engine):
             _engine = self.config.get('engine')
             engine = engine or _engine
             if re.search('sqlite', engine):
@@ -2083,7 +2107,8 @@ class SQLAlchemyProxy(object):
 
     def get_session(self, autoflush=False, autocommit=False,
                     expire_on_commit=True, cached=True, **kwargs):
-        if not (cached and hasattr(self, '_session')):
+        _session = getattr(self, '_session')
+        if kwargs or not (cached and _session):
             self.get_engine().dispose()  # make sure we have our engine setup
             self._session = self._sessionmaker(
                 autoflush=autoflush, autocommit=autocommit,
@@ -2091,7 +2116,8 @@ class SQLAlchemyProxy(object):
         return self._session
 
     def get_meta(self, bind=None, cached=True):
-        if not hasattr(self, '_meta'):
+        _meta = getattr(self, '_meta')
+        if kwargs or not (cached and _meta):
             metadata = self.get_base(cached=cached).metadata
             metadata.bind = bind or getattr(self, '_sql_engine', None)
             self._meta = metadata
