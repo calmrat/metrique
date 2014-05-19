@@ -1,15 +1,9 @@
 #!/usr/bin/env python
+# -*- coding: utf-8 -*-
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 # Author: "Chris Ward" <cward@redhat.com>
 
 from __future__ import unicode_literals
-
-import logging
-logging.basicConfig(level=logging.DEBUG)
-# override metrique logger; redirect everything to stdout
-logger = logging.getLogger('metrique')
-hdlr = logging.StreamHandler()
-logger.addHandler(hdlr)
 
 import calendar
 from copy import copy
@@ -17,10 +11,19 @@ from datetime import datetime
 import os
 import pytz
 import simplejson as json
+import shutil
 from time import time
+
+from .utils import is_in, set_env, qremove
+
+env = set_env()
 
 testroot = os.path.dirname(os.path.abspath(__file__))
 cubes = os.path.join(testroot, 'cubes')
+fixtures = os.path.join(testroot, 'fixtures')
+etc = os.path.join(testroot, 'etc')
+cache_dir = env['METRIQUE_CACHE']
+log_dir = env['METRIQUE_LOGS']
 
 
 def test_batch_gen():
@@ -69,21 +72,103 @@ def test_clear_stale_pids():
 def test_configure():
     from metrique.utils import configure
 
-    in_is = lambda c, k, v: bool(k in c and c[k] == v)
+    assert configure() == {}
 
-    defaults_1 = dict(debug=None, log2file=False)
-    opts_1 = dict(debug=True, log2file=True)
-    config_file_1 = './etc/test_conf.json'
+    config = dict(
+        debug=100,
+        OK='OK')
+
+    defaults = dict(
+        debug=False,
+        log2file=False)
+
+    options = dict(
+        debug=20,
+        log2file=None)  # when None, should be ignored
+
+    config_file = os.path.join(etc, 'test_conf.json')
+    # contents:
+        #{   "file": true
+        #    "debug": true,
+        #    "log2file": true   }
 
     # first, only defaults
-    x = configure(defaults=defaults_1)
-    print x
-    assert in_is(x, 'debug', None)
-    assert in_is(x, 'log2file', False)
+    x = configure(defaults=defaults)
+    assert is_in(x, 'debug', False)
+    assert is_in(x, 'log2file', False)
 
-    x = configure(options=opts_1, defaults=defaults_1)
-    assert in_is(x, 'debug', True)
-    assert in_is(x, 'log2file', True)
+    # then, where opt is not None, override
+    x = configure(defaults=defaults, options=options)
+    assert is_in(x, 'debug', 20)
+    assert is_in(x, 'log2file', False)  # ignored options:None value
+
+    # update acts as 'template config' in place of {}
+    # but options will override values set already...
+    # so, except that we have a new key, this should
+    # be same as the one above
+    x = configure(update=config, defaults=defaults,
+                  options=options)
+
+    assert is_in(x, 'debug', 20)
+    assert is_in(x, 'log2file', False)  # ignored options:None value
+    assert is_in(x, 'OK', 'OK')  # only in the template config
+
+    # first thing loaded is values from disk, then updated
+    # with 'update' config template
+    # since log2file is set in config_file to True, it will
+    # take that value
+    x = configure(config_file=config_file, update=config,
+                  defaults=defaults, options=options)
+    assert is_in(x, 'debug', 20)
+    assert is_in(x, 'log2file', True)  # ignored options:None value
+    assert is_in(x, 'OK', 'OK')  # only in the template config
+    assert is_in(x, 'file', True)  # only in the config_file config
+
+    # cf is loaded first and update config template applied on top
+    x = configure(config_file=config_file, update=config)
+    assert is_in(x, 'debug', 100)
+    assert is_in(x, 'log2file', True)  # ignored options:None value
+    assert is_in(x, 'OK', 'OK')  # only in the template config
+    assert is_in(x, 'file', True)  # only in the config_file config
+
+    # cf is loaded first and update config template applied on top
+    x = configure(config_file=config_file, options=options)
+    assert is_in(x, 'debug', 20)
+    assert is_in(x, 'log2file', True)  # ignored options:None value
+    assert is_in(x, 'file', True)  # only in the config_file config
+
+    # cf is loaded first and where key:values aren't set or set to
+    # None defaults will be applied
+    x = configure(config_file=config_file, defaults=defaults)
+    assert is_in(x, 'debug', True)
+    assert is_in(x, 'log2file', True)  # ignored options:None value
+    assert is_in(x, 'file', True)  # only in the config_file config
+
+    config_file = os.path.join(etc, 'test_conf_nested.json')
+    # Contents are same, but one level nested under key 'metrique'
+    x = configure(config_file=config_file, defaults=defaults,
+                  section_key='metrique', section_only=True)
+    assert is_in(x, 'debug', True)
+    assert is_in(x, 'log2file', True)  # ignored options:None value
+    assert is_in(x, 'file', True)  # only in the config_file config
+
+    _x = x.copy()
+    config_file = os.path.join(etc, 'test_conf_nested.json')
+    # Contents are same, but one level nested under key 'metrique'
+    x = configure(config_file=config_file, defaults=defaults,
+                  section_key='metrique')
+    assert is_in(x, 'metrique', _x)
+
+    try:  # should fail
+        x = configure(config_file='I_DO_NOT_EXIST')
+    except IOError:
+        pass
+
+    for arg in ('update', 'options', 'defaults'):
+        try:
+            x = configure(**{arg: 'I_SHOULD_BE_A_DICT'})
+        except AttributeError:
+            pass
 
 
 def test_csv2list():
@@ -109,6 +194,80 @@ def test_cube_pkg_mod_cls():
     pkg, mod, _cls = 'testcube', 'csvfile', 'Csvfile'
     cube = 'testcube_csvfile'
     assert cube_pkg_mod_cls(cube) == (pkg, mod, _cls)
+
+
+def test__debug_set_level():
+    from metrique.utils import _debug_set_level
+
+    import logging
+    logger = logging.getLogger('__test__')
+
+    warn = ([0, -1, False], logging.WARN)
+    info = ([None], logging.INFO)
+    debug = ([True], logging.DEBUG)
+    _int = ([10, 10.0], logging.DEBUG)
+
+    for lvls, log_lvl in [warn, info, debug, _int]:
+        for _lvl in lvls:
+            logger = _debug_set_level(logger, _lvl)
+            assert logger.level == log_lvl
+
+
+def test_debug_setup(capsys):
+    from metrique.utils import debug_setup
+
+    import logging
+    #logging.basicConfig(level=logging.DEBUG)
+
+    log_file = '__test_log.log'
+
+    # by default, logging -> file, not stdout
+    _l = debug_setup()
+    assert _l
+    assert _l.level == logging.INFO
+    assert _l.name == 'metrique'
+    assert len(_l.handlers) == 1
+    assert isinstance(_l.handlers[0], logging.FileHandler)
+
+    logger_test = logging.getLogger('test')
+    _l = debug_setup(logger=logger_test)
+    assert _l is logger_test
+    assert _l.name == 'test'
+
+    _l = debug_setup(logger=logger_test,
+                     log2file=False, log2stdout=True)
+    _l.info('*')
+    out, err = [x.strip() for x in capsys.readouterr()]
+    #assert out == ''
+    assert err == '*'
+
+    # no output should seen for info(), since we set level
+    # to warn, but issue an info call
+    _l = debug_setup(logger=logger_test,
+                     log2file=False, log2stdout=True,
+                     level=logging.WARN)
+    _l.info('*')
+    out, err = [x.strip() for x in capsys.readouterr()]
+    #assert out == ''
+    assert err == ''
+    _l.warn('*')
+    out, err = [x.strip() for x in capsys.readouterr()]
+    #assert out == ''
+    assert err == '*'
+
+    try:
+        # output should be redirected to disk
+        # reduce output to only include the message
+        _l = debug_setup(logger=logger_test, truncate=True,
+                         log_dir=log_dir, log_file=log_file,
+                         log_format='%(message)s')
+        _l.info('*')
+        _lf = os.path.join(log_dir, log_file)
+        lf = open(_lf).readlines()
+        text = ''.join(lf).strip()
+        assert text == '*'
+    finally:
+        qremove(_lf)
 
 
 def test_dt2ts():
@@ -168,6 +327,63 @@ def test_get_pids():
     assert pid not in _(pid_dir, clear_stale=True)
 
 
+def test_get_timezone_converter():
+    ' args: from_timezone '
+    ' convert is always TO utc '
+    from metrique.utils import utcnow, get_timezone_converter
+
+    # note: caching timezones always takes a few seconds
+    good = 'US/Eastern'
+    good_tz = pytz.timezone(good)
+
+    now_utc = utcnow(tz_aware=True)
+
+    now_est = copy(now_utc)
+    now_est = now_est.astimezone(good_tz)
+    now_est = now_est.replace(tzinfo=None)
+
+    c = get_timezone_converter(good)
+    assert c(now_est) == now_utc.replace(tzinfo=None)
+
+
+def test_git_clone():
+    from metrique.utils import git_clone, safestr
+    uri = 'https://github.com/kejbaly2/tornadohttp.git'
+    local_path = os.path.join(cache_dir, safestr(uri))
+    if os.path.exists(local_path):
+        shutil.rmtree(local_path)
+
+    _t = time()
+    repo = git_clone(uri, pull=False, reflect=False, cache_dir=cache_dir)
+    assert repo == local_path
+    not_cached = time() - _t
+
+    _t = time()
+    repo = git_clone(uri, pull=False, reflect=True, cache_dir=cache_dir)
+    cached = time() - _t
+
+    assert repo.path == local_path
+    assert cached < not_cached
+
+
+def test_is_null():
+    from metrique.utils import is_null
+    nulls = ['', '  \t\n\t  ', 0, None, {}, []]
+    not_nulls = ['hello', -1, 1, {'key': 'value'}, [1]]
+    try:
+        import pandas
+    except ImportError:
+        nulls += [pandas.NaT, pandas.NaN]
+    for x in nulls:
+        null = is_null(x)
+        print '%s is null? %s' % (repr(x), null)
+        assert null is True
+    for x in not_nulls:
+        null = is_null(x)
+        print '%s is null? %s' % (repr(x), null)
+        assert null is False
+
+
 def test_json_encode():
     ' args: obj '
     from metrique.utils import json_encode
@@ -223,6 +439,134 @@ def test_jsonhash():
     assert jsonhash(dct) != jsonhash(dct_sorted_z)
 
 
+def test_load_file():
+    # also tests utils.{load_pickle, load_csv, load_json, load_shelve}
+    from metrique.utils import load_file
+    files = ['test.csv', 'test.json', 'test.pickle', 'test.db']
+    for f in files:
+        print 'Loading %s' % f
+        path = os.path.join(fixtures, f)
+        objects = load_file(path)
+        print '... got %s' % objects
+        assert len(objects) == 1
+        assert map(unicode, sorted(objects[0].keys())) == ['col_1', 'col_2']
+
+
+def test_load():
+    from metrique.utils import load
+    path_glob = os.path.join(fixtures, 'test*.csv')
+
+    x = load(path_glob)
+    assert len(x) == 2
+    assert 'col_1' in x[0].keys()
+    assert 1 in x[0].values()
+    assert 100 in x[1].values()
+
+    x = load(path_glob, _oid=True)
+    assert '_oid' in x[0].keys()
+    assert x[0]['_oid'] == 1
+    assert x[1]['_oid'] == 2
+
+    set_oid_func = lambda o: dict(_oid=42, **o)
+    x = load(path_glob, _oid=set_oid_func)
+    assert x[0]['_oid'] == 42
+    assert x[1]['_oid'] == 42
+
+    # check that we can get a dataframe
+    x = load(path_glob, as_df=True)
+    assert hasattr(x, 'ix')
+
+    _x = load(x)
+    assert _x is x
+
+    # check that we can grab data from the web
+    uri = 'https://mysafeinfo.com/api/data?list=days&format=csv'
+    x = load(uri, filetype='csv')
+    assert len(x) == 7
+    x = load(path_glob)
+
+
+def test_load_config():
+    from metrique.utils import load_config
+
+    try:
+        x = load_config()
+    except TypeError:
+        pass
+
+    x = load_config(path=None)
+
+    config_file = os.path.join(etc, 'test_conf.json')
+    x = load_config(path=config_file)
+    assert x
+    assert x['file'] is True
+
+    try:
+        x = load_config(path='BAD_PATH')
+    except IOError:
+        pass
+
+
+def test_profile(capsys):
+    from metrique.utils import profile
+
+    @profile
+    def test():
+        return
+
+    test()
+    out, err = [x.strip() for x in capsys.readouterr()]
+    assert out  # we should have some output printed to stdout
+
+
+def test_rupdate():
+    from metrique.utils import rupdate
+    source = {'toplevel': {'nested': 1, 'hidden': 1}}
+    target = {'toplevel': {'nested': 2}}
+
+    updated = rupdate(source, target)
+    assert 'toplevel' in updated
+    assert 'nested' in updated['toplevel']
+    assert 'hidden' in updated['toplevel']
+    assert updated['toplevel']['nested'] == 2
+
+
+def test_safestr():
+    from metrique.utils import safestr
+    str_ = '     abc123:;"/\\.,\n\t'
+    assert safestr(str_) == 'abc123'
+
+
+def test_sys_call():
+    from metrique.utils import sys_call
+
+    try:
+        sys_call('ls FILE_THAT_DOES_NOT_EXIST')
+    except Exception:
+        pass
+
+    csv_path = os.path.join(fixtures, 'test.csv')
+    out = sys_call('ls %s' % csv_path)
+    assert out == csv_path
+
+
+def test_to_encoding():
+    from metrique.utils import to_encoding
+    str_utf8 = unicode('--台北--')
+    str_ = str('hello')
+
+    assert to_encoding(str_utf8, 'utf-8')
+    assert to_encoding(str_, 'utf-8')
+
+    assert to_encoding(str_utf8, 'ascii')
+    assert to_encoding(str_, 'ascii')
+
+    try:
+        to_encoding(str_, 'ascii', errors='strict')
+    except UnicodeEncodeError:
+        pass
+
+
 def test_ts2dt():
     ''' args: ts, milli=False, tz_aware=True '''
     from metrique.utils import ts2dt
@@ -236,10 +580,10 @@ def test_ts2dt():
     ' datetime already, return it back'
     assert ts2dt(now_date) == now_date
 
-    ' tz_aware defaults to true '
+    ' tz_aware defaults to false '
     try:
         ' cant compare offset-naive and offset-aware datetimes '
-        assert ts2dt(now_time) != now_date
+        assert ts2dt(now_time) == now_date
     except TypeError:
         pass
 
@@ -252,6 +596,19 @@ def test_ts2dt():
         ts2dt(now_date_iso) == now_date
     except ValueError:
         pass
+
+
+def test_urlretrieve():
+    from metrique.utils import urlretrieve
+    uri = 'https://mysafeinfo.com/api/data?list=days&format=csv'
+    saveas = os.path.join(cache_dir, 'test_download.csv')
+
+    qremove(saveas)
+    _path = urlretrieve(uri, saveas=saveas, cache_dir=cache_dir)
+    assert _path == saveas
+    assert os.path.exists(_path)
+    assert os.stat(_path).st_size > 0
+    qremove(_path)
 
 
 def test_utcnow():
@@ -269,23 +626,3 @@ def test_utcnow():
     assert _ == now_date_utc
     assert utcnow(as_datetime=False,
                   tz_aware=True, drop_micro=True) == now_time
-
-
-# FIXME: THIS IS REALLY SLOW... reenable by adding test_ prefix
-def get_timezone_converter():
-    ' args: from_timezone '
-    ' convert is always TO utc '
-    from metrique.utils import get_timezone_converter
-
-    # note: caching timezones always takes a few seconds
-    good = 'US/Eastern'
-    good_tz = pytz.timezone(good)
-
-    now_utc = datetime.now(pytz.utc)
-
-    now_est = copy(now_utc)
-    now_est = now_est.astimezone(good_tz)
-    now_est = now_est.replace(tzinfo=None)
-
-    c = get_timezone_converter(good)
-    assert c(None, now_est) == now_utc

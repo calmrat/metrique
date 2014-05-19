@@ -173,7 +173,7 @@ import tempfile
 from metrique import __version__
 from metrique.utils import get_cube, utcnow, jsonhash, load_config, load
 from metrique.utils import json_encode, batch_gen, ts2dt, dt2ts, configure
-from metrique.utils import debug_setup, is_null, _load_shelve
+from metrique.utils import debug_setup, is_null, load_shelve
 from metrique.result import Result
 
 # if HOME environment variable is set, use that
@@ -495,7 +495,7 @@ class MetriqueContainer(MutableMapping):
         path = os.path.join(_dir, fname)
 
         with LockFile(path):
-            _cube = _load_shelve(path, as_list=False)
+            _cube = load_shelve(path, as_list=False)
             dup_ids = set(_cube.keys())
             k = 0
             for i, o in enumerate(objects, start=1):

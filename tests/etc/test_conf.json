@@ -1,4 +1,5 @@
 {
+    "file": true,
     "debug": true,
-    "log2file": 150
+    "log2file": true
 }

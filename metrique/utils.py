@@ -108,10 +108,11 @@ def configure(options=None, defaults=None, config_file=None,
 
     sk = section_key
 
-    # apply the options/defaults to the section, if set
-    working_config = config
-    if sk in config:
-        working_config = config[sk]
+    if not sk and (section_key or section_only):
+        raise KeyError('section %s not set' % sk)
+
+    # work only with the given section, if specified
+    working_config = config[sk] if sk in config else config
 
     # if section key is already configured, ie, we initiated with
     # config set already, set options not set as None
@@ -164,21 +165,21 @@ def cube_pkg_mod_cls(cube):
 
 
 def _debug_set_level(logger, level):
-    if level in [-1, False]:
+    # NOTE: int(0) == bool(False) is True
+    if level in [-1, 0, False]:
         logger.setLevel(logging.WARN)
-    elif level in [0, None]:
+    elif level in [None]:
         logger.setLevel(logging.INFO)
     elif level is True:
         logger.setLevel(logging.DEBUG)
     else:
-        level = int(level)
-        logger.setLevel(level)
+        logger.setLevel(int(level))
     return logger
 
 
 def debug_setup(logger=None, level=None, log2file=None,
                 log_file=None, log_format=None, log_dir=None,
-                log2stdout=None, ):
+                log2stdout=None, truncate=False):
     '''
     Local object instance logger setup.
 
@@ -200,14 +201,14 @@ def debug_setup(logger=None, level=None, log2file=None,
         * log2file (bool)
         * log_file (path)
     '''
-    log2stdout = log2stdout or False
-    if isinstance(log_format, basestring):
+    log2stdout = False if log2stdout is None else log2stdout
+    if log_format and isinstance(log_format, basestring):
         log_format = logging.Formatter(log_format, "%Y%m%dT%H%M%S")
     _log_format = "%(name)s.%(process)s:%(asctime)s:%(message)s"
     _log_format = logging.Formatter(log_format, "%Y%m%dT%H%M%S")
     log_format = log_format or _log_format
 
-    log2file = log2file or True
+    log2file = True if log2file is None else log2file
     log_file = log_file or 'metrique.log'
     log_dir = log_dir or LOGS_DIR or ''
     log_file = os.path.join(log_dir, log_file)
@@ -220,6 +221,9 @@ def debug_setup(logger=None, level=None, log2file=None,
     logger.propagate = 0
     logger.handlers = []
     if log2file and log_file:
+        if truncate:
+            # clear the existing data before writing (truncate)
+            open(log_file, 'w+').close()
         hdlr = logging.FileHandler(log_file)
         hdlr.setFormatter(log_format)
         logger.addHandler(hdlr)
@@ -351,8 +355,7 @@ def git_clone(uri, pull=True, reflect=False, cache_dir=None):
     '''
     cache_dir = cache_dir or CACHE_DIR
     # make the uri safe for filesystems
-    _uri = "".join(x for x in uri if x.isalnum())
-    repo_path = os.path.expanduser(os.path.join(cache_dir, _uri))
+    repo_path = os.path.expanduser(os.path.join(cache_dir, safestr(uri)))
     if not os.path.exists(repo_path):
         from_cache = False
         logger.info(
@@ -378,10 +381,10 @@ def git_clone(uri, pull=True, reflect=False, cache_dir=None):
 def is_null(value):
     if isinstance(value, basestring):
         value = value.strip()
-    return (bool(value is None) or
-            bool(value == '') or
-            bool(value != value) or
-            repr(value) == 'NaT')
+    return bool(
+        not value or
+        value != value or
+        repr(value) == 'NaT')
 
 
 def json_encode(obj):
@@ -424,6 +427,60 @@ def jsonhash(obj, root=True, exclude=None, hash_func=None):
     return result
 
 
+def load_file(path, filetype=None, as_df=False, **kwargs):
+    if not filetype:
+        # try to get file extension
+        filetype = path.split('.')[-1]
+    if filetype in ['csv', 'txt']:
+        result = load_csv(path, **kwargs)
+    elif filetype in ['json']:
+        result = load_json(path, **kwargs)
+    elif filetype in ['pickle']:
+        result = load_pickle(path, **kwargs)
+    elif filetype in ['db']:
+        result = load_shelve(path, **kwargs)
+    else:
+        raise TypeError("Invalid filetype: %s" % filetype)
+    return _data_export(result, as_df=as_df)
+
+
+def load_pickle(path, **kwargs):
+    result = []
+    with open(path) as f:
+        while 1:
+            # in case we have multiple pickles dumped
+            try:
+                result.append(cPickle.load(f))
+            except EOFError:
+                break
+    return result
+
+
+def load_csv(path, **kwargs):
+    kwargs.setdefault('skipinitialspace', True)
+    # load the file according to filetype
+    return pd.read_csv(path, **kwargs)
+
+
+def load_json(path, **kwargs):
+    return pd.read_json(path, **kwargs)
+
+
+def load_shelve(path, as_list=True, **kwargs):
+    '''
+    shelve expects each object to be indexed
+    by one of it's column values (ie, _oid)
+    where value is the entire object which maps
+    to the given column value (ie, {_oid: {obj with _oid})
+    '''
+    kwargs.setdefault('flag', 'c')
+    kwargs.setdefault('protocol', 2)
+    if as_list:
+        return [o for o in shelve.open(path, **kwargs).itervalues()]
+    else:
+        return shelve.open(path, **kwargs)
+
+
 def _set_oid_func(_oid_func):
     k = itertools.count(1)
 
@@ -442,53 +499,6 @@ def _set_oid_func(_oid_func):
     else:
         _oid_func = None
     return _oid_func
-
-
-def _load_file(path, filetype, as_df=False, **kwargs):
-    if not filetype:
-        # try to get file extension
-        filetype = path.split('.')[-1]
-    if filetype in ['csv', 'txt']:
-        result = _load_csv(path, **kwargs)
-    elif filetype in ['json']:
-        result = _load_json(path, **kwargs)
-    elif filetype in ['pickle']:
-        result = _load_pickle(path, **kwargs)
-    elif filetype in ['db']:
-        result = _load_shelve(path, **kwargs)
-    else:
-        raise TypeError("Invalid filetype: %s" % filetype)
-    return _data_export(result, as_df=as_df)
-
-
-def _load_pickle(path, **kwargs):
-    result = []
-    with open(path) as f:
-        while 1:
-            # in case we have multiple pickles dumped
-            try:
-                result.append(cPickle.load(f))
-            except EOFError:
-                break
-    return result
-
-
-def _load_csv(path, **kwargs):
-    # load the file according to filetype
-    return pd.read_csv(path, **kwargs)
-
-
-def _load_json(path, **kwargs):
-    return pd.read_json(path, **kwargs)
-
-
-def _load_shelve(path, as_list=True, **kwargs):
-    kwargs.setdefault('flag', 'c')
-    kwargs.setdefault('protocol', 2)
-    if as_list:
-        return [o for o in shelve.open(path, **kwargs).itervalues()]
-    else:
-        return shelve.open(path, **kwargs)
 
 
 def load(path, filetype=None, as_df=False, retries=None,
@@ -516,28 +526,28 @@ def load(path, filetype=None, as_df=False, retries=None,
     # file2, file3), etc
     if not isinstance(path, basestring):
         # assume we're getting a raw dataframe
-        df = path
-        if not isinstance(df, pd.DataFrame):
+        objects = path
+        if not isinstance(objects, pd.DataFrame):
             raise ValueError("loading raw values must be DataFrames")
     elif re.match('https?://', path):
         logger.debug('Saving %s to tmp file' % path)
-        _path, headers = urlretrieve(path, retries)
+        _path = urlretrieve(path, retries)
         logger.debug('%s saved to tmp file: %s' % (path, _path))
         try:
-            objects = _load_file(_path, filetype, **kwargs)
+            objects = load_file(_path, filetype, **kwargs)
         finally:
             os.remove(_path)
     else:
         path = re.sub('^file://', '', path)
         path = os.path.expanduser(path)
-        datasets = glob.glob(os.path.expanduser(path))
+        datasets = sorted(glob.glob(os.path.expanduser(path)))
         # buid up a single dataframe by concatting
         # all globbed files together
         objects = []
-        [objects.extend(_load_file(ds, filetype, **kwargs))
+        [objects.extend(load_file(ds, filetype, **kwargs))
             for ds in datasets]
 
-    if not (objects or quiet):
+    if not (objects is not None or quiet):
         raise ValueError("not objects extracted!")
     else:
         logger.debug("Data loaded successfully from %s" % path)
@@ -591,31 +601,80 @@ def load_config(path):
         return {}
     else:
         config_file = os.path.expanduser(path)
-        conf = anyconfig.load(config_file)
-        # convert mergeabledict (anyconfig) to dict of dicts
-        return conf.convert_to(conf)
+        conf = anyconfig.load(config_file) or {}
+        if conf:
+            # convert mergeabledict (anyconfig) to dict of dicts
+            return conf.convert_to(conf)
+        else:
+            raise IOError("Invalid config file: %s" % config_file)
 
 
-def rupdate(d, u):
+def profile(fn):
+    # profile code snagged from http://stackoverflow.com/a/1175677/1289080
+    def wrapper(*args, **kw):
+        elapsed, stat_loader, result = _profile("foo.txt", fn, *args, **kw)
+        stats = stat_loader()
+        stats.sort_stats('cumulative')
+        stats.print_stats()
+        # uncomment this to see who's calling what
+        # stats.print_callers()
+        return result
+    return wrapper
+
+
+def _profile(filename, fn, *args, **kw):
+    load_stats = lambda: pstats.Stats(filename)
+    gc.collect()
+
+    began = time.time()
+    profiler.runctx('result = fn(*args, **kw)', globals(), locals(),
+                    filename=filename)
+    ended = time.time()
+
+    return ended - began, load_stats, locals()['result']
+
+
+def rupdate(source, target):
     ''' recursively update nested dictionaries
         see: http://stackoverflow.com/a/3233356/1289080
     '''
-    for k, v in u.iteritems():
+    for k, v in target.iteritems():
         if isinstance(v, collections.Mapping):
-            r = rupdate(d.get(k, {}), v)
-            d[k] = r
+            r = rupdate(source.get(k, {}), v)
+            source[k] = r
         else:
-            d[k] = u[k]
-    return d
+            source[k] = target[k]
+    return source
 
 
-def to_encoding(ustring, encoding=None):
+def safestr(str_):
+    ''' get back an alphanumeric only version of source '''
+    return "".join(x for x in str_ if x.isalnum())
+
+
+def sys_call(cmd, sig=None, sig_func=None, quiet=True):
+    if not quiet:
+        logger.debug(cmd)
+    if isinstance(cmd, basestring):
+        cmd = re.sub('\s+', ' ', cmd)
+        cmd = cmd.strip()
+        cmd = shlex.split(cmd)
+    if sig and sig_func:
+        signal.signal(sig, sig_func)
+    output = subprocess.check_output(cmd, stderr=subprocess.STDOUT)
+    if not quiet:
+        logger.debug(output)
+    return output.strip()
+
+
+def to_encoding(ustring, encoding=None, errors='replace'):
+    errors = errors or 'replace'
     encoding = encoding or 'utf-8'
     if isinstance(ustring, basestring):
         if not isinstance(ustring, unicode):
-            return unicode(ustring, encoding, 'replace')
+            return unicode(ustring, encoding, errors)
         else:
-            return ustring.encode(encoding, 'replace').decode('utf8')
+            return ustring.encode(encoding, errors).decode('utf8')
     else:
         raise ValueError('basestring type required')
 
@@ -675,46 +734,6 @@ def utcnow(as_datetime=True, tz_aware=False, drop_micro=False):
         return dt2ts(now, drop_micro)
 
 
-def profile(fn):
-    # profile code snagged from http://stackoverflow.com/a/1175677/1289080
-    def wrapper(*args, **kw):
-        elapsed, stat_loader, result = _profile("foo.txt", fn, *args, **kw)
-        stats = stat_loader()
-        stats.sort_stats('cumulative')
-        stats.print_stats()
-        # uncomment this to see who's calling what
-        # stats.print_callers()
-        return result
-    return wrapper
-
-
-def _profile(filename, fn, *args, **kw):
-    load_stats = lambda: pstats.Stats(filename)
-    gc.collect()
-
-    began = time.time()
-    profiler.runctx('result = fn(*args, **kw)', globals(), locals(),
-                    filename=filename)
-    ended = time.time()
-
-    return ended - began, load_stats, locals()['result']
-
-
-def sys_call(cmd, sig=None, sig_func=None, quiet=True):
-    if not quiet:
-        logger.debug(cmd)
-    if isinstance(cmd, basestring):
-        cmd = re.sub('\s+', ' ', cmd)
-        cmd = cmd.strip()
-        cmd = shlex.split(cmd)
-    if sig and sig_func:
-        signal.signal(sig, sig_func)
-    output = subprocess.check_output(cmd, stderr=subprocess.STDOUT)
-    if not quiet:
-        logger.debug(output)
-    return output
-
-
 def urlretrieve(uri, saveas=None, retries=3, cache_dir=None):
     '''urllib.urlretrieve wrapper'''
     retries = int(retries) if retries else 3
@@ -732,4 +751,4 @@ def urlretrieve(uri, saveas=None, retries=3, cache_dir=None):
             continue
         else:
             break
-    return _path, headers
+    return _path
