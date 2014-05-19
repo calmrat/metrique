@@ -373,7 +373,7 @@ def test_is_null():
     try:
         import pandas
     except ImportError:
-        nulls += [pandas.NaT, pandas.NaN]
+        nulls += [pandas.NaT, pandas.NaN, pandas.DataFrame()]
     for x in nulls:
         null = is_null(x)
         print '%s is null? %s' % (repr(x), null)
@@ -476,6 +476,7 @@ def test_load():
     x = load(path_glob, as_df=True)
     assert hasattr(x, 'ix')
 
+    # passing in a dataframe should return back the same dataframe...
     _x = load(x)
     assert _x is x
 

@@ -17,7 +17,7 @@ import itertools
 import logging
 
 from metrique import pyclient
-from metrique.utils import utcnow
+from metrique.utils import utcnow, load
 
 logger = logging.getLogger('metrique')
 
@@ -35,7 +35,8 @@ class Rows(pyclient):
     """
     name = 'csvdata_rows'
 
-    def get_objects(self, uri, _oid=None, _start=None, _end=None, **kwargs):
+    def get_objects(self, uri, _oid=None, _start=None, _end=None,
+                    load_kwargs=None, **kwargs):
         '''
         Load and transform csv data into a list of dictionaries.
 
@@ -60,7 +61,8 @@ class Rows(pyclient):
         and the result of the function will be assigned to the _start
         or _oid, respectively.
         '''
-        objects = self.container.load(path=uri, filetype='csv')
+        load_kwargs = load_kwargs or {}
+        objects = load(path=uri, filetype='csv', **load_kwargs)
 
         k = itertools.count(1)
         now = utcnow()

@@ -173,7 +173,7 @@ import tempfile
 from metrique import __version__
 from metrique.utils import get_cube, utcnow, jsonhash, load_config, load
 from metrique.utils import json_encode, batch_gen, ts2dt, dt2ts, configure
-from metrique.utils import debug_setup, is_null, load_shelve
+from metrique.utils import debug_setup, is_null, load_shelve, to_encoding
 from metrique.result import Result
 
 # if HOME environment variable is set, use that
@@ -218,13 +218,16 @@ class MetriqueObject(Mapping):
         return store
 
     def __getitem__(self, key):
-        return self.store[self.__keytransform__(key)]
+        key = self.__keytransform__(key)
+        return self.store[key]
 
     def __setitem__(self, key, value):
+        key = self.__keytransform__(key)
         self.update({key: value})
         self._re_hash()
 
     def __delitem__(self, key):
+        key = self.__keytransform__(key)
         del self.store[key]
 
     def __iter__(self):
@@ -244,7 +247,7 @@ class MetriqueObject(Mapping):
         key = self.SPACE_RE.sub('_', key)
         key = self.FIELDS_RE.sub('',  key)
         key = self.UNDA_RE.sub('_',  key)
-        return key
+        return to_encoding(key)
 
     def _gen_id(self):
         _oid = self.store.get('_oid')
@@ -285,7 +288,7 @@ class MetriqueObject(Mapping):
                 value = ts2dt(value) if self._as_datetime else dt2ts(value)
             elif key == '_e':
                 # _e is expected to be dict
-                value = dict(value)
+                value = {} if value is None else dict(value)
             else:
                 pass
 
@@ -311,9 +314,11 @@ class MetriqueObject(Mapping):
                 "_end (%s) is before _start (%s)!" % (_end, _start))
 
     def pop(self, key):
+        key = self.__keytransform__(key)
         return self.store.pop(key)
 
     def setdefault(self, key, default):
+        key = self.__keytransform__(key)
         if key not in self.store:
             self.update({key, default})
         return self
@@ -454,8 +459,9 @@ class MetriqueContainer(MutableMapping):
         return result
 
     @property
-    def keys(self):
-        return sorted(k for o in self.store.itervalues() for k in o.iterkeys())
+    def fields(self):
+        return sorted({k for o in self.store.itervalues()
+                       for k in o.iterkeys()})
 
     @staticmethod
     def load(*args, **kwargs):
@@ -466,8 +472,8 @@ class MetriqueContainer(MutableMapping):
         raise NotImplementedError("FIXME")
 
     @property
-    def oids(self):
-        return self.store.keys()
+    def _ids(self):
+        return sorted(self.store.keys())
 
     def persist(self, objects=None, _type=None, _dir=None, name=None,
                 autosnap=True, timeout=5):
@@ -484,7 +490,7 @@ class MetriqueContainer(MutableMapping):
                                         autosnap=autosnap)
         else:
             raise ValueError("Unknown persist type: %s" % _type)
-        return _ids
+        return sorted(_ids)
 
     def _persist_shelve(self, objects, _dir, prefix, suffix='.db',
                         autosnap=True):
@@ -499,11 +505,13 @@ class MetriqueContainer(MutableMapping):
             dup_ids = set(_cube.keys())
             k = 0
             for i, o in enumerate(objects, start=1):
+                # FIXME: unicode!?
                 _id = str(o['_id'])
                 _ids.append(_id)
                 # check for dups already persisted
                 if _id in dup_ids:
                     dup = dict(_cube[_id])
+                    print dup['_hash'], o['_hash']
                     if dup['_hash'] == o['_hash']:
                         k += 1
                         continue  # exact duplicate, skip

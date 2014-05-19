@@ -9,6 +9,7 @@ Utility functions for testing metrique / db integration
 
 from functools import wraps
 import os
+import shutil
 
 
 def runner(func):
@@ -43,7 +44,11 @@ def set_env():
 
 
 def qremove(path):
+    if os.path.isfile(path):
+        rm = os.remove
+    else:
+        rm = shutil.rmtree
     try:
-        os.remove(path)
+        rm(path)
     except Exception:
-        pass
+        print 'Failed to remove %s' % path

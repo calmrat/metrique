@@ -381,6 +381,14 @@ def git_clone(uri, pull=True, reflect=False, cache_dir=None):
 def is_null(value):
     if isinstance(value, basestring):
         value = value.strip()
+    elif hasattr(value, 'empty'):
+        # dataframes must check for .empty
+        # since they don't define truth value attr
+        # take the negative, since below we're
+        # checking for cases where value 'is_null'
+        value = not bool(value.empty)
+    else:
+        pass
     return bool(
         not value or
         value != value or
@@ -547,7 +555,7 @@ def load(path, filetype=None, as_df=False, retries=None,
         [objects.extend(load_file(ds, filetype, **kwargs))
             for ds in datasets]
 
-    if not (objects is not None or quiet):
+    if is_null(objects) and not quiet:
         raise ValueError("not objects extracted!")
     else:
         logger.debug("Data loaded successfully from %s" % path)
