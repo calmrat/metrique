@@ -201,15 +201,18 @@ class MetriqueObject(Mapping):
     _VERSION = 0
 
     def __init__(self, _oid, _id=None, _hash=None, _start=None, _end=None,
-                 _e=None, _version=None, __as_datetime=True, **kwargs):
+                 _e=None, _v=None, __as_datetime=True, **kwargs):
         self.__as_datetime = __as_datetime
+        if _oid is None:
+            raise ValueError("_oid can not be None!")
+        _start = ts2dt(_start) if __as_datetime else dt2ts(_start)
         self.store = {
             '_oid': _oid,
-            '_id': None,
-            '_hash': None,
-            '_start': utcnow(as_datetime=__as_datetime),
-            '_end': None,
-            '_v': _version or MetriqueObject._VERSION,
+            '_id': None,  # ignore passed in _id
+            '_hash': None,  # ignore passed in _hash
+            '_start': _start or utcnow(as_datetime=__as_datetime),
+            '_end': _end or None,
+            '_v': _v or MetriqueObject._VERSION,
             '__v__': __version__,
             '_e': _e or {},
         }
@@ -221,16 +224,6 @@ class MetriqueObject(Mapping):
         if pop:
             [store.pop(key, None) for key in pop]
         return store
-
-    def __getattr__(self, key):
-        # try looking up the attr as a key of the dict
-        # first, return the value of the stored key's value
-        # if found, otherwise, assume it's actually a legitimate
-        # __getattr__ request
-        if key in self.store:
-            return self.store.get(key)
-        else:
-            return getattr(self, key)
 
     def __getitem__(self, key):
         key = self.__keytransform__(key)
@@ -425,7 +418,7 @@ class MetriqueContainer(MutableMapping):
         if isinstance(item, self._object_cls):
             pass
         elif isinstance(item, (Mapping, dict)):
-            item = self._object_cls(_version=self._version, **item)
+            item = self._object_cls(_v=self._version, **item)
         else:
             raise TypeError(
                 "object values must be dict-like; got %s" % type(item))
@@ -452,7 +445,7 @@ class MetriqueContainer(MutableMapping):
 
     def flush(self, **kwargs):
         _ids = self.persist(**kwargs)
-        keys = set(self.store.keys())
+        keys = set(map(unicode, self.store.keys()))
         [self.store.pop(_id) for _id in _ids if _id in keys]
         return _ids
 
@@ -508,7 +501,7 @@ class MetriqueContainer(MutableMapping):
                                         autosnap=autosnap)
         else:
             raise ValueError("Unknown persist type: %s" % _type)
-        return sorted(_ids)
+        return sorted(map(unicode, _ids))
 
     def _persist_shelve(self, objects, _dir, prefix, suffix='.db',
                         autosnap=True):
@@ -523,13 +516,15 @@ class MetriqueContainer(MutableMapping):
             dup_ids = set(_cube.keys())
             k = 0
             for i, o in enumerate(objects, start=1):
-                # FIXME: unicode!?
-                _id = str(o['_id'])
+                _id = o['_id']
+                # NOTE: bsddb (shelve) requires string! not unicode
+                # but everything else should remain in unicode
+                # so save the _id in original form, but use str for shelve obj
                 _ids.append(_id)
+                _id = str(o['_id']) if isinstance(_id, unicode) else _id
                 # check for dups already persisted
                 if _id in dup_ids:
                     dup = dict(_cube[_id])
-                    print dup['_hash'], o['_hash']
                     if dup['_hash'] == o['_hash']:
                         k += 1
                         continue  # exact duplicate, skip
@@ -1395,7 +1390,7 @@ class MongoDBContainer(MetriqueContainer):
             # look this up in the instance objects mapping
             _start = self.store[o['_id']]['_start']
             o['_end'] = _start
-            o = self._object_cls(_version=self._version, **o)
+            o = self._object_cls(_v=self._version, **o)
             objects.append(o)
         return objects
 
@@ -1983,7 +1978,6 @@ class MongoDBContainer(MetriqueContainer):
 
 
 # ################################ SQL ALCHEMY ###############################
-# FIXME: add  SQLAlchemyObject which
 class SQLAlchemyProxy(object):
     config = None
     config_key = 'sqlalchemy'
@@ -2115,7 +2109,7 @@ class SQLAlchemyProxy(object):
                 expire_on_commit=expire_on_commit, **kwargs)
         return self._session
 
-    def get_meta(self, bind=None, cached=True):
+    def get_meta(self, bind=None, cached=True, **kwargs):
         _meta = getattr(self, '_meta')
         if kwargs or not (cached and _meta):
             metadata = self.get_base(cached=cached).metadata
@@ -2571,7 +2565,7 @@ class SQLAlchemyContainer(MetriqueContainer):
                     # set existing objects _end to new objects _start
                     dup['_end'] = o['_start']
                     # update _id, _hash, etc
-                    dup = self._object_cls(_version=self._version, **dup)
+                    dup = self._object_cls(_v=self._version, **dup)
                     # insert the new object
                     _ids.append(dup['_id'])
                     inserts.append(dup)
@@ -2579,7 +2573,7 @@ class SQLAlchemyContainer(MetriqueContainer):
                     cnx.execute(
                         u.where(self._table.c._id == o['_id']).values(**o))
                 else:
-                    o = self._object_cls(_version=self._version, **o)
+                    o = self._object_cls(_v=self._version, **o)
                     # don't try to set _id
                     _id = o.pop('_id')
                     assert _id == dup['_id']

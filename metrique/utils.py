@@ -617,15 +617,22 @@ def load_config(path):
             raise IOError("Invalid config file: %s" % config_file)
 
 
-def profile(fn):
+def profile(fn, cache_dir=CACHE_DIR):
+    cache_dir = cache_dir or CACHE_DIR
     # profile code snagged from http://stackoverflow.com/a/1175677/1289080
+
     def wrapper(*args, **kw):
-        elapsed, stat_loader, result = _profile("foo.txt", fn, *args, **kw)
+        saveas = os.path.join(cache_dir, 'pyprofile.txt')
+        elapsed, stat_loader, result = _profile(saveas, fn, *args, **kw)
         stats = stat_loader()
         stats.sort_stats('cumulative')
         stats.print_stats()
         # uncomment this to see who's calling what
         # stats.print_callers()
+        try:
+            os.remove(saveas)
+        except Exception:
+            pass
         return result
     return wrapper
 

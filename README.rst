@@ -41,9 +41,10 @@ The instructions given below assume fedora rpm package names::
 
     # prerequisite *os* packages
     sudo yum install python python-devel python-setuptools python-pip
-    sudo yum install git gcc gcc-c++ gcc-gfortran
+    sudo yum install openssl git gcc gcc-c++ gcc-gfortran
     sudo yum install freetype-devel libpng-devel # matplotlib deps
 
+    # optional
     sudo yum install mongodb mongodb-server postgresql postgresql-devel
 
     # additional python global dependencies, from pip
@@ -62,13 +63,17 @@ The instructions given below assume fedora rpm package names::
     # deploy metrique master branch into a virtual environment
     # including dependencies. 
     # NOTE this can take ~10 minutes to compile everything from source!
-    ./metrique.py -V ~/metrique.master deploy --all
+    ./metrique.py -V ~/virtenv-metrique-master deploy --all
 
     # activate the virtual environment
     source ~/metrique.master/bin/activate
 
-    # run firstboot config to setup default environment
-    ./metrique.py mongodb firstboot
+    ./metrique.py firstboot sys
+
+    # optional: run firstboot config to setup default mongodb environment
+    ./metrique.py firstboot mongodb
+    # optional: run firstboot config to setup default postgresql environment
+    ./metrique.py firstboot postgresql
 
     # optionally, start mongodb or postgresql
     ./metrique.py mongodb start

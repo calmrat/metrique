@@ -721,8 +721,6 @@ def mongodb(args):
         mongodb_clean()
     elif args.command == 'trash':
         mongodb_trash()
-    elif args.command == 'firstboot':
-        mongodb_firstboot()
     else:
         raise ValueError("unknown command %s" % args.command)
 
@@ -738,8 +736,6 @@ def postgresql(args):
         postgresql_start()
     elif args.command == 'clean':
         postgresql_clean()
-    elif args.command == 'firstboot':
-        postgresql_firstboot()
     elif args.command == 'trash':
         postgresql_trash()
     else:
@@ -904,7 +900,7 @@ def deploy(args):
     virtenv = _deploy_virtenv_init(args)
 
     # make sure we have some basic defaults configured in the environment
-    firstboot(args)
+    firstboot()
 
     # make sure we have the installer basics and their up2date
     # pip-accel caches compiled binaries
@@ -976,18 +972,25 @@ def default_conf(path, template):
     logger.info("Installed %s ..." % path)
 
 
-def firstboot(args, force=False, trash=False, no_auth=False):
+def firstboot(args=None, force=False):
     # make sure we have some basic defaults configured in the environment
-    trash = getattr(args, 'trash', trash)
     force = getattr(args, 'force', force)
-    auth = not getattr(args, 'no_auth', no_auth)
-    sys_firstboot(force)
-    mongodb_firstboot(force, auth=auth)
-    postgresql_firstboot(force)
-    metrique_firstboot(force)
-    celery_firstboot(force)
-    supervisord_firstboot(force)
-    nginx_firstboot(force)
+    cmd = getattr(args, 'command', 'metrique')
+    if cmd == 'metrique':
+        sys_firstboot(force)
+        pyclient_firstboot(force)
+    elif cmd == 'mongodb':
+        mongodb_firstboot(force)
+    elif cmd == 'postgresql':
+        postgresql_firstboot(force)
+    elif cmd == 'celery':
+        celery_firstboot(force)
+    elif cmd == 'supervisord':
+        supervisord_firstboot(force)
+    elif cmd == 'nginx':
+        nginx_firstboot(force)
+    else:
+        raise ValueError("Unknown firstboot command: %s" % cmd)
 
 
 def postgresql_firstboot(force=False):
@@ -1022,7 +1025,7 @@ def postgresql_firstboot(force=False):
     return True
 
 
-def mongodb_firstboot(force, auth=True):
+def mongodb_firstboot(force=False):
     exists = os.path.exists(MONGODB_FIRSTBOOT_PATH)
     if exists and not force:
         # skip if we have already run this before
@@ -1038,27 +1041,25 @@ def mongodb_firstboot(force, auth=True):
 
     default_conf(MONGODB_CONF, DEFAULT_MONGODB_CONF)
 
-    # by installing 'admin' user in Travis-ci we enable
-    # authentication; flag here is to disable that
-    # for testing
-    if auth:
-        default_conf(MONGODB_JS, DEFAULT_MONGODB_JS)
-
-    started = mongodb_start(fork=True, fast=True)
-    logger.debug('MongoDB forking, sleeping for a moment...')
-    time.sleep(1)
-
-    try:
-        if auth:
-            call('mongo 127.0.0.1/admin %s' % (MONGODB_JS))
-    finally:
-        if started:
-            mongodb_stop()
     with open(MONGODB_FIRSTBOOT_PATH, 'w') as f:
         f.write(NOW)
 
 
-def metrique_firstboot(force=False):
+def mongodb_install_admin():
+    # by installing 'admin' user in Travis-ci we enable
+    # authentication; flag here is to disable that
+    # for testing
+    default_conf(MONGODB_JS, DEFAULT_MONGODB_JS)
+    mongodb_start(fork=True, fast=True)
+    logger.debug('MongoDB forking, sleeping for a moment...')
+    time.sleep(1)
+    try:
+        call('mongo 127.0.0.1/admin %s' % (MONGODB_JS))
+    finally:
+        mongodb_stop()
+
+
+def pyclient_firstboot(force=False):
     exists = os.path.exists(METRIQUE_FIRSTBOOT_PATH)
     if exists and not force:
         # skip if we have already run this before
@@ -1212,8 +1213,12 @@ def main():
 
     # Clean-up routines
     _firstboot = _sub.add_parser('firstboot')
+    _firstboot.add_argument('command',
+                            choices=['metrique', 'mongodb', 'postgresql',
+                                     'celery', 'supervisord', 'nginx'],
+                            default='metrique')
     _firstboot.add_argument('-f', '--force', action='store_true')
-    _firstboot.add_argument('-A', '--no-auth', action='store_true')
+    #_firstboot.add_argument('-A', '--no-auth', action='store_true')
     _firstboot.set_defaults(func=firstboot)
 
     # rsync
@@ -1286,7 +1291,7 @@ def main():
 
     # postgresql server
     _postgresql = _sub.add_parser('postgresql')
-    _postgresql.add_argument('command', choices=['start', 'stop', 'firstboot',
+    _postgresql.add_argument('command', choices=['start', 'stop',
                                                  'trash', 'clean', 'reload'])
     _postgresql.add_argument('-F', '--nofork', action='store_true')
     _postgresql.set_defaults(func=postgresql)
