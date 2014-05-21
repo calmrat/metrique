@@ -4,7 +4,7 @@ python:
 install:
   - "pip install coveralls"
   - "pip install virtualenv"
-  - "./metrique.py firstboot"
+  - "./metrique.py firstboot" metrique
   - "./metrique.py deploy --slow --all"
 services: 
   - mongodb

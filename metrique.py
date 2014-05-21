@@ -892,8 +892,8 @@ def _deploy_deps(args):
     call('%s install -U pymongo pql' % pip) if _ else None
     _ = _all or args.pandas
     call('%s install -U pandas' % pip) if _ else None
-    _ = _all or args.matplolib
-    call('%s install -U matplolib' % pip) if _ else None
+    _ = _all or args.matplotlib
+    call('%s install -U matplotlib' % pip) if _ else None
 
 
 def deploy(args):
@@ -1135,7 +1135,10 @@ def sys_firstboot(force=False):
     os.chmod(PIP_EGGS, 0700)
 
     # generate self-signed ssl certs
-    ssl()
+    try:
+        ssl()
+    except Exception as e:
+        logger.warn('Failed to create ssl certs: %s' % e)
 
     with open(SYS_FIRSTBOOT_PATH, 'w') as f:
         f.write(NOW)
@@ -1215,8 +1218,7 @@ def main():
     _firstboot = _sub.add_parser('firstboot')
     _firstboot.add_argument('command',
                             choices=['metrique', 'mongodb', 'postgresql',
-                                     'celery', 'supervisord', 'nginx'],
-                            default='metrique')
+                                     'celery', 'supervisord', 'nginx'])
     _firstboot.add_argument('-f', '--force', action='store_true')
     #_firstboot.add_argument('-A', '--no-auth', action='store_true')
     _firstboot.set_defaults(func=firstboot)
