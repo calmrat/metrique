@@ -183,7 +183,7 @@ from metrique.result import Result
 # if HOME environment variable is set, use that
 # useful when running 'as user' with root (supervisord)
 ETC_DIR = os.environ.get('METRIQUE_ETC')
-CACHE_DIR = os.environ.get('METRIQUE_CACHE')
+CACHE_DIR = os.environ.get('METRIQUE_CACHE') or '/tmp'
 DEFAULT_CONFIG = os.path.join(ETC_DIR, 'metrique.json')
 
 # FIXME: make sets?
@@ -776,7 +776,7 @@ class BaseClient(object):
                        tmp_dir=tmp_dir,
                        workers=workers)
 
-        defaults = dict(cache_dir=os.environ.get('METRIQUE_CACHE', ''),
+        defaults = dict(cache_dir=CACHE_DIR,
                         cube_pkgs=['cubes'],
                         cube_paths=[],
                         debug=None,
@@ -2079,7 +2079,7 @@ class SQLAlchemyProxy(object):
         return uri
 
     def get_engine(self, engine=None, cached=True, **kwargs):
-        _sql_engine = getattr(self, '_sql_engine')
+        _sql_engine = getattr(self, '_sql_engine', None)
         if kwargs or not (cached and _sql_engine):
             _engine = self.config.get('engine')
             engine = engine or _engine
@@ -2101,7 +2101,7 @@ class SQLAlchemyProxy(object):
 
     def get_session(self, autoflush=False, autocommit=False,
                     expire_on_commit=True, cached=True, **kwargs):
-        _session = getattr(self, '_session')
+        _session = getattr(self, '_session', None)
         if kwargs or not (cached and _session):
             self.get_engine().dispose()  # make sure we have our engine setup
             self._session = self._sessionmaker(
@@ -2110,7 +2110,7 @@ class SQLAlchemyProxy(object):
         return self._session
 
     def get_meta(self, bind=None, cached=True, **kwargs):
-        _meta = getattr(self, '_meta')
+        _meta = getattr(self, '_meta', None)
         if kwargs or not (cached and _meta):
             metadata = self.get_base(cached=cached).metadata
             metadata.bind = bind or getattr(self, '_sql_engine', None)
@@ -2358,11 +2358,13 @@ class SQLAlchemyContainer(MetriqueContainer):
         # it's a dict... don't mutate original instance
         schema = deepcopy(schema)
 
+        reflected = False
         # try to reflect the table
         try:
             logger.debug("Attempting to reflect table: %s..." % name)
             _table = Table(name, meta, autoload=True, autoload_replace=True,
                            extend_existing=True, autoload_with=engine)
+            reflected = True
             logger.debug("Successfully refected table: %s" % name)
         except Exception as e:
             logger.debug("Failed to reflect table %s: %s" % (name, e))
@@ -2375,10 +2377,12 @@ class SQLAlchemyContainer(MetriqueContainer):
                 # try to autogenerate
                 _table = self._schema2table()
             else:
-                pass
+                raise RuntimeError("Failed to load table %s" % name)
 
         self._table = _table  # generic alias to table class
-        if _table is not None:
+        if reflected:
+            result = True
+        elif _table is not None:
             logger.debug("Creating Tables on %s" % engine)
             meta.create_all(engine)
             setattr(self, name, _table)  # named alias for table class
@@ -2828,9 +2832,8 @@ class SQLAlchemyContainer(MetriqueContainer):
         logger.info('Registering new user %s' % u)
         # FIXME: make a generic method which runs list of sql statements
         sql = []
-        sql.append("create database %s;" % u)
         sql.append("CREATE USER %s WITH PASSWORD '%s';" % (u, p))
-        sql.append("GRANT ALL ON DATABASE %s TO %s;" % (u, u))
+        sql.append("create database %s WITH OWNER %s;" % (u, u))
         session = self.proxy.get_session()
         session.connection().connection.set_isolation_level(0)
         [session.execute(s) for s in sql]

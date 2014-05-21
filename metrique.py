@@ -1011,12 +1011,10 @@ def postgresql_firstboot(force=False):
         cmd = 'createdb -h 127.0.0.1'
         call(cmd)
         cmd = 'psql -h 127.0.0.1 -c "%s"'
-        db = "CREATE DATABASE admin WITH OWNER admin;"
         P = PASSWORD
-        user = "CREATE ROLE admin WITH PASSWORD '%s' SUPERUSER LOGIN;" % P
-        # FIXME: redundant since we set 'owner admin'?
-        grant = "GRANT ALL ON DATABASE admin TO admin;"
-        [call(cmd % sql) for sql in (db, user, grant)]
+        user = "CREATE USER admin WITH PASSWORD '%s' SUPERUSER;" % P
+        db = "CREATE DATABASE admin WITH OWNER admin;"
+        [call(cmd % sql) for sql in (user, db)]
     finally:
         if started:
             postgresql_stop()

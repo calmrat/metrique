@@ -29,26 +29,24 @@ __desc__ = 'Metrique - Client Libraries'
 __scripts__ = ['metrique/bin/metrique']
 __requires__ = [
     'anyconfig',
-    'decorator (>=3.4.0)',
-    'lockfile (>=0.9.0)',
+    'decorator',
+    'lockfile',
     'pandas (>=0.13.0)',
-    'pybsddb',
-    'python_dateutil (>=2.2.0)',
+    'bsddb3',
+    'python_dateutil',
     'pytz'
-    'simplejson (>=3.3.2)',
+    'simplejson',
     'virtualenv (>=1.11)',
 ]
 __irequires__ = [
     'anyconfig',
-    'decorator>=3.4.0',
-    'lockfile>=0.9.0',
+    'decorator',
+    'lockfile',
     'pandas>=0.13.0',
-    'pql>=0.4.2',
-    'pybsddb',
-    'pymongo>=2.6.3',
-    'python_dateutil>=2.2.0',
+    'bsddb3',
+    'python_dateutil',
     'pytz',
-    'simplejson>=3.3.2',
+    'simplejson',
     'virtualenv>=1.11',
 ]
 pip_src = 'https://pypi.python.org/packages/source'
