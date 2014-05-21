@@ -1166,7 +1166,7 @@ class MongoDBContainer(MetriqueContainer):
     config = None
     config_key = 'mongodb'
     config_file = DEFAULT_CONFIG
-    default_fields = '~'
+    default_fields = {'_start': 1, '_end': 1, '_oid': 1}
     default_sort = [('_start', -1)]
     owner = None
     name = None
@@ -2231,7 +2231,7 @@ class SQLAlchemyContainer(MetriqueContainer):
     name = None
     VALID_SHARE_ROLES = ['SELECT', 'INSERT', 'UPDATE', 'DELETE']
     RESERVED_WORDS = {'end'}
-    default_fields = {'_start': 1, '_end': 1}
+    default_fields = {'_start': 1, '_end': 1, '_oid': 1}
 
     def __init__(self, name, objects=None, proxy=None,
                  engine=None, schema=None, batch_size=None,
