@@ -835,8 +835,10 @@ def setup(args, cmd, pip=False):
 
 
 def _deploy_virtenv_init(args):
-    virtenv = getattr(args, 'virtenv') or ''
-    if virtenv:
+    _virtenv = active_virtualenv()
+    virtenv = getattr(args, 'virtenv') or _virtenv
+    # skip if we're already in the targeted virtenv...
+    if virtenv and virtenv != _virtenv:
         # we can't alrady be in a virtenv when running virtualenv.main()
         deactivate()
 
