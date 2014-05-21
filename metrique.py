@@ -164,7 +164,7 @@ DEFAULT_METRIQUE_JSON = '''{
         "debug": true,
         "log2file": true,
         "log2stdout": false,
-        "workers": 2
+        "workers": 1
     },
     "mongodb": {
         "auth": false,
@@ -181,13 +181,14 @@ DEFAULT_METRIQUE_JSON = '''{
         "username": "admin",
         "write_concern": 0
     },
-    "sql": {
-      "engine": "teiid",
-      "port": 0,
-      "host": "",
-      "password": "",
-      "username": "",
-      "vdb": ""
+    "sqlalchemy": {
+      "engine": "postgresql",
+      "port": 5432,
+      "host": "127.0.0.1",
+      "host_": "%s",
+      "password": "%s",
+      "username": "admin",
+      "db": "admin"
     }
 }'''
 
@@ -1067,7 +1068,7 @@ def pyclient_firstboot(force=False):
     global DEFAULT_METRIQUE_JSON
 
     DEFAULT_METRIQUE_JSON = DEFAULT_METRIQUE_JSON % (
-        LOCAL_IP, PASSWORD, SSL_PEM)
+        LOCAL_IP, PASSWORD, SSL_PEM, LOCAL_IP, PASSWORD)
 
     default_conf(METRIQUE_JSON, DEFAULT_METRIQUE_JSON)
 

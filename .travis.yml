@@ -5,7 +5,7 @@ install:
   - "pip install coveralls"
   - "pip install virtualenv"
   - "./metrique.py firstboot metrique"
-  - "./metrique.py deploy --slow --all"
+  - "./metrique.py -V ~/virtualenv/python2.7 deploy --slow --all"
 services: 
   - mongodb
 addons:

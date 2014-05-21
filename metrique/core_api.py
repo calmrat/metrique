@@ -366,6 +366,7 @@ class MetriqueContainer(MutableMapping):
     name = None
     _version = 0
     store = None
+    default_fields = {}
     INVALID_USERNAME_RE = re.compile('[^a-zA-Z_]')
     RESTRICTED_NAMES = []
 
@@ -576,8 +577,8 @@ class MetriqueContainer(MutableMapping):
         logger.info("%s objects exported to %s" % (i, path))
         return _ids
 
-    def _parse_fields(self, fields, as_dict=False):
-        _fields = {}
+    def _parse_fields(self, fields, as_dict=False, default_fields=False):
+        _fields = self.default_fields if default_fields else {}
         if fields in [None, False]:
             _fields = {}
         elif fields in ['~', True]:
@@ -2230,6 +2231,7 @@ class SQLAlchemyContainer(MetriqueContainer):
     name = None
     VALID_SHARE_ROLES = ['SELECT', 'INSERT', 'UPDATE', 'DELETE']
     RESERVED_WORDS = {'end'}
+    default_fields = {'_start': 1, '_end': 1}
 
     def __init__(self, name, objects=None, proxy=None,
                  engine=None, schema=None, batch_size=None,
@@ -2619,8 +2621,10 @@ class SQLAlchemyContainer(MetriqueContainer):
         self._table = None
         return result
 
-    def _parse_fields(self, fields=None, reflect=False, **kwargs):
-        fields = super(SQLAlchemyContainer, self)._parse_fields(fields)
+    def _parse_fields(self, fields=None, reflect=False, default_fields=False,
+                      **kwargs):
+        fields = super(SQLAlchemyContainer, self)._parse_fields(
+            fields, default_fields=default_fields)
         if fields in ([], {}):
             fields = [c.name for c in self._table.columns]
         if reflect:
@@ -2628,8 +2632,8 @@ class SQLAlchemyContainer(MetriqueContainer):
         return fields
 
     def _parse_query(self, query=None, fields=None, date=None, alias=None,
-                     distinct=None, limit=None):
-        fields = self._parse_fields(fields)
+                     distinct=None, limit=None, default_fields=False):
+        fields = self._parse_fields(fields, default_fields)
         fields = fields if fields is not None else self._table
         parser = SQLAlchemyMQLParser(self._table)
         date = self._parse_date(date)
@@ -2729,7 +2733,7 @@ class SQLAlchemyContainer(MetriqueContainer):
              descending=False, one=False, raw=False, limit=None,
              as_cursor=False, scalar=False):
         limit = limit if limit and limit >= 1 else 0
-        fields = self._parse_fields(fields)
+        fields = self._parse_fields(fields, default_fields=True)
         query = self._parse_query(query=query, fields=fields, date=date,
                                   limit=limit)
         if sort:
