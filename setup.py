@@ -23,7 +23,6 @@ __pkgs__ = [
     'metrique.cubes.gitdata',
     'metrique.cubes.osinfo',
     'metrique.cubes.sqldata',
-    'metrique.plotting'
 ]
 __provides__ = ['metrique']
 __desc__ = 'Metrique - Client Libraries'
