@@ -32,7 +32,6 @@ __requires__ = [
     'decorator',
     'lockfile',
     'pandas (>=0.13.0)',
-    'bsddb3',
     'python_dateutil',
     'pytz'
     'simplejson',
@@ -43,7 +42,6 @@ __irequires__ = [
     'decorator',
     'lockfile',
     'pandas>=0.13.0',
-    'bsddb3',
     'python_dateutil',
     'pytz',
     'simplejson',
