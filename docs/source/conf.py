@@ -18,10 +18,9 @@ import os
 # If extensions (or modules to document with autodoc) are in another directory,
 # add these directories to sys.path here. If the directory is relative to the
 # documentation root, use os.path.abspath to make it absolute, like shown here.
-#import sys
-#paths = ['../../src/metrique', '../../src/metriqued', '../../src/metriquet',
-#         '../../src/metriquec', '../../src/metriqueu', '../../src/plotrique']
-#[sys.path.insert(0, os.path.abspath(p)) for p in paths]
+import sys
+paths = ['../../metrique']
+[sys.path.insert(0, os.path.abspath(p)) for p in paths]
 
 # -- General configuration ----------------------------------------------------
 
@@ -49,9 +48,15 @@ master_doc = 'index'
 # built documents.
 #
 # The short X.Y version.
-version = '0.2.6'
+VERSION_FILE = "../../metrique/_version.py"
+VERSION_EXEC = ''.join(open(VERSION_FILE).readlines())
+version_info = ()
+exec(VERSION_EXEC)  # update __version__
+if not version_info:
+    raise RuntimeError("Unable to find version info in %s." % VERSION_FILE)
+version = '.'.join(version_info[0:3])
 # The full version, including alpha/beta/rc tags.
-release = '1'
+release = version_info[3]
 
 # There are two options for replacing |today|: either, you set today to some
 # non-false value, then it is used:
@@ -160,7 +165,7 @@ html_favicon = 'metrique_logo_favicon.ico'
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,
 # so a file named "default.css" will overwrite the builtin "default.css".
-html_static_path = [os.path.abspath('../../static/src/')]
+html_static_path = ['../../static/src/']
 
 # If not '', a 'Last updated on:' timestamp is inserted at every page bottom,
 # using the given strftime format.
@@ -270,7 +275,7 @@ man_pages = [
 texinfo_documents = [
     ('index', 'metrique', 'metrique documentation',
      'Chris Ward <cward@redhat.com>', 'metrique',
-     'Python/MongoDB Data Warehouse and Data Glue',
+     'Python/MongoDB Data Warehouse',
      'Miscellaneous'),
 ]
 

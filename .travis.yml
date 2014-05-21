@@ -4,11 +4,16 @@ python:
 install:
   - "pip install coveralls"
   - "pip install virtualenv"
-  - "./metrique deploy --slow --develop"
+  - "./metrique.py firstboot metrique"
+  - "./metrique.py deploy --slow --all"
 services: 
   - mongodb
+addons:
+    postgresql: "9.3"
 script: 
-  - "coverage run --source=metrique,metriqued,metriqueu,metriquec -m py.test tests"
+  - "coverage run --source=metrique -m py.test tests"
+before_script:
+  - psql -c 'create database admin;' -U postgres
 after_success:
   - coveralls
 after_failure:

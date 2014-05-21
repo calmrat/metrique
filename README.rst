@@ -1,4 +1,4 @@
-.. image:: src/metriqued/metriqued/static/img/metrique_logo.png
+.. image:: static/src/metrique_logo.png
    :target: https://github.com/kejbaly2/metrique
 
 Metrique
@@ -19,13 +19,13 @@ Metrique
 .. image:: https://coveralls.io/repos/kejbaly2/metrique/badge.png 
    :target: https://coveralls.io/r/kejbaly2/metrique
 
-Python/MongoDB Data Warehouse and Information Platform
+Python Data Warehouse and Information Platform
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-metrique provides a simple python and rest API to support
+metrique provides a simple python API to support
 ETL workloads for extracting data from disperate sources, 
 iteratively, rapidly and reproducibly, with transparent,
-historical serverside object persistence and tight clientside 
+historical object persistence and tight clientside 
 integration with popular python scientific computing libraries 
 to faciliate creation and publication of a wide variety of analysis 
 and reports, large and small. 
@@ -41,14 +41,11 @@ The instructions given below assume fedora rpm package names::
 
     # prerequisite *os* packages
     sudo yum install python python-devel python-setuptools python-pip
-    sudo yum install git gcc gcc-c++ gcc-gfortran
+    sudo yum install openssl git gcc gcc-c++ gcc-gfortran
     sudo yum install freetype-devel libpng-devel # matplotlib deps
 
-    # metriqued - mongodb expected to be running; kerberos is optional
-    sudo yum install mongodb mongodb-server krb5-devel
-
-    # metriqued - nginx is optional
-    sudo yum install nginx 
+    # optional
+    sudo yum install mongodb mongodb-server postgresql postgresql-devel
 
     # additional python global dependencies, from pip
     sudo pip install pip-accel  # faster cached pip installed
@@ -56,26 +53,28 @@ The instructions given below assume fedora rpm package names::
     # make sure our core package managers are up2date
     sudo pip-accel install -U distribute setuptools
 
-    # our installation directory is always a python virtualenv
+    # our installation directory should always be a py virtualenv
     sudo pip-accel install virtualenv
 
-    # get the metrique sources
+    # get metrique sources
     git clone https://github.com/kejbaly2/metrique.git
     cd metrique
 
     # deploy metrique master branch into a virtual environment
     # including dependencies. 
-    # NOTE this takes 10-15 minutes to compile everything from source!
-    ./metrique -V ~/metrique.master deploy --ipython --pytest --docs --develop
+    # NOTE this can take ~10 minutes to compile everything from source!
+    ./metrique.py -V ~/virtenv-metrique-master deploy --all
 
     # activate the virtual environment
-    source ~/virtenv-metrique/bin/activate
+    source ~/metrique.master/bin/activate
 
-    # optionally, start mongodb and metriqued
-    ./metrique mongodb firstboot
-    ./metrique mongodb start
+    ./metrique.py firstboot sys
 
-    ./metrique metriqued firstboot
-    ./metrique metriqued start
+    # optional: run config default mongodb environment and start
+    ./metrique.py firstboot mongodb
+    ./metrique.py mongodb start
+    # optional: run config default postgresql environment and start
+    ./metrique.py firstboot postgresql
+    ./metrique.py postgresql start
 
     # launch ipython, connect to a metriqued instance and start mining!
