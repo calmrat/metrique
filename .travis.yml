@@ -1,6 +1,8 @@
 language: python
 python:
   - "2.7"
+before_install:
+  - "sudo apt-get install libdb4.8"
 install:
   - "pip install coveralls"
   - "pip install virtualenv"

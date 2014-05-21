@@ -41,7 +41,7 @@ The instructions given below assume fedora rpm package names::
 
     # prerequisite *os* packages
     sudo yum install python python-devel python-setuptools python-pip
-    sudo yum install openssl git gcc gcc-c++ gcc-gfortran
+    sudo yum install openssl libdb4 git gcc gcc-c++ gcc-gfortran
     sudo yum install freetype-devel libpng-devel # matplotlib deps
 
     # optional

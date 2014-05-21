@@ -897,6 +897,8 @@ def _deploy_deps(args):
     call('%s install -U pandas' % pip) if _ else None
     _ = _all or args.matplotlib
     call('%s install -U matplotlib' % pip) if _ else None
+    _ = _all or args.dulwich
+    call('%s install -U dulwich' % pip) if _ else None
 
 
 def deploy(args):
@@ -1190,6 +1192,8 @@ def main():
         '--pandas', action='store_true', help='install pandas')
     _deploy.add_argument(
         '--matplotlib', action='store_true', help='install matplotlib')
+    _deploy.add_argument(
+        '--dulwich', action='store_true', help='install dulwich')
     _deploy.add_argument(
         '--trash', action='store_true', help='fresh install (rm old virtenv)')
     _deploy.set_defaults(func=deploy)
