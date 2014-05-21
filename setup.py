@@ -32,6 +32,7 @@ __requires__ = [
     'decorator (>=3.4.0)',
     'lockfile (>=0.9.0)',
     'pandas (>=0.13.0)',
+    'pybsddb',
     'python_dateutil (>=2.2.0)',
     'pytz'
     'simplejson (>=3.3.2)',
@@ -43,6 +44,7 @@ __irequires__ = [
     'lockfile>=0.9.0',
     'pandas>=0.13.0',
     'pql>=0.4.2',
+    'pybsddb',
     'pymongo>=2.6.3',
     'python_dateutil>=2.2.0',
     'pytz',

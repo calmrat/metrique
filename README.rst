@@ -70,13 +70,11 @@ The instructions given below assume fedora rpm package names::
 
     ./metrique.py firstboot sys
 
-    # optional: run firstboot config to setup default mongodb environment
+    # optional: run config default mongodb environment and start
     ./metrique.py firstboot mongodb
-    # optional: run firstboot config to setup default postgresql environment
-    ./metrique.py firstboot postgresql
-
-    # optionally, start mongodb or postgresql
     ./metrique.py mongodb start
+    # optional: run config default postgresql environment and start
+    ./metrique.py firstboot postgresql
     ./metrique.py postgresql start
 
     # launch ipython, connect to a metriqued instance and start mining!
