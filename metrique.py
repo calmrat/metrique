@@ -456,7 +456,10 @@ def system(cmd, sig=None, sig_func=None):
     logger.debug("Running: %s" % cmd)
     cmd = cmd.split()
     p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    text = p.stdout.read()
+    text = '-' * 30 + ' STDOUT ' + '-' * 30
+    text += '\n%s' % p.stdout.read()
+    text += '-' * 30 + ' STDERR ' + '-' * 30
+    text += '\n%s' % p.stderr.read()
     return text
 
 
@@ -822,16 +825,18 @@ def trash(args=None):
 
 
 def setup(args, cmd, pip=False):
+    pre = not getattr(args, 'no_pre', False)
+    if pip and not pre:
+        cmd += ' --pre'
     if isinstance(cmd, basestring):
         cmd = cmd.strip()
     else:
         cmd = ' '.join([s.strip() for s in cmd])
-    if pip and args.slow:
-        logger.info(system('pip %s -e .' % cmd))
-    elif pip:
-        logger.info(system('pip-accel %s -e .' % cmd))
+    if pip:
+        out = system('pip %s -e .' % cmd)
     else:
-        logger.info(system('python setup.py %s' % cmd))
+        out = system('python setup.py %s' % cmd)
+    logger.info(out)
 
 
 def _deploy_virtenv_init(args):
@@ -857,21 +862,8 @@ def _deploy_virtenv_init(args):
     return virtenv
 
 
-def _deploy_which_pip(args):
-    # install pip-accel and use it instead of pip unless slow install
-    if args.slow:
-        pip = 'pip'
-    else:
-        call('pip install pip-accel')
-        pip = 'pip-accel'
-    return pip
-
-
-def _deploy_deps(args):
-    # optional dependencies; highly recommended! but slow to
-    # install if we're not testing
-    pip = _deploy_which_pip(args)
-
+def _deploy_extras(args):
+    pip = 'pip'
     _all = args.all
     _ = _all or args.ipython
     call('%s install -U ipython pyzmq jinja2' % pip) if _ else None
@@ -891,7 +883,7 @@ def _deploy_deps(args):
     call('%s install -U celery' % pip) if _ else None
     _ = _all or args.sqlalchemy
     call('%s install -U sqlalchemy' % pip) if _ else None
-    _ = _all or args.pymong
+    _ = _all or args.pymongo
     call('%s install -U pymongo pql' % pip) if _ else None
     _ = _all or args.pandas
     call('%s install -U pandas' % pip) if _ else None
@@ -911,13 +903,10 @@ def deploy(args):
     # pip-accel caches compiled binaries
     call('pip install -U pip setuptools virtualenv')
 
-    _deploy_deps(args)
-
     cmd = 'install'
-    no_pre = getattr(args, 'no_pre', False)
-    if not no_pre:
-        cmd += ' --pre'
-    setup(args, cmd, pip=True)
+    setup(args, cmd, pip=False)
+
+    _deploy_extras(args)
 
     if args.develop:
         path = pjoin(virtenv, 'lib/python2.7/site-packages/metrique*')
@@ -926,9 +915,12 @@ def deploy(args):
 
     # run py.test after install
     if args.test:
-        running = get_pid(MONGODB_PIDFILE) != 0
-        if not running:
-            call('metrique mongodb start --fast')
+        # FIXME: testing mongodb components should be optional
+        # and starting up mongodb etc should happen as a byproduct
+        # of running the tests!
+        #running = get_pid(MONGODB_PIDFILE) != 0
+        #if not running:
+        #    call('metrique mongodb start --fast')
         call('coverage run --source=metrique -m py.test tests')
 
 
@@ -1159,8 +1151,6 @@ def main():
 
     # Automated metrique deployment
     _deploy = _sub.add_parser('deploy')
-    _deploy.add_argument(
-        '--slow', action='store_true', help="don't use pip-accel")
     _deploy.add_argument(
         '--no-pre', action='store_true',
         help='ignore pre-release versions')

@@ -1,21 +1,18 @@
 language: python
 python:
   - "2.7"
-before_install:
-  - "sudo apt-get install libdb4.8"
 install:
   - "pip install coveralls"
-  - "pip install virtualenv"
-  - "./metrique.py firstboot metrique"
-  - "./metrique.py deploy --slow --all"
+  - "./metrique.py deploy --all"
 services: 
   - mongodb
 addons:
     postgresql: "9.3"
 script: 
   - "coverage run --source=metrique -m py.test tests"
-before_script:
-  - psql -c 'create database admin;' -U postgres
+#before_script:
+#  - psql -c 'CREATE USER admin;' -U postgres
+#  - psql -c 'create database admin WITH OWNER admin;' -U postgres
 after_success:
   - coveralls
 after_failure:

@@ -33,6 +33,11 @@ except ImportError:
     HAS_DULWICH = False
     logger.warn('dulwich module is not installed!')
 
+try:
+    import gdbm
+except ImportError:
+    # py3
+    import dbm.gnu as gdbm
 import gc
 import glob
 from hashlib import sha1
@@ -43,7 +48,6 @@ import pandas as pd
 import pstats
 import pytz
 import re
-import shelve
 import shlex
 import signal
 import simplejson as json
@@ -474,19 +478,29 @@ def load_json(path, **kwargs):
     return pd.read_json(path, **kwargs)
 
 
-def load_shelve(path, as_list=True, **kwargs):
+def load_shelve(path, as_list=True):
     '''
     shelve expects each object to be indexed
     by one of it's column values (ie, _oid)
     where value is the entire object which maps
     to the given column value (ie, {_oid: {obj with _oid})
+
+    Ideally, we would use 'shelve' module directly, but it's
+    causing issues since it depends on bsddb4.7 or less which isn't
+    available in travis-ci testing environment... so we take a more
+    manual approach instead.
     '''
-    kwargs.setdefault('flag', 'c')
-    kwargs.setdefault('protocol', 2)
+    cube = gdbm.open(path, 'c')
     if as_list:
-        return [o for o in shelve.open(path, **kwargs).itervalues()]
+        _id = cube.firstkey()
+        objs = []
+        while _id is not None:
+            o = cPickle.loads(cube[_id])
+            objs.append(o)
+            _id = cube.nextkey(_id)
+        return objs
     else:
-        return shelve.open(path, **kwargs)
+        return cube
 
 
 def _set_oid_func(_oid_func):

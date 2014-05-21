@@ -40,7 +40,7 @@ def test_csvdata():
                                 'open', 'symbol']
 
     _ids = m.objects._ids
-    _hash = 'bd31daf9425203d5f2574516e8ab212cf3405ce7'
+    _hash = '5a6d18a9c654886926e5f769d4bf4808df6cba39'
     _filtered = m.objects.filter(where={'_hash': _hash})
     assert len(_filtered) == 1
     assert m.objects['11']['_hash'] == _hash  # check _hash is as expected

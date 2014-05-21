@@ -187,7 +187,7 @@ CACHE_DIR = os.environ.get('METRIQUE_CACHE') or '/tmp'
 DEFAULT_CONFIG = os.path.join(ETC_DIR, 'metrique.json')
 
 # FIXME: make sets?
-HASH_EXCLUDE_KEYS = ['_hash', '_id', '_start', '_end']
+HASH_EXCLUDE_KEYS = ['_hash', '_id', '_start', '_end', '__v__']
 IMMUTABLE_OBJ_KEYS = set(['_hash', '_id', '_oid'])
 SQLA_HASH_EXCLUDE_KEYS = HASH_EXCLUDE_KEYS + ['id']
 
@@ -536,11 +536,13 @@ class MetriqueContainer(MutableMapping):
                         d_id = str(dup['_id'])
                         _ids.append(d_id)
                         _cube[d_id] = dup
-                        _cube[_id] = self._object_cls(**o)
+                        o = self._object_cls(**o)
                     else:
-                        _cube[_id] = self._object_cls(**o)
+                        o = self._object_cls(**o)
                 else:
-                    _cube[_id] = self._object_cls(**o)
+                    o = self._object_cls(**o)
+                _cube[_id] = cPickle.dumps(o, protocol=2)
+            _cube.sync()
         logger.debug("%s duplicate objects skipped of %s total" % (k, i))
         return _ids
 
