@@ -13,8 +13,17 @@ quickly generating plots with pandas and matplotlib
 from __future__ import unicode_literals
 
 import os
-import pandas as pd
-from matplotlib import pyplot as plt
+try:
+    import pandas as pd
+    HAS_PANDAS = True
+except ImportError:
+    HAS_PANDAS = False
+
+try:
+    from matplotlib import pyplot as plt
+    HAS_MATPLOTLIB = True
+except ImportError:
+    HAS_MATPLOTLIB = False
 
 from metrique.utils import utcnow
 
@@ -57,6 +66,8 @@ class Container(object):
         :param display plot:
             The default display method.
         '''
+        if not HAS_MATPLOTLIB:
+            raise RuntimeError("`pip install matplotlib` required")
         self.data = data
         self.method = display
         self.dmap = {'plot': self._disp_plot,
@@ -194,6 +205,10 @@ class Plotter(object):
             If string then the string concatenated with the current time
             will be stamped.
         '''
+        if not HAS_PANDAS:
+            raise RuntimeError("`pip install pandas` required")
+        if not HAS_MATPLOTLIB:
+            raise RuntimeError("`pip install matplotlib` required")
         self.counter = 0
         self.fill = fill
         self.fig = plt.figure(figsize=figsize)
@@ -397,6 +412,8 @@ class DiffPlotter(Plotter):
 
 class BarPlot(object):
     def __init__(self, title='', figsize=(10, 5)):
+        if not HAS_MATPLOTLIB:
+            raise RuntimeError("`pip install matplotlib` required")
         self.counter = 0
         self.fig, self.ax1 = plt.subplots(figsize=figsize)
         self.ax2 = self.ax1.twinx()
@@ -471,6 +488,8 @@ class Report(object):
         :param str title:
             Title of the report
         '''
+        if not HAS_MATPLOTLIB:
+            raise RuntimeError("`pip install matplotlib` required")
         self.title = title
         self.body = ''
         self.sidebar = ''

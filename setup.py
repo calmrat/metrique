@@ -90,6 +90,8 @@ default_setup = dict(
     requires=__requires__,
     scripts=__scripts__,
     version=__version__,
+    zip_safe=False,  # we reference __file__; see [1]
 )
+# http://stackoverflow.com/questions/8362510
 
 setup(**default_setup)

@@ -17,6 +17,7 @@ logger = logging.getLogger()
 logger.setLevel(logging.WARN)
 logger = logging.getLogger('metrique')
 logger.setLevel(logging.WARN)
+
 import os
 # if HOME environment variable is set, use that
 # useful when running 'as user' with root (supervisord)
@@ -32,6 +33,20 @@ os.environ['METRIQUE_TMP'] = os.environ.get(
     'METRIQUE_TMP', os.path.join(prefix, 'tmp'))
 os.environ['METRIQUE_CACHE'] = os.environ.get(
     'METRIQUE_CACHE', os.path.join(prefix, 'cache'))
+os.environ['METRIQUE_STATIC'] = os.environ.get(
+    'METRIQUE_STATIC', os.path.join(prefix, 'static'))
+# if this isn't set in env already, we can only guess...
+# first guess is top-level directory holding the metrique module
+_mod_file = os.path.abspath(__file__)
+_cwd = os.path.abspath('.')
+_src = _cwd.replace(_mod_file, '')
+_src_git = os.path.join(_src, '.git')
+if not (os.path.exists(_src) and os.path.exists(_src_git)):
+    _src = os.path.abspath('.')
+    # last guess is just 'current working directory'
+os.environ['METRIQUE_SRC'] = os.environ.get(
+    'METRIQUE_SRC', _src)
+
 
 # Don't locale.setlocale(); ... "Setting system default encoding is a
 # bad idea because some modules and libraries you use can

@@ -12,18 +12,36 @@ import os
 import pytz
 import simplejson as json
 import shutil
-from time import time
+import string
+from time import time, sleep
 
-from .utils import is_in, set_env, qremove
+from .utils import is_in, set_env
 
 env = set_env()
+exists = os.path.exists
 
 testroot = os.path.dirname(os.path.abspath(__file__))
 cubes = os.path.join(testroot, 'cubes')
 fixtures = os.path.join(testroot, 'fixtures')
 etc = os.path.join(testroot, 'etc')
 cache_dir = env['METRIQUE_CACHE']
+tmp_dir = env['METRIQUE_TMP']
 log_dir = env['METRIQUE_LOGS']
+
+
+def test_backup():
+    from metrique.utils import backup, rand_chars, remove_file
+    f1 = os.path.join(cache_dir, '%s' % rand_chars(prefix='backup'))
+    f2 = os.path.join(cache_dir, '%s' % rand_chars(prefix='backup'))
+    open(f1, 'w').close()
+    open(f2, 'w').close()
+    assert [exists(f) for f in (f1, f2)]
+    saveas = backup('%s %s' % (f1, f2))
+    assert exists(saveas)
+    remove_file(saveas)
+    saveas = backup((f1, f2))
+    assert exists(saveas)
+    remove_file((saveas, f1, f2))
 
 
 def test_batch_gen():
@@ -52,10 +70,11 @@ def test_batch_gen():
 
 
 def test_clear_stale_pids():
-    from metrique.utils import clear_stale_pids
+    from metrique.utils import clear_stale_pids, remove_file
     pid_dir = '/tmp'
     # we assume we'll have a pid 1, but never -1
     pids = map(unicode, [1, -1])
+    pids_str = '1, -1'
     pid_files = [os.path.join(pid_dir, '%s.pid' % pid) for pid in pids]
     prefix = ''
     for pid, pid_file in zip(pids, pid_files):
@@ -64,9 +83,14 @@ def test_clear_stale_pids():
     running = clear_stale_pids(pids, pid_dir, prefix)
     assert '1' in running
     assert '-1' not in running
-    assert os.path.exists(pid_files[0])
-    assert not os.path.exists(pid_files[1])
-    os.remove(pid_files[0])
+    assert exists(pid_files[0])
+    assert not exists(pid_files[1])
+    running = clear_stale_pids(pids_str, pid_dir, prefix)
+    assert '1' in running
+    assert '-1' not in running
+    assert exists(pid_files[0])
+    assert not exists(pid_files[1])
+    remove_file(pid_files[0])
 
 
 def test_configure():
@@ -164,6 +188,11 @@ def test_configure():
     except IOError:
         pass
 
+    try:  # should fail
+        x = configure(config_file=config_file, section_key='I_DO_NOT_EXIST')
+    except KeyError:
+        pass
+
     for arg in ('update', 'options', 'defaults'):
         try:
             x = configure(**{arg: 'I_SHOULD_BE_A_DICT'})
@@ -213,8 +242,18 @@ def test__debug_set_level():
             assert logger.level == log_lvl
 
 
+def test__data_export():
+    from metrique.utils import _data_export
+    import pandas
+    data = [{'a': 'a'}]
+    data_df = pandas.DataFrame(data)
+    for v in (data, data_df):
+        assert _data_export(v, as_df=True).to_dict() == data_df.to_dict()
+        assert _data_export(v, as_df=False) == data
+
+
 def test_debug_setup(capsys):
-    from metrique.utils import debug_setup
+    from metrique.utils import debug_setup, remove_file
 
     import logging
     #logging.basicConfig(level=logging.DEBUG)
@@ -267,7 +306,25 @@ def test_debug_setup(capsys):
         text = ''.join(lf).strip()
         assert text == '*'
     finally:
-        qremove(_lf)
+        remove_file(_lf, quiet=True)
+
+
+def test_daemonize():
+    from metrique.utils import get_pid, clear_stale_pids, terminate, sys_call
+    daemon = os.path.join(testroot, 'fixtures/daemon.py')
+    assert exists(daemon)
+    python = sys_call('which python')
+    sys_call('%s %s' % (python, daemon), bg=True)
+    sleep(.5)
+    pid_file = os.path.join(cache_dir, 'sleeper.pid')
+    pid = get_pid(pid_file)
+    running = clear_stale_pids(pid, cache_dir, 'sleeper')
+    assert running
+    terminate(pid)
+    sleep(.5)
+    running = clear_stale_pids(pid, cache_dir, 'sleeper')
+    assert not running
+    assert not exists(pid_file)
 
 
 def test_dt2ts():
@@ -299,32 +356,79 @@ def test_get_cube():
     pkgs = ['testcubes']
     get_cube(cube=cube, pkgs=pkgs, cube_paths=paths)
 
+    get_cube(cube=cube, pkgs=pkgs, cube_paths=paths, init=True)
+
+    try:
+        get_cube(cube='DOES_NOT_EXIST')
+    except RuntimeError:
+        pass
+
+
+def test__get_datetime():
+    from metrique.utils import _get_datetime, utcnow
+
+    now_tz = utcnow(tz_aware=True)
+    now = now_tz.replace(tzinfo=None)
+    try:
+        now_tz == now  # can't compare tz_aware <> naive
+    except TypeError:
+        pass
+    # default is tz_aware=False
+    assert _get_datetime(now_tz) == now
+    assert _get_datetime(now) == now
+    assert _get_datetime(now_tz, tz_aware=True) == now_tz
+    assert _get_datetime(now, tz_aware=True) == now_tz
+
+
+def test_get_pid():
+    from metrique.utils import get_pid, rand_chars, remove_file
+
+    assert get_pid() == 0
+    assert get_pid(None) == 0
+
+    path = os.path.join(cache_dir, '%s.pid' % rand_chars(prefix='get_pid'))
+
+    try:
+        get_pid(path)
+    except IOError:
+        pass
+
+    with open(path, 'w') as f:
+        f.write("1")
+    assert exists(path)
+    assert get_pid(path) == 1
+    remove_file(path)
+
+    with open(path, 'w') as f:
+        f.write("a")
+    try:
+        get_pid(path)
+    except ValueError:
+        pass
+    remove_file(path)
+
 
 def test_get_pids():
     from metrique.utils import get_pids as _
 
-    pid_dir = os.path.expanduser('~/.metrique/trash')
-    if not os.path.exists(pid_dir):
-        os.makedirs(pid_dir)
-
     # any pid files w/out a /proc/PID process mapped are removed
-    assert _(pid_dir, clear_stale=True) == []
+    assert _(cache_dir, clear_stale=True) == []
 
     fake_pid = 11111
-    assert fake_pid not in _(pid_dir, clear_stale=False)
+    assert fake_pid not in _(cache_dir, clear_stale=False)
 
     pid = 99999
-    path = os.path.join(pid_dir, '%s.pid' % pid)
+    path = os.path.join(cache_dir, '%s.pid' % pid)
     with open(path, 'w') as f:
         f.write(str(pid))
 
-    # don't clear the fake pidfile... useful for testing only
-    pids = _(pid_dir, clear_stale=False)
+    # don't clear the fake pid_file... useful for testing only
+    pids = _(cache_dir, clear_stale=False)
     assert pid in pids
     assert all([True if isinstance(x, int) else False for x in pids])
 
     # clear it now and it should not show up in the results
-    assert pid not in _(pid_dir, clear_stale=True)
+    assert pid not in _(cache_dir, clear_stale=True)
 
 
 def test_get_timezone_converter():
@@ -333,24 +437,35 @@ def test_get_timezone_converter():
     from metrique.utils import utcnow, get_timezone_converter
 
     # note: caching timezones always takes a few seconds
-    good = 'US/Eastern'
-    good_tz = pytz.timezone(good)
+    est = 'US/Eastern'
+    EST = pytz.timezone(est)
 
-    now_utc = utcnow(tz_aware=True)
+    now_utc_tz = utcnow(tz_aware=True)
+    now_utc = now_utc_tz.replace(tzinfo=None)
 
-    now_est = copy(now_utc)
-    now_est = now_est.astimezone(good_tz)
-    now_est = now_est.replace(tzinfo=None)
+    now_est = copy(now_utc_tz)
+    now_est_tz = now_est.astimezone(EST)
+    now_est = now_est_tz.replace(tzinfo=None)
 
-    c = get_timezone_converter(good)
-    assert c(now_est) == now_utc.replace(tzinfo=None)
+    assert get_timezone_converter(None) is None
+
+    c = get_timezone_converter(est)
+    assert c(None) is None
+    assert c(now_est) == now_utc
+    assert c(now_est_tz) == now_utc
+    assert c(now_est_tz) == c(now_est)
+
+    c = get_timezone_converter(est, tz_aware=True)
+    assert c(now_est) == now_utc_tz
+    assert c(now_est_tz) == c(now_est)
+    assert c(now_est_tz) == now_utc_tz
 
 
 def test_git_clone():
-    from metrique.utils import git_clone, safestr
+    from metrique.utils import git_clone, safestr, remove_file
     uri = 'https://github.com/kejbaly2/tornadohttp.git'
     local_path = os.path.join(cache_dir, safestr(uri))
-    if os.path.exists(local_path):
+    if exists(local_path):
         shutil.rmtree(local_path)
 
     _t = time()
@@ -365,23 +480,47 @@ def test_git_clone():
     assert repo.path == local_path
     assert cached < not_cached
 
+    git_clone(uri, pull=True, reflect=False, cache_dir=cache_dir)
+    remove_file(local_path)
+
 
 def test_is_null():
     from metrique.utils import is_null
+    import pandas
+    import numpy
     nulls = ['', '  \t\n\t  ', 0, None, {}, []]
     not_nulls = ['hello', -1, 1, {'key': 'value'}, [1]]
-    try:
-        import pandas
-    except ImportError:
-        nulls += [pandas.NaT, pandas.NaN, pandas.DataFrame()]
+    nulls += [pandas.NaT, numpy.NaN, pandas.DataFrame()]
     for x in nulls:
-        null = is_null(x)
+        null = is_null(x, except_=False)
         print '%s is null? %s' % (repr(x), null)
         assert null is True
+        try:
+            null = is_null(x, except_=True)
+        except RuntimeError:
+            pass
     for x in not_nulls:
-        null = is_null(x)
+        null = is_null(x, except_=False)
         print '%s is null? %s' % (repr(x), null)
         assert null is False
+
+
+def test_is_true():
+    from metrique.utils import is_true
+    trues = [-1, 1, 0.1, True, 'h']
+    not_trues = ['', 0, None, False, [], {}]
+    for x in trues:
+        true = is_true(x, except_=False)
+        print '%s is true? %s' % (repr(x), true)
+        assert true is True
+        try:
+            true = is_true(x, except_=True)
+        except RuntimeError:
+            pass
+    for x in not_trues:
+        true = is_true(x, except_=False)
+        print '%s is true? %s' % (repr(x), true)
+        assert true is False
 
 
 def test_json_encode():
@@ -390,10 +529,16 @@ def test_json_encode():
 
     now = datetime.utcnow()
 
-    dct = {"a": now}
+    dct = {"a": now, "b": "1"}
 
     _dct = json.loads(json.dumps(dct, default=json_encode))
     assert isinstance(_dct["a"], float)
+
+    dct = {"a": json_encode}
+    try:
+        _dct = json.dumps(dct, default=json_encode)
+    except TypeError:
+        pass
 
 
 def test_jsonhash():
@@ -402,21 +547,10 @@ def test_jsonhash():
     dct = {'a': [3, 2, 1],
            'z': ['a', 'c', 'b', 1],
            'b': {1: [], 3: {}},
-           'partner': [],
-           'pm_score': None,
-           'priority': 'insignificant',
            'product': 'thisorthat',
-           'qa_contact': None,
-           'qa_whiteboard': None,
            'qe_cond_nak': None,
-           'reporter': 'test@test.com',
-           'resolution': None,
-           'severity': 'low',
-           'short_desc': 'blabla',
-           'status': 'CLOSED',
-           'target_milestone': '---',
            'target_release': ['---'],
-           'verified': [],
+           'verified': [1],
            'version': '2.1r'}
 
     dct_sorted_z = copy(dct)
@@ -425,9 +559,9 @@ def test_jsonhash():
     dct_diff = copy(dct)
     del dct_diff['z']
 
-    DCT = '26a7e42282b97a7c6ee8ecafd035cd5c72706398'
-    DCT_SORTED_Z = '49848f0184d83be0287b16c55076f558d849bb9f'
-    DCT_DIFF = 'ba439203e121d8a761d14bcbe67e49ed023c07bf'
+    DCT = '6951abb765573ee052402c53dd7c0a5a09fc870b'
+    DCT_SORTED_Z = 'ab3bd17ed90c5051205b2b1df9741f52c6a6755b'
+    DCT_DIFF = 'ac12039e077bd03879d7481f299678b73b6216e5'
 
     assert dct != dct_sorted_z
 
@@ -438,11 +572,43 @@ def test_jsonhash():
     ' list sort order is an identifier of a unique object '
     assert jsonhash(dct) != jsonhash(dct_sorted_z)
 
+    # pop off 'product'
+    ex_dct = {'a': [3, 2, 1],
+              'z': ['a', 'c', 'b', 1],
+              'b': {1: [], 3: {}},
+              'qe_cond_nak': None,
+              'target_release': ['---'],
+              'verified': [1],
+              'version': '2.1r'}
+
+    EX = 'c6d26b63a50ce402ca15eb79383b5dbe91e304e9'
+    # jsonhashing ex_dct (without product) should be
+    # equal to jsonhashing dct with exclude 'product'
+    assert jsonhash(ex_dct) == EX
+    assert jsonhash(dct, exclude=['product']) == EX
+
+
+def test_list2str():
+    from metrique.utils import list2str
+    l = [1, 1.1, '1', None, 0]
+    ok = '1,1.1,1,None,0'
+    assert list2str(l) == ok
+    ok = '1, 1.1, 1, None, 0'
+    assert list2str(l, delim=', ') == ok
+    ok = '1 1.1 1 None 0'
+    assert list2str(l, delim=' ') == ok
+    assert list2str(ok) == ok
+    assert list2str(None) == ''
+    try:
+        list2str(list2str)
+    except TypeError:
+        pass
+
 
 def test_load_file():
     # also tests utils.{load_pickle, load_csv, load_json, load_shelve}
     from metrique.utils import load_file
-    files = ['test.csv', 'test.json', 'test.pickle', 'test.db']
+    files = ['test.csv', 'test.json', 'test.pickle', 'test.sqlite']
     for f in files:
         print 'Loading %s' % f
         path = os.path.join(fixtures, f)
@@ -450,6 +616,16 @@ def test_load_file():
         print '... got %s' % objects
         assert len(objects) == 1
         assert map(unicode, sorted(objects[0].keys())) == ['col_1', 'col_2']
+
+    try:
+        load_file('DOES_NOT_EXIST')
+    except IOError:
+        pass
+
+    try:
+        load_file(os.path.join(fixtures, 'file_with_unknown.extension'))
+    except TypeError:
+        pass
 
 
 def test_load():
@@ -467,6 +643,12 @@ def test_load():
     assert x[0]['_oid'] == 1
     assert x[1]['_oid'] == 2
 
+    try:
+        set_oid_func = 'i am a string, not a func'
+        x = load(path_glob, _oid=set_oid_func)
+    except TypeError:
+        pass
+
     set_oid_func = lambda o: dict(_oid=42, **o)
     x = load(path_glob, _oid=set_oid_func)
     assert x[0]['_oid'] == 42
@@ -479,6 +661,28 @@ def test_load():
     # passing in a dataframe should return back the same dataframe...
     _x = load(x)
     assert _x is x
+
+    try:  # can load only files or dataframes
+        load(1)
+    except ValueError:
+        pass
+
+    empty = os.path.join(fixtures, 'empty.csv')
+    try:
+        load(empty, header=None)
+    except ValueError:
+        pass
+
+    header = os.path.join(fixtures, 'header_only.csv')
+    try:
+        load(header)
+    except RuntimeError:
+        pass
+
+    try:
+        load('DOES_NOT_EXIST')
+    except IOError:
+        pass
 
     # check that we can grab data from the web
     uri = 'https://mysafeinfo.com/api/data?list=days&format=csv'
@@ -508,6 +712,58 @@ def test_load_config():
         pass
 
 
+def test_make_dirs():
+    from metrique.utils import makedirs, rand_chars, remove_file
+    d_1 = rand_chars(prefix='make_dirs')
+    d_2 = rand_chars()
+    base = os.path.join(tmp_dir, d_1)
+    rand_dirs = os.path.join(base, d_2)
+    path = os.path.join(tmp_dir, rand_dirs)
+    assert makedirs(path) == path
+    assert exists(path)
+    remove_file(base)
+    assert not exists(base)
+    for _ in ['', 'relative/dir']:
+        # requires absolute path!
+        try:
+            makedirs(_)
+        except OSError:
+            pass
+
+
+def test_move():
+    from metrique.utils import move, rand_chars, remove_file
+    dest = tmp_dir
+    rel_path_1 = rand_chars(prefix='move')
+    path_1 = os.path.join(cache_dir, rel_path_1)
+    _path_1 = os.path.join(dest, rel_path_1)
+    open(path_1, 'a').close()
+
+    rel_path_2 = rand_chars(prefix='move')
+    path_2 = os.path.join(cache_dir, rel_path_2)
+    open(path_2, 'a').close()
+
+    paths = (path_1, path_2)
+
+    assert exists(path_1)
+    move(path_1, dest)
+    assert not exists(path_1)
+    move(_path_1, cache_dir)
+
+    assert exists(path_2)
+    move(paths, dest)
+    assert not any((exists(path_1), exists(path_2)))
+    remove_file(paths)
+    remove_file(dest)
+    remove_file(tmp_dir)
+
+    try:
+        move('DOES_NOT_EXST', 'SOMEWHERE')
+    except IOError:
+        pass
+    assert move('DOES_NOT_EXST', 'SOMEWHERE', quiet=True) == []
+
+
 def test_profile(capsys):
     from metrique.utils import profile
 
@@ -518,6 +774,78 @@ def test_profile(capsys):
     test()
     out, err = [x.strip() for x in capsys.readouterr()]
     assert out  # we should have some output printed to stdout
+
+
+def test_rand_chars():
+    from metrique.utils import rand_chars
+    str_ = rand_chars()
+    assert isinstance(str_, basestring)
+    assert isinstance(str_, unicode)
+    assert len(str_) == 6
+    OK = set(string.ascii_uppercase + string.digits)
+    assert all(c in OK for c in str_)
+    assert rand_chars() != rand_chars()
+    assert rand_chars(prefix='rand_chars')[0:10] == 'rand_chars'
+
+
+def test_read_file():
+    from metrique.utils import read_file
+
+    paths = fixtures
+    try:
+        read_file('')
+    except ValueError:
+        pass
+
+    content = 'col_1, col_2'
+    f = read_file('header_only.csv', paths=paths).strip()
+    assert f == content
+    assert read_file('templates/etc/metrique.json', paths=paths)
+
+    fd = read_file('header_only.csv', paths=paths, raw=True)
+    assert isinstance(fd, file)
+
+    lst = read_file('header_only.csv', paths=paths, as_list=True)
+    assert isinstance(lst, list)
+    assert len(lst) == 1
+
+
+def test_remove_file():
+    from metrique.utils import remove_file, rand_chars
+    assert remove_file(None) == []
+    assert remove_file('') == []
+    assert remove_file('DOES_NOT_EXIST') == []
+    path = os.path.join(cache_dir, rand_chars())
+    assert not exists(path)
+    open(path, 'w').close()
+    assert exists(path)
+    assert remove_file(path) == path
+    assert not exists(path)
+    open(path, 'w').close()
+    assert remove_file(path, quiet=True) == path
+    assert remove_file('DOES_NOT_EXIST', quiet=True) == []
+
+
+def test_rsync():
+    from metrique.utils import rsync, sys_call, rand_chars, remove_file
+    from metrique.utils import read_file
+    #remove_file(f_1)
+    #remove_file(dest)
+    if not sys_call('which rsync'):
+        return   # skip this test if rsync isn't available
+    fname = rand_chars(prefix='rsync')
+    path = os.path.join(cache_dir, fname)
+    with open(path, 'w') as f:
+        f.write('test')
+    dest = os.path.join(tmp_dir, 'rsync')
+    rsync(targets=path, dest=dest)
+    assert read_file(os.path.join(dest, fname)) == 'test'
+    with open(path, 'w') as f:
+        f.write('test 2')
+    rsync(targets=path, dest=dest)
+    assert read_file(os.path.join(dest, fname)) == 'test 2'
+    remove_file(path)
+    remove_file(dest)
 
 
 def test_rupdate():
@@ -536,6 +864,28 @@ def test_safestr():
     from metrique.utils import safestr
     str_ = '     abc123:;"/\\.,\n\t'
     assert safestr(str_) == 'abc123'
+    assert safestr(None) == ''
+
+
+def test_str2list():
+    from metrique.utils import str2list
+
+    assert str2list(None) == []
+
+    a_lst = ['a', 'b', 'c', 'd', 'e']
+    a_str = 'a, b,     c,    d , e'
+    assert str2list(a_str) == a_lst
+
+    b_str = '1, 2,     3,    4 , 5'
+    b_lst = [1., 2., 3., 4., 5.]
+    assert str2list(b_str, map_=float) == b_lst
+
+    for i in [None, a_lst, {}, 1, 1.0]:
+        # try some non-string input values
+        try:
+            str2list(i)
+        except TypeError:
+            pass
 
 
 def test_sys_call():
@@ -546,9 +896,33 @@ def test_sys_call():
     except Exception:
         pass
 
+    assert sys_call('ls FILE_THAT_DOES_NOT_EXIST', ignore_errors=True) is None
+
     csv_path = os.path.join(fixtures, 'test.csv')
     out = sys_call('ls %s' % csv_path)
     assert out == csv_path
+
+
+def test_terminate():
+    from metrique.utils import terminate, sys_call, get_pid, clear_stale_pids
+    import signal
+
+    pid_file = os.path.join(cache_dir, 'test.pid')
+    sys_call('sleep 30', fork=True, pid_file=pid_file, shell=False)
+    sleep(1)
+    pid = get_pid(pid_file)
+    running = clear_stale_pids(pid)
+    assert running
+    terminate(pid, sig=signal.SIGTERM)
+    sleep(1)
+    running = clear_stale_pids(pid)
+    assert not running
+    # since we didn't tell it where to find the pid_file
+    # it won't be cleaned up
+    assert exists(pid_file)
+    # this time we point to a pid_file and it gets cleaned up
+    terminate(pid_file, sig=signal.SIGTERM)
+    assert not exists(pid_file)
 
 
 def test_to_encoding():
@@ -600,16 +974,16 @@ def test_ts2dt():
 
 
 def test_urlretrieve():
-    from metrique.utils import urlretrieve
+    from metrique.utils import urlretrieve, remove_file
     uri = 'https://mysafeinfo.com/api/data?list=days&format=csv'
     saveas = os.path.join(cache_dir, 'test_download.csv')
 
-    qremove(saveas)
+    remove_file(saveas, quiet=True)
     _path = urlretrieve(uri, saveas=saveas, cache_dir=cache_dir)
     assert _path == saveas
-    assert os.path.exists(_path)
+    assert exists(_path)
     assert os.stat(_path).st_size > 0
-    qremove(_path)
+    remove_file(_path, quiet=True)
 
 
 def test_utcnow():
@@ -627,3 +1001,30 @@ def test_utcnow():
     assert _ == now_date_utc
     assert utcnow(as_datetime=False,
                   tz_aware=True, drop_micro=True) == now_time
+
+
+def test_virtualenv():
+    from metrique.utils import virtualenv_activate, virtualenv_deactivate
+    from metrique.utils import active_virtualenv
+    av = active_virtualenv
+    orig_venv = av()
+    if not orig_venv:
+        # this test will only work if we START in a virtenv
+        # otherwise, we don't know of a virtenv we can test against
+        return
+    assert av() == os.environ['VIRTUAL_ENV']
+    assert virtualenv_deactivate() is True
+    assert virtualenv_deactivate() is None
+    assert av() == ''
+    assert '' == os.environ['VIRTUAL_ENV']
+    virtualenv_activate(orig_venv)
+    assert av() == os.environ['VIRTUAL_ENV']
+    assert av() == orig_venv
+
+    assert virtualenv_activate() is None
+    assert virtualenv_activate(orig_venv) is None
+
+    try:
+        virtualenv_activate('virtenv_that_doesnt_exist')
+    except OSError:
+        pass

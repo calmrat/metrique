@@ -1,0 +1,41 @@
+{
+    "metrique": {
+        "debug": true,
+        "log2file": true,
+        "log2stdout": false,
+        "workers": 1
+    },
+    "mongodb": {
+        "auth": false,
+        "batch_size": 5000,
+        "host": "127.0.0.1",
+        "_host": "%s",
+        "password": "%s",
+        "port": 27017,
+        "read_preference": "SECONDARY_PREFERRED",
+        "replica_set": "",
+        "ssl": false,
+        "ssl_certificate": "%s",
+        "tz_aware": true,
+        "username": "admin",
+        "write_concern": 0
+    },
+    "sqlalchemy": {
+        "engine": "postgresql",
+        "port": 5432,
+        "host": "127.0.0.1",
+        "host_": "%s",
+        "password": "%s",
+        "username": "admin",
+        "db": "admin"
+    },
+    "celery": {
+        "BROKER_URL": "sqlite://:memory:",
+        "BROKER_URL_LOCAL": "sqlite://:memory:"
+    },
+    "celery_mongodb": {
+        "BROKER_URL": "mongodb://admin:%s@127.0.0.1:27017",
+        "BROKER_URL_LOCAL": "mongodb://admin:%s@%s:27017",
+        "BROKER_USE_SSL": false
+    }
+}

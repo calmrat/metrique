@@ -14,18 +14,38 @@ used to load and manipulate cube objects.
 
 from __future__ import unicode_literals
 
-from decorator import decorator
-from datetime import timedelta
 import logging
-import numpy as np
-from pandas import DataFrame, Series
-import pandas.tseries.offsets as off
-from pandas.tslib import Timestamp
-import pandas as pd
+logger = logging.getLogger('metrique')
+
+try:
+    from decorator import decorator
+    HAS_DECORATOR = True
+except ImportError:
+    HAS_DECORATOR = False
+    logger.warn('decorator module is not installed')
+
+
+from datetime import timedelta
+
+try:
+    import numpy as np
+    HAS_NUMPY = True
+except ImportError:
+    HAS_NUMPY = False
+    logger.warn('numpy module is not installed')
+
+try:
+    from pandas import DataFrame, Series
+    import pandas.tseries.offsets as off
+    from pandas.tslib import Timestamp
+    import pandas as pd
+    HAS_PANDAS = True
+except ImportError:
+    HAS_PANDAS = False
+    DataFrame = object  # load as object, we'll fail at runtime
+    logger.warn('pandas module is not installed')
 
 from metrique.utils import dt2ts, utcnow, ts2dt
-
-logger = logging.getLogger(__name__)
 
 NUMPY_NUMERICAL = [np.float16, np.float32, np.float64, np.float128,
                    np.int8, np.int16, np.int32, np.int64]
@@ -37,6 +57,7 @@ def filtered(f):
     dataframes, such that the dataframe is filtered
     according to left and right bounds set.
     '''
+
     def _filter(f, self, *args, **kwargs):
         frame = f(self, *args, **kwargs)
         ret = type(self)(frame)
@@ -44,12 +65,21 @@ def filtered(f):
         ret._rbound = self._rbound
         return ret
 
-    return decorator(_filter, f)
+    if HAS_DECORATOR:
+        return decorator(_filter, f)
+    else:
+        def err_func(*args, **kwargs):
+            raise RuntimeError("`pip install decorator` required")
+        return err_func
 
 
 class Result(DataFrame):
     ''' Custom DataFrame implementation for Metrique '''
     def __init__(self, data=None, date=None):
+        if not HAS_PANDAS:
+            raise RuntimeError("`pip install pandas` required")
+        if not HAS_NUMPY:
+            raise RuntimeError("`pip install numpy` required")
         super(Result, self).__init__(data)
         # The converts are here so that None is converted to NaT
         self.to_datetime('_start')
