@@ -820,11 +820,12 @@ def load_config(path):
         raise RuntimeError("`pip install anyconfig` required!")
 
 
-def makedirs(path, mode=0700):
+def make_dirs(path, mode=0700, quiet=True):
     if not path.startswith('/'):
         raise OSError("requires absolute path! got %s" % path)
     if os.path.exists(path):
-        logger.warn('Can not create %s; already exists!' % path)
+        if not quiet:
+            logger.warn('Can not create %s; already exists!' % path)
     else:
         os.makedirs(path, mode)
     return path
@@ -912,7 +913,7 @@ def read_file(rel_path, paths=None, raw=False, as_list=False, *args, **kwargs):
         return ''.join(fd_lines)
 
 
-def remove_file(path, quiet=True):
+def remove_file(path, quiet=True, force=False):
     if not path:
         return []
     # create a list from glob search or expect a list
@@ -922,13 +923,14 @@ def remove_file(path, quiet=True):
             path = path[0]
         else:
             return [remove_file(p) for p in path]
-
     assert isinstance(path, basestring)
-    if not quiet:
-        logger.warn('[remove] deleting %s' % path)
     if os.path.exists(path):
         if os.path.isdir(path):
-            shutil.rmtree(path)
+            if force:
+                shutil.rmtree(path)
+            else:
+                raise RuntimeError(
+                    '%s is a directory; use force=True to remove!')
         else:
             os.remove(path)
     elif not quiet:
@@ -941,7 +943,7 @@ def rsync(targets=None, dest=None, compress=True,
     dest = dest or os.path.join(CACHE_DIR, 'metrique_rsync')
     _ = not (os.path.exists(dest) and not os.path.isdir(dest))
     is_true(_, msg="%s exists but is not a directory!" % dest)
-    makedirs(dest)
+    make_dirs(dest)
     compress = '-z' if compress else ''
     targets = str2list(targets, map_=unicode) or ['.']
     targets = list2str(targets, delim=' ')
@@ -997,7 +999,7 @@ def _sys_call(cmd, shell=True, cwd=None, quiet=False, bg=False):
         output = subprocess.check_output(cmd, stderr=subprocess.STDOUT,
                                          shell=shell)
     except subprocess.CalledProcessError as e:
-        output = e.output
+        output = to_encoding(e.output)
         raise RuntimeError(
             "Command: %s\n\tExit status: %s.\n\tOutput:\n%s" % (
                 e.cmd, e.returncode, output))
@@ -1041,16 +1043,20 @@ def terminate(pid, sig=signal.SIGTERM):
         # we have a path to pidfile...
         pid_file = pid
         pid = get_pid(pid_file)
-    try:
-        logger.debug('killing %s with %s' % (pid, sig))
-        result = os.kill(pid, sig)
-        logger.debug(result)
-    except OSError:
-        logger.debug("%s not found" % pid)
+    if pid <= 0:
+        logger.warn('no pid to kill found at %s' % pid)
     else:
-        logger.debug("%s killed" % pid)
+        try:
+            logger.debug('killing %s with %s' % (pid, sig))
+            result = os.kill(pid, sig)
+            logger.debug(result)
+        except OSError:
+            logger.debug("%s not found" % pid)
+        else:
+            logger.debug("%s killed" % pid)
     if pid_file:
         remove_file(pid_file)
+    return
 
 
 def to_encoding(ustring, encoding=None, errors='replace'):

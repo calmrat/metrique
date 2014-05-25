@@ -315,13 +315,13 @@ def test_daemonize():
     assert exists(daemon)
     python = sys_call('which python')
     sys_call('%s %s' % (python, daemon), bg=True)
-    sleep(.5)
+    sleep(1)
     pid_file = os.path.join(cache_dir, 'sleeper.pid')
     pid = get_pid(pid_file)
     running = clear_stale_pids(pid, cache_dir, 'sleeper')
     assert running
     terminate(pid)
-    sleep(.5)
+    sleep(1)
     running = clear_stale_pids(pid, cache_dir, 'sleeper')
     assert not running
     assert not exists(pid_file)
@@ -481,7 +481,7 @@ def test_git_clone():
     assert cached < not_cached
 
     git_clone(uri, pull=True, reflect=False, cache_dir=cache_dir)
-    remove_file(local_path)
+    remove_file(local_path, force=True)
 
 
 def test_is_null():
@@ -713,20 +713,20 @@ def test_load_config():
 
 
 def test_make_dirs():
-    from metrique.utils import makedirs, rand_chars, remove_file
+    from metrique.utils import make_dirs, rand_chars, remove_file
     d_1 = rand_chars(prefix='make_dirs')
     d_2 = rand_chars()
     base = os.path.join(tmp_dir, d_1)
     rand_dirs = os.path.join(base, d_2)
     path = os.path.join(tmp_dir, rand_dirs)
-    assert makedirs(path) == path
+    assert make_dirs(path) == path
     assert exists(path)
-    remove_file(base)
+    remove_file(base, force=True)
     assert not exists(base)
     for _ in ['', 'relative/dir']:
         # requires absolute path!
         try:
-            makedirs(_)
+            make_dirs(_)
         except OSError:
             pass
 
@@ -753,9 +753,9 @@ def test_move():
     assert exists(path_2)
     move(paths, dest)
     assert not any((exists(path_1), exists(path_2)))
-    remove_file(paths)
-    remove_file(dest)
-    remove_file(tmp_dir)
+    remove_file(paths, force=True)
+    remove_file(dest, force=True)
+    remove_file(tmp_dir, force=True)
 
     try:
         move('DOES_NOT_EXST', 'SOMEWHERE')
@@ -824,13 +824,15 @@ def test_remove_file():
     open(path, 'w').close()
     assert remove_file(path, quiet=True) == path
     assert remove_file('DOES_NOT_EXIST', quiet=True) == []
+    # FIXME: test removing dirs and nested dirs
+    # and try: remove dir without force...
 
 
 def test_rsync():
     from metrique.utils import rsync, sys_call, rand_chars, remove_file
     from metrique.utils import read_file
     #remove_file(f_1)
-    #remove_file(dest)
+    #remove_file(dest, force=True)
     if not sys_call('which rsync'):
         return   # skip this test if rsync isn't available
     fname = rand_chars(prefix='rsync')
@@ -844,8 +846,8 @@ def test_rsync():
         f.write('test 2')
     rsync(targets=path, dest=dest)
     assert read_file(os.path.join(dest, fname)) == 'test 2'
-    remove_file(path)
-    remove_file(dest)
+    remove_file(path, force=True)
+    remove_file(dest, force=True)
 
 
 def test_rupdate():

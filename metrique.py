@@ -120,16 +120,11 @@ POSTGRESQL_LOGFILE = pjoin(LOGS_DIR, 'postgresql-server.log')
 
 
 # ############################# DEFAULT CONFS ############################### #
-DEFAULT_METRIQUE_JSON = utils.read_file(
-    STATIC_DIR, 'static/templates/etc/metrique.json')
-DEFAULT_MONGODB_CONF = utils.read_file(
-    STATIC_DIR, 'static/templates/etc/mongodb.conf')
-DEFAULT_MONGODB_JS = utils.read_file(
-    STATIC_DIR, 'static/templates/etc/mongodb_firstboot.js')
-DEFAULT_NGINX_CONF = utils.read_file(
-    STATIC_DIR, 'static/templates/etc/nginx.conf')
-DEFAULT_SUPERVISORD_CONF = utils.read_file(
-    STATIC_DIR, 'static/templates/etc/supervisord.conf')
+DEFAULT_METRIQUE_JSON = utils.read_file('templates/etc/metrique.json')
+DEFAULT_MONGODB_CONF = utils.read_file('templates/etc/mongodb.conf')
+DEFAULT_MONGODB_JS = utils.read_file('templates/etc/mongodb_firstboot.js')
+DEFAULT_NGINX_CONF = utils.read_file('templates/etc/nginx.conf')
+DEFAULT_SUPERVISORD_CONF = utils.read_file('templates/etc/supervisord.conf')
 
 
 ###############################################################################
@@ -144,7 +139,7 @@ def backup_clean(args, path, prefix):
     files = sorted(glob.glob(path), reverse=True)
     to_remove = files[keep:]
     logger.debug('Removing %i backups' % len(to_remove))
-    [utils.remove(f) for f in to_remove]
+    [utils.remove_file(f) for f in to_remove]
 
 
 def celeryd_terminate(sig=None, frame=None):
@@ -159,8 +154,7 @@ def celeryd_loop(args):
     pidfile = '--pidfile=%s' % CELERYD_PIDFILE
     app = '-A %s' % args.tasks_mod
     cmd = 'celery %s %s %s %s %s' % (x, logfile, loglvl, pidfile, app)
-    utils.sys_call(cmd, fork=fork, sig=signal.SIGTERM,
-                   sig_func=celeryd_terminate)
+    utils.sys_call(cmd, fork=fork)
 
 
 def celeryd_task(args):
@@ -175,7 +169,7 @@ def celeryd(args):
     elif args.command == "stop":
         utils.terminate(CELERYD_PIDFILE)
     elif args.command == "clean":
-        utils.remove(CELERYD_PIDFILE)
+        utils.remove_file(CELERYD_PIDFILE)
     else:
         raise ValueError("unknown command %s" % args.command)
 
@@ -192,8 +186,7 @@ def celerybeat_run(args):
     pidfile = '--pidfile=%s' % CELERYBEAT_PIDFILE
     app = '-A %s' % args.tasks_mod
     cmd = 'celery %s %s %s %s %s' % (x, logfile, loglvl, pidfile, app)
-    utils.sys_call(cmd, fork=fork, sig=signal.SIGTERM,
-                   sig_func=celerybeat_terminate)
+    utils.sys_call(cmd, fork=fork)
 
 
 def celerybeat(args):
@@ -202,7 +195,7 @@ def celerybeat(args):
     elif args.command == "stop":
         utils.terminate(CELERYBEAT_PIDFILE)
     elif args.command == "clean":
-        utils.remove(CELERYBEAT_PIDFILE)
+        utils.remove_file(CELERYBEAT_PIDFILE)
     else:
         raise ValueError("unknown command %s" % args.command)
 
@@ -213,8 +206,7 @@ def supervisord_terminate(sig=None, frame=None):
 
 def supervisord_run(args):
     cmd = 'supervisord -c %s' % SUPERVISORD_CONF
-    utils.sys_call(cmd, fork=True, sig=signal.SIGTERM,
-                   sig_func=supervisord_terminate)
+    utils.sys_call(cmd, fork=True)
 
 
 def supervisord(args):
@@ -223,7 +215,7 @@ def supervisord(args):
     elif args.command == "stop":
         utils.terminate(SUPERVISORD_PIDFILE)
     elif args.command == "clean":
-        utils.remove(SUPERVISORD_PIDFILE)
+        utils.remove_file(SUPERVISORD_PIDFILE)
     elif args.command == "reload":
         utils.terminate(SUPERVISORD_PIDFILE, signal.SIGHUP)
     else:
@@ -240,8 +232,7 @@ def nginx(args):
     if args.command == 'test':
         utils.sys_call('%s -t' % cmd)
     elif args.command == 'start':
-        utils.sys_call(cmd, fork=fork, sig=signal.SIGTERM,
-                       sig_func=nginx_terminate)
+        utils.sys_call(cmd, fork=fork)
     elif args.command == 'stop':
         utils.sys_call('%s -s stop' % cmd)
     elif args.command == 'restart':
@@ -265,8 +256,7 @@ def mongodb_start(fork=False, fast=True):
         return False
     cmd = 'mongod -f %s %s' % (MONGODB_CONF, fork)
     cmd += ' --noprealloc --nojournal' if fast else ''
-    utils.sys_call(cmd, fork=fork, sig=signal.SIGTERM,
-                   sig_func=mongodb_terminate)
+    utils.sys_call(cmd, fork=fork)
     return True
 
 
@@ -276,8 +266,8 @@ def mongodb_stop():
 
 
 def mongodb_clean():
-    utils.remove(MONGODB_LOCKFILE)
-    utils.remove(MONGODB_PIDFILE)
+    utils.remove_file(MONGODB_LOCKFILE)
+    utils.remove_file(MONGODB_PIDFILE)
 
 
 def mongodb_trash():
@@ -288,8 +278,8 @@ def mongodb_trash():
     utils.move(MONGODB_JSON, dest)
     utils.move(MONGODB_JS, dest)
     utils.move(MONGODB_KEYFILE, dest)
-    utils.remove(MONGODB_FIRSTBOOT_PATH)
-    utils.makedirs(MONGODB_DIR)
+    utils.remove_file(MONGODB_FIRSTBOOT_PATH)
+    utils.make_dirs(MONGODB_DIR)
 
 
 def mongodb_gen_keyfile():
@@ -400,15 +390,15 @@ def postgresql_terminate(sig=None, frame=None):
 
 
 def postgresql_clean():
-    utils.remove(POSTGRESQL_PIDFILE)
+    utils.remove_file(POSTGRESQL_PIDFILE)
 
 
 def postgresql_trash():
     postgresql_stop()
     dest = pjoin(TRASH_DIR, 'postgresql-%s' % NOW)
     utils.move(POSTGRESQL_PGDATA_PATH, dest)
-    utils.remove(POSTGRESQL_FIRSTBOOT_PATH)
-    utils.makedirs(POSTGRESQL_PGDATA_PATH)
+    utils.remove_file(POSTGRESQL_FIRSTBOOT_PATH)
+    utils.make_dirs(POSTGRESQL_PGDATA_PATH)
 
 
 def rsync(args):
@@ -436,7 +426,7 @@ def trash(args=None):
             logger.error(e)
             continue
     firstboot_glob = os.path.join(PREFIX_DIR, '.firstboot*')
-    utils.remove(firstboot_glob)
+    utils.remove_file(firstboot_glob)
 
 
 def setup(args, cmd, pip=False):
@@ -464,7 +454,7 @@ def _deploy_virtenv_init(args):
 
         # scratch the existing virtenv directory, if requested
         if args.trash:
-            utils.remove(virtenv)
+            utils.remove_file(virtenv, force=True)
             trash()
 
         # virtualenv.main; pass in only the virtenv path
@@ -525,7 +515,7 @@ def deploy(args):
 
     if args.develop:
         path = pjoin(virtenv, 'lib/python2.7/site-packages/metrique*')
-        utils.remove(path)
+        utils.remove_file(path)
         develop(args)
 
     # run py.test after install
@@ -580,8 +570,7 @@ def ssl(args=None):
 def default_conf(path, template):
     if os.path.exists(path):
         path = '.'.join([path, 'default'])
-    with open(path, 'w') as f:
-        f.write(template)
+    utils.write_file(path, template)
     logger.info("Installed %s ..." % path)
 
 
@@ -609,7 +598,7 @@ def postgresql_firstboot(force=False):
     if exists and not force:
         # skip if we have already run this before
         return
-    utils.makedirs(POSTGRESQL_PGDATA_PATH)
+    utils.make_dirs(POSTGRESQL_PGDATA_PATH)
 
     cmd = 'pg_ctl -D %s -l %s init' % (POSTGRESQL_PGDATA_PATH,
                                        POSTGRESQL_LOGFILE)
@@ -630,8 +619,7 @@ def postgresql_firstboot(force=False):
         if started:
             postgresql_stop()
 
-    with open(POSTGRESQL_FIRSTBOOT_PATH, 'w') as f:
-        f.write(NOW)
+    utils.write_file(POSTGRESQL_FIRSTBOOT_PATH, '')
     return True
 
 
@@ -640,7 +628,7 @@ def mongodb_firstboot(force=False):
     if exists and not force:
         # skip if we have already run this before
         return
-    utils.makedirs(MONGODB_DIR)
+    utils.make_dirs(MONGODB_DIR)
     mongodb_gen_keyfile()
 
     global DEFAULT_MONGODB_CONF, DEFAULT_MONGODB_JS
@@ -650,9 +638,7 @@ def mongodb_firstboot(force=False):
     DEFAULT_MONGODB_JS = DEFAULT_MONGODB_JS % (PASSWORD)
 
     default_conf(MONGODB_CONF, DEFAULT_MONGODB_CONF)
-
-    with open(MONGODB_FIRSTBOOT_PATH, 'w') as f:
-        f.write(NOW)
+    utils.write_file(MONGODB_FIRSTBOOT_PATH, '')
 
 
 def mongodb_install_admin():
@@ -682,6 +668,7 @@ def pyclient_firstboot(force=False):
         PASSWORD, PASSWORD, LOCAL_IP)
 
     default_conf(METRIQUE_JSON, DEFAULT_METRIQUE_JSON)
+    utils.write_file(METRIQUE_FIRSTBOOT_PATH, '')
 
 
 def supervisord_firstboot(force=False):
@@ -701,6 +688,7 @@ def supervisord_firstboot(force=False):
         SUPERVISORD_HISTORYFILE)
 
     default_conf(SUPERVISORD_CONF, DEFAULT_SUPERVISORD_CONF)
+    utils.write_file(SUPERVISORD_FIRSTBOOT_PATH, '')
 
 
 def nginx_firstboot(force=False):
@@ -718,6 +706,7 @@ def nginx_firstboot(force=False):
         STATIC_DIR)
 
     default_conf(NGINX_CONF, DEFAULT_NGINX_CONF)
+    utils.write_file(NGINX_FIRSTBOOT_PATH, '')
 
 
 def sys_firstboot(force=False):
@@ -727,10 +716,10 @@ def sys_firstboot(force=False):
         return
 
     # create default dirs in advance
-    [utils.makedirs(p) for p in (PREFIX_DIR, PIP_CACHE_DIR, PIP_ACCEL_DIR,
-                                 PIP_EGGS, TRASH_DIR, LOGS_DIR,
-                                 ETC_DIR, BACKUP_DIR, TMP_DIR, CACHE_DIR,
-                                 STATIC_DIR, PIDS_DIR)]
+    [utils.make_dirs(p) for p in (PREFIX_DIR, PIP_CACHE_DIR, PIP_ACCEL_DIR,
+                                  PIP_EGGS, TRASH_DIR, LOGS_DIR,
+                                  ETC_DIR, BACKUP_DIR, TMP_DIR, CACHE_DIR,
+                                  STATIC_DIR, PIDS_DIR)]
 
     # make sure the the default user python eggs dir is secure
     os.chmod(PIP_EGGS, 0700)
@@ -741,8 +730,7 @@ def sys_firstboot(force=False):
     except Exception as e:
         logger.warn('Failed to create ssl certs: %s' % e)
 
-    with open(SYS_FIRSTBOOT_PATH, 'w') as f:
-        f.write(NOW)
+    utils.write_file(SYS_FIRSTBOOT_PATH, '')
 
 
 def main():

@@ -26,7 +26,7 @@ __pkgs__ = [
 ]
 __provides__ = ['metrique']
 __desc__ = 'Metrique - Client Libraries'
-__scripts__ = ['metrique/bin/metrique']
+__scripts__ = []
 __requires__ = [
     'anyconfig',
     'decorator',
