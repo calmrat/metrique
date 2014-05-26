@@ -26,7 +26,7 @@ __pkgs__ = [
 ]
 __provides__ = ['metrique']
 __desc__ = 'Metrique - Client Libraries'
-__scripts__ = ['metrique/bin/metrique']
+__scripts__ = []
 __requires__ = [
     'anyconfig',
     'decorator',
@@ -90,6 +90,8 @@ default_setup = dict(
     requires=__requires__,
     scripts=__scripts__,
     version=__version__,
+    zip_safe=False,  # we reference __file__; see [1]
 )
+# http://stackoverflow.com/questions/8362510
 
 setup(**default_setup)

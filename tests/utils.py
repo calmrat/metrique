@@ -9,7 +9,6 @@ Utility functions for testing metrique / db integration
 
 from functools import wraps
 import os
-import shutil
 
 
 def runner(func):
@@ -21,6 +20,7 @@ def runner(func):
     return _runner
 
 
+# FIXME: move these to metrique.utils?
 def is_in(obj, key, value):
     return bool(key in obj and obj[key] == value)
 
@@ -40,15 +40,6 @@ def set_env():
         'METRIQUE_TMP', os.path.join(prefix, 'tmp'))
     os.environ['METRIQUE_CACHE'] = os.environ.get(
         'METRIQUE_CACHE', os.path.join(prefix, 'cache'))
+    os.environ['METRIQUE_STATIC'] = os.environ.get(
+        'METRIQUE_STATIC', os.path.join(prefix, 'static'))
     return os.environ
-
-
-def qremove(path):
-    if os.path.isfile(path):
-        rm = os.remove
-    else:
-        rm = shutil.rmtree
-    try:
-        rm(path)
-    except Exception:
-        print 'Failed to remove %s' % path

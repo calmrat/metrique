@@ -16,15 +16,26 @@ from __future__ import unicode_literals
 import logging
 logger = logging.getLogger('metrique')
 
-import anyconfig
-anyconfig.set_loglevel(logging.WARN)  # too noisy...
+try:
+    import anyconfig
+    anyconfig.set_loglevel(logging.WARN)  # too noisy...
+    HAS_ANYCONFIG = True
+except ImportError:
+    HAS_ANYCONFIG = False
+    logger.warn('anyconfig module is not installed!')
+
 from calendar import timegm
 import collections
 from copy import deepcopy
 import cPickle
 import cProfile as profiler
 from datetime import datetime
-from dateutil.parser import parse as dt_parse
+try:
+    from dateutil.parser import parse as dt_parse
+    HAS_DATEUTIL = True
+except ImportError:
+    HAS_DATEUTIL = False
+    logger.warn('dateutil module is not installed!')
 
 try:
     from dulwich.repo import Repo
@@ -33,34 +44,91 @@ except ImportError:
     HAS_DULWICH = False
     logger.warn('dulwich module is not installed!')
 
+from functools import partial
 import gc
+from getpass import getuser
 import glob
 from hashlib import sha1
 from inspect import isfunction
 import itertools
 import os
-import pandas as pd
+
+try:
+    import pandas as pd
+    HAS_PANDAS = True
+except ImportError:
+    HAS_PANDAS = False
+    logger.warn('pandas module is not installed!')
+
 import pstats
-import pytz
+
+try:
+    import pytz
+    HAS_PYTZ = True
+except ImportError:
+    HAS_PYTZ = False
+    logger.warn('pytz module is not installed!')
+
+import random
 import re
-import shelve
+import resource
 import shlex
+import shutil
 import signal
-import simplejson as json
+
+try:
+    import simplejson as json
+except ImportError:
+    logger.warn('simplejson module is not installed; fallback to json')
+    import json
+
+import string
 import subprocess
 import sys
 import time
 import urllib
+
+from metrique.containers import SQLite3
+
+active_virtualenv = lambda: os.environ.get('VIRTUAL_ENV', '')
+env = os.environ
+pjoin = os.path.join
 
 json_encoder = json.JSONEncoder()
 
 DEFAULT_PKGS = ['metrique.cubes']
 
 SHA1_HEXDIGEST = lambda o: sha1(repr(o)).hexdigest()
-UTC = pytz.utc
 
 LOGS_DIR = os.environ.get('METRIQUE_LOGS')
-CACHE_DIR = os.environ.get('METRIQUE_CACHE') or '/tmp'
+CACHE_DIR = os.environ.get('METRIQUE_CACHE')
+SRC_DIR = os.environ.get('METRIQUE_SRC')
+BACKUP_DIR = env.get('METRIQUE_BACKUP')
+STATIC_DIR = env.get('METRIQUE_STATIC')
+
+
+def backup(paths, saveas=None, ext=None):
+    paths = list2str(paths, delim=' ')
+    saveas = saveas if saveas else 'out'
+    saveas = re.sub('\.tar.*', '', saveas)
+
+    gzip = sys_call('which gzip', ignore_errors=True)
+    pigz = sys_call('which pigz', ignore_errors=True)
+    ucp = '--use-compress-program=%s'
+    if pigz:
+        ucp = ucp % pigz
+        ext = ext or 'tar.pigz'
+    elif gzip:
+        ucp = ucp % gzip
+        ext = ext or 'tar.gz'
+    else:
+        raise RuntimeError('Install pigz or gzip!')
+
+    saveas = '%s.%s' % (saveas, ext)
+    cmd = 'tar -c %s -f %s %s' % (ucp, saveas, paths)
+    sys_call(cmd)
+    assert os.path.exists(saveas)
+    return saveas
 
 
 def batch_gen(data, batch_size):
@@ -74,24 +142,34 @@ def batch_gen(data, batch_size):
         yield data[i:i + batch_size]
 
 
-def clear_stale_pids(pids, pid_dir='/tmp', prefix=''):
+def clear_stale_pids(pids, pid_dir='/tmp', prefix='', multi=False):
     'check for and remove any pids which have no corresponding process'
-    pids = [unicode(pid) for pid in pids]
-    procs = os.listdir('/proc')
+    if isinstance(pids, (int, float, long)):
+        pids = [pids]
+    pids = str2list(pids, map_=unicode)
+    procs = map(unicode, os.listdir('/proc'))
     running = [pid for pid in pids if pid in procs]
     logger.warn(
         "Found %s pids running: %s" % (len(running),
                                        running))
-    prefix = '%s.' % prefix if prefix else ''
+    prefix = prefix.rstrip('.') if prefix else None
     for pid in pids:
+        if prefix:
+            _prefix = prefix
+        else:
+            _prefix = unicode(pid)
         # remove non-running procs
         if pid in running:
             continue
-        pid_file = '%s%s.pid' % (prefix, pid)
+        if multi:
+            pid_file = '%s%s.pid' % (_prefix, pid)
+        else:
+            pid_file = '%s.pid' % (_prefix)
         path = os.path.join(pid_dir, pid_file)
         if os.path.exists(path):
+            logger.debug("Removing pidfile: %s" % path)
             try:
-                os.remove(path)
+                remove_file(path)
             except OSError as e:
                 logger.warn(e)
     return running
@@ -135,12 +213,74 @@ def configure(options=None, defaults=None, config_file=None,
         return config
 
 
-def csv2list(item):
-    if isinstance(item, basestring):
-        items = item.split(',')
+def daemonize(pid_file=None, cwd=None):
+    """
+    Detach a process from the controlling terminal and run it in the
+    background as a daemon.
+
+    Modified version of:
+        code.activestate.com/recipes/278731-creating-a-daemon-the-python-way/
+
+    author = "Chad J. Schroeder"
+    copyright = "Copyright (C) 2005 Chad J. Schroeder"
+    """
+    cwd = cwd or '/'
+    try:
+        pid = os.fork()
+    except OSError as e:
+        raise Exception("%s [%d]" % (e.strerror, e.errno))
+
+    if (pid == 0):   # The first child.
+        os.setsid()
+        try:
+            pid = os.fork()    # Fork a second child.
+        except OSError as e:
+            raise Exception("%s [%d]" % (e.strerror, e.errno))
+        if (pid == 0):    # The second child.
+            os.chdir(cwd)
+            os.umask(0)
+        else:
+            os._exit(0)    # Exit parent (the first child) of the second child.
     else:
-        raise TypeError('Expected a csv string')
+        os._exit(0)   # Exit parent of the first child.
+
+    maxfd = resource.getrlimit(resource.RLIMIT_NOFILE)[1]
+    if (maxfd == resource.RLIM_INFINITY):
+        maxfd = 1024
+
+    # Iterate through and close all file descriptors.
+    for fd in range(0, maxfd):
+        try:
+            os.close(fd)
+        except OSError:   # ERROR, fd wasn't open to begin with (ignored)
+            pass
+
+    os.open('/dev/null', os.O_RDWR)  # standard input (0)
+
+    # Duplicate standard input to standard output and standard error.
+    os.dup2(0, 1)            # standard output (1)
+    os.dup2(0, 2)            # standard error (2)
+
+    pid_file = pid_file or '%s.pid' % os.getpid()
+    write_file(pid_file, os.getpid())
+    return 0
+
+
+def csv2list(item, delim=',', map_=None):
+    return str2list(item, delim=delim, map_=None)
+
+
+def str2list(item, delim=',', map_=None):
+    if isinstance(item, basestring):
+        items = item.split(delim)
+    elif isinstance(item, (list, tuple, set)):
+        items = map(unicode, list(item))
+    elif item is None:
+        items = []
+    else:
+        raise TypeError('Expected a csv string (or existing list)')
     items = [s.strip() for s in items]
+    items = map(map_, items) if map_ else items
     return items
 
 
@@ -239,8 +379,9 @@ def debug_setup(logger=None, level=None, log2file=None,
 
 def dt2ts(dt, drop_micro=False):
     ''' convert datetime objects to timestamp seconds (float) '''
+    is_true(HAS_DATEUTIL, "`pip install python_dateutil` required")
     # the equals check to 'NaT' is hack to avoid adding pandas as a dependency
-    if is_null(dt):
+    if is_null(dt, except_=False):
         return None
     elif isinstance(dt, (int, long, float)):  # its a ts already
         ts = dt
@@ -300,6 +441,17 @@ def get_cube(cube, init=False, pkgs=None, cube_paths=None, config=None,
     return _cube
 
 
+def get_pid(pid_file=None):
+    if not pid_file:
+        return 0
+    try:
+        return int(''.join(open(pid_file).readlines()).strip())
+    except IOError:
+        return -1
+    except ValueError:
+        return -2
+
+
 def get_pids(pid_dir, prefix='', clear_stale=True):
     pid_dir = os.path.expanduser(pid_dir)
     # eg, server.22325.pid, server.23526.pid
@@ -314,6 +466,30 @@ def get_pids(pid_dir, prefix='', clear_stale=True):
     return map(int, pids)
 
 
+def _get_timezone_converter(dt, from_tz, tz_aware=False):
+    if from_tz is None:
+        raise TypeError("from_tz can not be null!")
+    elif dt is None:
+        return None
+    else:
+        dt = dt_parse(dt) if isinstance(dt, basestring) else dt
+        if dt.tzinfo:
+            # datetime instance already has tzinfo set
+            # WARN if not dt.tzinfo == from_tz?
+            try:
+                dt = dt.astimezone(pytz.UTC)
+            except ValueError:
+                # date has invalid timezone; replace with expected
+                dt = dt.replace(tzinfo=from_tz)
+                dt = dt.astimezone(pytz.UTC)
+        else:
+            # set tzinfo as from_tz then convert to utc
+            dt = from_tz.localize(dt).astimezone(pytz.UTC)
+        if not tz_aware:
+            dt = dt.replace(tzinfo=None)
+        return dt
+
+
 def get_timezone_converter(from_timezone, tz_aware=False):
     '''
     return a function that converts a given
@@ -321,29 +497,12 @@ def get_timezone_converter(from_timezone, tz_aware=False):
 
     :param from_timezone: timezone name as string
     '''
+    if not from_timezone:
+        return None
+    is_true(HAS_DATEUTIL, "`pip install python_dateutil` required")
+    is_true(HAS_PYTZ, "`pip install pytz` required")
     from_tz = pytz.timezone(from_timezone)
-
-    def timezone_converter(dt):
-        if dt is None:
-            return None
-        elif isinstance(dt, basestring):
-            dt = dt_parse(dt)
-        if dt.tzinfo:
-            # datetime instance already has tzinfo set
-            # WARN if not dt.tzinfo == from_tz?
-            try:
-                dt = dt.astimezone(UTC)
-            except ValueError:
-                # date has invalid timezone; replace with expected
-                dt = dt.replace(tzinfo=from_tz)
-                dt = dt.astimezone(UTC)
-        else:
-            # set tzinfo as from_tz then convert to utc
-            dt = from_tz.localize(dt).astimezone(UTC)
-        if not tz_aware:
-            dt = dt.replace(tzinfo=None)
-        return dt
-    return timezone_converter
+    return partial(_get_timezone_converter, from_tz=from_tz, tz_aware=tz_aware)
 
 
 def git_clone(uri, pull=True, reflect=False, cache_dir=None):
@@ -378,7 +537,8 @@ def git_clone(uri, pull=True, reflect=False, cache_dir=None):
         return repo_path
 
 
-def is_null(value):
+def is_null(value, except_=True, msg=None):
+    msg = msg or ''
     if isinstance(value, basestring):
         value = value.strip()
     elif hasattr(value, 'empty'):
@@ -389,10 +549,23 @@ def is_null(value):
         value = not bool(value.empty)
     else:
         pass
-    return bool(
+    result = bool(
         not value or
         value != value or
         repr(value) == 'NaT')
+    if not result and except_:
+        raise RuntimeError(msg)
+    else:
+        return result
+
+
+def is_true(value, except_=True, msg=None):
+    msg = msg or ''
+    result = bool(value)
+    if not result and except_:
+        raise RuntimeError(msg)
+    else:
+        return result
 
 
 def json_encode(obj):
@@ -435,7 +608,23 @@ def jsonhash(obj, root=True, exclude=None, hash_func=None):
     return result
 
 
+def list2str(items, delim=','):
+    delim = delim or ','
+    if isinstance(items, (list, tuple, set)):
+        item = delim.join(map(unicode, items))
+    elif isinstance(items, basestring):
+        # assume we already have a normalized delimited string
+        item = items
+    elif items is None:
+        item = ''
+    else:
+        raise TypeError('expected a list')
+    return item
+
+
 def load_file(path, filetype=None, as_df=False, **kwargs):
+    if not os.path.exists(path):
+        raise IOError("%s does not exist" % path)
     if not filetype:
         # try to get file extension
         filetype = path.split('.')[-1]
@@ -445,7 +634,7 @@ def load_file(path, filetype=None, as_df=False, **kwargs):
         result = load_json(path, **kwargs)
     elif filetype in ['pickle']:
         result = load_pickle(path, **kwargs)
-    elif filetype in ['db']:
+    elif filetype in ['sqlite']:
         result = load_shelve(path, **kwargs)
     else:
         raise TypeError("Invalid filetype: %s" % filetype)
@@ -465,28 +654,35 @@ def load_pickle(path, **kwargs):
 
 
 def load_csv(path, **kwargs):
+    is_true(HAS_PANDAS, "`pip install pandas` required")
     kwargs.setdefault('skipinitialspace', True)
     # load the file according to filetype
     return pd.read_csv(path, **kwargs)
 
 
 def load_json(path, **kwargs):
+    is_true(HAS_PANDAS, "`pip install pandas` required")
     return pd.read_json(path, **kwargs)
 
 
-def load_shelve(path, as_list=True, **kwargs):
+def load_shelve(path, as_list=True):
     '''
     shelve expects each object to be indexed
     by one of it's column values (ie, _oid)
     where value is the entire object which maps
     to the given column value (ie, {_oid: {obj with _oid})
+
+    Ideally, we would use 'shelve' module directly, but it's
+    causing issues since it depends on bsddb4.7 or less which isn't
+    available in travis-ci testing environment...
+    Same goes for gdbm..
+    Use reliable old sqlite3 instead!
     '''
-    kwargs.setdefault('flag', 'c')
-    kwargs.setdefault('protocol', 2)
+    cube = SQLite3(path)
     if as_list:
-        return [o for o in shelve.open(path, **kwargs).itervalues()]
+        return cube.values()
     else:
-        return shelve.open(path, **kwargs)
+        return cube
 
 
 def _set_oid_func(_oid_func):
@@ -527,6 +723,7 @@ def load(path, filetype=None, as_df=False, retries=None,
     :param filetype: override filetype autodetection
     :param kwargs: additional filetype loader method kwargs
     '''
+    is_true(HAS_PANDAS, "`pip install pandas` required")
     set_oid = _set_oid_func(_oid)
 
     # kwargs are for passing ftype load options (csv.delimiter, etc)
@@ -544,19 +741,21 @@ def load(path, filetype=None, as_df=False, retries=None,
         try:
             objects = load_file(_path, filetype, **kwargs)
         finally:
-            os.remove(_path)
+            remove_file(_path)
     else:
         path = re.sub('^file://', '', path)
         path = os.path.expanduser(path)
-        datasets = sorted(glob.glob(os.path.expanduser(path)))
+        files = sorted(glob.glob(os.path.expanduser(path)))
+        if not files:
+            raise IOError("failed to load: %s" % path)
         # buid up a single dataframe by concatting
         # all globbed files together
         objects = []
         [objects.extend(load_file(ds, filetype, **kwargs))
-            for ds in datasets]
+            for ds in files]
 
-    if is_null(objects) and not quiet:
-        raise ValueError("not objects extracted!")
+    if is_null(objects, except_=False) and not quiet:
+        raise RuntimeError("no objects extracted!")
     else:
         logger.debug("Data loaded successfully from %s" % path)
 
@@ -571,6 +770,7 @@ def load(path, filetype=None, as_df=False, retries=None,
 
 
 def _data_export(data, as_df=False):
+    is_true(HAS_PANDAS, "`pip install pandas` required")
     if as_df:
         if isinstance(data, pd.DataFrame):
             return data
@@ -607,14 +807,41 @@ def _load_cube_pkg(pkg, cube):
 def load_config(path):
     if not path:
         return {}
-    else:
-        config_file = os.path.expanduser(path)
+
+    config_file = os.path.expanduser(path)
+    if HAS_ANYCONFIG:
         conf = anyconfig.load(config_file) or {}
         if conf:
             # convert mergeabledict (anyconfig) to dict of dicts
             return conf.convert_to(conf)
         else:
             raise IOError("Invalid config file: %s" % config_file)
+    else:
+        raise RuntimeError("`pip install anyconfig` required!")
+
+
+def make_dirs(path, mode=0700, quiet=True):
+    if not path.startswith('/'):
+        raise OSError("requires absolute path! got %s" % path)
+    if os.path.exists(path):
+        if not quiet:
+            logger.warn('Can not create %s; already exists!' % path)
+    else:
+        os.makedirs(path, mode)
+    return path
+
+
+def move(path, dest, quiet=False):
+    if isinstance(path, (list, tuple)):
+        return [move(p, dest) for p in path]
+    else:
+        assert isinstance(path, basestring)
+        if os.path.exists(path):
+            return shutil.move(path, dest)
+        elif not quiet:
+            raise IOError('path not found: %s' % path)
+        else:
+            return []
 
 
 def profile(fn, cache_dir=CACHE_DIR):
@@ -629,10 +856,7 @@ def profile(fn, cache_dir=CACHE_DIR):
         stats.print_stats()
         # uncomment this to see who's calling what
         # stats.print_callers()
-        try:
-            os.remove(saveas)
-        except Exception:
-            pass
+        remove_file(saveas)
         return result
     return wrapper
 
@@ -647,6 +871,90 @@ def _profile(filename, fn, *args, **kw):
     ended = time.time()
 
     return ended - began, load_stats, locals()['result']
+
+
+def rand_chars(size=6, chars=string.ascii_uppercase + string.digits,
+               prefix=''):
+    prefix = prefix or ''
+    # see: http://stackoverflow.com/questions/2257441
+    chars = ''.join(random.choice(chars) for x in range(size))
+    chars = prefix + chars
+    return chars
+
+
+def read_file(rel_path, paths=None, raw=False, as_list=False, *args, **kwargs):
+    '''
+        find a file that lives somewhere within a set of paths and
+        return its contents. Default paths include 'static_dir'
+    '''
+    if not rel_path:
+        raise ValueError("rel_path can not be null!")
+    paths = str2list(paths)
+    # try looking the file up in a directory called static relative
+    # to SRC_DIR, eg assuming metrique git repo is in ~/metrique
+    # we'd look in ~/metrique/static
+    paths.extend([STATIC_DIR, os.path.join(SRC_DIR, 'static')])
+    paths = [os.path.expanduser(p) for p in set(paths)]
+    for path in paths:
+        path = os.path.join(path, rel_path)
+        logger.debug("trying to read: %s " % path)
+        if os.path.exists(path):
+            break
+    else:
+        raise IOError("path %s does not exist!" % rel_path)
+    fd = open(path, *args, **kwargs)
+    if raw:
+        return fd
+
+    fd_lines = fd.readlines()
+    if as_list:
+        return fd_lines
+    else:
+        return ''.join(fd_lines)
+
+
+def remove_file(path, quiet=True, force=False):
+    if not path:
+        return []
+    # create a list from glob search or expect a list
+    path = glob.glob(path) if isinstance(path, basestring) else list(path)
+    if isinstance(path, (list, tuple)):
+        if len(path) == 1:
+            path = path[0]
+        else:
+            return [remove_file(p) for p in path]
+    assert isinstance(path, basestring)
+    if os.path.exists(path):
+        if os.path.isdir(path):
+            if force:
+                shutil.rmtree(path)
+            else:
+                raise RuntimeError(
+                    '%s is a directory; use force=True to remove!')
+        else:
+            os.remove(path)
+    elif not quiet:
+        logger.warn('[remove] %s not found' % path)
+    return path
+
+
+def rsync(targets=None, dest=None, compress=True,
+          ssh_host=None, ssh_user=None):
+    dest = dest or os.path.join(CACHE_DIR, 'metrique_rsync')
+    _ = not (os.path.exists(dest) and not os.path.isdir(dest))
+    is_true(_, msg="%s exists but is not a directory!" % dest)
+    make_dirs(dest)
+    compress = '-z' if compress else ''
+    targets = str2list(targets, map_=unicode) or ['.']
+    targets = list2str(targets, delim=' ')
+    if ssh_host:
+        ssh_user = ssh_user or getuser()
+        sys_call('rsync -av %s -e ssh %s %s@%s:%s' % (
+            compress, targets, ssh_user, ssh_host, dest))
+    else:
+        dest = pjoin(BACKUP_DIR, dest)
+        sys_call('rsync -av %s %s %s' % (compress, targets, dest))
+    return True
 
 
 def rupdate(source, target):
@@ -664,22 +972,91 @@ def rupdate(source, target):
 
 def safestr(str_):
     ''' get back an alphanumeric only version of source '''
+    str_ = str_ or ""
     return "".join(x for x in str_ if x.isalnum())
 
 
-def sys_call(cmd, sig=None, sig_func=None, quiet=True):
+def _sys_call(cmd, shell=True, cwd=None, quiet=False, bg=False):
+    cwd = cwd or os.getcwd()
+    os.chdir(cwd)
     if not quiet:
-        logger.debug(cmd)
+        logger.info('Running: %s' % cmd)
+
     if isinstance(cmd, basestring):
         cmd = re.sub('\s+', ' ', cmd)
         cmd = cmd.strip()
         cmd = shlex.split(cmd)
-    if sig and sig_func:
-        signal.signal(sig, sig_func)
-    output = subprocess.check_output(cmd, stderr=subprocess.STDOUT)
-    if not quiet:
-        logger.debug(output)
+    else:
+        cmd = [s.strip() for s in list(cmd)]
+
+    if bg:
+        p = subprocess.Popen(cmd)
+        if not p:
+            raise RuntimeError("Failed to start '%s'" % cmd)
+        return p
+    try:
+        cmd = ' '.join(s for s in cmd)
+        output = subprocess.check_output(cmd, stderr=subprocess.STDOUT,
+                                         shell=shell)
+    except subprocess.CalledProcessError as e:
+        output = to_encoding(e.output)
+        raise RuntimeError(
+            "Command: %s\n\tExit status: %s.\n\tOutput:\n%s" % (
+                e.cmd, e.returncode, output))
+    else:
+        if not quiet:
+            logger.debug(output)
     return output.strip()
+
+
+def sys_call(cmd, sig=None, sig_func=None, shell=True, cwd=None, quiet=False,
+             fork=False, pid_file=None, ignore_errors=False, bg=False):
+    try:
+        if fork:
+            bg = True
+            pid = os.fork()
+            if pid == 0:  # child
+                # FIXME: install signals?
+                #signal.signal(sig, sig_func) if sig and sig_func else None
+                p = _sys_call(cmd, shell=shell, cwd=cwd, quiet=quiet, bg=bg)
+                with open(pid_file, 'w') as f:
+                    f.write(str(p.pid))
+                p.wait()
+                del p
+                os._exit(0)
+            else:
+                return pid_file
+        else:
+            output = _sys_call(cmd, shell=shell, cwd=cwd, quiet=quiet, bg=bg)
+    except Exception as e:
+        logger.warn('Error: %s' % e)
+        if ignore_errors:
+            return None
+        else:
+            raise
+    return output
+
+
+def terminate(pid, sig=signal.SIGTERM):
+    pid_file = None
+    if isinstance(pid, basestring):
+        # we have a path to pidfile...
+        pid_file = pid
+        pid = get_pid(pid_file)
+    if pid <= 0:
+        logger.warn('no pid to kill found at %s' % pid)
+    else:
+        try:
+            logger.debug('killing %s with %s' % (pid, sig))
+            result = os.kill(pid, sig)
+            logger.debug(result)
+        except OSError:
+            logger.debug("%s not found" % pid)
+        else:
+            logger.debug("%s killed" % pid)
+    if pid_file:
+        remove_file(pid_file)
+    return
 
 
 def to_encoding(ustring, encoding=None, errors='replace'):
@@ -698,7 +1075,8 @@ def ts2dt(ts, milli=False, tz_aware=False):
     ''' convert timestamp int's (seconds) to datetime objects '''
     # anything already a datetime will still be returned
     # tz_aware, if set to true
-    if is_null(ts):
+    is_true(HAS_DATEUTIL, "`pip install python_dateutil` required")
+    if is_null(ts, except_=False):
         return None  # its not a timestamp
     elif isinstance(ts, datetime):
         pass
@@ -721,15 +1099,16 @@ def ts2dt(ts, milli=False, tz_aware=False):
 
 
 def _get_datetime(value, tz_aware=None):
+    is_true(HAS_PYTZ, "`pip install pytz` required")
     if tz_aware:
         if isinstance(value, datetime):
-            return value.replace(tzinfo=UTC)
+            return value.replace(tzinfo=pytz.UTC)
         else:
-            return datetime.fromtimestamp(value, tz=UTC)
+            return datetime.fromtimestamp(value, tz=pytz.UTC)
     else:
         if isinstance(value, datetime):
             if value.tzinfo:
-                return value.astimezone(UTC).replace(tzinfo=None)
+                return value.astimezone(pytz.UTC).replace(tzinfo=None)
             else:
                 return value
         else:
@@ -737,6 +1116,7 @@ def _get_datetime(value, tz_aware=None):
 
 
 def utcnow(as_datetime=True, tz_aware=False, drop_micro=False):
+    is_true(HAS_PYTZ, "`pip install pytz` required")
     if tz_aware:
         now = datetime.now(pytz.UTC)
     else:
@@ -767,3 +1147,44 @@ def urlretrieve(uri, saveas=None, retries=3, cache_dir=None):
         else:
             break
     return _path
+
+
+def virtualenv_deactivate():
+    virtenv = active_virtualenv()
+    result = None
+    if virtenv:
+        to_remove = [p for p in sys.path if p.startswith(virtenv)]
+        if to_remove:
+            sys.path = [p for p in sys.path if p not in to_remove]
+            logger.debug(' ... paths cleared: %s' % sorted(to_remove))
+        env['VIRTUAL_ENV'] = ''
+        logger.debug('Virtual Env (%s): Deactivated' % virtenv)
+        result = True
+    else:
+        logger.debug('Deactivate: Virtual Env not detected')
+    return result
+
+
+def virtualenv_activate(virtenv=None):
+    virtenv = virtenv or active_virtualenv()
+    if not virtenv:
+        logger.info('Activate: No virtenv defined')
+        return  # nothing to activate
+    elif virtenv == active_virtualenv():
+        logger.debug('Virtual Env already active')
+        return  # nothing to activate
+    else:
+        virtualenv_deactivate()  # deactive active virtual first
+
+    activate_this = pjoin(virtenv, 'bin', 'activate_this.py')
+    if os.path.exists(activate_this):
+        execfile(activate_this, dict(__file__=activate_this))
+        env['VIRTUAL_ENV'] = virtenv
+        logger.info('Virtual Env (%s): Activated' % active_virtualenv())
+    else:
+        raise OSError("Invalid virtual env; %s not found" % activate_this)
+
+
+def write_file(path, value, mode='w'):
+    with open(path, mode) as f:
+        f.write(unicode(str(value)))

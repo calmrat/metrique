@@ -2,18 +2,19 @@ language: python
 python:
   - "2.7"
 install:
-  - "pip install coveralls"
-  - "pip install virtualenv"
-  - "./metrique.py firstboot metrique"
-  - "./metrique.py deploy --slow --all"
+  - "sudo apt-get install pigz"
+  - "pip install coveralls virtualenv"
+  - "pip install decorator"
+  - "./metrique.py deploy --all"
 services: 
   - mongodb
 addons:
     postgresql: "9.3"
 script: 
   - "coverage run --source=metrique -m py.test tests"
-before_script:
-  - psql -c 'create database admin;' -U postgres
+#before_script:
+#  - psql -c 'CREATE USER admin;' -U postgres
+#  - psql -c 'create database admin WITH OWNER admin;' -U postgres
 after_success:
   - coveralls
 after_failure:

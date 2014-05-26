@@ -13,7 +13,7 @@ Install
 
 Install metrique::
 
-    pip install metrique
+    python setup.py install
 
 To start using `metrique`, in ipython notebook, for example::
 

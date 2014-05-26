@@ -82,20 +82,45 @@ from copy import deepcopy
 from datetime import datetime
 from getpass import getuser
 from inspect import isclass
-from lockfile import LockFile
+try:
+    from lockfile import LockFile
+    HAS_LOCKFILE = True
+except ImportError:
+    HAS_LOCKFILE = False
 import os
 from operator import itemgetter, add
-import pandas as pd
-import pql
+
+try:
+    import pandas as pd
+    HAS_PANDAS = True
+except ImportError:
+    HAS_PANDAS = False
+    logger.warn('pandas module is not installed!')
+
+try:
+    import pql
+    HAS_PQL = True
+except ImportError:
+    HAS_PQL = False
+    logger.warn('pql module is not installed!')
 
 try:
     from pymongo import MongoClient, MongoReplicaSetClient
     from pymongo.read_preferences import ReadPreference
     from pymongo.errors import OperationFailure
+
+    READ_PREFERENCE = {
+        'PRIMARY_PREFERRED': ReadPreference.PRIMARY,
+        'PRIMARY': ReadPreference.PRIMARY,
+        'SECONDARY': ReadPreference.SECONDARY,
+        'SECONDARY_PREFERRED': ReadPreference.SECONDARY_PREFERRED,
+        'NEAREST': ReadPreference.NEAREST,
+    }
     HAS_PYMONGO = True
 except ImportError:
-    logger.warn('pymongo 2.6+ not installed!')
+    READ_PREFERENCE = {}
     HAS_PYMONGO = False
+    logger.warn('pymongo 2.6+ not installed!')
 
 try:
     import psycopg2
@@ -107,7 +132,12 @@ except ImportError:
 
 import re
 import random
-import simplejson as json
+
+try:
+    import simplejson as json
+except ImportError:
+    logger.warn('simplejson module is not installed; fallback to json')
+    import json
 
 try:
     from sqlalchemy import create_engine, MetaData, Table
@@ -187,7 +217,7 @@ CACHE_DIR = os.environ.get('METRIQUE_CACHE') or '/tmp'
 DEFAULT_CONFIG = os.path.join(ETC_DIR, 'metrique.json')
 
 # FIXME: make sets?
-HASH_EXCLUDE_KEYS = ['_hash', '_id', '_start', '_end']
+HASH_EXCLUDE_KEYS = ['_hash', '_id', '_start', '_end', '__v__']
 IMMUTABLE_OBJ_KEYS = set(['_hash', '_id', '_oid'])
 SQLA_HASH_EXCLUDE_KEYS = HASH_EXCLUDE_KEYS + ['id']
 
@@ -301,7 +331,7 @@ class MetriqueObject(Mapping):
 
             if isinstance(value, str):
                 value = unicode(value, 'utf8')
-            elif is_null(value):
+            elif is_null(value, except_=False):
                 # Normalize empty strings and NaN/NaT objects to None
                 # NaN objects do not equal themselves...
                 value = None
@@ -438,6 +468,8 @@ class MetriqueContainer(MutableMapping):
 
     def df(self):
         '''Return a pandas dataframe from objects'''
+        if not HAS_PANDAS:
+            raise RuntimeError("`pip install pandas` required")
         return pd.DataFrame(tuple(self.store))
 
     @property
@@ -504,11 +536,11 @@ class MetriqueContainer(MutableMapping):
             raise ValueError("Unknown persist type: %s" % _type)
         return sorted(map(unicode, _ids))
 
-    def _persist_shelve(self, objects, _dir, prefix, suffix='.db',
+    def _persist_shelve(self, objects, _dir, prefix, suffix='.sqlite',
                         autosnap=True):
         _ids = []
 
-        suffix = suffix or '.db'
+        suffix = suffix or '.sqlite'
         fname = '%s%s' % (prefix, suffix)
         path = os.path.join(_dir, fname)
 
@@ -536,11 +568,13 @@ class MetriqueContainer(MutableMapping):
                         d_id = str(dup['_id'])
                         _ids.append(d_id)
                         _cube[d_id] = dup
-                        _cube[_id] = self._object_cls(**o)
+                        o = self._object_cls(**o)
                     else:
-                        _cube[_id] = self._object_cls(**o)
+                        o = self._object_cls(**o)
                 else:
-                    _cube[_id] = self._object_cls(**o)
+                    o = self._object_cls(**o)
+                _cube[_id] = o
+            _cube.sync()
         logger.debug("%s duplicate objects skipped of %s total" % (k, i))
         return _ids
 
@@ -1009,14 +1043,6 @@ class MongoDBProxy(object):
 
     SSL_PEM = os.path.join(ETC_DIR, 'metrique.pem')
 
-    READ_PREFERENCE = {
-        'PRIMARY_PREFERRED': ReadPreference.PRIMARY,
-        'PRIMARY': ReadPreference.PRIMARY,
-        'SECONDARY': ReadPreference.SECONDARY,
-        'SECONDARY_PREFERRED': ReadPreference.SECONDARY_PREFERRED,
-        'NEAREST': ReadPreference.NEAREST,
-    }
-
     def __init__(self, host=None, port=None, username=None, password=None,
                  auth=None, ssl=None, ssl_certificate=None,
                  index_ensure_secs=None, read_preference=None,
@@ -1024,7 +1050,7 @@ class MongoDBProxy(object):
                  owner=None, collection=None,
                  config_file=None, config_key=None, **kwargs):
         if not HAS_PYMONGO:
-            raise NotImplementedError('`pip install pymongo` 2.6+ required')
+            raise RuntimeError('`pip install pymongo` 2.6+ required')
 
         options = dict(auth=auth,
                        collection=collection,
@@ -1122,7 +1148,7 @@ class MongoDBProxy(object):
         w = self.config.get('write_concern')
         replica_set = self.config.get('replica_set')
         pref = self.config.get('read_preference')
-        read_preference = self.READ_PREFERENCE[pref]
+        read_preference = READ_PREFERENCE[pref]
 
         logger.debug('Loading new MongoReplicaSetClient connection')
         _proxy = MongoReplicaSetClient(host, port, tz_aware=tz_aware,
@@ -1183,7 +1209,7 @@ class MongoDBContainer(MetriqueContainer):
                  owner=None, config_file=None, config_key=None,
                  _version=None, **kwargs):
         if not HAS_PYMONGO:
-            raise NotImplementedError('`pip install pymongo` 2.6+ required')
+            raise RuntimeError('`pip install pymongo` 2.6+ required')
 
         super(MongoDBContainer, self).__init__(name=name,
                                                objects=objects,
@@ -1962,6 +1988,8 @@ class MongoDBContainer(MetriqueContainer):
 
         :param query: pql query
         '''
+        if not HAS_PQL:
+            raise RuntimeError("`pip install pql` required")
         _subpat = re.compile(' in \([^\)]+\)')
         _q = _subpat.sub(' in (...)', query) if query else query
         logger.debug('Query: %s' % _q)
@@ -1990,7 +2018,7 @@ class SQLAlchemyProxy(object):
                  username=None, password=None, table=None,
                  connect_args=None, **kwargs):
         if not HAS_SQLALCHEMY:
-            raise NotImplementedError('`pip install sqlalchemy` required')
+            raise RuntimeError('`pip install sqlalchemy` required')
 
         try:
             _engine = self.get_engine_uri(db=db, host=host, port=port,
@@ -2035,7 +2063,7 @@ class SQLAlchemyProxy(object):
     def _check_compatible(self, uri, driver, msg=None):
         msg = msg or '%s required!' % driver
         if not HAS_PSYCOPG2:
-            raise NotImplementedError('`pip install psycopg2` required')
+            raise RuntimeError('`pip install psycopg2` required')
         if uri[0:10] != 'postgresql':
             raise RuntimeError(msg)
         return True
@@ -2241,7 +2269,7 @@ class SQLAlchemyContainer(MetriqueContainer):
                  password=None, table=None, _version=None,
                  db=None, autoreflect=True, **kwargs):
         if not HAS_SQLALCHEMY:
-            raise NotImplementedError('`pip install sqlalchemy` required')
+            raise RuntimeError('`pip install sqlalchemy` required')
 
         super(SQLAlchemyContainer, self).__init__(name=name,
                                                   objects=objects,

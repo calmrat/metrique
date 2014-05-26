@@ -13,17 +13,23 @@ import glob
 import importlib
 import logging
 import os
-import random
 import re
 import signal
-import shlex
 import shutil
 import socket
-import string
-import subprocess
 import sys
 import time
 import virtualenv
+
+# find metrique.utils; default is relative to
+# this calling file; fallback: global import
+try:
+    import imp
+    utils_tup = imp.find_module('metrique.utils')
+    utils = imp.load_module(*utils_tup)
+except ImportError:
+    import metrique.utils as utils
+
 
 log_format = "%(message)s"
 logging.basicConfig(format=log_format)
@@ -33,53 +39,8 @@ logger.setLevel(logging.INFO)
 pjoin = os.path.join
 env = os.environ
 
-active_virtualenv = lambda: os.environ.get('VIRTUAL_ENV', '')
-call_subprocess = virtualenv.call_subprocess
-
-__actions__ = ['build', 'sdist', 'install', 'develop', 'register',
-               'bump', 'status']
-
-
-def deactivate():
-    virtenv = active_virtualenv()
-    if virtenv:
-        to_remove = [p for p in sys.path if p.startswith(virtenv)]
-        if to_remove:
-            sys.path = [p for p in sys.path if p not in to_remove]
-            logger.debug(' ... paths cleared: %s' % sorted(to_remove))
-        env['VIRTUAL_ENV'] = ''
-        logger.debug('Virtual Env (%s): Deactivated' % virtenv)
-    else:
-        logger.debug('Deactivate: Virtual Env not detected')
-
-
-def activate(args=None):
-    virtenv = getattr(args, 'virtenv') or active_virtualenv()
-    if not virtenv:
-        logger.info('Activate: No virtenv defined')
-        return  # nothing to activate
-    elif virtenv == active_virtualenv():
-        logger.debug('Virtual Env already active')
-        return  # nothing to activate
-    else:
-        deactivate()  # deactive active virtual first
-
-    activate_this = pjoin(virtenv, 'bin', 'activate_this.py')
-    if os.path.exists(activate_this):
-        execfile(activate_this, dict(__file__=activate_this))
-        env['VIRTUAL_ENV'] = virtenv
-        logger.info('Virtual Env (%s): Activated' % active_virtualenv())
-    else:
-        raise OSError("Invalid virtual env; %s not found" % activate_this)
-
-
-def rand_chars(size=6, chars=string.ascii_uppercase + string.digits):
-    # see: http://stackoverflow.com/questions/2257441
-    return ''.join(random.choice(chars) for x in range(size))
-
-
 USER = getpass.getuser()
-VIRTUAL_ENV = active_virtualenv()
+VIRTUAL_ENV = utils.active_virtualenv()
 NOW = datetime.datetime.utcnow().strftime('%FT%H%M%S')
 
 HOSTNAME = socket.gethostname()
@@ -89,416 +50,87 @@ try:
 except Exception:
     LOCAL_IP = '127.0.0.1'
 
-PASSWORD = rand_chars(10)
-COOKIE_SECRET = rand_chars(50)
+PASSWORD = utils.rand_chars(10)
+COOKIE_SECRET = utils.rand_chars(50)
 
 HOME_DIR = env.get('METRIQUE_HOME', os.path.expanduser('~/'))
-USER_DIR = env.get('METRIQUE_USR', pjoin(HOME_DIR, '.metrique'))
+PREFIX_DIR = env.get('METRIQUE_PREFIX', pjoin(HOME_DIR, '.metrique'))
 
 # set cache dir so pip doesn't have to keep downloading over and over
-PIP_DIR = pjoin(USER_DIR, '.pip')
+PIP_DIR = pjoin(PREFIX_DIR, '.pip')
 PIP_CACHE_DIR = pjoin(PIP_DIR, 'download-cache')
-PIP_ACCEL_DIR = pjoin(USER_DIR, '.pip-accel')
-PIP_EGGS = pjoin(USER_DIR, '.python-eggs')
+PIP_ACCEL_DIR = pjoin(PREFIX_DIR, '.pip-accel')
+PIP_EGGS = pjoin(PREFIX_DIR, '.python-eggs')
 env['PIP_DOWNLOAD_CACHE'] = env.get('PIP_DOWNLOAD_CACHE', PIP_CACHE_DIR)
 env['PIP_ACCEL_CACHE'] = env.get('PIP_ACCEL_CACHE', PIP_ACCEL_DIR)
 env['PYTHON_EGG_CACHE'] = env.get('PYTHON_EGG_CACHE', PIP_EGGS)
 
-TRASH_DIR = env.get('METRIQUE_TRASH', pjoin(USER_DIR, 'trash'))
-LOGS_DIR = env.get('METRIQUE_LOGS', pjoin(USER_DIR, 'logs'))
-ETC_DIR = env.get('METRIQUE_ETC', pjoin(USER_DIR, 'etc'))
-PIDS_DIR = env.get('METRIQUE_PIDS', pjoin(USER_DIR, 'pids'))
-BACKUP_DIR = env.get('METRIQUE_BACKUP', pjoin(USER_DIR, 'backup'))
-TMP_DIR = env.get('METRIQUE_TMP', pjoin(USER_DIR, 'tmp'))
-CACHE_DIR = env.get('METRIQUE_CACHE', pjoin(USER_DIR, 'cache'))
-MONGODB_DIR = env.get('METRIQUE_MONGODB', pjoin(USER_DIR, 'mongodb'))
-STATIC_DIR = env.get('METRIQUE_STATIC', pjoin(USER_DIR, 'static'))
+TRASH_DIR = env.get('METRIQUE_TRASH', pjoin(PREFIX_DIR, 'trash'))
+LOGS_DIR = env.get('METRIQUE_LOGS', pjoin(PREFIX_DIR, 'logs'))
+ETC_DIR = env.get('METRIQUE_ETC', pjoin(PREFIX_DIR, 'etc'))
+PIDS_DIR = env.get('METRIQUE_PIDS', pjoin(PREFIX_DIR, 'pids'))
+BACKUP_DIR = env.get('METRIQUE_BACKUP', pjoin(PREFIX_DIR, 'backup'))
+TMP_DIR = env.get('METRIQUE_TMP', pjoin(PREFIX_DIR, 'tmp'))
+CACHE_DIR = env.get('METRIQUE_CACHE', pjoin(PREFIX_DIR, 'cache'))
+MONGODB_DIR = env.get('METRIQUE_MONGODB', pjoin(PREFIX_DIR, 'mongodb'))
+STATIC_DIR = env.get('METRIQUE_STATIC', pjoin(PREFIX_DIR, 'static'))
 
-METRIQUE_FIRSTBOOT_PATH = pjoin(USER_DIR, '.firstboot_metrique')
+METRIQUE_FIRSTBOOT_PATH = pjoin(PREFIX_DIR, '.firstboot_metrique')
 METRIQUE_JSON = pjoin(ETC_DIR, 'metrique.json')
 
 API_DOCS_PATH = env.get('METRIQUE_API_DOCS', 'docs/build/html/')
 
-SYS_FIRSTBOOT_PATH = pjoin(USER_DIR, '.firstboot_sys')
+SYS_FIRSTBOOT_PATH = pjoin(PREFIX_DIR, '.firstboot_sys')
 
 SSL_CERT = pjoin(ETC_DIR, 'metrique.crt')
 SSL_KEY = pjoin(ETC_DIR, 'metrique.key')
 SSL_PEM = pjoin(ETC_DIR, 'metrique.pem')
 
-MONGODB_FIRSTBOOT_PATH = pjoin(USER_DIR, '.firstboot_mongodb')
+MONGODB_FIRSTBOOT_PATH = pjoin(PREFIX_DIR, '.firstboot_mongodb')
 MONGODB_CONF = pjoin(ETC_DIR, 'mongodb.conf')
 MONGODB_PIDFILE = pjoin(PIDS_DIR, 'mongodb.pid')
 MONGODB_LOCKFILE = pjoin(MONGODB_DIR, 'mongod.lock')
 MONGODB_LOG = pjoin(LOGS_DIR, 'mongodb.log')
 MONGODB_JSON = pjoin(ETC_DIR, 'mongodb.json')
-MONGODB_JS = pjoin(ETC_DIR, 'mongodb.js')
+MONGODB_JS = pjoin(ETC_DIR, 'mongodb_firstboot.js')
 MONGODB_KEYFILE = pjoin(ETC_DIR, 'mongodb.key')
 
-CELERY_FIRSTBOOT_PATH = pjoin(USER_DIR, '.firstboot_celery')
 CELERY_JSON = pjoin(ETC_DIR, 'celery.json')
 CELERYD_PIDFILE = pjoin(PIDS_DIR, 'celeryd.pid')
 CELERYBEAT_PIDFILE = pjoin(PIDS_DIR, 'celerybeat.pid')
 CELERY_LOGFILE = pjoin(LOGS_DIR, 'celeryd.log')
 
-NGINX_FIRSTBOOT_PATH = pjoin(USER_DIR, '.firstboot_nginx')
+NGINX_FIRSTBOOT_PATH = pjoin(PREFIX_DIR, '.firstboot_nginx')
 NGINX_CONF = pjoin(ETC_DIR, 'nginx.conf')
 NGINX_ACCESS_LOG = pjoin(LOGS_DIR, 'nginx_access.log')
 NGINX_ERROR_LOG = pjoin(LOGS_DIR, 'nginx_error.log')
 NGINX_PIDFILE = pjoin(PIDS_DIR, 'nginx.pid')
 
-SUPERVISORD_FIRSTBOOT_PATH = pjoin(USER_DIR, '.firstboot_supervisord')
+SUPERVISORD_FIRSTBOOT_PATH = pjoin(PREFIX_DIR, '.firstboot_supervisord')
 SUPERVISORD_CONF = pjoin(ETC_DIR, 'supervisord.conf')
 SUPERVISORD_PIDFILE = pjoin(PIDS_DIR, 'supervisord.pid')
 SUPERVISORD_LOGFILE = pjoin(LOGS_DIR, 'supervisord.log')
 SUPERVISORD_HISTORYFILE = pjoin(TMP_DIR, 'supervisord_history')
 
-POSTGRESQL_FIRSTBOOT_PATH = pjoin(USER_DIR, '.firstboot_postgresql')
-POSTGRESQL_PGDATA_PATH = pjoin(USER_DIR, 'postgresql_db')
+POSTGRESQL_FIRSTBOOT_PATH = pjoin(PREFIX_DIR, '.firstboot_postgresql')
+POSTGRESQL_PGDATA_PATH = pjoin(PREFIX_DIR, 'postgresql_db')
 POSTGRESQL_CONF = pjoin(ETC_DIR, 'pg_hba.conf')
 POSTGRESQL_PIDFILE = pjoin(POSTGRESQL_PGDATA_PATH, 'postmaster.pid')
 POSTGRESQL_LOGFILE = pjoin(LOGS_DIR, 'postgresql-server.log')
 
+
 # ############################# DEFAULT CONFS ############################### #
-DEFAULT_METRIQUE_JSON = '''{
-    "metrique": {
-        "debug": true,
-        "log2file": true,
-        "log2stdout": false,
-        "workers": 1
-    },
-    "mongodb": {
-        "auth": false,
-        "batch_size": 5000,
-        "host": "127.0.0.1",
-        "_host": "%s",
-        "password": "%s",
-        "port": 27017,
-        "read_preference": "SECONDARY_PREFERRED",
-        "replica_set": "",
-        "ssl": false,
-        "ssl_certificate": "%s",
-        "tz_aware": true,
-        "username": "admin",
-        "write_concern": 0
-    },
-    "sqlalchemy": {
-      "engine": "postgresql",
-      "port": 5432,
-      "host": "127.0.0.1",
-      "host_": "%s",
-      "password": "%s",
-      "username": "admin",
-      "db": "admin"
-    }
-}'''
+DEFAULT_METRIQUE_JSON = utils.read_file('templates/etc/metrique.json')
+DEFAULT_MONGODB_CONF = utils.read_file('templates/etc/mongodb.conf')
+DEFAULT_MONGODB_JS = utils.read_file('templates/etc/mongodb_firstboot.js')
+DEFAULT_NGINX_CONF = utils.read_file('templates/etc/nginx.conf')
+DEFAULT_SUPERVISORD_CONF = utils.read_file('templates/etc/supervisord.conf')
 
 
-DEFAULT_MONGODB_CONF = '''
-#fork = true
-nohttpinterface = true
-dbpath = %s
-logpath = %s
-pidfilepath = %s
-
-#auth = true
-noauth = true
-
-bind_ip = 127.0.0.1
-#bind_ip = %s
-
-#sslOnNormalPorts = true
-#sslPEMKeyFile = %s
-
-#replSet = rs0
-#keyFile = %s'''
-
-DEFAULT_MONGODB_JS = '''
-db = db.getSiblingDB('admin')
-db.addUser({'user': 'admin', 'pwd': '%s', 'roles': ['dbAdminAnyDatabase',
-        'userAdminAnyDatabase', 'clusterAdmin', 'readWriteAnyDatabase']});
-'''
-
-DEFAULT_CELERY_JSON = '''{
-    "BROKER_URL": "mongodb://admin:%s@127.0.0.1:27017",
-    "BROKER_URL_LOCAL": "mongodb://admin:%s@%s:27017",
-    "BROKER_USE_SSL": false
-}'''
-
-DEFAULT_NGINX_CONF = '''
-worker_processes auto;
-daemon off;  # see warnings: http://wiki.nginx.org/CoreModule#daemon
-user %s;
-error_log %s;
-pid %s;
-events {
-    worker_connections 1024;
-    use epoll;
-}
-http {
-    charset utf-8;
-    client_max_body_size 0;  # disabled
-    client_body_temp_path  %s 1 2;
-    client_header_buffer_size 256k;
-    large_client_header_buffers 8 1024k;
-
-    proxy_temp_path   %s  1 2;
-    proxy_cache_path  %s  levels=1:2     keys_zone=proxy_one:10m;
-
-    fastcgi_temp_path   %s  1 2;
-    fastcgi_cache_path  %s  levels=1:2   keys_zone=fastcgi_one:10m;
-
-    uwsgi_temp_path   %s  1 2;
-    uwsgi_cache_path  %s  levels=1:2     keys_zone=uwsgi_one:10m;
-
-    scgi_temp_path   %s  1 2;
-    scgi_cache_path  %s  levels=1:2     keys_zone=scgi_one:10m;
-
-    # Enumerate all the Tornado servers here
-    upstream frontends {
-        server 127.0.0.1:5421;
-        server 127.0.0.1:5422;
-        server 127.0.0.1:5423;
-        server 127.0.0.1:5424;
-        #server %s:5421;
-        #server %s:5422;
-        #server %s:5423;
-        #server %s:5424;
-    }
-
-    include /etc/nginx/mime.types;
-    default_type application/octet-stream;
-
-    error_log %s;
-    access_log %s;
-
-    # Timeouts
-    keepalive_timeout 3m;
-    client_header_timeout  3m;
-    client_body_timeout  3m;
-    proxy_connect_timeout 3m;
-    proxy_send_timeout 3m;
-    proxy_read_timeout 3m;
-
-    sendfile on;
-    tcp_nopush on;
-    tcp_nodelay on;
-    gzip on;
-    gzip_min_length 1000;
-    gzip_proxied any;
-    gzip_types text/plain text/css text/xml
-            application/x-javascript application/xml
-            application/atom+xml text/javascript
-            application/json;
-
-    # Only retry if there was a communication error, not a timeout
-    # on the Tornado server (to avoid propagating "queries of death"
-    # to all frontends)
-    proxy_next_upstream error;
-
-    server {
-        listen 127.0.0.1:5420;
-        #listen %s:5420;
-        ssl                 off;
-        ssl_certificate     %s;
-        ssl_certificate_key %s;
-
-        ssl_protocols        SSLv3 TLSv1 TLSv1.1 TLSv1.2;
-        ssl_ciphers          RC4:HIGH:!aNULL:!MD5;
-        ssl_prefer_server_ciphers on;
-        ssl_session_cache    shared:SSL:10m;
-        ssl_session_timeout  60m;
-
-        location ^~ /static/ {
-            root %s;
-            if ($query_string) {
-                expires max;
-            }
-        }
-
-        location / {
-            proxy_pass_header Server;
-            proxy_set_header Host $http_host;
-            proxy_redirect off;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Scheme $scheme;
-            proxy_pass http://frontends;
-
-            proxy_set_header        Accept-Encoding   "";
-            proxy_set_header        X-Forwarded-For $proxy_add_x_forwarded_for;
-
-            ### Most PHP, Python, Rails, Java App can use this header ###
-            #proxy_set_header X-Forwarded-Proto https;##
-            #This is better##
-            proxy_set_header        X-Forwarded-Proto $scheme;
-            add_header              Front-End-Https   on;
-
-            ### force timeouts if one of backend is died ##
-            proxy_next_upstream error timeout invalid_header http_500 http_502
-                                                             http_504;
-            # NOTE: consider adding 503, if not raising 503 for locks
-        }
-    }
-}
-'''
-
-DEFAULT_SUPERVISORD_CONF = '''
-[inet_http_server]
-port=127.0.0.1:9001
-;port=%s:9001
-username=admin
-password=%s
-
-[rpcinterface:supervisor]
-%s
-
-[supervisord]
-logfile=%s
-pidfile=%s
-childlogdir=%s
-user=%s
-environment=%s
-loglevel=debug
-
-[supervisorctl]
-serverurl=http://127.0.0.1:9001
-;serverurl=http://%s:9001
-username=admin
-password=%s
-history_file=%s
-
-[program:mongodb]
-command=metrique mongodb start --nofork
-process_name=mongodb
-numprocs=1
-priority=10
-startsecs=60
-stopwaitsecs=60
-
-[program:nginx]
-command=metrique nginx start --nofork
-process_name=nginx
-numprocs=1
-priority=30
-startsecs=30
-
-[program:celeryd]
-command=metrique celeryd start --nofork
-process_name=celeryd
-numprocs=1
-priority=40
-startsecs=30
-autorestart=true
-
-[program:celerybeat]
-command=metrique celerybeat start --nofork
-process_name=celerybeat
-numprocs=1
-priority=41
-startsecs=30
-autorestart=true
-'''
 ###############################################################################
-
-
-def get_pid(pidfile):
-    try:
-        return int(''.join(open(pidfile).readlines()).strip())
-    except IOError:
-        return 0
-
-
-def makedirs(path, mode=0700):
-    if not path.startswith('/'):
-        raise OSError("requires absolute path! got %s" % path)
-    if not os.path.exists(path):
-        os.makedirs(path, mode)
-    return path
-
-
-def move(path, dest, quiet=True):
-    if isinstance(path, (list, tuple)):
-        [move(p) for p in path]
-    else:
-        assert isinstance(path, basestring)
-        if os.path.exists(path):
-            shutil.move(path, dest)
-        elif not quiet:
-            logger.warn('[move] %s not found' % path)
-
-
-def remove(path, quiet=True):
-    if not path:
-        return []
-    path = glob.glob(path)
-    if isinstance(path, (list, tuple)):
-        if len(path) == 1:
-            path = path[0]
-        else:
-            return [remove(p) for p in path]
-
-    assert isinstance(path, basestring)
-    if not quiet:
-        logger.warn('[remove] deleting %s' % path)
-    if os.path.exists(path):
-        if os.path.isdir(path):
-            shutil.rmtree(path)
-        else:
-            os.remove(path)
-    elif not quiet:
-        logger.warn('[remove] %s not found' % path)
-    return path
-
-
-def system(cmd, sig=None, sig_func=None):
-    if sig and sig_func:
-        signal.signal(sig, sig_func)
-
-    logger.debug("Running: %s" % cmd)
-    cmd = cmd.split()
-    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    text = p.stdout.read()
-    return text
-
-
-def run(cmd, cwd, show_stdout):
-    logger.info("[%s] Running ...\n`%s`" % (cwd, ' '.join(cmd)))
-    try:
-        call_subprocess(cmd, cwd=cwd, show_stdout=show_stdout)
-    except KeyboardInterrupt:
-        logger.warn('CTRL-C killed')
-        sys.exit(1)
-    except Exception as e:
-        raise OSError('[%s] %s' % (e, ' '.join(cmd)))
-
-
-def call(cmd, cwd=None, show_stdout=True, fork=False, pidfile=None,
-         sig=None, sig_func=None):
-    cmd = shlex.split(cmd.strip())
-    if sig and sig_func:
-        signal.signal(sig, sig_func)
-
-    if fork:
-        pid = os.fork()
-        if pid == 0:
-            run(cmd, cwd, show_stdout)
-            sys.exit(2)
-        elif pidfile:
-            with open(pidfile, 'w') as f:
-                f.write(str(pid))
-    else:
-        run(cmd, cwd, show_stdout)
-    logger.info(" ... Done!")
-
-
 def adjust_options(options, args):
     options.no_site_packages = True
 virtualenv.adjust_options = adjust_options
-
-
-def backup(saveas, path):
-    gzip = system('which pigz') or system('which gzip')
-    cmd = 'tar -c --use-compress-program=%s -f %s %s' % (gzip, saveas, path)
-    system(cmd)
 
 
 def backup_clean(args, path, prefix):
@@ -507,25 +139,11 @@ def backup_clean(args, path, prefix):
     files = sorted(glob.glob(path), reverse=True)
     to_remove = files[keep:]
     logger.debug('Removing %i backups' % len(to_remove))
-    [remove(f) for f in to_remove]
-
-
-def terminate(pidfile, sig=signal.SIGTERM):
-    if os.path.exists(pidfile):
-        pid = get_pid(pidfile)
-        try:
-            os.kill(pid, sig)
-        except OSError:
-            logger.debug("%s not found" % pid)
-        else:
-            logger.debug("%s killed" % pid)
-        remove(pidfile)
-    else:
-        logger.debug("[terminate] %s does not exist" % pidfile)
+    [utils.remove_file(f) for f in to_remove]
 
 
 def celeryd_terminate(sig=None, frame=None):
-    terminate(CELERYD_PIDFILE)
+    utils.terminate(CELERYD_PIDFILE)
 
 
 def celeryd_loop(args):
@@ -536,7 +154,7 @@ def celeryd_loop(args):
     pidfile = '--pidfile=%s' % CELERYD_PIDFILE
     app = '-A %s' % args.tasks_mod
     cmd = 'celery %s %s %s %s %s' % (x, logfile, loglvl, pidfile, app)
-    call(cmd, fork=fork, sig=signal.SIGTERM, sig_func=celeryd_terminate)
+    utils.sys_call(cmd, fork=fork)
 
 
 def celeryd_task(args):
@@ -549,15 +167,15 @@ def celeryd(args):
     if args.command == "start":
         celeryd_loop(args)
     elif args.command == "stop":
-        terminate(CELERYD_PIDFILE)
+        utils.terminate(CELERYD_PIDFILE)
     elif args.command == "clean":
-        remove(CELERYD_PIDFILE)
+        utils.remove_file(CELERYD_PIDFILE)
     else:
         raise ValueError("unknown command %s" % args.command)
 
 
 def celerybeat_terminate(sig=None, frame=None):
-    terminate(CELERYBEAT_PIDFILE)
+    utils.terminate(CELERYBEAT_PIDFILE)
 
 
 def celerybeat_run(args):
@@ -568,67 +186,67 @@ def celerybeat_run(args):
     pidfile = '--pidfile=%s' % CELERYBEAT_PIDFILE
     app = '-A %s' % args.tasks_mod
     cmd = 'celery %s %s %s %s %s' % (x, logfile, loglvl, pidfile, app)
-    call(cmd, fork=fork, sig=signal.SIGTERM, sig_func=celerybeat_terminate)
+    utils.sys_call(cmd, fork=fork)
 
 
 def celerybeat(args):
     if args.command == "start":
         celerybeat_run(args)
     elif args.command == "stop":
-        terminate(CELERYBEAT_PIDFILE)
+        utils.terminate(CELERYBEAT_PIDFILE)
     elif args.command == "clean":
-        remove(CELERYBEAT_PIDFILE)
+        utils.remove_file(CELERYBEAT_PIDFILE)
     else:
         raise ValueError("unknown command %s" % args.command)
 
 
 def supervisord_terminate(sig=None, frame=None):
-    terminate(SUPERVISORD_PIDFILE)
+    utils.terminate(SUPERVISORD_PIDFILE)
 
 
 def supervisord_run(args):
     cmd = 'supervisord -c %s' % SUPERVISORD_CONF
-    call(cmd, fork=True, sig=signal.SIGTERM, sig_func=supervisord_terminate)
+    utils.sys_call(cmd, fork=True)
 
 
 def supervisord(args):
     if args.command == "start":
         supervisord_run(args)
     elif args.command == "stop":
-        terminate(SUPERVISORD_PIDFILE)
+        utils.terminate(SUPERVISORD_PIDFILE)
     elif args.command == "clean":
-        remove(SUPERVISORD_PIDFILE)
+        utils.remove_file(SUPERVISORD_PIDFILE)
     elif args.command == "reload":
-        terminate(SUPERVISORD_PIDFILE, signal.SIGHUP)
+        utils.terminate(SUPERVISORD_PIDFILE, signal.SIGHUP)
     else:
         raise ValueError("unknown command %s" % args.command)
 
 
 def nginx_terminate(sig=None, frame=None):
-    terminate(NGINX_PIDFILE)
+    utils.terminate(NGINX_PIDFILE)
 
 
 def nginx(args):
     fork = not args.nofork
     cmd = 'nginx -c %s' % NGINX_CONF
     if args.command == 'test':
-        call('%s -t' % cmd)
+        utils.sys_call('%s -t' % cmd)
     elif args.command == 'start':
-        call(cmd, fork=fork, sig=signal.SIGTERM, sig_func=nginx_terminate)
+        utils.sys_call(cmd, fork=fork)
     elif args.command == 'stop':
-        call('%s -s stop' % cmd)
+        utils.sys_call('%s -s stop' % cmd)
     elif args.command == 'restart':
         for cmd in ('stop', 'start'):
             args.command = cmd
             nginx(args)
     elif args.command == 'reload':
-        call('%s -s reload' % cmd)
+        utils.sys_call('%s -s reload' % cmd)
     else:
         raise ValueError("unknown command %s" % args.command)
 
 
 def mongodb_terminate(sig=None, frame=None):
-    terminate(MONGODB_PIDFILE)
+    utils.terminate(MONGODB_PIDFILE)
 
 
 def mongodb_start(fork=False, fast=True):
@@ -638,34 +256,34 @@ def mongodb_start(fork=False, fast=True):
         return False
     cmd = 'mongod -f %s %s' % (MONGODB_CONF, fork)
     cmd += ' --noprealloc --nojournal' if fast else ''
-    call(cmd, fork=fork, sig=signal.SIGTERM, sig_func=mongodb_terminate)
+    utils.sys_call(cmd, fork=fork)
     return True
 
 
 def mongodb_stop():
-    terminate(MONGODB_PIDFILE)
+    utils.terminate(MONGODB_PIDFILE)
     mongodb_clean()
 
 
 def mongodb_clean():
-    remove(MONGODB_LOCKFILE)
-    remove(MONGODB_PIDFILE)
+    utils.remove_file(MONGODB_LOCKFILE)
+    utils.remove_file(MONGODB_PIDFILE)
 
 
 def mongodb_trash():
     mongodb_stop()
     dest = pjoin(TRASH_DIR, 'mongodb-%s' % NOW)
-    move(MONGODB_DIR, dest)
-    move(MONGODB_CONF, dest)
-    move(MONGODB_JSON, dest)
-    move(MONGODB_JS, dest)
-    move(MONGODB_KEYFILE, dest)
-    remove(MONGODB_FIRSTBOOT_PATH)
-    makedirs(MONGODB_DIR)
+    utils.move(MONGODB_DIR, dest)
+    utils.move(MONGODB_CONF, dest)
+    utils.move(MONGODB_JSON, dest)
+    utils.move(MONGODB_JS, dest)
+    utils.move(MONGODB_KEYFILE, dest)
+    utils.remove_file(MONGODB_FIRSTBOOT_PATH)
+    utils.make_dirs(MONGODB_DIR)
 
 
 def mongodb_gen_keyfile():
-    call('openssl rand -base64 741 -out %s' % MONGODB_KEYFILE)
+    utils.sys_call('openssl rand -base64 741 -out %s' % MONGODB_KEYFILE)
     os.chmod(MONGODB_KEYFILE, 0600)
 
 
@@ -691,10 +309,10 @@ def mongodb_backup(args):
            ssl, username, password, '--out %s' % out, authdb,
            db, collection)
     cmd = re.sub('\s+', ' ', ' '.join(cmd))
-    call(cmd)
+    utils.sys_call(cmd)
 
     saveas = out + '.tar.gz'
-    backup(saveas, out)
+    utils.backup(saveas, out)
     shutil.rmtree(out)
 
     backup_clean(args, BACKUP_DIR, 'mongodb')
@@ -704,7 +322,7 @@ def mongodb_backup(args):
         host = args.scp_host
         out_dir = args.scp_out_dir
         cmd = 'scp %s %s@%s:%s' % (saveas, user, host, out_dir)
-        call(cmd)
+        utils.sys_call(cmd)
 
 
 def mongodb(args):
@@ -751,53 +369,42 @@ def postgresql_start():
     cmd = 'pg_ctl -D %s -l %s -o "-k %s" start' % (POSTGRESQL_PGDATA_PATH,
                                                    POSTGRESQL_LOGFILE,
                                                    PIDS_DIR)
-    call(cmd, sig=signal.SIGTERM, sig_func=postgresql_terminate)
+    utils.sys_call(cmd, sig=signal.SIGTERM, sig_func=postgresql_terminate)
     return True
 
 
 def postgresql_stop(quiet=True):
     try:
         cmd = 'pg_ctl -D %s stop' % (POSTGRESQL_PGDATA_PATH)
-        call(cmd)
-    except OSError:
+        utils.sys_call(cmd)
+    except RuntimeError as e:
         if not quiet:
             raise
         else:
+            logger.warn('Failed to stop PostgreSQL: %s' % e)
             return False
 
 
 def postgresql_terminate(sig=None, frame=None):
-    terminate(POSTGRESQL_PIDFILE)
+    utils.terminate(POSTGRESQL_PIDFILE)
 
 
 def postgresql_clean():
-    remove(POSTGRESQL_PIDFILE)
+    utils.remove_file(POSTGRESQL_PIDFILE)
 
 
 def postgresql_trash():
     postgresql_stop()
     dest = pjoin(TRASH_DIR, 'postgresql-%s' % NOW)
-    move(POSTGRESQL_PGDATA_PATH, dest)
-    remove(POSTGRESQL_FIRSTBOOT_PATH)
-    makedirs(POSTGRESQL_PGDATA_PATH)
+    utils.move(POSTGRESQL_PGDATA_PATH, dest)
+    utils.remove_file(POSTGRESQL_FIRSTBOOT_PATH)
+    utils.make_dirs(POSTGRESQL_PGDATA_PATH)
 
 
 def rsync(args):
-    ssh_user = args.ssh_user
-    ssh_host = args.ssh_host
-    saveas = re.sub('\W', '_', HOSTNAME)
-    compress = '-z' if not args.nocompress else ''
-    if not args.targets:
-        raise OSError("one or more targets required!")
-    targets = ' '.join(args.targets)
-    if ssh_host:
-        call('rsync -av %s -e ssh %s %s@%s:%s' % (
-            compress, targets, ssh_user, ssh_host, saveas),
-            show_stdout=True)
-    else:
-        saveas = pjoin(BACKUP_DIR, saveas)
-        call('rsync -av %s %s %s' % (compress, targets, saveas),
-             show_stdout=True)
+    compress = not args.nocompress
+    utils.rsync(args.ssh_host, args.ssh_user, args.targets,
+                compress, prefix=HOSTNAME)
 
 
 def trash(args=None):
@@ -809,42 +416,45 @@ def trash(args=None):
     postgresql_stop()
 
     dest = pjoin(TRASH_DIR, 'metrique-%s' % NOW)
+    logger.warn('Trashing existing .metrique -> %s' % dest)
     for f in [ETC_DIR, PIDS_DIR, LOGS_DIR, CACHE_DIR,
               TMP_DIR, MONGODB_DIR, POSTGRESQL_PGDATA_PATH]:
         _dest = os.path.join(dest, os.path.basename(f))
         try:
-            shutil.move(f, _dest)
+            utils.move(f, _dest)
         except (IOError, OSError) as e:
             logger.error(e)
             continue
-    firstboot_glob = os.path.join(USER_DIR, '.firstboot*')
-    remove(firstboot_glob)
+    firstboot_glob = os.path.join(PREFIX_DIR, '.firstboot*')
+    utils.remove_file(firstboot_glob)
 
 
 def setup(args, cmd, pip=False):
+    pre = not getattr(args, 'no_pre', False)
+    if pip and not pre:
+        cmd += ' --pre'
     if isinstance(cmd, basestring):
         cmd = cmd.strip()
     else:
         cmd = ' '.join([s.strip() for s in cmd])
-    if pip and args.slow:
-        logger.info(system('pip %s -e .' % cmd))
-    elif pip:
-        logger.info(system('pip-accel %s -e .' % cmd))
+    if pip:
+        out = utils.sys_call('pip %s -e .' % cmd)
     else:
-        logger.info(system('python setup.py %s' % cmd))
+        out = utils.sys_call('python setup.py %s' % cmd)
+    logger.info(utils.to_encoding(out))
 
 
 def _deploy_virtenv_init(args):
-    _virtenv = active_virtualenv()
+    _virtenv = utils.active_virtualenv()
     virtenv = getattr(args, 'virtenv') or _virtenv
     # skip if we're already in the targeted virtenv...
     if virtenv and virtenv != _virtenv:
         # we can't alrady be in a virtenv when running virtualenv.main()
-        deactivate()
+        utils.virtualenv_deactivate()
 
         # scratch the existing virtenv directory, if requested
         if args.trash:
-            remove(virtenv)
+            utils.remove_file(virtenv, force=True)
             trash()
 
         # virtualenv.main; pass in only the virtenv path
@@ -853,50 +463,39 @@ def _deploy_virtenv_init(args):
         virtualenv.main()
 
         # activate the newly installed virtenv
-        activate(args)
+        utils.virtualenv_activate(args.virtenv)
     return virtenv
 
 
-def _deploy_which_pip(args):
-    # install pip-accel and use it instead of pip unless slow install
-    if args.slow:
-        pip = 'pip'
-    else:
-        call('pip install pip-accel')
-        pip = 'pip-accel'
-    return pip
-
-
-def _deploy_deps(args):
-    # optional dependencies; highly recommended! but slow to
-    # install if we're not testing
-    pip = _deploy_which_pip(args)
-
+def _deploy_extras(args):
+    pip = 'pip'
     _all = args.all
     _ = _all or args.ipython
-    call('%s install -U ipython pyzmq jinja2' % pip) if _ else None
+    utils.sys_call('%s install -U ipython pyzmq jinja2' % pip) if _ else None
     _ = _all or args.test or args.pytest
-    call('%s install -U pytest coveralls' % pip) if _ else None
+    utils.sys_call('%s install -U pytest coveralls' % pip) if _ else None
     _ = args.all or args.docs
-    call('%s install -U sphinx' % pip) if _ else None
+    utils.sys_call('%s install -U sphinx' % pip) if _ else None
     # pip-accel fails to install this package...
-    call('pip install -U sphinx_bootstrap_theme') if _ else None
+    utils.sys_call('pip install -U sphinx_bootstrap_theme') if _ else None
     _ = _all or args.supervisord
-    call('%s install -U supervisor' % pip) if _ else None
+    utils.sys_call('%s install -U supervisor' % pip) if _ else None
     _ = _all or args.joblib
-    call('%s install -U joblib' % pip) if _ else None
+    utils.sys_call('%s install -U joblib' % pip) if _ else None
     _ = _all or args.postgres
-    call('%s install -U psycopg2' % pip) if _ else None
+    utils.sys_call('%s install -U psycopg2' % pip) if _ else None
     _ = _all or args.celery
-    call('%s install -U celery' % pip) if _ else None
+    utils.sys_call('%s install -U celery' % pip) if _ else None
     _ = _all or args.sqlalchemy
-    call('%s install -U sqlalchemy' % pip) if _ else None
-    _ = _all or args.pymong
-    call('%s install -U pymongo pql' % pip) if _ else None
+    utils.sys_call('%s install -U sqlalchemy' % pip) if _ else None
+    _ = _all or args.pymongo
+    utils.sys_call('%s install -U pymongo pql' % pip) if _ else None
     _ = _all or args.pandas
-    call('%s install -U pandas' % pip) if _ else None
+    utils.sys_call('%s install -U pandas' % pip) if _ else None
     _ = _all or args.matplotlib
-    call('%s install -U matplotlib' % pip) if _ else None
+    utils.sys_call('%s install -U matplotlib' % pip) if _ else None
+    _ = _all or args.dulwich
+    utils.sys_call('%s install -U dulwich' % pip) if _ else None
 
 
 def deploy(args):
@@ -907,27 +506,27 @@ def deploy(args):
 
     # make sure we have the installer basics and their up2date
     # pip-accel caches compiled binaries
-    call('pip install -U pip setuptools virtualenv')
-
-    _deploy_deps(args)
+    utils.sys_call('pip install -U pip setuptools virtualenv')
 
     cmd = 'install'
-    no_pre = getattr(args, 'no_pre', False)
-    if not no_pre:
-        cmd += ' --pre'
-    setup(args, cmd, pip=True)
+    setup(args, cmd, pip=False)
+
+    _deploy_extras(args)
 
     if args.develop:
         path = pjoin(virtenv, 'lib/python2.7/site-packages/metrique*')
-        remove(path)
+        utils.remove_file(path)
         develop(args)
 
     # run py.test after install
     if args.test:
-        running = get_pid(MONGODB_PIDFILE) != 0
-        if not running:
-            call('metrique mongodb start --fast')
-        call('coverage run --source=metrique -m py.test tests')
+        # FIXME: testing mongodb components should be optional
+        # and starting up mongodb etc should happen as a byproduct
+        # of running the tests!
+        #running = utils.get_pid(MONGODB_PIDFILE) != 0
+        #if not running:
+        #    utils.sys_call('metrique mongodb start --fast')
+        utils.sys_call('coverage run --source=metrique -m py.test tests')
 
 
 def build(args):
@@ -955,8 +554,9 @@ def register(args):
 
 def ssl(args=None):
     logger.info("Generating self-signed SSL certificate + key + combined pem")
-    call('openssl req -new -x509 -days 365 -nodes '
-         '-out %s -keyout %s -batch' % (SSL_CERT, SSL_KEY))
+    utils.sys_call(
+        'openssl req -new -x509 -days 365 -nodes '
+        '-out %s -keyout %s -batch' % (SSL_CERT, SSL_KEY))
     with open(SSL_PEM, 'w') as pem:
         with open(SSL_CERT) as cert:
             pem.write(''.join(cert.readlines()))
@@ -970,8 +570,7 @@ def ssl(args=None):
 def default_conf(path, template):
     if os.path.exists(path):
         path = '.'.join([path, 'default'])
-    with open(path, 'w') as f:
-        f.write(template)
+    utils.write_file(path, template)
     logger.info("Installed %s ..." % path)
 
 
@@ -986,8 +585,6 @@ def firstboot(args=None, force=False):
         mongodb_firstboot(force)
     elif cmd == 'postgresql':
         postgresql_firstboot(force)
-    elif cmd == 'celery':
-        celery_firstboot(force)
     elif cmd == 'supervisord':
         supervisord_firstboot(force)
     elif cmd == 'nginx':
@@ -1001,29 +598,28 @@ def postgresql_firstboot(force=False):
     if exists and not force:
         # skip if we have already run this before
         return
-    makedirs(POSTGRESQL_PGDATA_PATH)
+    utils.make_dirs(POSTGRESQL_PGDATA_PATH)
 
     cmd = 'pg_ctl -D %s -l %s init' % (POSTGRESQL_PGDATA_PATH,
                                        POSTGRESQL_LOGFILE)
-    call(cmd)
+    utils.sys_call(cmd)
 
     started = False
     try:
         started = postgresql_start()
         time.sleep(1)
         cmd = 'createdb -h 127.0.0.1'
-        call(cmd)
+        utils.sys_call(cmd)
         cmd = 'psql -h 127.0.0.1 -c "%s"'
         P = PASSWORD
         user = "CREATE USER admin WITH PASSWORD '%s' SUPERUSER;" % P
         db = "CREATE DATABASE admin WITH OWNER admin;"
-        [call(cmd % sql) for sql in (user, db)]
+        [utils.sys_call(cmd % sql) for sql in (user, db)]
     finally:
         if started:
             postgresql_stop()
 
-    with open(POSTGRESQL_FIRSTBOOT_PATH, 'w') as f:
-        f.write(NOW)
+    utils.write_file(POSTGRESQL_FIRSTBOOT_PATH, '')
     return True
 
 
@@ -1032,7 +628,7 @@ def mongodb_firstboot(force=False):
     if exists and not force:
         # skip if we have already run this before
         return
-    makedirs(MONGODB_DIR)
+    utils.make_dirs(MONGODB_DIR)
     mongodb_gen_keyfile()
 
     global DEFAULT_MONGODB_CONF, DEFAULT_MONGODB_JS
@@ -1042,9 +638,7 @@ def mongodb_firstboot(force=False):
     DEFAULT_MONGODB_JS = DEFAULT_MONGODB_JS % (PASSWORD)
 
     default_conf(MONGODB_CONF, DEFAULT_MONGODB_CONF)
-
-    with open(MONGODB_FIRSTBOOT_PATH, 'w') as f:
-        f.write(NOW)
+    utils.write_file(MONGODB_FIRSTBOOT_PATH, '')
 
 
 def mongodb_install_admin():
@@ -1056,7 +650,7 @@ def mongodb_install_admin():
     logger.debug('MongoDB forking, sleeping for a moment...')
     time.sleep(1)
     try:
-        call('mongo 127.0.0.1/admin %s' % (MONGODB_JS))
+        utils.sys_call('mongo 127.0.0.1/admin %s' % (MONGODB_JS))
     finally:
         mongodb_stop()
 
@@ -1070,19 +664,11 @@ def pyclient_firstboot(force=False):
     global DEFAULT_METRIQUE_JSON
 
     DEFAULT_METRIQUE_JSON = DEFAULT_METRIQUE_JSON % (
-        LOCAL_IP, PASSWORD, SSL_PEM, LOCAL_IP, PASSWORD)
+        LOCAL_IP, PASSWORD, SSL_PEM, LOCAL_IP, PASSWORD,
+        PASSWORD, PASSWORD, LOCAL_IP)
 
     default_conf(METRIQUE_JSON, DEFAULT_METRIQUE_JSON)
-
-
-def celery_firstboot(force=False):
-    exists = os.path.exists(CELERY_FIRSTBOOT_PATH)
-    if exists and not force:
-        # skip if we have already run this before
-        return
-    global DEFAULT_CELERY_JSON
-    DEFAULT_CELERY_JSON = DEFAULT_CELERY_JSON % (PASSWORD, PASSWORD, LOCAL_IP)
-    default_conf(CELERY_JSON, DEFAULT_CELERY_JSON)
+    utils.write_file(METRIQUE_FIRSTBOOT_PATH, '')
 
 
 def supervisord_firstboot(force=False):
@@ -1102,6 +688,7 @@ def supervisord_firstboot(force=False):
         SUPERVISORD_HISTORYFILE)
 
     default_conf(SUPERVISORD_CONF, DEFAULT_SUPERVISORD_CONF)
+    utils.write_file(SUPERVISORD_FIRSTBOOT_PATH, '')
 
 
 def nginx_firstboot(force=False):
@@ -1119,6 +706,7 @@ def nginx_firstboot(force=False):
         STATIC_DIR)
 
     default_conf(NGINX_CONF, DEFAULT_NGINX_CONF)
+    utils.write_file(NGINX_FIRSTBOOT_PATH, '')
 
 
 def sys_firstboot(force=False):
@@ -1128,10 +716,10 @@ def sys_firstboot(force=False):
         return
 
     # create default dirs in advance
-    [makedirs(p) for p in (USER_DIR, PIP_CACHE_DIR, PIP_ACCEL_DIR,
-                           PIP_EGGS, TRASH_DIR, LOGS_DIR,
-                           ETC_DIR, BACKUP_DIR, TMP_DIR, CACHE_DIR,
-                           STATIC_DIR, PIDS_DIR)]
+    [utils.make_dirs(p) for p in (PREFIX_DIR, PIP_CACHE_DIR, PIP_ACCEL_DIR,
+                                  PIP_EGGS, TRASH_DIR, LOGS_DIR,
+                                  ETC_DIR, BACKUP_DIR, TMP_DIR, CACHE_DIR,
+                                  STATIC_DIR, PIDS_DIR)]
 
     # make sure the the default user python eggs dir is secure
     os.chmod(PIP_EGGS, 0700)
@@ -1142,8 +730,7 @@ def sys_firstboot(force=False):
     except Exception as e:
         logger.warn('Failed to create ssl certs: %s' % e)
 
-    with open(SYS_FIRSTBOOT_PATH, 'w') as f:
-        f.write(NOW)
+    utils.write_file(SYS_FIRSTBOOT_PATH, '')
 
 
 def main():
@@ -1157,8 +744,6 @@ def main():
 
     # Automated metrique deployment
     _deploy = _sub.add_parser('deploy')
-    _deploy.add_argument(
-        '--slow', action='store_true', help="don't use pip-accel")
     _deploy.add_argument(
         '--no-pre', action='store_true',
         help='ignore pre-release versions')
@@ -1190,6 +775,8 @@ def main():
         '--pandas', action='store_true', help='install pandas')
     _deploy.add_argument(
         '--matplotlib', action='store_true', help='install matplotlib')
+    _deploy.add_argument(
+        '--dulwich', action='store_true', help='install dulwich')
     _deploy.add_argument(
         '--trash', action='store_true', help='fresh install (rm old virtenv)')
     _deploy.set_defaults(func=deploy)
@@ -1318,13 +905,13 @@ def main():
     logger.debug('Local IP    : %s' % LOCAL_IP)
     logger.debug('This file   : %s' % __file__)
     logger.debug('Home Path   : %s' % HOME_DIR)
-    logger.debug('User Path   : %s' % USER_DIR)
+    logger.debug('User Path   : %s' % PREFIX_DIR)
     logger.debug('-' * 30)
 
     if args.action != 'deploy':
         # Activate the virtual environment in this python session if
         # parent env has one set
-        activate(args)
+        utils.virtualenv_deactivate()
 
     # run command
     args.func(args)
