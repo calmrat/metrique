@@ -58,7 +58,8 @@ class Result(DataFrame):
             self._lbound = self._rbound = None
             self.set_date_bounds(date)
         # optimization:
-        self._end_isnull = self._end.isnull()
+        if '_end' in self.columns:
+            self._end_isnull = self._end.isnull()
 
     def to_datetime(self, column):
         '''
