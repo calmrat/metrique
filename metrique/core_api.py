@@ -612,7 +612,7 @@ class MetriqueContainer(MutableMapping):
         return _ids
 
     def _parse_fields(self, fields, as_dict=False, default_fields=False):
-        _fields = self.default_fields if default_fields else {}
+        _fields = deepcopy(self.default_fields) if default_fields else {}
         if fields in [None, False]:
             _fields = {}
         elif fields in ['~', True]:
