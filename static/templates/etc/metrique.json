@@ -21,7 +21,6 @@
         "write_concern": 0
     },
     "sqlalchemy": {
-        "engine": "postgresql",
         "port": 5432,
         "host": "127.0.0.1",
         "host_": "%s",

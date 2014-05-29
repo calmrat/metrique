@@ -64,7 +64,7 @@ from metrique.core_api import BaseClient as pyclient
 from metrique.core_api import MetriqueContainer, MetriqueObject
 from metrique.core_api import MongoDBContainer, MongoDBProxy
 from metrique.core_api import SQLAlchemyContainer, SQLAlchemyProxy
-from metrique.core_api import SQLAlchemyMQLParser
+from metrique.parse import SQLAlchemyMQLParser
 # avoid lint 'defined by not used' error
 pyclient, MetriqueObject, MetriqueContainer
 MongoDBProxy, MongoDBContainer,

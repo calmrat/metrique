@@ -88,8 +88,6 @@ import sys
 import time
 import urllib
 
-from metrique.containers import SQLite3
-
 active_virtualenv = lambda: os.environ.get('VIRTUAL_ENV', '')
 env = os.environ
 pjoin = os.path.join
@@ -100,6 +98,8 @@ DEFAULT_PKGS = ['metrique.cubes']
 
 SHA1_HEXDIGEST = lambda o: sha1(repr(o)).hexdigest()
 
+HOME_DIR = os.environ.get('METRIQUE_HOME')
+PREFIX_DIR = os.environ.get('METRIQUE_PREFIX')
 LOGS_DIR = os.environ.get('METRIQUE_LOGS')
 CACHE_DIR = os.environ.get('METRIQUE_CACHE')
 SRC_DIR = os.environ.get('METRIQUE_SRC')
@@ -125,6 +125,8 @@ def backup(paths, saveas=None, ext=None):
         raise RuntimeError('Install pigz or gzip!')
 
     saveas = '%s.%s' % (saveas, ext)
+    if not os.path.isabs(saveas):
+        saveas = os.path.join(CACHE_DIR, saveas)
     cmd = 'tar -c %s -f %s %s' % (ucp, saveas, paths)
     sys_call(cmd)
     assert os.path.exists(saveas)
@@ -270,20 +272,6 @@ def csv2list(item, delim=',', map_=None):
     return str2list(item, delim=delim, map_=None)
 
 
-def str2list(item, delim=',', map_=None):
-    if isinstance(item, basestring):
-        items = item.split(delim)
-    elif isinstance(item, (list, tuple, set)):
-        items = map(unicode, list(item))
-    elif item is None:
-        items = []
-    else:
-        raise TypeError('Expected a csv string (or existing list)')
-    items = [s.strip() for s in items]
-    items = map(map_, items) if map_ else items
-    return items
-
-
 def cube_pkg_mod_cls(cube):
     '''
     Used to dynamically importing cube classes
@@ -399,6 +387,23 @@ def dt2ts(dt, drop_micro=False):
         return float(ts)
 
 
+def file_is_empty(path, remove=False, except_=True, msg=None):
+    err = False
+    if not os.path.isfile(path):
+        err = True
+        msg = '%s is not a file!' % path
+    if bool(os.stat(path).st_size == 0):
+        err = True
+        if remove:
+            remove_file(path)
+    if err and except_:
+        raise RuntimeError(msg)
+    elif err:
+        return False
+    else:
+        return True
+
+
 def get_cube(cube, init=False, pkgs=None, cube_paths=None, config=None,
              backends=None, **kwargs):
     '''
@@ -505,7 +510,7 @@ def get_timezone_converter(from_timezone, tz_aware=False):
     return partial(_get_timezone_converter, from_tz=from_tz, tz_aware=tz_aware)
 
 
-def git_clone(uri, pull=True, reflect=False, cache_dir=None):
+def git_clone(uri, pull=True, reflect=False, cache_dir=None, chdir=True):
     '''
     Given a git repo, clone (cache) it locally.
 
@@ -528,7 +533,9 @@ def git_clone(uri, pull=True, reflect=False, cache_dir=None):
     if pull and not from_cache:
         os.chdir(repo_path)
         cmd = 'git pull'
-        sys_call(cmd)
+        sys_call(cmd, cwd=repo_path)
+    if chdir:
+        os.chdir(repo_path)
     if reflect:
         if not HAS_DULWICH:
             raise RuntimeError("`pip install dulwich` required!")
@@ -568,7 +575,7 @@ def is_true(value, except_=True, msg=None):
         return result
 
 
-def json_encode(obj):
+def json_encode_default(obj):
     '''
     Convert datetime.datetime to timestamp
 
@@ -634,8 +641,6 @@ def load_file(path, filetype=None, as_df=False, **kwargs):
         result = load_json(path, **kwargs)
     elif filetype in ['pickle']:
         result = load_pickle(path, **kwargs)
-    elif filetype in ['sqlite']:
-        result = load_shelve(path, **kwargs)
     else:
         raise TypeError("Invalid filetype: %s" % filetype)
     return _data_export(result, as_df=as_df)
@@ -663,26 +668,6 @@ def load_csv(path, **kwargs):
 def load_json(path, **kwargs):
     is_true(HAS_PANDAS, "`pip install pandas` required")
     return pd.read_json(path, **kwargs)
-
-
-def load_shelve(path, as_list=True):
-    '''
-    shelve expects each object to be indexed
-    by one of it's column values (ie, _oid)
-    where value is the entire object which maps
-    to the given column value (ie, {_oid: {obj with _oid})
-
-    Ideally, we would use 'shelve' module directly, but it's
-    causing issues since it depends on bsddb4.7 or less which isn't
-    available in travis-ci testing environment...
-    Same goes for gdbm..
-    Use reliable old sqlite3 instead!
-    '''
-    cube = SQLite3(path)
-    if as_list:
-        return cube.values()
-    else:
-        return cube
 
 
 def _set_oid_func(_oid_func):
@@ -913,7 +898,8 @@ def read_file(rel_path, paths=None, raw=False, as_list=False, *args, **kwargs):
         return ''.join(fd_lines)
 
 
-def remove_file(path, quiet=True, force=False):
+def remove_file(path, force=False):
+    logger.warn('Removing %s' % str(path))
     if not path:
         return []
     # create a list from glob search or expect a list
@@ -922,18 +908,27 @@ def remove_file(path, quiet=True, force=False):
         if len(path) == 1:
             path = path[0]
         else:
-            return [remove_file(p) for p in path]
+            return [remove_file(p, force=force) for p in path]
+    assert bool(path) is True
     assert isinstance(path, basestring)
+    cwd = os.getcwd()
+    is_true(os.path.isabs(path),
+            'paths to remove must be absolute; got %s' % path)
     if os.path.exists(path):
         if os.path.isdir(path):
+            if cwd == path:
+                logger.warn('removing dir tree we are currently in. (%s) '
+                            'chdir to metrique home: %s' % (cwd, PREFIX_DIR))
+                assert os.path.exists(PREFIX_DIR)
+                os.chdir(PREFIX_DIR)
             if force:
                 shutil.rmtree(path)
             else:
                 raise RuntimeError(
-                    '%s is a directory; use force=True to remove!')
+                    '%s is a directory; use force=True to remove!' % path)
         else:
             os.remove(path)
-    elif not quiet:
+    else:
         logger.warn('[remove] %s not found' % path)
     return path
 
@@ -976,11 +971,23 @@ def safestr(str_):
     return "".join(x for x in str_ if x.isalnum())
 
 
-def _sys_call(cmd, shell=True, cwd=None, quiet=False, bg=False):
-    cwd = cwd or os.getcwd()
-    os.chdir(cwd)
+def str2list(item, delim=',', map_=None):
+    if isinstance(item, basestring):
+        items = item.split(delim)
+    elif isinstance(item, (list, tuple, set)):
+        items = map(unicode, list(item))
+    elif item is None:
+        items = []
+    else:
+        raise TypeError('Expected a csv string (or existing list)')
+    items = [s.strip() for s in items]
+    items = map(map_, items) if map_ else items
+    return items
+
+
+def _sys_call(cmd, shell=True, quiet=False, bg=False):
     if not quiet:
-        logger.info('Running: %s' % cmd)
+        logger.info('Running: `%s`' % cmd)
 
     if isinstance(cmd, basestring):
         cmd = re.sub('\s+', ' ', cmd)
@@ -1011,14 +1018,19 @@ def _sys_call(cmd, shell=True, cwd=None, quiet=False, bg=False):
 
 def sys_call(cmd, sig=None, sig_func=None, shell=True, cwd=None, quiet=False,
              fork=False, pid_file=None, ignore_errors=False, bg=False):
+    _path = os.getcwd()
+    cwd = cwd or _path
     try:
         if fork:
+            logger.warn('*' * 50 + 'FORKING' + '*' * 50)
             bg = True
             pid = os.fork()
             if pid == 0:  # child
-                # FIXME: install signals?
-                #signal.signal(sig, sig_func) if sig and sig_func else None
-                p = _sys_call(cmd, shell=shell, cwd=cwd, quiet=quiet, bg=bg)
+                try:
+                    p = _sys_call(cmd, shell=shell, quiet=quiet, bg=bg)
+                finally:
+                    os.chdir(_path)
+
                 with open(pid_file, 'w') as f:
                     f.write(str(p.pid))
                 p.wait()
@@ -1027,7 +1039,10 @@ def sys_call(cmd, sig=None, sig_func=None, shell=True, cwd=None, quiet=False,
             else:
                 return pid_file
         else:
-            output = _sys_call(cmd, shell=shell, cwd=cwd, quiet=quiet, bg=bg)
+            try:
+                output = _sys_call(cmd, shell=shell, quiet=quiet, bg=bg)
+            finally:
+                os.chdir(_path)
     except Exception as e:
         logger.warn('Error: %s' % e)
         if ignore_errors:
@@ -1059,16 +1074,13 @@ def terminate(pid, sig=signal.SIGTERM):
     return
 
 
-def to_encoding(ustring, encoding=None, errors='replace'):
+def to_encoding(str_, encoding=None, errors='replace'):
     errors = errors or 'replace'
     encoding = encoding or 'utf-8'
-    if isinstance(ustring, basestring):
-        if not isinstance(ustring, unicode):
-            return unicode(ustring, encoding, errors)
-        else:
-            return ustring.encode(encoding, errors).decode('utf8')
+    if not isinstance(str_, unicode):
+        return unicode(str(str_), encoding, errors)
     else:
-        raise ValueError('basestring type required')
+        return str_.encode(encoding, errors).decode('utf8')
 
 
 def ts2dt(ts, milli=False, tz_aware=False):

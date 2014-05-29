@@ -17,11 +17,10 @@ from __future__ import unicode_literals
 import logging
 logger = logging.getLogger('metrique')
 
-import os
 import re
 
 from metrique import pyclient
-from metrique.utils import ts2dt, git_clone, sys_call
+from metrique.utils import ts2dt, git_clone, sys_call, to_encoding, utcnow
 
 related_re = re.compile('Related: (.+)$', re.I)
 resolves_re = re.compile('Resolves: (.+)$', re.I)
@@ -54,11 +53,10 @@ class Commit(pyclient):
             * resolves
             * related
         '''
-        repo = git_clone(uri, pull=pull, reflect=True)
-        os.chdir(repo.path)
+        self.repo = repo = git_clone(uri, pull=pull, reflect=True)
         # get a full list of all commit SHAs in the repo (all branches)
         cmd = 'git rev-list --all'
-        output = sys_call(cmd)
+        output = sys_call(cmd, cwd=repo.path)
         repo_shas = set(x.strip() for x in output.split('\n') if x)
         logger.debug("Total Commits: %s" % len(repo_shas))
 
@@ -67,13 +65,21 @@ class Commit(pyclient):
         all_logs = re.sub('\n+', '\n', output)
         c_logs = [x for x in [s.strip() for s in all_logs.split('sha:')] if x]
 
+        now = utcnow()
+        _end = None  # once was true, always is true...
         for c_log in c_logs:
             sha, s, all_changes = c_log.partition('\n')
+            #try:
             c = repo.get_object(sha)
-
             # FIXME: not normalizing to UTC
             _start = ts2dt(c.commit_time)
-            _end = None  # once was true, always is true...
+            #except Exception as e:
+            #    _start = now
+            #    obj = dict(_oid=sha, _start=_start, _end=_end,
+            #               repo_uri=uri, _e={sha: to_encoding(e)})
+            #    self.objects.add(obj)
+            #    continue
+
             # and some basic stuff...
             obj = dict(_oid=sha, _start=_start, _end=_end,
                        repo_uri=uri, tree=c.tree, parents=c.parents,

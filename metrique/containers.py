@@ -24,6 +24,7 @@ import sqlite3
 class SQLite3(object):
     ''' basic, naive dictionary like mapper "cube" container object '''
     def __init__(self, path):
+        self._db_path = path
         self.proxy = sqlite3.connect(path)
         self.proxy.isolation_level = "DEFERRED"
         self.proxy.row_factory = self._dict_factory

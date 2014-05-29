@@ -32,9 +32,9 @@ except ImportError:
 
 
 log_format = "%(message)s"
-logging.basicConfig(format=log_format)
-logger = logging.getLogger()
-logger.setLevel(logging.INFO)
+logger = utils.debug_setup(
+    'metrique', level=logging.INFO, log_format=log_format,
+    log2file=False, log2stdout=True)
 
 pjoin = os.path.join
 env = os.environ
@@ -113,7 +113,8 @@ SUPERVISORD_LOGFILE = pjoin(LOGS_DIR, 'supervisord.log')
 SUPERVISORD_HISTORYFILE = pjoin(TMP_DIR, 'supervisord_history')
 
 POSTGRESQL_FIRSTBOOT_PATH = pjoin(PREFIX_DIR, '.firstboot_postgresql')
-POSTGRESQL_PGDATA_PATH = pjoin(PREFIX_DIR, 'postgresql_db')
+_PGDATA = env.get('PGDATA')  # check if it's set in the environment
+POSTGRESQL_PGDATA_PATH = _PGDATA or pjoin(PREFIX_DIR, 'postgresql_db')
 POSTGRESQL_CONF = pjoin(ETC_DIR, 'pg_hba.conf')
 POSTGRESQL_PIDFILE = pjoin(POSTGRESQL_PGDATA_PATH, 'postmaster.pid')
 POSTGRESQL_LOGFILE = pjoin(LOGS_DIR, 'postgresql-server.log')
@@ -366,11 +367,15 @@ def postgresql_start():
         logger.info('PostgreSQL pid found not starting...')
         return False
 
-    cmd = 'pg_ctl -D %s -l %s -o "-k %s" start' % (POSTGRESQL_PGDATA_PATH,
-                                                   POSTGRESQL_LOGFILE,
-                                                   PIDS_DIR)
-    utils.sys_call(cmd, sig=signal.SIGTERM, sig_func=postgresql_terminate)
-    return True
+    try:
+        cmd = 'pg_ctl -D %s -l %s -o \\"-k %s\\" start' % (
+            POSTGRESQL_PGDATA_PATH, POSTGRESQL_LOGFILE, PIDS_DIR)
+        utils.sys_call(cmd, sig=signal.SIGTERM, sig_func=postgresql_terminate)
+    except Exception as e:
+        logger.warn(e)
+        return False
+    else:
+        return True
 
 
 def postgresql_stop(quiet=True):
@@ -408,6 +413,8 @@ def rsync(args):
 
 
 def trash(args=None):
+    named = getattr(args, 'named')
+    named = '%s-%s' % (named[0], NOW) if named else NOW
     supervisord_terminate()
     celerybeat_terminate()
     celeryd_terminate()
@@ -415,7 +422,7 @@ def trash(args=None):
     mongodb_terminate()
     postgresql_stop()
 
-    dest = pjoin(TRASH_DIR, 'metrique-%s' % NOW)
+    dest = pjoin(TRASH_DIR, 'metrique-%s' % named)
     logger.warn('Trashing existing .metrique -> %s' % dest)
     for f in [ETC_DIR, PIDS_DIR, LOGS_DIR, CACHE_DIR,
               TMP_DIR, MONGODB_DIR, POSTGRESQL_PGDATA_PATH]:
@@ -496,6 +503,8 @@ def _deploy_extras(args):
     utils.sys_call('%s install -U matplotlib' % pip) if _ else None
     _ = _all or args.dulwich
     utils.sys_call('%s install -U dulwich' % pip) if _ else None
+    _ = _all or args.paramiko
+    utils.sys_call('%s install -U paramiko' % pip) if _ else None
 
 
 def deploy(args):
@@ -577,20 +586,19 @@ def default_conf(path, template):
 def firstboot(args=None, force=False):
     # make sure we have some basic defaults configured in the environment
     force = getattr(args, 'force', force)
-    cmd = getattr(args, 'command', 'metrique')
-    if cmd == 'metrique':
+    cmd = getattr(args, 'command', ['metrique'])
+    if 'metrique' in cmd:
         sys_firstboot(force)
         pyclient_firstboot(force)
-    elif cmd == 'mongodb':
+    if 'mongodb' in cmd:
         mongodb_firstboot(force)
-    elif cmd == 'postgresql':
+    if 'postgresql' in cmd:
         postgresql_firstboot(force)
-    elif cmd == 'supervisord':
+    if 'supervisord' in cmd:
         supervisord_firstboot(force)
-    elif cmd == 'nginx':
+    if 'nginx' in cmd:
         nginx_firstboot(force)
-    else:
-        raise ValueError("Unknown firstboot command: %s" % cmd)
+    logger.info('Firstboot complete.')
 
 
 def postgresql_firstboot(force=False):
@@ -610,11 +618,14 @@ def postgresql_firstboot(force=False):
         time.sleep(1)
         cmd = 'createdb -h 127.0.0.1'
         utils.sys_call(cmd)
-        cmd = 'psql -h 127.0.0.1 -c "%s"'
+        cmd = 'psql -h 127.0.0.1 -c \\"%s\\"'
         P = PASSWORD
-        user = "CREATE USER admin WITH PASSWORD '%s' SUPERUSER;" % P
-        db = "CREATE DATABASE admin WITH OWNER admin;"
-        [utils.sys_call(cmd % sql) for sql in (user, db)]
+        admin_db = "CREATE DATABASE admin WITH OWNER admin;"
+        admin_user = "CREATE USER admin WITH PASSWORD \\'%s\\' SUPERUSER;" % P
+        test_db = "CREATE DATABASE test WITH OWNER test;"
+        test_user = "CREATE USER test WITH PASSWORD \\'%s\\' SUPERUSER;" % P
+        [utils.sys_call(cmd % sql) for sql in (admin_user, admin_db,
+                                               test_user, test_db)]
     finally:
         if started:
             postgresql_stop()
@@ -778,6 +789,8 @@ def main():
     _deploy.add_argument(
         '--dulwich', action='store_true', help='install dulwich')
     _deploy.add_argument(
+        '--paramiko', action='store_true', help='install paramiko')
+    _deploy.add_argument(
         '--trash', action='store_true', help='fresh install (rm old virtenv)')
     _deploy.set_defaults(func=deploy)
 
@@ -801,11 +814,13 @@ def main():
 
     # Trash existing metrique installation
     _trash = _sub.add_parser('trash')
+    _trash.add_argument('named', nargs='*')
     _trash.set_defaults(func=trash)
 
     # Clean-up routines
     _firstboot = _sub.add_parser('firstboot')
     _firstboot.add_argument('command',
+                            nargs='+',
                             choices=['metrique', 'mongodb', 'postgresql',
                                      'celery', 'supervisord', 'nginx'])
     _firstboot.add_argument('-f', '--force', action='store_true')

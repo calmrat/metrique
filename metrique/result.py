@@ -29,10 +29,13 @@ from datetime import timedelta
 
 try:
     import numpy as np
+    NUMPY_NUMERICAL = [np.float16, np.float32, np.float64, np.float128,
+                       np.int8, np.int16, np.int32, np.int64]
     HAS_NUMPY = True
 except ImportError:
-    HAS_NUMPY = False
     logger.warn('numpy module is not installed')
+    NUMPY_NUMERICAL = []
+    HAS_NUMPY = False
 
 try:
     from pandas import DataFrame, Series
@@ -45,10 +48,7 @@ except ImportError:
     DataFrame = object  # load as object, we'll fail at runtime
     logger.warn('pandas module is not installed')
 
-from metrique.utils import dt2ts, utcnow, ts2dt
-
-NUMPY_NUMERICAL = [np.float16, np.float32, np.float64, np.float128,
-                   np.int8, np.int16, np.int32, np.int64]
+from metrique.utils import dt2ts, utcnow, ts2dt, is_null
 
 
 def filtered(f):
@@ -80,6 +80,7 @@ class Result(DataFrame):
             raise RuntimeError("`pip install pandas` required")
         if not HAS_NUMPY:
             raise RuntimeError("`pip install numpy` required")
+        self.validate_data(data)
         super(Result, self).__init__(data)
         # The converts are here so that None is converted to NaT
         self.to_datetime('_start')
@@ -452,3 +453,23 @@ class Result(DataFrame):
 
     def notempty(self, field):
         return self[field].astype(bool)
+
+    def validate_data(self, data):
+        err = False
+        msg = ''
+        if is_null(data, except_=False):
+            err = True
+            msg = 'data can not be null!'
+        elif not isinstance(data, (list, tuple, Result)):
+            err = True
+            msg = 'expected a list of dictionaries; got %s' % type(data)
+        elif '_start' not in data[0].keys():
+            err = True
+            msg = '_start must be defined; got %s' % data[0]
+        elif '_end' not in data[0].keys():
+            err = True
+            msg = '_end must be defined; got %s' % data[0]
+        if err:
+            raise RuntimeError(msg)
+        else:
+            return True

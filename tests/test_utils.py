@@ -11,11 +11,10 @@ from datetime import datetime
 import os
 import pytz
 import simplejson as json
-import shutil
 import string
 from time import time, sleep
 
-from .utils import is_in, set_env
+from utils import is_in, set_env
 
 env = set_env()
 exists = os.path.exists
@@ -306,7 +305,7 @@ def test_debug_setup(capsys):
         text = ''.join(lf).strip()
         assert text == '*'
     finally:
-        remove_file(_lf, quiet=True)
+        remove_file(_lf)
 
 
 def test_daemonize():
@@ -315,14 +314,22 @@ def test_daemonize():
     assert exists(daemon)
     python = sys_call('which python')
     sys_call('%s %s' % (python, daemon), bg=True)
-    sleep(1)
+    k = 3
     pid_file = os.path.join(cache_dir, 'sleeper.pid')
-    pid = get_pid(pid_file)
-    running = clear_stale_pids(pid, cache_dir, 'sleeper')
+    while k:
+        sleep(.5)
+        pid = get_pid(pid_file)
+        running = clear_stale_pids(pid, cache_dir, 'sleeper')
+        if running:
+            break
     assert running
     terminate(pid)
-    sleep(1)
-    running = clear_stale_pids(pid, cache_dir, 'sleeper')
+    k = 3
+    while k:
+        sleep(.5)
+        running = clear_stale_pids(pid, cache_dir, 'sleeper')
+        if not running:
+            break
     assert not running
     assert not exists(pid_file)
 
@@ -462,11 +469,11 @@ def test_get_timezone_converter():
 
 
 def test_git_clone():
+    # FIXME: THIS ONE IS CAUSING SOME INTERESTING PROBLEMS?
     from metrique.utils import git_clone, safestr, remove_file
     uri = 'https://github.com/kejbaly2/tornadohttp.git'
     local_path = os.path.join(cache_dir, safestr(uri))
-    if exists(local_path):
-        shutil.rmtree(local_path)
+    remove_file(local_path, force=True)
 
     _t = time()
     repo = git_clone(uri, pull=False, reflect=False, cache_dir=cache_dir)
@@ -523,20 +530,20 @@ def test_is_true():
         assert true is False
 
 
-def test_json_encode():
+def test_json_encode_default():
     ' args: obj '
-    from metrique.utils import json_encode
+    from metrique.utils import json_encode_default
 
     now = datetime.utcnow()
 
     dct = {"a": now, "b": "1"}
 
-    _dct = json.loads(json.dumps(dct, default=json_encode))
+    _dct = json.loads(json.dumps(dct, default=json_encode_default))
     assert isinstance(_dct["a"], float)
 
-    dct = {"a": json_encode}
+    dct = {"a": json_encode_default}
     try:
-        _dct = json.dumps(dct, default=json_encode)
+        _dct = json.dumps(dct, default=json_encode_default)
     except TypeError:
         pass
 
@@ -608,7 +615,7 @@ def test_list2str():
 def test_load_file():
     # also tests utils.{load_pickle, load_csv, load_json, load_shelve}
     from metrique.utils import load_file
-    files = ['test.csv', 'test.json', 'test.pickle', 'test.sqlite']
+    files = ['test.csv', 'test.json', 'test.pickle']
     for f in files:
         print 'Loading %s' % f
         path = os.path.join(fixtures, f)
@@ -822,8 +829,8 @@ def test_remove_file():
     assert remove_file(path) == path
     assert not exists(path)
     open(path, 'w').close()
-    assert remove_file(path, quiet=True) == path
-    assert remove_file('DOES_NOT_EXIST', quiet=True) == []
+    assert remove_file(path) == path
+    assert remove_file('DOES_NOT_EXIST') == []
     # FIXME: test removing dirs and nested dirs
     # and try: remove dir without force...
 
@@ -906,6 +913,7 @@ def test_sys_call():
 
 
 def test_terminate():
+    #raise NotImplementedError
     from metrique.utils import terminate, sys_call, get_pid, clear_stale_pids
     import signal
 
@@ -980,12 +988,12 @@ def test_urlretrieve():
     uri = 'https://mysafeinfo.com/api/data?list=days&format=csv'
     saveas = os.path.join(cache_dir, 'test_download.csv')
 
-    remove_file(saveas, quiet=True)
+    remove_file(saveas)
     _path = urlretrieve(uri, saveas=saveas, cache_dir=cache_dir)
     assert _path == saveas
     assert exists(_path)
     assert os.stat(_path).st_size > 0
-    remove_file(_path, quiet=True)
+    remove_file(_path)
 
 
 def test_utcnow():

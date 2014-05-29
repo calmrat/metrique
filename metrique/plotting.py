@@ -25,7 +25,7 @@ try:
 except ImportError:
     HAS_MATPLOTLIB = False
 
-from metrique.utils import utcnow
+from metrique.utils import utcnow, read_file
 
 # Some nice colors, stored here for convenience.
 COLORS = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd',
@@ -474,7 +474,7 @@ class BarPlot(object):
 
 
 class Report(object):
-    def __init__(self, title):
+    def __init__(self, title, plot_template=None):
         '''
         Create a report in the current working directory. The report will be
         called `{title}.html`.  Also a directory `{title}_files` will be
@@ -490,6 +490,8 @@ class Report(object):
         '''
         if not HAS_MATPLOTLIB:
             raise RuntimeError("`pip install matplotlib` required")
+        plot_template = plot_template or 'templates/plotting_bootstrap.html'
+        self._template = read_file(plot_template)
         self.title = title
         self.body = ''
         self.sidebar = ''
@@ -546,53 +548,7 @@ class Report(object):
         Writes the report to a file.
         '''
         with open(self.title + '.html', 'w') as f:
-            f.write(TEMPLATE.format(title=self.title,
-                                    body=self.body,
-                                    sidebar=self.sidebar))
+            f.write(self._template.format(title=self.title,
+                                          body=self.body,
+                                          sidebar=self.sidebar))
         plt.ion()
-
-
-TEMPLATE = '''<!DOCTYPE html>
-<html>
-<head>
-<title>{title}</title>
-<!-- Bootstrap core CSS -->
-<link
- href="https://netdna.bootstrapcdn.com/bootstrap/3.0.2/css/bootstrap.min.css"
- rel="stylesheet">
-</head>
-<style>
-body {{
-    padding-bottom: 40px;
-    padding-top: 60px;
-}}
-.nav-fixed {{
-    position:fixed;
-}}
-</style>
-
-<body>
-<div class="container">
-
-<div class="col-xs-6 col-sm-3" id="sidebar" role="navigation">
-<div class="list-group nav-fixed">
-{sidebar}
-</div>
-</div><!--/span-->
-
-<div class="col-xs-12 col-sm-9">
-{body}
-</div><!--/span-->
-
-</div><!--/.container-->
-
-<!-- Bootstrap core JavaScript
-================================================== -->
-<!-- Placed at the end of the document so the pages load faster -->
-<script src="https://code.jquery.com/jquery-1.10.2.min.js"></script>
-<script
- src="https://netdna.bootstrapcdn.com/bootstrap/3.0.2/js/bootstrap.min.js">
-</script>
-</body>
-</html>
-'''

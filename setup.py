@@ -35,6 +35,7 @@ __requires__ = [
     'python_dateutil',
     'pytz'
     'simplejson',
+    'sqlalchemy (>=0.9.4)',
     'virtualenv (>=1.11)',
 ]
 __irequires__ = [
@@ -45,6 +46,7 @@ __irequires__ = [
     'python_dateutil',
     'pytz',
     'simplejson',
+    'sqlalchemy>=0.9.4',
     'virtualenv>=1.11',
 ]
 pip_src = 'https://pypi.python.org/packages/source'

@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>{title}</title>
+<!-- Bootstrap core CSS -->
+<link
+ href="https://netdna.bootstrapcdn.com/bootstrap/3.0.2/css/bootstrap.min.css"
+ rel="stylesheet">
+</head>
+<style>
+body {{
+    padding-bottom: 40px;
+    padding-top: 60px;
+}}
+.nav-fixed {{
+    position:fixed;
+}}
+</style>
+
+<body>
+<div class="container">
+
+<div class="col-xs-6 col-sm-3" id="sidebar" role="navigation">
+<div class="list-group nav-fixed">
+{sidebar}
+</div>
+</div><!--/span-->
+
+<div class="col-xs-12 col-sm-9">
+{body}
+</div><!--/span-->
+
+</div><!--/.container-->
+
+<!-- Bootstrap core JavaScript
+================================================== -->
+<!-- Placed at the end of the document so the pages load faster -->
+<script src="https://code.jquery.com/jquery-1.10.2.min.js"></script>
+<script
+ src="https://netdna.bootstrapcdn.com/bootstrap/3.0.2/js/bootstrap.min.js">
+</script>
+</body>
+</html>
