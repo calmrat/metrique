@@ -96,6 +96,7 @@ json_encoder = json.JSONEncoder()
 
 DEFAULT_PKGS = ['metrique.cubes']
 
+INVALID_USERNAME_RE = re.compile('[^a-zA-Z_]')
 SHA1_HEXDIGEST = lambda o: sha1(repr(o)).hexdigest()
 
 HOME_DIR = os.environ.get('METRIQUE_HOME')
@@ -372,36 +373,33 @@ def dt2ts(dt, drop_micro=False):
     if is_null(dt, except_=False):
         return None
     elif isinstance(dt, (int, long, float)):  # its a ts already
-        ts = dt
+        ts = float(dt)
     elif isinstance(dt, basestring):  # convert to datetime first
         parsed_dt = dt_parse(dt)
         ts = dt2ts(parsed_dt)
     else:
-        # FIXME: microseconds/milliseconds are being dropped!
-        # see: http://stackoverflow.com/questions/7031031
-        # for possible solution?
-        ts = timegm(dt.timetuple())
+        # keep micros; see: http://stackoverflow.com/questions/7031031
+        ts = ((
+            timegm(dt.timetuple()) * 1000.0) +
+            (dt.microsecond / 1000.0)) / 1000.0
+        return ts
     if drop_micro:
         return float(int(ts))
     else:
         return float(ts)
 
 
-def file_is_empty(path, remove=False, except_=True, msg=None):
-    err = False
-    if not os.path.isfile(path):
-        err = True
-        msg = '%s is not a file!' % path
+def file_is_empty(path, remove=False, msg=None):
+    path = to_encoding(path)
+    is_true(os.path.isfile(path), '"%s" is not a file!' % path)
     if bool(os.stat(path).st_size == 0):
-        err = True
+        logger.info("%s is empty" % path)
         if remove:
+            logger.info("... %s removed" % path)
             remove_file(path)
-    if err and except_:
-        raise RuntimeError(msg)
-    elif err:
-        return False
-    else:
         return True
+    else:
+        return False
 
 
 def get_cube(cube, init=False, pkgs=None, cube_paths=None, config=None,
@@ -929,7 +927,7 @@ def remove_file(path, force=False):
         else:
             os.remove(path)
     else:
-        logger.warn('[remove] %s not found' % path)
+        logger.warn('%s not found' % path)
     return path
 
 
@@ -1116,7 +1114,9 @@ def _get_datetime(value, tz_aware=None):
         if isinstance(value, datetime):
             return value.replace(tzinfo=pytz.UTC)
         else:
-            return datetime.fromtimestamp(value, tz=pytz.UTC)
+            value = datetime.fromtimestamp(value, tz=pytz.UTC)
+            value.replace(tzinfo=pytz.UTC)
+            return value
     else:
         if isinstance(value, datetime):
             if value.tzinfo:
@@ -1152,13 +1152,46 @@ def urlretrieve(uri, saveas=None, retries=3, cache_dir=None):
         except Exception as e:
             retries -= 1
             logger.warn(
-                'Failed getting %s: %s (retry:%s in 1s)' % (
+                'Failed getting uri "%s": %s (retry:%s in 1s)' % (
                     uri, e, retries))
-            time.sleep(1)
+            time.sleep(.2)
             continue
         else:
             break
+    else:
+        raise RuntimeError("Failed to retrieve uri: %s" % uri)
     return _path
+
+
+def validate_password(password):
+    is_str = isinstance(password, basestring)
+    char_8_plus = password and len(password) >= 8
+    ok = all((is_str, char_8_plus))
+    if not ok:
+        raise ValueError("Invalid password; must be len(string) >= 8")
+    return password
+
+
+def validate_roles(roles, valid_roles):
+    roles = set(str2list(roles, map_=unicode))
+    if not roles <= set(valid_roles):
+        raise ValueError("invalid roles %s, try: %s" % (roles, valid_roles))
+    return sorted(roles)
+
+
+def validate_username(username, restricted_names=None):
+    if not isinstance(username, basestring):
+        raise TypeError("username must be a string")
+    elif INVALID_USERNAME_RE.search(username):
+        raise ValueError(
+            "Invalid username '%s'; "
+            "lowercase, ascii alpha [a-z_] characters only!" % username)
+    else:
+        username = username.lower()
+    if restricted_names and username in restricted_names:
+        raise ValueError(
+            "username '%s' is not permitted" % username)
+    return username
 
 
 def virtualenv_deactivate():
@@ -1197,6 +1230,8 @@ def virtualenv_activate(virtenv=None):
         raise OSError("Invalid virtual env; %s not found" % activate_this)
 
 
-def write_file(path, value, mode='w'):
+def write_file(path, value, mode='w', force=False):
+    if os.path.exists(path) and mode == 'w' and not force:
+        raise RuntimeError('file exists, use different mode or force=True')
     with open(path, mode) as f:
         f.write(unicode(str(value)))

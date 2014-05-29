@@ -141,7 +141,7 @@ try:
     from sqlalchemy import Index, Column, Integer, DateTime
     from sqlalchemy import Float, BigInteger, Boolean, UnicodeText
     from sqlalchemy import TypeDecorator
-    from sqlalchemy import select, insert, update, desc
+    from sqlalchemy import select, update, desc
     from sqlalchemy import inspect
     from sqlalchemy.orm import sessionmaker
     from sqlalchemy.ext.declarative import declarative_base
@@ -220,18 +220,19 @@ except ImportError:
     CoerceUTF8 = None
 finally:
     RESERVED_WORDS = {'end'}
+    RESERVED_USERNAMES = {'admin', 'test', 'metrique'}
 
 from time import time
+import warnings
 
 from metrique import __version__
 from metrique.utils import get_cube, utcnow, jsonhash, load_config, load
 from metrique.utils import batch_gen, ts2dt, dt2ts, configure, to_encoding
-from metrique.utils import debug_setup, is_null, is_true, str2list
+from metrique.utils import debug_setup, is_null, is_true, str2list, list2str
+from metrique.utils import validate_roles, validate_password, validate_username
 from metrique import parse
 from metrique.result import Result
 
-# if HOME environment variable is set, use that
-# useful when running 'as user' with root (supervisord)
 ETC_DIR = os.environ.get('METRIQUE_ETC')
 CACHE_DIR = os.environ.get('METRIQUE_CACHE') or '/tmp'
 DEFAULT_CONFIG = os.path.join(ETC_DIR, 'metrique.json')
@@ -249,10 +250,16 @@ class MetriqueObject(MutableMapping):
     _VERSION = 0
 
     def __init__(self, _oid, _id=None, _hash=None, _start=None, _end=None,
-                 _e=None, _v=None, _as_datetime=True, **kwargs):
-        self._as_datetime = _as_datetime
+                 _e=None, _v=None, _as_datetime=True, id=None, **kwargs):
+        # NOTE: we completely ignore incoming 'id' keys!
+        # id is RESERVED and ALWAYS expected to be 'autoincrement'
+        # upon insertion into DB.
         if _oid is None:
             raise RuntimeError("_oid can not be None!")
+        if not is_null(id, except_=False):
+            warnings.warn(
+                'one or more non-null "id" keys detected, ignoring them!')
+        self._as_datetime = _as_datetime
         _start = _start or utcnow(as_datetime=_as_datetime)
         _start = ts2dt(_start) if _as_datetime else dt2ts(_start)
         _e = _e if _e is not None else {}
@@ -430,9 +437,8 @@ class MetriqueContainer(MutableMapping):
         * empty strings -> None
 
     '''
-    INVALID_USERNAME_RE = re.compile('[^a-zA-Z_]')
-    RESTRICTED_NAMES = []
     _object_cls = MetriqueObject
+    _proxy = None
     _proxy_kwargs = None
     _table = None
     _version = 0
@@ -440,14 +446,14 @@ class MetriqueContainer(MutableMapping):
     config_file = DEFAULT_CONFIG
     config_key = 'metrique'
     default_fields = None
+    fields = None
     name = None
     store = None
 
-    def __init__(self, name, _version=0, objects=None,
+    def __init__(self, name=None, _version=0, objects=None,
                  cache_dir=CACHE_DIR, proxy=None, proxy_kwargs=None,
                  batch_size=999, config=None, config_key=None):
-        is_true(name, "name argument must be non-null")
-        self.name = unicode(name)
+        self.name = name or MetriqueContainer.name
         self._version = int(_version or self._version or 0)
         self.default_fields = deepcopy(self.default_fields) or {}
         self.store = self.store or {}
@@ -487,9 +493,10 @@ class MetriqueContainer(MutableMapping):
         self._persist_path = persist_path
 
         self._proxy_kwargs = deepcopy(proxy_kwargs or {})
-        if not proxy:
-            proxy = SQLAlchemyProxy(db=self.name)
-        self.set_proxy(proxy, quiet=True)
+        if proxy or self.name:
+            if not proxy:
+                proxy = SQLAlchemyProxy(db=self.name)
+            self.set_proxy(proxy, quiet=True)
 
     def __getitem__(self, key):
         if isinstance(key, slice):
@@ -520,18 +527,6 @@ class MetriqueContainer(MutableMapping):
     def __repr__(self):
         return repr(self.store)
 
-    def _encode(self, item):
-        if isinstance(item, self._object_cls):
-            pass
-        elif isinstance(item, (MutableMapping, dict)):
-            if self._version > item.get('_v', 0):
-                item['_v'] = self._version
-            item = self._object_cls(**item)
-        else:
-            raise TypeError(
-                "object values must be dict-like; got %s" % type(item))
-        return item
-
     def _apply_default_fields(self, fields):
         for k, v in self.default_fields.iteritems():
             fields[k] = v if not k in fields else fields[k]
@@ -558,6 +553,18 @@ class MetriqueContainer(MutableMapping):
         '''
         table = self.proxy.get_table(self.name)
         return self.proxy.count(table=table, query=query, date=date)
+
+    def _encode(self, item):
+        if isinstance(item, self._object_cls):
+            pass
+        elif isinstance(item, (MutableMapping, dict)):
+            if self._version > item.get('_v', 0):
+                item['_v'] = self._version
+            item = self._object_cls(**item)
+        else:
+            raise TypeError(
+                "object values must be dict-like; got %s" % type(item))
+        return item
 
     def extend(self, items):
         [self.add(i) for i in items]
@@ -672,38 +679,6 @@ class MetriqueContainer(MutableMapping):
         else:
             raise RuntimeError("proxy can not be null!")
         return None
-
-    def _validate_password(self, password):
-        is_str = isinstance(password, basestring)
-        char_8_plus = len(password) >= 8
-        ok = all((is_str, char_8_plus))
-        if not ok:
-            raise ValueError("Invalid password; must be len(string) >= 8")
-        return password
-
-    def _validate_username(self, username):
-        if not isinstance(username, basestring):
-            raise TypeError("username must be a string")
-        elif self.INVALID_USERNAME_RE.search(username):
-            raise ValueError(
-                "Invalid username '%s'; "
-                "lowercase, ascii alpha [a-z_] characters only!" % username)
-        elif username in self.RESTRICTED_NAMES:
-            raise ValueError(
-                "username '%s' is not permitted" % username)
-        else:
-            return username.lower()
-
-    def _validate_roles(self, roles):
-        if isinstance(roles, basestring):
-            roles = [roles]
-        else:
-            roles = list(roles)
-        roles = set(map(str, roles))
-        if not roles <= set(self.VALID_SHARE_ROLES):
-            raise ValueError("invalid roles %s, try: %s" % (
-                roles, self.VALID_SHARE_ROLES))
-        return sorted(roles)
 
     def values(self):
         return self.store.values()
@@ -825,7 +800,6 @@ class BaseClient(object):
         log2file = self.gconfig.get('log2file')
         log_dir = self.gconfig.get('log_dir', '')
         log_file = self.gconfig.get('log_file', '')
-        log_file = os.path.join(log_dir, log_file)
         debug_setup(logger='metrique', level=level, log2stdout=log2stdout,
                     log_format=log_format, log2file=log2file,
                     log_dir=log_dir, log_file=log_file)
@@ -1453,8 +1427,8 @@ class MongoDBContainer(MetriqueContainer):
         username = username or self.config.get('username')
         if username and not password:
             raise RuntimeError('must specify password!')
-        username = self._validate_username(username)
-        password = self._validate_password(password)
+        username = validate_username(username, self.RESTRICTED_NAMES)
+        password = validate_password(password)
         logger.info('Registering new user %s' % username)
         db = self.proxy.get_db(username)
         db.add_user(username, password,
@@ -1465,7 +1439,7 @@ class MongoDBContainer(MetriqueContainer):
 
     def user_remove(self, username, clear_db=False):
         username = username or self.config.get('username')
-        username = self._validate_username(username)
+        username = validate_username(username, self.RESTRICTED_NAMES)
         logger.info('Removing user %s' % username)
         db = self.proxy.get_db(username)
         db.remove_user(username)
@@ -1502,8 +1476,8 @@ class MongoDBContainer(MetriqueContainer):
         '''
         Give cube access rights to another user
         '''
-        with_user = self._validate_username(with_user)
-        roles = self._validate_roles(roles or ['read'])
+        with_user = validate_username(with_user, self.RESTRICTED_NAMES)
+        roles = validate_roles(roles or ['read'], self.VALID_SHARE_ROLES)
         _cube = self.proxy.get_db(owner)
         logger.info(
             '[%s] Sharing cube with %s (%s)' % (_cube, with_user, roles))
@@ -2004,16 +1978,19 @@ class SQLAlchemyProxy(object):
     _meta = None
     _table = None
     RESERVED_WORDS = None
+    RESERVED_USERNAMES = None
     TYPE_MAP = None
+    VALID_SHARE_ROLES = ['SELECT', 'INSERT', 'UPDATE', 'DELETE']
 
     def __init__(self, db, debug=None, cache_dir=None,
                  config_key=None, config_file=None, dialect=None,
                  driver=None, host=None, port=None,
                  username=None, password=None,
-                 connect_args=None, shared_base=False, **kwargs):
+                 connect_args=None, **kwargs):
         if not HAS_SQLALCHEMY:
             raise RuntimeError('`pip install sqlalchemy` required')
         self.RESERVED_WORDS = deepcopy(RESERVED_WORDS)
+        self.RESERVED_USERNAMES = deepcopy(RESERVED_USERNAMES)
         self.TYPE_MAP = deepcopy(TYPE_MAP)
 
         is_true(db, 'db can not be null')
@@ -2051,9 +2028,7 @@ class SQLAlchemyProxy(object):
                                 update=self.config)
         self._debug_setup_sqlalchemy_logging()
 
-        self.engine_init()
-        self.session_init()
-        self.base_init(shared=shared_base)
+        self.initialize()
 
     def autoschema(self, objects, fast=True):
         is_true(objects, 'object samples can not be null')
@@ -2084,8 +2059,7 @@ class SQLAlchemyProxy(object):
                 break
         return schema
 
-    def base_init(self, shared=False, bind=None):
-        is_true(self._Base is None, 'Base is already defined.')
+    def base_init(self, shared=True, bind=None):
         bind = bind or self.engine
         if shared:
             Base = sqla_Base
@@ -2097,12 +2071,13 @@ class SQLAlchemyProxy(object):
         self._Base = Base
         return self._Base
 
-    def columns(self, table, reflect=False):
+    def columns(self, table, columns=None, reflect=False):
         table = self.get_table(table)
-        if reflect:
-            columns = [c for c in table.columns]
-        else:
+        columns = sorted(str2list(columns))
+        if not columns:
             columns = sorted(c.name for c in table.columns)
+        if reflect:
+            columns = [c for c in table.columns if c.name in columns]
         return columns
 
     def drop_tables(self, tables):
@@ -2117,7 +2092,7 @@ class SQLAlchemyProxy(object):
             return
         logger.warn("Permanently dropping %s" % tables)
         [Table(n, self._Base.metadata, autoload=True).drop() for n in tables]
-        self.base_init()
+        self.base_init(shared=False)
 
     def _debug_setup_sqlalchemy_logging(self):
         level = self.config.get('debug')
@@ -2132,7 +2107,8 @@ class SQLAlchemyProxy(object):
 
     def engine_dispose(self):
         if self._engine:
-            # dispose
+            if self.session:
+                self.session_dispose()
             self._engine.dispose()
             return True
         else:
@@ -2152,6 +2128,8 @@ class SQLAlchemyProxy(object):
                                   driver=driver, dialect=dialect,
                                   username=username, password=password,
                                   connect_args=connect_args)
+        _uri = re.sub(':[^:]+@', ':***@', uri)
+        logger.info("Initializing engine: %s" % _uri)
         if dialect is None or re.search('sqlite', uri):
             uri, _kwargs = self._sqla_sqlite3(uri)
         elif re.search('teiid', uri):
@@ -2212,9 +2190,6 @@ class SQLAlchemyProxy(object):
                     result = result
         engine.dispose()
         return result
-
-    def exists(self, table):
-        return table in self.proxy.ls()
 
     @staticmethod
     def _gen_id(context):
@@ -2299,10 +2274,15 @@ class SQLAlchemyProxy(object):
         engine = engine or self.engine
         return inspect(engine)
 
+    def initialize(self):
+        self.engine_init()
+        self.session_init()
+        self.base_init(shared=False)
+
     def _load_sql(self, sql):
         # load sql kwargs from instance config
         engine = self.get_engine()
-        rows = engine.execute(sql)
+        rows = self.session_auto.execute(sql)
         objects = [dict(row) for row in rows]
         engine.dispose()
         return objects
@@ -2337,24 +2317,29 @@ class SQLAlchemyProxy(object):
 
     def session_dispose(self):
         self._session.close()
-        del self._session
         self._session = None
 
-    def session_init(self, autoflush=False, autocommit=False,
-                     expire_on_commit=True, cached=True, **kwargs):
+    def session_init(self, autoflush=True, autocommit=False,
+                     expire_on_commit=True, fresh=False, **kwargs):
         if not (self._engine and self._sessionmaker):
             raise RuntimeError("engine is not initiated")
-        self._session = self._sessionmaker(
+        session = self._sessionmaker(
             autoflush=autoflush, autocommit=autocommit,
             expire_on_commit=expire_on_commit,
             bind=self.engine, **kwargs)
-        return self._session
+        if not fresh:
+            self._session = session
+        return session
 
     @property
     def session(self):
         if not self._session:
             self.session_init()
         return self._session
+
+    @property
+    def session_auto(self):
+        return self.session_init(autocommit=True)
 
     def _sqla_sqlite3(self, uri, isolation_level="READ UNCOMMITTED"):
         isolation_level = isolation_level or "READ UNCOMMITTED"
@@ -2491,7 +2476,7 @@ class SQLAlchemyProxy(object):
             table = self.get_table(table)
             query = sql_count
             query = query.select_from(table)
-        return self.session.execute(query).scalar()
+        return self.session_auto.execute(query).scalar()
 
     def deptree(self, table, field, oids, date=None, level=None):
         '''
@@ -2533,17 +2518,19 @@ class SQLAlchemyProxy(object):
         query = self._parse_query(table=table, query=query, date=date,
                                   fields=fields, alias='anon_x',
                                   distinct=True)
-        ret = [r[0] for r in self.session.execute(query)]
+        ret = [r[0] for r in self.session_auto.execute(query)]
         if ret and isinstance(ret[0], list):
             ret = reduce(add, ret, [])
         return sorted(set(ret))
 
     def drop(self, table, quiet=True):
         table = self.get_table(table)
-        self.session_dispose()
         result = table.drop(self.engine)
         self.session_init()
         return result
+
+    def exists(self, table):
+        return table in self.proxy.ls()
 
     def find(self, table, query=None, fields=None, date=None, sort=None,
              descending=False, one=False, raw=False, limit=None,
@@ -2561,7 +2548,7 @@ class SQLAlchemyProxy(object):
             else:
                 query = query.order_by(order_by)
 
-        rows = self.session.execute(query)
+        rows = self.session_auto.execute(query)
         if scalar:
             return rows.scalar()
         elif as_cursor:
@@ -2597,14 +2584,72 @@ class SQLAlchemyProxy(object):
         logger.debug("last %s.%s: %s" % (table, field, last))
         return last
 
-    def insert(self, table, objects, commit=True):
+    @staticmethod
+    def _index_default_name(columns, name=None):
+        if name:
+            ix = name
+        elif isinstance(columns, basestring):
+            ix = columns
+        elif isinstance(columns, (list, tuple)):
+            ix = '_'.join(columns)
+        else:
+            raise ValueError(
+                "unable to get default name from columns: %s" % columns)
+        # prefix ix_ to all index names
+        ix = re.sub('^ix_', '', ix)
+        ix = 'ix_%s' % ix
+        return ix
+
+    def index(self, table, fields, name=None, force=False, **kwargs):
+        '''
+        Build a new index on a cube.
+
+        Examples:
+            + index('field_name')
+
+        :param fields: A single field or a list of (key, direction) pairs
+        :param name: (optional) Custom name to use for this index
+        :param background: MongoDB should create in the background
+        :param collection: cube name
+        :param owner: username of cube owner
+        '''
+        _table = self.get_table(table)
+        _ix = self.index_list().get(table)
+        name = self._index_default_name(fields, name)
+        fields = parse.parse_fields(fields)
+        fields = self.columns(_table, fields, reflect=True)
+        if name in _ix and not force:
+            logger.info('Index exists %s: %s' % (name, fields))
+            result = None
+        else:
+            index = Index(name, *fields)
+            logger.info('Writing new index %s: %s' % (name, fields))
+            result = index.create(self.engine)
+            self.session.commit()
+        return result
+
+    def index_list(self):
+        '''
+        List all cube indexes
+
+        :param collection: cube name
+        :param owner: username of cube owner
+        '''
+        logger.info('Listing indexes')
+        _i = self.get_inspector()
+        _ix = {}
+        for tbl in _i.get_table_names():
+            _ix.setdefault(tbl, [])
+            for ix in _i.get_indexes(tbl):
+                _ix[tbl].append(ix)
+        return _ix
+
+    def insert(self, table, objects, session=None):
+        session = session or self.session
         table = self.get_table(table)
         objects = objects if isinstance(objects, (list, tuple)) else [objects]
-        objects = MetriqueContainer(to_encoding(utcnow()),
-                                    objects=objects).values()
-        self.session.execute(table.insert(), objects)
-        if commit:
-            self.session.commit()
+        objects = MetriqueContainer(objects=objects).values()
+        session.execute(table.insert(), objects)
 
     def ls(self, startswith=None, reflect=False):
         '''
@@ -2623,7 +2668,24 @@ class SQLAlchemyProxy(object):
         else:
             return cubes
 
-    def upsert(self, table, objects, commit=True, autosnap=None):
+    def share(self, table, with_user, roles=None):
+        '''
+        Give cube access rights to another user
+
+        Not, this method is NOT supported by SQLite3!
+        '''
+        _table = self.get_table(table)
+        is_true(_table is not None, 'invalid table: %s' % table)
+        with_user = validate_username(with_user)
+        roles = roles or ['SELECT']
+        roles = validate_roles(roles, self.VALID_SHARE_ROLES)
+        roles = list2str(roles)
+        logger.info('Sharing cube %s with %s (%s)' % (table, with_user, roles))
+        sql = 'GRANT %s ON %s TO %s' % (roles, table, with_user)
+        result = self.session_auto.execute(sql)
+        return result
+
+    def upsert(self, table, objects, autosnap=None):
         table = self.get_table(table)
         objects = objects if isinstance(objects, (list, tuple)) else [objects]
         objects = MetriqueContainer(to_encoding(utcnow()), objects=objects)
@@ -2644,6 +2706,7 @@ class SQLAlchemyProxy(object):
         logger.debug(
             'dup query completed in %s seconds (%s)' % (diff, len(dups)))
 
+        session = self.session_init(fresh=True)
         dup_k, snap_k = 0, 0
         inserts = []
         u = update(table)
@@ -2664,7 +2727,7 @@ class SQLAlchemyProxy(object):
                     inserts.append(dup)
                     # replace the existing _end:None object with new values
                     _id = o['_id']
-                    self.session.execute(
+                    session.execute(
                         u.where(table.c._id == _id).values(**o))
                     snap_k += 1
 
@@ -2673,22 +2736,47 @@ class SQLAlchemyProxy(object):
                     # don't try to set _id
                     _id = o.pop('_id')
                     assert _id == dup['_id']
-                    self.session.execute(
+                    session.execute(
                         u.where(table.c._id == _id).values(**o))
             else:
                 inserts.append(o)
 
         if inserts:
             t1 = time()
-            self.insert(table, inserts)
+            self.insert(table, inserts, session=session)
             diff = int(time() - t1)
             logger.debug('%s inserts in %s seconds' % (len(inserts), diff))
         logger.debug('%s existing objects snapshotted' % snap_k)
         logger.debug('%s duplicates not re-saved' % dup_k)
-        if commit:
-            self.session.flush()
-            self.session.commit()
+        session.flush()
+        session.commit()
         return sorted(map(unicode, _ids))
+
+    def user_register(self, username, password):
+        # FIXME: enable setting roles at creation time...
+        is_true((username and password), 'username and password required!')
+        u = validate_username(username, self.RESERVED_USERNAMES)
+        p = validate_password(password)
+        logger.info('Registering new user %s' % u)
+        # FIXME: make a generic method which runs list of sql statements
+        sql = ("CREATE USER %s WITH PASSWORD '%s';" % (u, p),
+               "CREATE DATABASE %s WITH OWNER %s;" % (u, u))
+        # can't run in a transaction...
+        cnx = self.engine.connect()
+        cnx.execution_options(isolation_level='AUTOCOMMIT')
+        result = [cnx.execute(s) for s in sql]
+        return result
+
+    def user_disable(self, table, username):
+        table = self.get_table(table)
+        is_true(username, 'username required')
+        logger.info('Disabling existing user %s' % username)
+        u = update('pg_database')
+        #update pg_database set datallowconn = false where datname = 'applogs';
+        sql = u.where(
+            "datname = '%s'" % username).values({'datallowconn': 'false'})
+        result = self.session_auto.execute(sql)
+        return result
 
 
 class SQLAlchemyContainer(MetriqueContainer):
@@ -2698,7 +2786,6 @@ class SQLAlchemyContainer(MetriqueContainer):
     config_file = DEFAULT_CONFIG
     config_key = 'sqlalchemy'
     name = None
-    VALID_SHARE_ROLES = ['SELECT', 'INSERT', 'UPDATE', 'DELETE']
     default_fields = {'_start': 1, '_end': 1, '_oid': 1}
     _proxy_kwargs = None
     _table = None
@@ -2707,7 +2794,8 @@ class SQLAlchemyContainer(MetriqueContainer):
                  proxy=None, proxy_kwargs=None,
                  schema=None, batch_size=None, cache_dir=None,
                  config_file=None, config_key=None, debug=None,
-                 _version=None, autoreflect=True, **kwargs):
+                 _version=None, autoreflect=True,
+                 **kwargs):
         if not HAS_SQLALCHEMY:
             raise RuntimeError('`pip install sqlalchemy` required')
 
@@ -2746,20 +2834,19 @@ class SQLAlchemyContainer(MetriqueContainer):
 
         self.__indexes = self.__indexes or {}
 
-    def add(self, item, pop_id=True):
-        # id is reserved as sql primary key
-        # let sqlalchemy add 'id'; doc should already have _oid set
-        # and _id will be set automatically
-        if pop_id and 'id' in item:
-            item.pop('id')
-        super(SQLAlchemyContainer, self).add(item)
+    def count(self, query=None, date=None):
+        return self.proxy.count(table=self.name, query=query, date=date)
+
+    def deptree(self, field, oids, date=None, level=None):
+        return self.proxy.deptree(table=self.name, field=field,
+                                  oids=oids, date=date, level=level)
 
     def distinct(self, fields, query=None, date='~'):
         date = date or '~'
         fields = parse.parse_fields(fields)
         query = self._parse_query(query=query, date=date, fields=fields,
                                   alias='anon_x', distinct=True)
-        ret = [r[0] for r in self.proxy.session.execute(query)]
+        ret = [r[0] for r in self.proxy.session_auto.execute(query)]
         if ret and isinstance(ret[0], list):
             ret = reduce(add, ret, [])
         return sorted(set(ret))
@@ -2769,15 +2856,15 @@ class SQLAlchemyContainer(MetriqueContainer):
         self._table = None
         return result
 
-    def deptree(self, field, oids, date=None, level=None):
-        return self.proxy.deptree(table=self.name, field=field,
-                                  oids=oids, date=date, level=level)
-
     def ensure_table(self, name=None, schema=None, force=False):
         if self._table is None:
-            is_true(self.store, 'no objects available to sample schema from')
             name = name or self.name
-            schema = self.proxy.autoschema(self.store.values())
+            if self.fields:
+                schema = self.fields
+            else:
+                is_true(self.store,
+                        'no objects available to sample schema from')
+                schema = self.proxy.autoschema(self.store.values())
             self._table = self.proxy.ensure_table(
                 table=name, schema=schema, force=force)
             setattr(self, name, self._table)  # named alias for table class
@@ -2787,19 +2874,16 @@ class SQLAlchemyContainer(MetriqueContainer):
     def exists(self):
         return self.proxy.exists(self.name)
 
+    def find(self, query=None, fields=None, date=None, sort=None,
+             descending=False, one=False, raw=False, limit=None,
+             as_cursor=False, scalar=False):
+        return self.proxy.find(table=self.name, query=query, fields=fields,
+                               date=date, sort=sort, descending=descending,
+                               one=one, raw=raw, limit=limit,
+                               as_cursor=as_cursor, scalar=scalar)
+
     def get_last_field(self, field):
         return self.proxy.get_last_field(self.name, field=field)
-
-    def _index_default_name(self, columns, name=None):
-        if name:
-            return name
-        elif isinstance(columns, basestring):
-            return columns
-        elif isinstance(columns, (list, tuple)):
-            return '_'.join(columns)
-        else:
-            raise ValueError(
-                "unable to get default name from columns: %s" % columns)
 
     def index(self, fields, name=None, **kwargs):
         '''
@@ -2814,17 +2898,7 @@ class SQLAlchemyContainer(MetriqueContainer):
         :param collection: cube name
         :param owner: username of cube owner
         '''
-        s = self.config.get('index_ensure_secs')
-        name = self._index_default_name(fields, name)
-        fields = parse.parse_fields(fields, reflect=True)
-        engine = self.proxy.get_engine()
-        if name not in self.__indexes or (time() - self.__indexes[name]) <= s:
-            index = Index(name, *fields)
-            logger.info('Writing new index %s: %s' % (name, fields))
-            result = index.create(engine)
-            self.__indexes[name] = time()
-        engine.dispose()
-        return result
+        return self.proxy.index(self.name, fields=fields, name=name, **kwargs)
 
     def index_list(self):
         '''
@@ -2833,15 +2907,10 @@ class SQLAlchemyContainer(MetriqueContainer):
         :param collection: cube name
         :param owner: username of cube owner
         '''
-        logger.info('Listing indexes')
-        engine = self.proxy.get_engine()
-        _i = self.inspect()
-        ix = [i for n in _i.get_table_names() for i in _i.get_indexes(n)]
-        engine.dispose()
-        return ix
+        return self.proxy.index_list()
 
-    def insert(self):
-        return insert(self._table)
+    def insert(self, objects):
+        return self.proxy.insert(table=self.name, objects=objects)
 
     @property
     def proxy(self):
@@ -2854,52 +2923,21 @@ class SQLAlchemyContainer(MetriqueContainer):
                                           **self.config)
         return self._proxy
 
-    def share(self, with_user, table=None, roles=None):
+    def share(self, with_user, roles=None):
         '''
         Give cube access rights to another user
         '''
-        table = table or self.name
-        with_user = self._validate_username(with_user)
-        roles = self._validate_roles(roles or ['SELECT'])
-        logger.info(
-            'Sharing cube with %s (%s)' % (with_user, roles))
-        roles = ','.join(roles)
-        sql = 'GRANT %s ON %s TO %s' % (roles, table, with_user)
-        session = self.proxy.get_session()
-        session.connection().connection.set_isolation_level(0)
-        session.execute(sql)
-        return True
+        return self.proxy.share(table=self.name, with_user=with_user,
+                                roles=roles)
 
-    def update(self, objects, commit=True, autosnap=None):
-        return self.proxy.update(self.name, objects=objects, commit=commit,
-                                 autosnap=autosnap)
+    def upsert(self, objects, autosnap=None):
+        return self.proxy.update(self.name, objects=objects, autosnap=autosnap)
 
     def user_register(self, username=None, password=None):
-        # FIXME: enable setting roles at creation time...
         password = password or self.config.get('password')
         username = username or self.config.get('username')
-        if username and not password:
-            raise RuntimeError('must specify password!')
-        u = self._validate_username(username)
-        p = self._validate_password(password)
-        logger.info('Registering new user %s' % u)
-        # FIXME: make a generic method which runs list of sql statements
-        sql = []
-        sql.append("CREATE USER %s WITH PASSWORD '%s';" % (u, p))
-        sql.append("create database %s WITH OWNER %s;" % (u, u))
-        session = self.proxy.get_session()
-        session.connection().connection.set_isolation_level(0)
-        [session.execute(s) for s in sql]
-        return True
+        return self.proxy.user_register(table=self.name, username=username,
+                                        password=password)
 
-    def user_disable(self, username=None):
-        username = username or self.config.get('username')
-        logger.info('Disabling existing user %s' % username)
-        session = self.proxy.get_session()
-        u = update('pg_database')
-        #update pg_database set datallowconn = false where datname = 'applogs';
-        sql = u.where(
-            "datname = '%s'" % username).values({'datallowconn': 'false'})
-        session.execute(sql)
-        session.commit()
-        return True
+    def user_disable(self, username):
+        return self.proxy.user_disable(table=self.name, username=username)

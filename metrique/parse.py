@@ -28,7 +28,8 @@ def parse_fields(fields, as_dict=False):
     elif fields in ['~', True]:
         _fields = {}
     elif isinstance(fields, dict):
-        _fields.update(fields)
+        _fields.update(
+            {unicode(k).strip(): int(v) for k, v in fields.iteritems()})
     elif isinstance(fields, basestring):
         _fields.update({unicode(s).strip(): 1 for s in fields.split(',')})
     elif isinstance(fields, (list, tuple)):
@@ -69,10 +70,11 @@ def date_range(date):
     on the left and ends on the date on the right.
     ie, from date to date.
     '''
+    # FIXME: should "before" really include (<=) the target date?
+    # eg, ~2001-01-01 currently means "up to and INCLUDING 2001-01-01"
+    # shouldn't it just mean 'up to' (<)?
     if isinstance(date, basestring):
         date = date.strip()
-    #if not date:
-    #    return '_end == None'
     if not date:
         return '_end == None'
     if date == '~':
@@ -83,24 +85,21 @@ def date_range(date):
     _after = '(_end >= date("%s") or _end == None)'
     after = lambda d: _after % ts2dt(d) if d else None
     split = date.split('~')
-    # FIXME: should we adjust for the timezone info we're dropping?
     # replace all occurances of 'T' with ' '
     # this is used for when datetime is passed in
     # like YYYY-MM-DDTHH:MM:SS instead of
     #      YYYY-MM-DD HH:MM:SS as expected
     # and drop all occurances of 'timezone' like substring
+    # FIXME: need to adjust (to UTC) for the timezone info we're dropping!
     split = [re.sub('\+\d\d:\d\d', '', d.replace('T', ' ')) for d in split]
     if len(split) == 1:
         # 'dt'
         return '%s and %s' % (before(split[0]), after(split[0]))
-    elif split[0] in ['', None]:
-        # '~dt'
+    elif split[0] in ['', None]:  # '~dt'
         return before(split[1])
-    elif split[1] in ['', None]:
-        # 'dt~'
+    elif split[1] in ['', None]:  # 'dt~'
         return after(split[0])
-    else:
-        # 'dt~dt'
+    else:  # 'dt~dt'
         return '%s and %s' % (before(split[1]), after(split[0]))
 
 

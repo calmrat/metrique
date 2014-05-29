@@ -17,6 +17,9 @@ cubes = os.path.join(testroot, 'cubes')
 fixtures = os.path.join(testroot, 'fixtures')
 cache_dir = env['METRIQUE_CACHE']
 
+# FIXME: test passing object with 'id' key produces a warning
+# see https://docs.python.org/2/library/warnings.html
+
 
 def test_api():
     from metrique import MetriqueObject

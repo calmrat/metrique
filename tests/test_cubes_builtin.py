@@ -93,14 +93,14 @@ def test_load_json():
     assert len(m.objects)
 
     # {u'phone_stb': u'+33 (0)3 88 1 75224', u'comms': None, u'country':
-    # u'Latvia', u'_start': datetime.datetime(2014, 5, 28, 14, 7, 21, 154092),
+    # u'Latvia', u'_start': datetime.datetime(2014, 5, 29, 15, 0, 33, 935124),
     # u'_oid': 28615, u'name': u'Roberts Z\u012aLE', u'url':
-    # u'http://www.europarl.eur...rt/committees/view.do?id=28615',
-    # u'_v': 0, u'__id': 28615, u'phone_bxl': u'+32 (0)2 28 45224', u'_end':
-    # None, u'_hash': u'5c0b17bdb87d5e708dfd6a7ecf9d78f161395e62', u'__v__':
-    # u'0.3.1-1a', u'party': u'European Conservatives and Reformists', u'_e':
-    # {}, u'_id': u'28615', u'email': None}
-    _hash = '5c0b17bdb87d5e708dfd6a7ecf9d78f161395e62'
+    # u'http://www.europarl.europa.eu/members/expert/committees/view.do?id=28615',
+    # u'_v': 0, u'phone_bxl': u'+32 (0)2 28 45224', u'_end': None, u'_hash':
+    # u'823c4c5b9f7f7750f3d20a247d2d23540e7936b3', u'__v__': u'0.3.1-1a',
+    # u'party': u'European Conservatives and Reformists', u'_e': {}, u'_id':
+    # u'28615', u'email': None}
+    _hash = '823c4c5b9f7f7750f3d20a247d2d23540e7936b3'
     _filtered = m.objects.filter(where={'_hash': _hash})
     assert len(_filtered) == 1
 

@@ -36,11 +36,9 @@ def test_api():
     objs_dict = {'1': a, '2': b}
     r_objs_dict = {'1': ma, '2': mb}
 
-    # must pass in name
-    try:
-        MetriqueContainer()
-    except TypeError:
-        pass
+    c = MetriqueContainer()
+    assert not c.name
+    assert not c._proxy
 
     # must pass in non-null value for name
     try:

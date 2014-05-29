@@ -308,32 +308,6 @@ def test_debug_setup(capsys):
         remove_file(_lf)
 
 
-def test_daemonize():
-    from metrique.utils import get_pid, clear_stale_pids, terminate, sys_call
-    daemon = os.path.join(testroot, 'fixtures/daemon.py')
-    assert exists(daemon)
-    python = sys_call('which python')
-    sys_call('%s %s' % (python, daemon), bg=True)
-    k = 3
-    pid_file = os.path.join(cache_dir, 'sleeper.pid')
-    while k:
-        sleep(.5)
-        pid = get_pid(pid_file)
-        running = clear_stale_pids(pid, cache_dir, 'sleeper')
-        if running:
-            break
-    assert running
-    terminate(pid)
-    k = 3
-    while k:
-        sleep(.5)
-        running = clear_stale_pids(pid, cache_dir, 'sleeper')
-        if not running:
-            break
-    assert not running
-    assert not exists(pid_file)
-
-
 def test_dt2ts():
     '''  '''
     from metrique.utils import dt2ts
@@ -347,6 +321,39 @@ def test_dt2ts():
     assert dt2ts(now_time) == now_time
     assert dt2ts(now_date) == now_time
     assert dt2ts(now_date_iso) == now_time
+
+
+def test_file_is_empty():
+    from metrique.utils import file_is_empty, write_file, rand_chars
+    from metrique.utils import remove_file
+
+    f1 = os.path.join(cache_dir, rand_chars(prefix='empty_test_1'))
+    f2 = os.path.join(cache_dir, rand_chars(prefix='not_empty_test_2'))
+
+    write_file(f1, '')
+    write_file(f2, 'not empty')
+
+    assert file_is_empty(f1)
+    assert exists(f1)
+    assert file_is_empty(f1, remove=True)
+    assert not exists(f1)
+
+    assert not file_is_empty(f2)
+
+    try:
+        # not a valid path
+        file_is_empty('DOES_NOT_EXIST')
+    except RuntimeError:
+        pass
+
+    try:
+        # not a valid path
+        file_is_empty(True)
+    except RuntimeError:
+        pass
+
+    remove_file(f2)
+    assert not exists(f2)
 
 
 def test_get_cube():
@@ -372,7 +379,7 @@ def test_get_cube():
 
 
 def test__get_datetime():
-    from metrique.utils import _get_datetime, utcnow
+    from metrique.utils import _get_datetime, utcnow, dt2ts
 
     now_tz = utcnow(tz_aware=True)
     now = now_tz.replace(tzinfo=None)
@@ -385,6 +392,7 @@ def test__get_datetime():
     assert _get_datetime(now) == now
     assert _get_datetime(now_tz, tz_aware=True) == now_tz
     assert _get_datetime(now, tz_aware=True) == now_tz
+    assert _get_datetime(dt2ts(now), tz_aware=True) == now_tz
 
 
 def test_get_pid():
@@ -816,9 +824,14 @@ def test_read_file():
     assert isinstance(lst, list)
     assert len(lst) == 1
 
+    try:
+        read_file('DOES_NOT_EXIST')
+    except IOError:
+        pass
+
 
 def test_remove_file():
-    from metrique.utils import remove_file, rand_chars
+    from metrique.utils import remove_file, rand_chars, make_dirs
     assert remove_file(None) == []
     assert remove_file('') == []
     assert remove_file('DOES_NOT_EXIST') == []
@@ -830,9 +843,16 @@ def test_remove_file():
     assert not exists(path)
     open(path, 'w').close()
     assert remove_file(path) == path
+    assert not exists(path)
     assert remove_file('DOES_NOT_EXIST') == []
-    # FIXME: test removing dirs and nested dirs
-    # and try: remove dir without force...
+    # build a simple nested directory tree
+    path = os.path.join(cache_dir, rand_chars())
+    assert make_dirs(path) == path
+    try:
+        remove_file(path)
+    except RuntimeError:
+        pass
+    assert remove_file(path, force=True) == path
 
 
 def test_rsync():
@@ -911,9 +931,12 @@ def test_sys_call():
     out = sys_call('ls %s' % csv_path)
     assert out == csv_path
 
+    # should work if passed in as a list of args too
+    out = sys_call(['ls', csv_path])
+    assert out == csv_path
+
 
 def test_terminate():
-    #raise NotImplementedError
     from metrique.utils import terminate, sys_call, get_pid, clear_stale_pids
     import signal
 
@@ -933,6 +956,8 @@ def test_terminate():
     # this time we point to a pid_file and it gets cleaned up
     terminate(pid_file, sig=signal.SIGTERM)
     assert not exists(pid_file)
+    # invalid pids are ignored
+    assert terminate(-1) is None
 
 
 def test_to_encoding():
@@ -976,10 +1001,10 @@ def test_ts2dt():
 
     assert ts2dt(now_time_milli, milli=True, tz_aware=False) == now_date
 
+    assert ts2dt(now_date_iso) == now_date
     try:
-        ' string variants not accepted "nvalid literal for float()"'
-        ts2dt(now_date_iso) == now_date
-    except ValueError:
+        ts2dt('not a valid datetime str') == now_date
+    except TypeError:
         pass
 
 
@@ -994,6 +1019,11 @@ def test_urlretrieve():
     assert exists(_path)
     assert os.stat(_path).st_size > 0
     remove_file(_path)
+
+    try:
+        urlretrieve('does not exist')
+    except RuntimeError:
+        pass
 
 
 def test_utcnow():
@@ -1011,6 +1041,56 @@ def test_utcnow():
     assert _ == now_date_utc
     assert utcnow(as_datetime=False,
                   tz_aware=True, drop_micro=True) == now_time
+
+
+def test_validate_password():
+    from metrique.utils import validate_password
+
+    OK = 'helloworld42'
+    BAD1 = 'short'
+    BAD2 = None
+
+    assert validate_password(OK) == OK
+
+    for bad in (BAD1, BAD2):
+        try:
+            validate_password(bad)
+        except ValueError:
+            pass
+
+
+def test_validate_roles():
+    from metrique.utils import validate_roles
+
+    valid_roles = ['SELECT', 'ADMIN', 'WRITE']
+    OK = ['SELECT', 'ADMIN']
+    BAD = ['BLOWUP', 'ADMIN']
+
+    assert validate_roles(OK, valid_roles) == sorted(OK)
+    try:
+        validate_roles(OK, valid_roles) == sorted(BAD)
+    except ValueError:
+        pass
+
+
+def test_validate_username():
+    from metrique.utils import validate_username
+
+    restricted = ['admin']
+    ok = 'helloworld'
+    OK = 'HELLOWORLD'
+    BAD1 = '1'
+    BAD2 = None
+    BAD3 = 'admin'
+
+    assert validate_username(ok) == ok
+    assert validate_username(OK) == ok
+
+    for bad in (BAD1, BAD2, BAD3):
+        try:
+            validate_username(bad, restricted_names=restricted)
+        except (ValueError, TypeError):
+            pass
 
 
 def test_virtualenv():
@@ -1038,3 +1118,29 @@ def test_virtualenv():
         virtualenv_activate('virtenv_that_doesnt_exist')
     except OSError:
         pass
+
+
+def test_write_file():
+    from metrique.utils import write_file, rand_chars, read_file
+    from metrique.utils import remove_file
+
+    f1 = os.path.join(cache_dir, rand_chars())
+    write_file(f1, 'hello world')
+    assert exists(f1)
+    assert read_file(f1) == 'hello world'
+
+    # can't overwrite files with default settings
+    try:
+        write_file(f1, 'hello world')
+    except RuntimeError:
+        pass
+
+    write_file(f1, 'hello world', force=True)
+    assert exists(f1)
+    assert read_file(f1) == 'hello world'
+
+    write_file(f1, 'hello world', mode='a')
+    assert exists(f1)
+    assert read_file(f1) == 'hello worldhello world'
+
+    remove_file(f1)

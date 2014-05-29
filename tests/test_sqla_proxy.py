@@ -72,27 +72,36 @@ def db_tester(proxy):
         pass
 
     obj.update({'_oid': 1})
+    print 'Inserting %s' % obj
     p.insert(TABLE, obj)
 
     assert p.count(TABLE) == 1
     assert p.find(TABLE, '_oid == 1', raw=True, date=None)
+    # should be one object with col_1 == 1 (_oids: 1, 2)
+    assert p.count(TABLE, 'col_1 == 1', date='~') == 1
 
     obj.update({'_oid': 2, '_start': now, '_end': utcnow()})
+    print 'Inserting %s' % obj
     p.insert(TABLE, obj)
     assert p.count(TABLE, '_oid == 2', date='%s~' % now) == 1
     assert p.count(TABLE, '_oid == 2', date='~%s' % now) == 0
+    # should be two objects with col_1 == 1 (_oids: 1, 2)
+    assert p.count(TABLE, 'col_1 == 1', date='~') == 2
+    return
 
     assert p.distinct(TABLE, '_oid') == [1, 2]
 
     # insert new obj, then update col_3's values
     obj = {'_oid': 3, '_start': utcnow(), '_end': None, 'col_1': 1}
+    print 'Inserting %s' % obj
     p.insert(TABLE, obj)
     assert p.count(TABLE, '_oid == 3', date='~') == 1
     obj['col_1'] = 42
     p.upsert(TABLE, obj)
     # should be two versions of _oid:3
     assert p.count(TABLE, '_oid == 3', date='~') == 2
-    assert p.count(TABLE, 'col_1 == 1', date=None) == 1
+    # should be three objects with col_1 == 1 (_oids: 1, 2, 3)
+    assert p.count(TABLE, 'col_1 == 1', date='~') == 3
     assert p.count(TABLE, 'col_1 == 42', date='~') == 1
 
     # should be four object versions in total at this point
@@ -107,7 +116,14 @@ def db_tester(proxy):
     p.insert(TABLE, obj)
     assert p.get_last_field(TABLE, '_oid') == 42
 
-    assert p.ls() == ['bla']
+    assert p.ls() == [TABLE]
+
+    # Indexes
+    ix = [i['name'] for i in p.index_list().get(TABLE)]
+    assert 'ix_col_1' not in ix
+    p.index(TABLE, 'col_1')
+    ix = [i['name'] for i in p.index_list().get(TABLE)]
+    assert 'ix_col_1' in ix
 
     p.drop(TABLE)
     try:
@@ -139,8 +155,9 @@ def test_sqlite3():
 
 def test_postgresql():
     from metrique import SQLAlchemyProxy
+    from metrique.utils import rand_chars
 
-    DB = 'test'
+    DB = 'admin'
     p = SQLAlchemyProxy(dialect='postgresql', db=DB)
     _u = p.config.get('username')
     _p = p.config.get('password')
@@ -148,4 +165,36 @@ def test_postgresql():
     _expected_engine = 'postgresql://%s:%s@127.0.0.1:%s/%s' % (_u, _p, _po, DB)
     assert p.get_engine_uri() == _expected_engine
 
+    # FIXME: DROP ALL
+
     db_tester(p)
+
+    TABLE = 'bla'
+    schema = {
+        'col_1': {'type': int},
+        'col_3': {'type': datetime},
+    }
+
+    # new user
+    new_u = rand_chars(chars='asdfghjkl')
+    new_p = rand_chars(8)
+    p.user_register(username=new_u, password=new_p)
+
+    # Sharing
+    p.share(TABLE, new_u)
+
+    # switch to the new users db
+    p.config['username'] = new_u
+    p.config['password'] = new_p
+    p.config['db'] = new_u
+    p.initialize()
+    assert p.ls() == []
+
+    NEW_TABLE = 'blabla'
+    p.ensure_table(name=NEW_TABLE, schema=schema)
+    assert p.ls() == [NEW_TABLE]
+
+    # switch to admin's db
+    p.config['db'] = _u
+    p.initialize()
+    assert p.ls() == [TABLE]
