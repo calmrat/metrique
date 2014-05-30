@@ -179,12 +179,10 @@ try:
         convert = get_timezone_converter(local_tz())
 
         def process_bind_param(self, value, engine):
-            #_value = self.convert(ts2dt(value))
-            #return _value
-            return dt2ts(value)
+            return dt2ts(value) or 0
 
         def process_result_value(self, value, engine):
-            return ts2dt(value)
+            return ts2dt(value) or None
 
         def python_type(self):
             return float
@@ -658,19 +656,15 @@ class MetriqueContainer(MutableMapping):
                                           **self.config)
         return self._proxy
 
-    def set_proxy(self, proxy=None, quiet=False, **kwargs):
+    def set_proxy(self, proxy=None, **kwargs):
         _kwargs = deepcopy(self._proxy_kwargs)
         _kwargs.update(kwargs)
         _kwargs.setdefault('config_file', self.config_file)
-        if proxy is not None:
-            if isclass(proxy):
-                self._proxy = proxy(**_kwargs)
-            else:
-                self._proxy = proxy
-        elif quiet:
-            pass
+        proxy = proxy or SQLAlchemyProxy
+        if isclass(proxy):
+            self._proxy = proxy(**_kwargs)
         else:
-            raise RuntimeError("proxy can not be null!")
+            self._proxy = proxy
         return None
 
     def values(self):
@@ -800,7 +794,7 @@ class BaseClient(object):
         self.set_container(container)
         # FIXME: set default proxy to container's proxy if set?
         self._proxy_kwargs = deepcopy(proxy_kwargs or {})
-        self.set_proxy(proxy, quiet=True)
+        self.set_proxy(proxy)
 
     # 'container' is alias for 'objects'
     @property
@@ -873,8 +867,7 @@ class BaseClient(object):
 
             if isclass(container):
                 # FIXME: check it's specifically a MetriqueContainer class...
-                self._objects = container(name=self.name, _version=_version,
-                                          **_kwargs)
+                self._objects = container(_version=_version, **_kwargs)
             elif isinstance(container, MetriqueContainer):
                 self._objects = container
             else:
@@ -888,20 +881,15 @@ class BaseClient(object):
                                               cache_dir=cache_dir)
         return self._objects
 
-    def set_proxy(self, proxy=None, quiet=False, **kwargs):
+    def set_proxy(self, proxy=None, **kwargs):
+        proxy = proxy or SQLAlchemyProxy
         _kwargs = deepcopy(self._proxy_kwargs)
         _kwargs.update(kwargs)
         _kwargs.setdefault('config_file', self.config_file)
-        if proxy is not None:
-            if isclass(proxy):
-                self._proxy = proxy(**_kwargs)
-            else:
-                self._proxy = proxy
-        elif quiet:
-            pass
+        if isclass(proxy):
+            self._proxy = proxy(**_kwargs)
         else:
-            raise RuntimeError("proxy can not be null!")
-        return None
+            self._proxy = proxy
 
     @property
     def proxy(self):
@@ -988,21 +976,20 @@ class SQLAlchemyProxy(object):
     TYPE_MAP = None
     VALID_SHARE_ROLES = ['SELECT', 'INSERT', 'UPDATE', 'DELETE']
 
-    def __init__(self, db, debug=None, cache_dir=None,
+    def __init__(self, db=None, debug=None, cache_dir=None,
                  config_key=None, config_file=None, dialect=None,
                  driver=None, host=None, port=None,
                  username=None, password=None, connect_args=None,
-                 **kwargs):
+                 batch_size=None, **kwargs):
         is_true(HAS_SQLALCHEMY, '`pip install sqlalchemy` required')
         self.RESERVED_WORDS = deepcopy(RESERVED_WORDS)
         self.RESERVED_USERNAMES = deepcopy(RESERVED_USERNAMES)
         self.TYPE_MAP = deepcopy(TYPE_MAP)
         self._datetype = self._datetype or datetime
-
-        is_true(db, 'db can not be null')
         self._cache_dir = cache_dir or CACHE_DIR
 
         options = dict(
+            batch_size=batch_size,
             connect_args=connect_args,
             db=db,
             dialect=dialect,
@@ -1013,6 +1000,7 @@ class SQLAlchemyProxy(object):
             port=None,
             username=username)
         defaults = dict(
+            batch_size=999,
             connect_args=None,
             db=None,
             debug=logging.INFO,
@@ -1030,6 +1018,9 @@ class SQLAlchemyProxy(object):
                                 section_key=self.config_key,
                                 section_only=True,
                                 update=self.config)
+        db = self.config.get('db')
+        is_true(db, 'db can not be null')
+
         self._debug_setup_sqlalchemy_logging()
 
         self.initialize()
@@ -1693,7 +1684,7 @@ class SQLAlchemyProxy(object):
         result = self.session_auto.execute(sql)
         return result
 
-    def upsert(self, table, objects, autosnap=None):
+    def upsert(self, table, objects, autosnap=None, batch_size=None):
         table = self.get_table(table)
         objects = objects if isinstance(objects, (list, tuple)) else [objects]
         objects = MetriqueContainer(objects=objects)
@@ -1704,12 +1695,16 @@ class SQLAlchemyProxy(object):
             autosnap = all([o['_end'] is None for o in objects.itervalues()])
             logger.warn('AUTOSNAP auto-set to: %s' % autosnap)
 
+        batch_size = batch_size or self.config.get('batch_size')
         _ids = objects._ids
-        q = '_id in %s' % _ids
+        dups = {}
+        query = '_id in %s'
         t1 = time()
-        dups = {o._id: dict(o) for o in self.find(table=table, query=q,
-                                                  fields='~', date='~',
-                                                  as_cursor=True)}
+        for batch in batch_gen(_ids, batch_size):
+            q = query % batch
+            dups.update({o._id: dict(o) for o in self.find(
+                table=table, query=q, fields='~', date='~', as_cursor=True)})
+
         diff = int(time() - t1)
         logger.debug(
             'dup query completed in %s seconds (%s)' % (diff, len(dups)))
@@ -1796,9 +1791,10 @@ class SQLAlchemyContainer(MetriqueContainer):
     name = None
     default_fields = {'_start': 1, '_end': 1, '_oid': 1}
     _proxy_kwargs = None
+    _proxy = None
     _table = None
 
-    def __init__(self, name, objects=None,
+    def __init__(self, db=None, objects=None,
                  proxy=None, proxy_kwargs=None,
                  schema=None, batch_size=None, cache_dir=None,
                  config_file=None, config_key=None, debug=None,
@@ -1807,11 +1803,12 @@ class SQLAlchemyContainer(MetriqueContainer):
         if not HAS_SQLALCHEMY:
             raise RuntimeError('`pip install sqlalchemy` required')
 
-        super(SQLAlchemyContainer, self).__init__(name=name,
+        super(SQLAlchemyContainer, self).__init__(name=db,
                                                   objects=objects,
                                                   _version=_version)
 
         options = dict(
+            db=db,
             batch_size=batch_size,
             cache_dir=cache_dir,
             debug=debug,
@@ -1822,6 +1819,7 @@ class SQLAlchemyContainer(MetriqueContainer):
         defaults = dict(
             batch_size=10000,
             cache_dir=CACHE_DIR,
+            db=None,
             debug=None,
             schema=None,
         )
@@ -1835,10 +1833,17 @@ class SQLAlchemyContainer(MetriqueContainer):
                                 update=self.config)
 
         self._proxy_kwargs = deepcopy(proxy_kwargs or {})
-        self.set_proxy(proxy)
+        # set proxy if passed in; use existing if set during super().__init__()
+        # otherwise create default
+        if proxy:
+            self._proxy = proxy
+        else:
+            self._proxy = SQLAlchemyProxy(config_key=self.config_key,
+                                          config_file=self.config_file,
+                                          **self.config)
 
-        if autoreflect:
-            self.ensure_table(schema=schema, name=name)
+        if autoreflect and self.store:
+            self.ensure_table(schema=schema, name=db)
 
         self.__indexes = self.__indexes or {}
 
@@ -1919,17 +1924,6 @@ class SQLAlchemyContainer(MetriqueContainer):
 
     def insert(self, objects):
         return self.proxy.insert(table=self.name, objects=objects)
-
-    @property
-    def proxy(self):
-        _proxy = getattr(self, '_proxy', None)
-        if not _proxy:
-            config_key = self.config_key
-            config_file = self.config_file
-            self._proxy = SQLAlchemyProxy(config_key=config_key,
-                                          config_file=config_file,
-                                          **self.config)
-        return self._proxy
 
     def share(self, with_user, roles=None):
         '''

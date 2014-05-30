@@ -23,15 +23,6 @@ fixtures = os.path.join(testroot, 'fixtures')
 cache_dir = env['METRIQUE_CACHE']
 
 
-def test_generic():
-    from metrique import SQLAlchemyProxy
-    try:
-        # test that db kwarg required
-        SQLAlchemyProxy()
-    except TypeError:
-        pass
-
-
 def db_tester(proxy):
     from metrique.utils import utcnow, ts2dt
 
