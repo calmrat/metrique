@@ -257,7 +257,7 @@ def mongodb_start(fork=False, fast=True):
         return False
     cmd = 'mongod -f %s %s' % (MONGODB_CONF, fork)
     cmd += ' --noprealloc --nojournal' if fast else ''
-    utils.sys_call(cmd, fork=fork)
+    utils.sys_call(cmd, fork=fork, pid_file=MONGODB_PIDFILE)
     return True
 
 
@@ -620,12 +620,14 @@ def postgresql_firstboot(force=False):
         utils.sys_call(cmd)
         cmd = 'psql -h 127.0.0.1 -c \\"%s\\"'
         P = PASSWORD
+        tz = "set timezone TO 'GMT';"
+        encoding = "set client_encoding TO 'utf8';"
         admin_db = "CREATE DATABASE admin WITH OWNER admin;"
         admin_user = "CREATE USER admin WITH PASSWORD \\'%s\\' SUPERUSER;" % P
         test_db = "CREATE DATABASE test WITH OWNER test;"
         test_user = "CREATE USER test WITH PASSWORD \\'%s\\' SUPERUSER;" % P
-        [utils.sys_call(cmd % sql) for sql in (admin_user, admin_db,
-                                               test_user, test_db)]
+        [utils.sys_call(cmd % sql) for sql in (tz, encoding, admin_user,
+                                               admin_db, test_user, test_db)]
     finally:
         if started:
             postgresql_stop()

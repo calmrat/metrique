@@ -469,31 +469,32 @@ def get_pids(pid_dir, prefix='', clear_stale=True):
     return map(int, pids)
 
 
-def _get_timezone_converter(dt, from_tz, tz_aware=False):
+def _get_timezone_converter(dt, from_tz, to_tz=None, tz_aware=False):
     if from_tz is None:
         raise TypeError("from_tz can not be null!")
     elif dt is None:
         return None
     else:
+        to_tz = to_tz or pytz.UTC
         dt = dt_parse(dt) if isinstance(dt, basestring) else dt
         if dt.tzinfo:
             # datetime instance already has tzinfo set
             # WARN if not dt.tzinfo == from_tz?
             try:
-                dt = dt.astimezone(pytz.UTC)
+                dt = dt.astimezone(to_tz)
             except ValueError:
                 # date has invalid timezone; replace with expected
                 dt = dt.replace(tzinfo=from_tz)
-                dt = dt.astimezone(pytz.UTC)
+                dt = dt.astimezone(to_tz)
         else:
             # set tzinfo as from_tz then convert to utc
-            dt = from_tz.localize(dt).astimezone(pytz.UTC)
+            dt = from_tz.localize(dt).astimezone(to_tz)
         if not tz_aware:
             dt = dt.replace(tzinfo=None)
         return dt
 
 
-def get_timezone_converter(from_timezone, tz_aware=False):
+def get_timezone_converter(from_timezone, to_tz=None, tz_aware=False):
     '''
     return a function that converts a given
     datetime object from a timezone to utc
@@ -505,7 +506,8 @@ def get_timezone_converter(from_timezone, tz_aware=False):
     is_true(HAS_DATEUTIL, "`pip install python_dateutil` required")
     is_true(HAS_PYTZ, "`pip install pytz` required")
     from_tz = pytz.timezone(from_timezone)
-    return partial(_get_timezone_converter, from_tz=from_tz, tz_aware=tz_aware)
+    return partial(_get_timezone_converter, from_tz=from_tz, to_tz=to_tz,
+                   tz_aware=tz_aware)
 
 
 def git_clone(uri, pull=True, reflect=False, cache_dir=None, chdir=True):
@@ -666,6 +668,14 @@ def load_csv(path, **kwargs):
 def load_json(path, **kwargs):
     is_true(HAS_PANDAS, "`pip install pandas` required")
     return pd.read_json(path, **kwargs)
+
+
+def local_tz():
+    if time.daylight:
+        offsetHour = time.altzone / 3600
+    else:
+        offsetHour = time.timezone / 3600
+    return 'Etc/GMT%+d' % offsetHour
 
 
 def _set_oid_func(_oid_func):

@@ -22,14 +22,15 @@ cache_dir = env['METRIQUE_CACHE']
 
 def test_api():
     from metrique import MetriqueContainer, MetriqueObject
-    from metrique.utils import utcnow, remove_file, dt2ts
+    from metrique.utils import utcnow, remove_file, dt2ts, ts2dt
 
     _expected_db_path = os.path.join(cache_dir, 'container_test.sqlite')
     remove_file(_expected_db_path)
 
-    now = utcnow()
-    a = {'_oid': 1, 'col_1': 1, 'col_2': now, '_start': now}
-    b = {'_oid': 2, 'col_1': 2, 'col_2': now, '_start': now}
+    _start = ts2dt('2001-01-01')
+    _end = ts2dt('2001-01-02')
+    a = {'_oid': 1, 'col_1': 1, 'col_2': utcnow(), '_start': _start}
+    b = {'_oid': 2, 'col_1': 2, 'col_2': utcnow(), '_start': _start}
     ma = MetriqueObject(**a)
     mb = MetriqueObject(**b)
     objs_list = [a, b]
@@ -40,11 +41,7 @@ def test_api():
     assert not c.name
     assert not c._proxy
 
-    # must pass in non-null value for name
-    try:
-        MetriqueContainer(name=None)
-    except RuntimeError:
-        pass
+    MetriqueContainer()
 
     # check various forms of passing in objects results in expected
     # container contents
@@ -84,7 +81,7 @@ def test_api():
     mc.extend([{'_oid': 6}, {'_oid': 7}])
     assert sorted(mc._oids) == [1, 2, 5, 6, 7]
 
-    mc.add({'_oid': 8, '_start': now, '_end': utcnow(), 'col_1': True})
+    mc.add({'_oid': 8, '_start': _start, '_end': _end, 'col_1': True})
     mc.add({'_oid': 8, '_end': None, 'col_1': False})
     assert sorted(mc._oids) == [1, 2, 5, 6, 7, 8]
 
@@ -144,16 +141,17 @@ def test_api():
     mc.add(a)
     assert len(mc.filter({'col_1': 1})) == 0
     assert len(mc.filter({'col_1': 42})) == 1
-    _id = '1:%s' % dt2ts(mc.filter({'col_1': 42})[0].get('_start'))
     _ids = mc.flush()
-    logger.debug('**** %s' % '\n'.join(map(str, mc.find(date='~', raw=True))))
     assert mc.count(date='~') == 3
     assert mc.count(date=None) == 2
     assert mc.count('col_1 == 1', date=None) == 0
     assert mc.count('col_1 == 1', date='~') == 1
     assert mc.count('col_1 == 42') == 1
     assert mc.count('col_1 == 42', date='~') == 1
-    assert _ids == ['1', _id]
+    # adjust for local time...
+    #_ts = dt2ts(convert(_start))
+    _ts = dt2ts(_start)
+    assert _ids == ['1', '1:%s' % _ts]
 
     # remove the db
     remove_file(_expected_db_path)

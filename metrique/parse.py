@@ -7,6 +7,7 @@ import logging
 logger = logging.getLogger('metrique')
 
 import ast
+from datetime import datetime
 import re
 
 try:
@@ -107,7 +108,7 @@ class SQLAlchemyMQLParser(object):
     '''
     Simple sytax parser that converts to SQL
     '''
-    def __init__(self, table):
+    def __init__(self, table, datetype=datetime):
         '''
         :param sqlalchemy.Table table:
             the table definition
@@ -118,6 +119,8 @@ class SQLAlchemyMQLParser(object):
         self.table = table
         self.scalars = []
         self.arrays = []
+        self._datetype = datetype or datetime
+
         for field in table.c:
             try:
                 ptype = field.type.python_type
@@ -256,7 +259,13 @@ class SQLAlchemyMQLParser(object):
         elif node.func.id == 'date':
             if len(node.args) != 1:
                 raise ValueError('date expects 1 argument.')
-            return func.date(self.p(node.args[0]))
+            elif self._datetype is datetime:
+                return func.date(self.p(node.args[0]))
+            elif self._datetype in (float, int, long):
+                return self.p(node.args[0])
+            else:
+                raise RuntimeError("Unknown datetype: %s" % self._datetype)
         elif node.func.id == 'regex':
             return ('regex', self.p(node.args[0]))
-        raise ValueError('Unknown function: %s' % node.func.id)
+        else:
+            raise ValueError('Unknown function: %s' % node.func.id)

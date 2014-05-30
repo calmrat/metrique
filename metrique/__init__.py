@@ -62,7 +62,7 @@ os.environ['METRIQUE_SRC'] = os.environ.get(
 # ATTENTION: this is the main interface for clients!
 from metrique.core_api import BaseClient as pyclient
 from metrique.core_api import MetriqueContainer, MetriqueObject
-from metrique.core_api import MongoDBContainer, MongoDBProxy
+from metrique.mongodb import MongoDBContainer, MongoDBProxy
 from metrique.core_api import SQLAlchemyContainer, SQLAlchemyProxy
 from metrique.parse import SQLAlchemyMQLParser
 # avoid lint 'defined by not used' error

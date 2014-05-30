@@ -27,6 +27,7 @@ def test_csvdata():
 
     '''
     from metrique import pyclient
+
     name = 'us_idx_eod'
     db_file = os.path.join(cache_dir, '%s.sqlite' % name)
     remove_file(db_file)
@@ -95,7 +96,7 @@ def test_load_json():
     # {u'phone_stb': u'+33 (0)3 88 1 75224', u'comms': None, u'country':
     # u'Latvia', u'_start': datetime.datetime(2014, 5, 29, 15, 0, 33, 935124),
     # u'_oid': 28615, u'name': u'Roberts Z\u012aLE', u'url':
-    # u'http://www.europarl.europa.eu/members/expert/committees/view.do?id=28615',
+    # u'http://www.europarl.euro...rs/expert/committees/view.do?id=28615',
     # u'_v': 0, u'phone_bxl': u'+32 (0)2 28 45224', u'_end': None, u'_hash':
     # u'823c4c5b9f7f7750f3d20a247d2d23540e7936b3', u'__v__': u'0.3.1-1a',
     # u'party': u'European Conservatives and Reformists', u'_e': {}, u'_id':
