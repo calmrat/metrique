@@ -333,22 +333,38 @@ class Result(DataFrame):
 
         :param index: name of the new column.
         '''
-        def prep(df):
-            ends = set(df._end.tolist())
-            end = pd.NaT if pd.NaT in ends else max(ends)
-            if end is pd.NaT:
-                age = cut_ts - df._start.min()
-            else:
-                age = min(cut_ts, end) - df._start.min()
-            # for some reason this is not working:
-            #last = df[df._end == end].copy()
-            # but this is:
-            last = df[df._end.isin([end])].copy()
-            last[col_name] = age - timedelta(microseconds=age.microseconds)
-            return last
+        min_start_map = {}
+        max_start_map = {}
+        max_start_ser_map = {}
 
-        cut_ts = self._rbound or utcnow()
-        res = pd.concat([prep(df) for _, df in self.groupby(self._oid)])
+        cols = self.columns.tolist()
+        i_oid = cols.index('_oid')
+        i_start = cols.index('_start')
+        i_end = cols.index('_end')
+        for row in self.values:
+            s = row[i_start]
+            oid = row[i_oid]
+            mins = min_start_map.get(oid, s)
+            if s <= mins:
+                min_start_map[oid] = s
+            maxs = max_start_map.get(oid, s)
+            if s >= maxs:
+                max_start_map[oid] = s
+                max_start_ser_map[oid] = row
+
+        vals = max_start_ser_map.values()
+        cut_ts = utcnow()
+        oids, ages = [], []
+        for row in vals:
+            end = row[i_end]
+            end = cut_ts if end is pd.NaT else min(cut_ts, end)
+            age = end - min_start_map[row[i_oid]]
+            age = age - timedelta(microseconds=age.microseconds)
+            oids.append(row[i_oid])
+            ages.append(age)
+
+        res = pd.DataFrame(max_start_ser_map.values(), columns=cols)
+        res[col_name] = pd.Series(ages, index=res.index)
         return res
 
     @filtered
