@@ -45,7 +45,12 @@ def test_mongodb():
 
     p.drop_db()
 
-    assert sorted(p.proxy.database_names()) == ['local']
+    dbs = sorted(p.proxy.database_names())
+    try:
+        assert dbs == ['local']
+    except:
+        # travis environment has admin db present
+        assert dbs == ['admin', 'local']
 
     assert p.proxy.tz_aware == p.config.get('tz_aware')
     # as we initiate with a db, it should already be created

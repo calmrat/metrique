@@ -240,7 +240,14 @@ class SQLAlchemyMQLParser(object):
 
     def p_Name(self, node):
         if node.id in ['None', 'True', 'False']:
-            return eval(node.id)
+            if self._datetype in (float, int, long):
+                # eg, sqlite3 compat
+                if node.id in ['None', 'False']:
+                    return self._datetype(0)
+                elif node.id == 'True':
+                    return self._datatype(1)
+            else:
+                return eval(node.id)
         if node.id in self.scalars + self.arrays:
             return self.table.c[node.id]
         raise ValueError('Unknown field: %s' % node.id)
@@ -262,6 +269,7 @@ class SQLAlchemyMQLParser(object):
             elif self._datetype is datetime:
                 return func.date(self.p(node.args[0]))
             elif self._datetype in (float, int, long):
+                # eg, sqlite3 compat
                 return self.p(node.args[0])
             else:
                 raise RuntimeError("Unknown datetype: %s" % self._datetype)

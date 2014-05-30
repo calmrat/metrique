@@ -521,6 +521,7 @@ class MetriqueContainer(MutableMapping):
     def _apply_default_fields(self, fields):
         for k, v in self.default_fields.iteritems():
             fields[k] = v if not k in fields else fields[k]
+        return fields
 
     def add(self, item):
         item = self._encode(item)
@@ -1803,44 +1804,35 @@ class SQLAlchemyContainer(MetriqueContainer):
         if not HAS_SQLALCHEMY:
             raise RuntimeError('`pip install sqlalchemy` required')
 
-        super(SQLAlchemyContainer, self).__init__(name=db,
-                                                  objects=objects,
-                                                  _version=_version)
-
         options = dict(
             db=db,
-            batch_size=batch_size,
-            cache_dir=cache_dir,
             debug=debug,
             schema=schema,
         )
         # set defaults to None for proxy related args
         # since proxy will apply its' defaults if None
         defaults = dict(
-            batch_size=10000,
-            cache_dir=CACHE_DIR,
             db=None,
             debug=None,
             schema=None,
         )
-        self.config = self.config or {}
-        self.config_file = config_file or self.config_file
-        config_key = config_key or SQLAlchemyContainer.config_key
-        self.config = configure(options, defaults,
-                                config_file=self.config_file,
-                                section_key=config_key,
-                                section_only=True,
-                                update=self.config)
+        config = self.config or {}
+        config_file = config_file or self.config_file
+        config_key = config_key or self.config_key
+        config = configure(options, defaults,
+                           config_file=config_file,
+                           section_key=config_key,
+                           section_only=True,
+                           update=config)
 
-        self._proxy_kwargs = deepcopy(proxy_kwargs or {})
-        # set proxy if passed in; use existing if set during super().__init__()
-        # otherwise create default
-        if proxy:
-            self._proxy = proxy
-        else:
-            self._proxy = SQLAlchemyProxy(config_key=self.config_key,
-                                          config_file=self.config_file,
-                                          **self.config)
+        super(SQLAlchemyContainer, self).__init__(name=db,
+                                                  objects=objects,
+                                                  _version=_version,
+                                                  batch_size=batch_size,
+                                                  cache_dir=cache_dir,
+                                                  config=config,
+                                                  config_key=config_key,
+                                                  config_file=config_file)
 
         if autoreflect and self.store:
             self.ensure_table(schema=schema, name=db)
@@ -1886,14 +1878,6 @@ class SQLAlchemyContainer(MetriqueContainer):
     @property
     def exists(self):
         return self.proxy.exists(self.name)
-
-    def find(self, query=None, fields=None, date=None, sort=None,
-             descending=False, one=False, raw=False, limit=None,
-             as_cursor=False, scalar=False):
-        return self.proxy.find(table=self.name, query=query, fields=fields,
-                               date=date, sort=sort, descending=descending,
-                               one=one, raw=raw, limit=limit,
-                               as_cursor=as_cursor, scalar=scalar)
 
     def get_last_field(self, field):
         return self.proxy.get_last_field(self.name, field=field)
