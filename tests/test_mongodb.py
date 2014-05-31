@@ -53,8 +53,6 @@ def test_mongodb():
         assert dbs == ['admin', 'local']
 
     assert p.proxy.tz_aware == p.config.get('tz_aware')
-    # as we initiate with a db, it should already be created
-    assert sorted(p.proxy.database_names()) == ['local']
 
     # Clear out ALL tables in the database!
     p.drop_tables(True)
