@@ -354,13 +354,12 @@ class Result(DataFrame):
 
         vals = max_start_ser_map.values()
         cut_ts = utcnow()
-        oids, ages = [], []
+        ages = []
         for row in vals:
             end = row[i_end]
             end = cut_ts if end is pd.NaT else min(cut_ts, end)
             age = end - min_start_map[row[i_oid]]
             age = age - timedelta(microseconds=age.microseconds)
-            oids.append(row[i_oid])
             ages.append(age)
 
         res = pd.DataFrame(max_start_ser_map.values(), columns=cols)
@@ -375,17 +374,32 @@ class Result(DataFrame):
         Chain is a series of consecutive versions where
         `_end` of one is `_start` of another.
         '''
-        def prep(df):
-            ends = df._end.tolist()
-            maxend = pd.NaT if pd.NaT in ends else max(ends)
-            ends = set(df._end.tolist()) - set(df._start.tolist() + [maxend])
-            if len(ends) == 0:
-                return df
-            else:
-                cutoff = max(ends)
-                return df[df._start > cutoff]
+        cols = self.columns.tolist()
+        i_oid = cols.index('_oid')
+        i_start = cols.index('_start')
+        i_end = cols.index('_end')
 
-        return pd.concat([prep(df) for _, df in self.groupby(self._oid)])
+        start_map = {}
+        end_map = {}
+        for row in self.values:
+            oid = row[i_oid]
+            if oid not in start_map:
+                start_map[oid] = set()
+                end_map[oid] = set()
+            start_map[oid].add(row[i_start])
+            end_map[oid].add(row[i_end])
+
+        cutoffs = {}
+        for oid in start_map:
+            maxend = pd.NaT if pd.NaT in end_map[oid] else max(end_map[oid])
+            ends = end_map[oid] - start_map[oid] - set([maxend])
+            cutoffs[oid] = None if len(ends) == 0 else max(ends)
+
+        vals = [row for row in self.values
+                if cutoffs[row[i_oid]] is None
+                or cutoffs[row[i_oid]] < row[i_start]]
+
+        return pd.DataFrame(vals, columns=cols)
 
     @filtered
     def one_version(self, index=0):
