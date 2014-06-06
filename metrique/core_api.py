@@ -3030,7 +3030,7 @@ class SQLAlchemyMQLParser(object):
         elif node.func.id == 'date':
             if len(node.args) != 1:
                 raise ValueError('date expects 1 argument.')
-            return func.date(self.p(node.args[0]))
+            return ts2dt(self.p(node.args[0]))
         elif node.func.id == 'regex':
             return ('regex', self.p(node.args[0]))
         raise ValueError('Unknown function: %s' % node.func.id)
