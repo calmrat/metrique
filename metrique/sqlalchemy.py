@@ -99,7 +99,7 @@ try:
             return dt2ts(value)
 
         def python_type(self):
-            return Float
+            return float
 
     TYPE_MAP = {
         None: CoerceUTF8,
@@ -518,7 +518,8 @@ class SQLAlchemyProxy(object):
         else:
             raise RuntimeError("table to drop must be defined!")
         nulls = lambda t: False if t is None else True
-        _tables = filter(nulls, [self.get_table(n) for n in tables])
+        _tables = filter(nulls,
+                         [self.get_table(n, except_=False) for n in tables])
         if _tables:
             logger.warn("Permanently dropping %s" % tables)
             [t.drop() for t in _tables]

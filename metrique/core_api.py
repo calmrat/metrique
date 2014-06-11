@@ -437,14 +437,13 @@ class MetriqueContainer(MutableMapping):
         logger.debug('... extended container by %s items in %ss' % (len(items),
                                                                     int(diff)))
 
-    def flush(self, objects=None, batch_size=None, schema=None,
-              **kwargs):
+    def flush(self, objects=None, batch_size=None, **kwargs):
         objects = objects or self.values()
         batch_size = batch_size or self.config.get('batch_size')
         _ids = []
         # get store converted as table instances
         for batch in batch_gen(objects, batch_size):
-            _ = self.persist(objects=batch, schema=schema, **kwargs)
+            _ = self.persist(objects=batch, **kwargs)
             _ids.extend(_)
         keys = self._ids
         [self.store.pop(_id) for _id in _ids if _id in keys]
@@ -488,11 +487,11 @@ class MetriqueContainer(MutableMapping):
     def ls(self):
         raise NotImplementedError("Subclasses should implement this.")
 
-    def persist(self, objects=None, autosnap=None, schema=None):
+    def persist(self, objects=None, autosnap=None):
         objects = objects or self.values()
+        # FIXME: lock is only necessary for sqlite...
         with LockFile(self._persist_path):
-            return self.proxy.upsert(table=self.name, objects=objects,
-                                     autosnap=autosnap)
+            return self.upsert(objects=objects, autosnap=autosnap)
 
     def pop(self, key):
         key = to_encoding(key)
@@ -512,10 +511,14 @@ class MetriqueContainer(MutableMapping):
             table = self._proxy.get_table(name, except_=False)
             if table is None and self.config.get('autotable'):
                 schema = self.config.get('schema')
-                if not schema:
-                    is_true(self.store, "can't build schema; store is empty!")
+                if not schema and self.store:
                     schema = self._proxy.autoschema(self.store.values())
-                self._proxy.autotable(schema=schema, name=name, create=True)
+                if schema:
+                    self._proxy.autotable(schema=schema, name=name,
+                                          create=True)
+                else:
+                    logger.warn('Failed to autotable; no schema '
+                                'or objects available in store')
         return self._proxy
 
     def values(self):
@@ -597,7 +600,7 @@ class MetriqueContainer(MutableMapping):
 
     def upsert(self, objects, autosnap=None):
         objects = type(self)(objects=objects).values()
-        return self.proxy.update(table=self.name, objects=objects,
+        return self.proxy.upsert(table=self.name, objects=objects,
                                  autosnap=autosnap)
 
     def user_register(self, username=None, password=None):

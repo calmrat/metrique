@@ -33,6 +33,8 @@ def test_csvdata():
     remove_file(db_file)
     m = pyclient(cube='csvdata_rows', name=name)
 
+    m.objects.drop()
+
     uri = os.path.join(fixtures, 'us-idx-eod.csv')
     m.get_objects(uri=uri)
 
@@ -63,9 +65,17 @@ def test_csvdata():
     assert m.objects.flush() == _ids
     assert m.objects == {}
 
-    objs = m.objects.find('_oid == 11', one=True, raw=True)
+    objs = m.objects.find('_oid == %s' % _oid, one=True, raw=True)
     o = {k: v for k, v in objs.items() if k != 'id'}
-    assert o == _filtered[0]
+    _o = dict(_filtered[0])
+    # we can't assure float precision is exact as it goes in/out
+    # but it should be close...
+    assert o['_start'] - _o['_start'] <= .1
+    del o['_start']
+    del _o['_start']
+    from metrique.utils import DictDiffer
+    print str(DictDiffer(o, _o))
+    assert o == _o
 
     remove_file(db_file)
 
