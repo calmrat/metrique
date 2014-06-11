@@ -3,7 +3,7 @@
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 # Author: "Chris Ward" <cward@redhat.com>
 
-from __future__ import unicode_literals
+from __future__ import unicode_literals, absolute_import
 
 from ._version import __version__, version_info
 # touch it to avoid pep8 error 'imported but unused'
@@ -60,12 +60,7 @@ os.environ['METRIQUE_SRC'] = os.environ.get(
 # sys.stdout = codecs.getwriter('utf8')(sys.stdout)
 
 # ATTENTION: this is the main interface for clients!
-from metrique.core_api import BaseClient as pyclient
+from metrique.metrique import BaseClient as pyclient
 from metrique.core_api import MetriqueContainer, MetriqueObject
-from metrique.mongodb import MongoDBContainer, MongoDBProxy
-from metrique.core_api import SQLAlchemyContainer, SQLAlchemyProxy
-from metrique.parse import SQLAlchemyMQLParser
 # avoid lint 'defined by not used' error
-pyclient, MetriqueObject, MetriqueContainer
-MongoDBProxy, MongoDBContainer,
-SQLAlchemyProxy, SQLAlchemyContainer, SQLAlchemyMQLParser
+pyclient, MetriqueContainer, MetriqueObject

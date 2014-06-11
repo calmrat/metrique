@@ -48,8 +48,10 @@ def test_csvdata():
     # u'5a6d18a9c654886926e5f769d4bf4808df6cba39', u'__v__': u'0.3.1-1a',
     # u'_e': {}, u'_id': u'11'}
     _ids = m.objects._ids
-    _hash = '5a6d18a9c654886926e5f769d4bf4808df6cba39'
-    _filtered = m.objects.filter(where={'_hash': _hash})
+    _hash = '5a388d116969aafcf6e9a74f0298a4728a510705'
+    _oid = 11
+    _filtered = m.objects.filter(where={'_oid': _oid})
+    print 'Object: %s' % _filtered
     assert len(_filtered) == 1
     assert m.objects['11']['_hash'] == _hash  # check _hash is as expected
     assert m.objects['11']['symbol'] == '$AJT'
@@ -101,9 +103,11 @@ def test_load_json():
     # u'823c4c5b9f7f7750f3d20a247d2d23540e7936b3', u'__v__': u'0.3.1-1a',
     # u'party': u'European Conservatives and Reformists', u'_e': {}, u'_id':
     # u'28615', u'email': None}
-    _hash = '823c4c5b9f7f7750f3d20a247d2d23540e7936b3'
-    _filtered = m.objects.filter(where={'_hash': _hash})
+    _hash = '2908df4739650439444dfc19c0b0e023739c1ebd'
+    _filtered = m.objects.filter(where={'_oid': 28615})
     assert len(_filtered) == 1
+    print 'Object: %s' % _filtered
+    assert _filtered[0]['_hash'] == _hash
 
     _ids = m.objects.flush()
 
@@ -144,12 +148,14 @@ def test_gitdata_commit():
     # u'tree': u'66406ded27ba129ad1639928b079b821ab416fed', u'_end': None,
     # u'signed_off_by': None, u'parents':
     # ['78b311d90e35eb36016a7f41e75657754dbe0784'], u'_hash':
-    # u'afe25100da754b37468ae30396787e169a060aab', u'__v__': u'0.3.1-1a',
+    # u'2b408e995e0fed13833c36a61efd3622bad05ddc', u'__v__': u'0.3.1-1a',
     # u'_e': {}, u'_id': u'99dc1e5c4e3ab2c8ab5510e50a3edf64f9fcc705'}
-    _hash = 'afe25100da754b37468ae30396787e169a060aab'
-    _filtered = m.objects.filter(where={'_hash': _hash})
+    _hash = '2b408e995e0fed13833c36a61efd3622bad05ddc'
+    _oid = '99dc1e5c4e3ab2c8ab5510e50a3edf64f9fcc705'
+    _filtered = m.objects.filter(where={'_oid': _oid})
     assert len(_filtered) == 1
-    logger.info('expected %s; got %s' % (_hash, _filtered[0]['_hash']))
+    print 'Object: %s' % _filtered
+    assert _filtered[0]['_hash'] == _hash
 
     _ids = m.objects.flush()
     assert len(_ids) == k
@@ -174,6 +180,11 @@ def test_osinfo_rpm():
     m.get_objects()
     k = len(m.objects)
     assert k > 0
+
+    name = 'bash'
+    _filtered = m.objects.filter(where={'name': name})
+    assert len(_filtered) == 1
+    print 'Object: %s' % _filtered
 
     _ids = m.objects.flush()
     assert len(_ids) == k

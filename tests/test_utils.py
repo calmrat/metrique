@@ -381,7 +381,7 @@ def test_get_cube():
 def test__get_datetime():
     from metrique.utils import _get_datetime, utcnow, dt2ts
 
-    now_tz = utcnow(tz_aware=True)
+    now_tz = utcnow(tz_aware=True, as_datetime=True)
     now = now_tz.replace(tzinfo=None)
     try:
         now_tz == now  # can't compare tz_aware <> naive
@@ -455,7 +455,7 @@ def test_get_timezone_converter():
     est = 'US/Eastern'
     EST = pytz.timezone(est)
 
-    now_utc_tz = utcnow(tz_aware=True)
+    now_utc_tz = utcnow(tz_aware=True, as_datetime=True)
     now_utc = now_utc_tz.replace(tzinfo=None)
 
     now_est = copy(now_utc_tz)
@@ -499,13 +499,39 @@ def test_git_clone():
     remove_file(local_path, force=True)
 
 
+def test_is_empty():
+    # 0 is not considered NULL, as 0 is a legit number too...
+    from metrique.utils import is_empty
+    import pandas
+    import numpy
+    empties = [None, '', '  \t\n\t  ', {}, [], pandas.DataFrame()]
+    not_empties = ['hello', -1, 1, 0.0, 0, 0L, {'key': 'value'}, [1]]
+    empties += [pandas.NaT, numpy.NaN]
+    for x in empties:
+        empty = is_empty(x, except_=False)
+        print '%s is empty? %s' % (repr(x), empty)
+        assert empty is True
+        try:
+            empty = is_empty(x, except_=True)
+        except RuntimeError:
+            pass
+    for x in not_empties:
+        empty = is_empty(x, except_=False)
+        print '%s is empty? %s' % (repr(x), empty)
+        assert empty is False
+
+
 def test_is_null():
+    # 0 is not considered NULL, as 0 is a legit number too...
+    # and causes issues with datetimes, since epoch(0)->1970, 1, 1
+    # same with other 'empty' values like '', [], etc.
     from metrique.utils import is_null
     import pandas
     import numpy
-    nulls = ['', '  \t\n\t  ', 0, None, {}, []]
-    not_nulls = ['hello', -1, 1, {'key': 'value'}, [1]]
-    nulls += [pandas.NaT, numpy.NaN, pandas.DataFrame()]
+    nulls = [None]
+    not_nulls = ['hello', -1, 1, 0.0, 0, 0L, '', '  \t\n\t  ',
+                 {'key': 'value'}, [1], {}, [], pandas.DataFrame()]
+    nulls += [pandas.NaT, numpy.NaN]
     for x in nulls:
         null = is_null(x, except_=False)
         print '%s is null? %s' % (repr(x), null)
@@ -1029,6 +1055,9 @@ def test_urlretrieve():
 def test_utcnow():
     ' args: as_datetime=False, tz_aware=False '
     from metrique.utils import utcnow
+
+    # default behaivor is as_datetime == False, which return epoch/float
+    assert isinstance(utcnow(), float)
 
     now_date = datetime.utcnow().replace(microsecond=0)
     now_date_utc = datetime.now(pytz.utc).replace(microsecond=0)

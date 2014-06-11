@@ -3,23 +3,23 @@
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 # Author: "Chris Ward" <cward@redhat.com>
 
+from __future__ import unicode_literals, absolute_import
+
 import logging
 logger = logging.getLogger('metrique')
 
 import ast
-from datetime import datetime
 import re
 
 try:
     from sqlalchemy.sql import and_, or_, not_, operators
-    from sqlalchemy.sql.expression import func
     from sqlalchemy import select, Table
-except ImportError:
-    logger.warn('sqlalchemy not installed!')
+except ImportError as e:
+    logger.warn('sqlalchemy not installed! (%s)' % e)
     HAS_SQLALCHEMY = False
 
 
-from metrique.utils import ts2dt, is_true
+from metrique.utils import ts2dt, dt2ts, is_true
 
 
 def parse_fields(fields, as_dict=False):
@@ -43,7 +43,7 @@ def parse_fields(fields, as_dict=False):
         return sorted(_fields.keys())
 
 
-def date_range(date):
+def date_range(date, func='date'):
     '''
     return back start and end dates given date string
 
@@ -81,10 +81,10 @@ def date_range(date):
     if date == '~':
         return ''
 
-    _b4 = '_start <= date("%s")'
-    before = lambda d: _b4 % ts2dt(d) if d else None
-    _after = '(_end >= date("%s") or _end == None)'
-    after = lambda d: _after % ts2dt(d) if d else None
+    _b4 = '_start <= %s("%s")'
+    before = lambda d: _b4 % (func, ts2dt(d) if d else None)
+    _after = '(_end >= %s("%s") or _end == None)'
+    after = lambda d: _after % (func, ts2dt(d) if d else None)
     split = date.split('~')
     # replace all occurances of 'T' with ' '
     # this is used for when datetime is passed in
@@ -108,7 +108,7 @@ class SQLAlchemyMQLParser(object):
     '''
     Simple sytax parser that converts to SQL
     '''
-    def __init__(self, table, datetype=datetime):
+    def __init__(self, table):
         '''
         :param sqlalchemy.Table table:
             the table definition
@@ -119,7 +119,6 @@ class SQLAlchemyMQLParser(object):
         self.table = table
         self.scalars = []
         self.arrays = []
-        self._datetype = datetype or datetime
 
         for field in table.c:
             try:
@@ -149,6 +148,9 @@ class SQLAlchemyMQLParser(object):
         fields = parse_fields(fields=fields) or None
         fields = fields if fields is not None else [self.table]
 
+        msg = 'parse(query=%s, fields=%s)' % (query, fields)
+        msg = re.sub(' in \[[^\]]+\]', ' in [...]', msg)
+        logger.debug(msg)
         kwargs = {}
         if query:
             tree = ast.parse(query, mode='eval').body
@@ -240,14 +242,10 @@ class SQLAlchemyMQLParser(object):
 
     def p_Name(self, node):
         if node.id in ['None', 'True', 'False']:
-            if self._datetype in (float, int, long):
-                # eg, sqlite3 compat
-                if node.id in ['None', 'False']:
-                    return self._datetype(0)
-                elif node.id == 'True':
-                    return self._datatype(1)
-            else:
-                return eval(node.id)
+            if node.id in ['None', 'False']:
+                return None
+            elif node.id == 'True':
+                return 'NOT NULL'
         if node.id in self.scalars + self.arrays:
             return self.table.c[node.id]
         raise ValueError('Unknown field: %s' % node.id)
@@ -266,13 +264,10 @@ class SQLAlchemyMQLParser(object):
         elif node.func.id == 'date':
             if len(node.args) != 1:
                 raise ValueError('date expects 1 argument.')
-            elif self._datetype is datetime:
-                return func.date(self.p(node.args[0]))
-            elif self._datetype in (float, int, long):
-                # eg, sqlite3 compat
-                return self.p(node.args[0])
             else:
-                raise RuntimeError("Unknown datetype: %s" % self._datetype)
+                # convert all datetimes to float epoch
+                node.args[0].s = dt2ts(node.args[0].s)
+                return self.p(node.args[0])
         elif node.func.id == 'regex':
             return ('regex', self.p(node.args[0]))
         else:

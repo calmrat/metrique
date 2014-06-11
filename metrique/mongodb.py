@@ -3,6 +3,8 @@
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 # Author: "Chris Ward" <cward@redhat.com>
 
+from __future__ import unicode_literals, absolute_import
+
 import logging
 logger = logging.getLogger('metrique')
 
@@ -41,7 +43,7 @@ except ImportError:
     HAS_PYMONGO = False
     logger.warn('pymongo 2.6+ not installed!')
 
-from metrique import MetriqueContainer, MetriqueObject
+from metrique import MetriqueObject, MetriqueContainer
 from metrique import parse
 from metrique.result import Result
 from metrique.utils import configure, is_true
@@ -50,6 +52,8 @@ from metrique.utils import validate_username, validate_password, validate_roles
 ETC_DIR = os.environ.get('METRIQUE_ETC')
 CACHE_DIR = os.environ.get('METRIQUE_CACHE') or '/tmp'
 DEFAULT_CONFIG = os.path.join(ETC_DIR, 'metrique.json')
+
+# FIXME: convert all datetimes->float using 'manipulator'
 
 
 # ################################ MONGODB ###################################
@@ -77,11 +81,14 @@ class MongoDBProxy(object):
     RESTRICTED_COLLECTIONS = ['admin', 'local', 'system', 'system.indexes']
     SSL_PEM = os.path.join(ETC_DIR, 'metrique.pem')
 
-    def __init__(self, db, host=None, port=None, username=None, password=None,
-                 auth=None, ssl=None, ssl_certificate=None,
-                 read_preference=None,
-                 replica_set=None, tz_aware=None, write_concern=None,
-                 config_file=None, config_key=None, **kwargs):
+    def __init__(self, db, table=None, host=None, port=None, username=None,
+                 password=None, auth=None, ssl=None, ssl_certificate=None,
+                 read_preference=None, replica_set=None,
+                 tz_aware=None, write_concern=None, config_file=None,
+                 config_key=None, **kwargs):
+        '''
+        Accept additional kwargs, but ignore them.
+        '''
         is_true(HAS_PYMONGO, '`pip install pymongo` 2.6+ required')
         self.RESTRICTED_COLLECTIONS = deepcopy(self.RESTRICTED_COLLECTIONS)
         options = dict(auth=auth,
@@ -93,6 +100,7 @@ class MongoDBProxy(object):
                        replica_set=replica_set,
                        ssl=ssl,
                        ssl_certificate=ssl_certificate,
+                       table=table,
                        tz_aware=tz_aware,
                        username=username,
                        write_concern=write_concern)
@@ -105,7 +113,8 @@ class MongoDBProxy(object):
                         replica_set=None,
                         ssl=False,
                         ssl_certificate=self.SSL_PEM,
-                        tz_aware=True,
+                        table=None,
+                        tz_aware=False,
                         username=getuser(),
                         write_concern=0)
         self.config = self.config or {}
@@ -117,6 +126,11 @@ class MongoDBProxy(object):
                                 section_only=True,
                                 update=self.config)
 
+    def __repr__(self):
+        db = self.config.get('db')
+        return '%s(db="%s">)' % (
+            self.__class__.__name__, db)
+
     def _authenticate(self, proxy, username, password):
         if not (username and password):
             raise ValueError(
@@ -127,24 +141,6 @@ class MongoDBProxy(object):
             return proxy
         raise RuntimeError(
             "MongoDB failed to authenticate user (%s)" % username)
-
-    def get_db(self, db=None):
-        db = db or self.config.get('db')
-        if not db:
-            raise RuntimeError("[%s] Invalid db!" % db)
-        try:
-            return self.proxy[db]
-        except OperationFailure as e:
-            raise RuntimeError("unable to get db! (%s)" % e)
-
-    def get_collection(self, name, db=None):
-        is_true(name, "collection name can not be null!")
-        if isinstance(name, Collection):
-            _cube = name
-        else:
-            db = db or self.config.get('db')
-            _cube = self.get_db(db)[name]
-        return _cube
 
     def _load_mongo_client(self, **kwargs):
         logger.debug('Loading new MongoClient connection')
@@ -183,7 +179,7 @@ class MongoDBProxy(object):
         if not HAS_PQL:
             raise RuntimeError("`pip install pql` required")
         _subpat = re.compile(' in \([^\)]+\)')
-        date = parse.date_range(date)
+        date = parse.date_range(date, func='epoch_utc')
         if query and date:
             query = '%s and %s' % (query, date)
         elif date:
@@ -201,30 +197,61 @@ class MongoDBProxy(object):
             spec = pql_parser.parse(query)
         except Exception as e:
             raise SyntaxError("Invalid Query (%s)" % str(e))
+        logger.debug('... spec: %s' % spec)
         return spec
+
+    def autotable(self, name, *args, **kwargs):
+        return self.ensure_collection(collection=name, *args, **kwargs)
+
+    def columns(self, sample_size=1, collection=None):
+        sample_size = sample_size or 1
+        columns = self.sample_fields(collection=collection,
+                                     sample_size=sample_size)
+        return sorted(columns)
+
+    def get_db(self, db=None):
+        db = db or self.config.get('db')
+        if not db:
+            raise RuntimeError("[%s] Invalid db!" % db)
+        try:
+            return self.proxy[db]
+        except OperationFailure as e:
+            raise RuntimeError("unable to get db! (%s)" % e)
+
+    def get_collection(self, name=None, db=None):
+        name = name or self.config.get('table')
+        is_true(name, "collection name can not be null!")
+        if isinstance(name, Collection):
+            _cube = name
+        else:
+            db = db or self.config.get('db')
+            _cube = self.get_db(db)[name]
+        return _cube
+
+    def initialize(self):
+        kwargs = {}
+        ssl = self.config.get('ssl')
+        if ssl:
+            cert = self.config.get('ssl_certificate')
+            # include ssl options only if it's enabled
+            # certfile is a combined key+cert
+            kwargs.update(dict(ssl=ssl, ssl_certfile=cert))
+        if self.config.get('replica_set'):
+            _proxy = self._load_mongo_replica_client(**kwargs)
+        else:
+            _proxy = self._load_mongo_client(**kwargs)
+        auth = self.config.get('auth')
+        username = self.config.get('username')
+        password = self.config.get('password')
+        if auth:
+            _proxy = self._authenticate(_proxy, username, password)
+        self._proxy = _proxy
 
     @property
     def proxy(self):
-        _proxy = getattr(self, '_proxy', None)
-        if not _proxy:
-            kwargs = {}
-            ssl = self.config.get('ssl')
-            if ssl:
-                cert = self.config.get('ssl_certificate')
-                # include ssl options only if it's enabled
-                # certfile is a combined key+cert
-                kwargs.update(dict(ssl=ssl, ssl_certfile=cert))
-            if self.config.get('replica_set'):
-                _proxy = self._load_mongo_replica_client(**kwargs)
-            else:
-                _proxy = self._load_mongo_client(**kwargs)
-            auth = self.config.get('auth')
-            username = self.config.get('username')
-            password = self.config.get('password')
-            if auth:
-                _proxy = self._authenticate(_proxy, username, password)
-            self._proxy = _proxy
-        return _proxy
+        if not getattr(self, '_proxy', None):
+            self.initialize()
+        return self._proxy
 
     def set_db(self, db):
         is_true(db, "[%s] Invalid db!" % db)
@@ -234,18 +261,7 @@ class MongoDBProxy(object):
             raise RuntimeError("unable to get db! (%s)" % e)
         self.config['db'] = db
 
-    def __repr__(self):
-        db = self.config.get('db')
-        return '%s(db="%s">)' % (
-            self.__class__.__name__, db)
-
-    def columns(self, collection, sample_size=1):
-        sample_size = sample_size or 1
-        columns = self.sample_fields(collection=collection,
-                                     sample_size=sample_size)
-        return sorted(columns)
-
-    def count(self, collection, query=None, date=None, db=None):
+    def count(self, query=None, date=None, db=None, collection=None):
         '''
         Run a pql mongodb based query on the given cube and return only
         the count of resulting matches.
@@ -262,7 +278,7 @@ class MongoDBProxy(object):
         result = _cube.find(spec).count()
         return result
 
-    def distinct(self, collection, field, query=None, date=None):
+    def distinct(self, field, query=None, date=None, collection=None):
         '''
         Return back a distinct (unique) list of field values
         across the entire cube dataset
@@ -283,7 +299,7 @@ class MongoDBProxy(object):
         db = db or self.config['db']
         return self.proxy.drop_database(db)
 
-    def drop_tables(self, *args, **kwargs):
+    def drop(self, *args, **kwargs):
         return self.drop_collections(*args, **kwargs)
 
     def drop_collections(self, collections=None):
@@ -296,23 +312,22 @@ class MongoDBProxy(object):
         return [db.drop_collection(c) for c in collections
                 if c not in self.RESTRICTED_COLLECTIONS]
 
-    def ensure_table(self, name, *args, **kwargs):
-        return self.ensure_collection(collection=name, *args, **kwargs)
-
-    def ensure_collection(self, collection, **kwargs):
+    def ensure_collection(self, collection=None, **kwargs):
+        collection = collection or self.config.get('table')
         is_true(collection, 'collection name can not be null!')
         db = self.get_db()
         return db.create_collection(collection, **kwargs)
 
     @property
-    def exists(self, collection, db=None):
+    def exists(self, collection=None, db=None):
+        collection = collection or self.config.get('table')
         is_true(collection, 'collection must be defined!')
         db = db or self.config['db']
         return collection in self.proxy.ls()
 
-    def find(self, collection, query=None, fields=None, date=None, sort=None,
+    def find(self, query=None, fields=None, date=None, sort=None,
              one=False, raw=False, explain=False, merge_versions=False, skip=0,
-             limit=0, as_cursor=False):
+             limit=0, as_cursor=False, collection=None):
         '''
         Run a pql mongodb based query on the given cube.
 
@@ -347,6 +362,8 @@ class MongoDBProxy(object):
         if one or explain or as_cursor:
             return result
         result = list(result)
+        if not result:
+            return None
         if merge_versions:
             result = self._merge_versions(result)
         if raw:
@@ -354,7 +371,7 @@ class MongoDBProxy(object):
         else:
             return Result(result, date)
 
-    def get_last_field(self, collection, field):
+    def get_last_field(self, field,  collection=None):
         '''Shortcut for querying to get the last field value for
         a given db, cube.
 
@@ -367,7 +384,7 @@ class MongoDBProxy(object):
         logger.debug("last %s: %s" % (field, last))
         return last
 
-    def index_list(self, collection):
+    def index_list(self, collection=None):
         '''
         List all cube indexes
 
@@ -379,7 +396,7 @@ class MongoDBProxy(object):
         result = _cube.index_information()
         return result
 
-    def index(self, collection, key_or_list, name=None, **kwargs):
+    def index(self, key_or_list, name=None, collection=None, **kwargs):
         '''
         Build a new index on a cube.
 
@@ -400,7 +417,7 @@ class MongoDBProxy(object):
         result = _cube.ensure_index(key_or_list, **kwargs)
         return result
 
-    def index_drop(self, collection, index_or_name):
+    def index_drop(self, index_or_name, collection=None):
         '''
         Drops the specified index on this cube.
 
@@ -413,29 +430,27 @@ class MongoDBProxy(object):
         result = _cube.drop_index(index_or_name)
         return result
 
-    def insert(self, collection, objects, fast=True):
+    def insert(self, objects, fast=True, collection=None):
         _cube = self.get_collection(collection)
-        objects = objects if isinstance(objects, (list, tuple)) else [objects]
-        objects = MetriqueContainer(objects=objects)
+        objects = objects.values() if isinstance(objects, dict) else objects
+        # need to be sure we are working with dicts...
+        objects = [dict(o) for o in objects]
+        is_true(isinstance(objects, list), 'objects must be a list')
         if fast:
-            _ids = objects._ids
-            objects = objects.values()
+            _ids = [o['_id'] for o in objects]
             _cube.insert(objects, manipulate=False)
         else:
-            objects = objects.values()
             _ids = _cube.insert(objects, manipulate=True)
         return _ids
 
-    def save(self, collection, objects, fast=True):
+    def save(self, objects, fast=True, collection=None):
         _cube = self.get_collection(collection)
-        objects = objects if isinstance(objects, (list, tuple)) else [objects]
-        objects = MetriqueContainer(objects=objects)
+        objects = objects.values() if isinstance(objects, dict) else objects
+        objects = [dict(o) for o in objects]
         if fast:
-            _ids = objects._ids
-            objects = objects.values()
+            _ids = [o['_id'] for o in objects]
             [_cube.save(o, manipulate=False) for o in objects]
         else:
-            objects = objects.values()
             _ids = [_cube.save(o, manipulate=True) for o in objects]
         return _ids
 
@@ -470,7 +485,8 @@ class MongoDBProxy(object):
         logger.debug('... done')
         return ret[1:]
 
-    def sample_docs(self, collection, sample_size=1, query=None, date=None):
+    def sample_docs(self, sample_size=1, query=None, date=None,
+                    collection=None):
         '''
         Take a randomized sample of documents from a cube.
 
@@ -480,9 +496,9 @@ class MongoDBProxy(object):
         :param db: username of cube db
         :returns list: sorted list of fields
         '''
+        _cube = self.get_collection(collection)
         sample_size = sample_size or 1
         spec = self._parse_query(query, date)
-        _cube = self.get_collection(collection)
         docs = _cube.find(spec)
         n = docs.count()
         if n <= sample_size:
@@ -492,8 +508,8 @@ class MongoDBProxy(object):
             docs = [docs[i] for i in to_sample]
         return docs
 
-    def sample_fields(self, collection, sample_size=None, query=None,
-                      date=None):
+    def sample_fields(self, sample_size=None, query=None, date=None,
+                      collection=None):
         '''
         List a sample of all valid fields for a given cube.
 
@@ -515,18 +531,19 @@ class MongoDBProxy(object):
         result = sorted({k for d in docs for k in d.iterkeys()})
         return result
 
-    def upsert(self, collection, objects, autosnap=None):
+    def upsert(self, objects, autosnap=None, collection=None):
         collection = self.get_collection(collection)
-        objects = objects if isinstance(objects, (list, tuple)) else [objects]
-        objects = MetriqueContainer(objects=objects)
+        objects = objects.values() if isinstance(objects, dict) else objects
+        objects = [dict(o) for o in objects]
+        is_true(isinstance(objects, list), 'objects must be a list')
         if autosnap is None:
             # assume autosnap:True if all objects have _end:None
             # otherwise, false (all objects have _end:non-null or
             # a mix of both)
-            autosnap = all([o['_end'] is None for o in objects.itervalues()])
+            autosnap = all([o['_end'] is None for o in objects])
             logger.warn('AUTOSNAP auto-set to: %s' % autosnap)
 
-        _ids = objects._ids
+        _ids = [o['_id'] for o in objects]
         q = '_id in %s' % _ids
         t1 = time()
 
@@ -540,7 +557,7 @@ class MongoDBProxy(object):
         dup_k, snap_k = 0, 0
         inserts = []
         saves = []
-        for i, o in enumerate(objects.itervalues()):
+        for i, o in enumerate(objects):
             dup = dups.get(o['_id'])
             if dup:
                 if o['_hash'] == dup['_hash']:
@@ -568,12 +585,12 @@ class MongoDBProxy(object):
 
         if inserts:
             t1 = time()
-            self.insert(collection, inserts)
+            self.insert(inserts)
             diff = int(time() - t1)
             logger.debug('%s inserts in %s seconds' % (len(inserts), diff))
         if saves:
             t1 = time()
-            self.save(collection, saves)
+            self.save(saves)
             diff = int(time() - t1)
             logger.debug('%s saved in %s seconds' % (len(saves), diff))
         logger.debug('%s existing objects snapshotted' % snap_k)
@@ -582,7 +599,6 @@ class MongoDBProxy(object):
 
 
 class MongoDBContainer(MetriqueContainer):
-    _objects = None
     config = None
     config_key = 'mongodb'
     config_file = DEFAULT_CONFIG
@@ -599,13 +615,16 @@ class MongoDBContainer(MetriqueContainer):
                  read_preference=None,
                  replica_set=None, tz_aware=None, write_concern=None,
                  db=None, config_file=None, config_key=None,
-                 _version=None, **kwargs):
+                 version=None, **kwargs):
+        '''
+        Accept additional kwargs, but ignore them.
+        '''
         if not HAS_PYMONGO:
             raise RuntimeError('`pip install pymongo` 2.6+ required')
 
         super(MongoDBContainer, self).__init__(name=name,
                                                objects=objects,
-                                               _version=_version)
+                                               version=version)
 
         options = dict(auth=auth,
                        batch_size=batch_size,

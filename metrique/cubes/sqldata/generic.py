@@ -36,7 +36,7 @@ import warnings
 
 from metrique import pyclient
 from metrique.utils import batch_gen, configure, debug_setup, ts2dt
-from metrique.utils import is_null, to_encoding
+from metrique.utils import is_empty, to_encoding
 
 
 def get_full_history(cube, oids, flush=False, cube_name=None,
@@ -98,19 +98,16 @@ class Generic(pyclient):
                  worker_batch_size=None,
                  config_key=None, config_file=None,
                  **kwargs):
-        super(Generic, self).__init__(config_file=config_file, **kwargs)
-        # FIXME: alias == self.schema
         self.fields = self.fields or {}
+        super(Generic, self).__init__(config_file=config_file, **kwargs)
         options = dict(vdb=vdb,
                        retries=retries,
                        batch_size=batch_size,
-                       worker_batch_size=worker_batch_size
-                       )
+                       worker_batch_size=worker_batch_size)
         defaults = dict(vdb=None,
                         retries=1,
-                        batch_size=1000,
-                        worker_batch_size=5000,
-                        )
+                        batch_size=999,
+                        worker_batch_size=5000)
         self.config = self.config or {}
         self.config_file = config_file or self.config_file
         self.config_key = config_key or Generic.config_key
@@ -143,11 +140,14 @@ class Generic(pyclient):
         objects = self.objects.values()
         # dict, has format: oid: [(when, field, removed, added)]
         activities = self.activity_get(oids)
+        _objs = []
         for doc in objects:
             _oid = doc['_oid']
             acts = activities.setdefault(_oid, [])  # no activity default
             objs = self._activity_import_doc(doc, acts)
-            self.objects.extend(objs)
+            _objs.extend(objs)
+
+        self.objects.extend(_objs)
         if flush:
             return self.objects.flush(autosnap=False, schema=self.fields)
         else:
@@ -307,7 +307,7 @@ class Generic(pyclient):
             else:
                 mtime = last_update
         else:
-            mtime = self.container.get_last_field('_start')
+            mtime = self.container.get_last_field(field='_start')
 
         logger.debug("Last update mtime: %s" % mtime)
 
@@ -455,7 +455,7 @@ class Generic(pyclient):
                 "Failed to fetch any objects from %s!" % len(oids))
         # set _oid
         objects = self._prep_objects(objects)
-        [self.objects.add(o) for o in objects]
+        self.objects.extend(objects)
         if flush:
             return self.objects.flush(autosnap=True, schema=self.fields)
         else:
@@ -472,7 +472,7 @@ class Generic(pyclient):
         _oid = self.lconfig.get('_oid')
         if isinstance(_oid, (list, tuple)):
             _oid = _oid[0]  # get the db column, not the field alias
-        last_id = self.container.get_last_field('_oid')
+        last_id = self.container.get_last_field(field='_oid')
         ids = []
         if last_id:
             try:  # try to convert to integer... if not, assume unicode value
@@ -636,18 +636,11 @@ class Generic(pyclient):
     @property
     def proxy(self):
         if not hasattr(self, '_sqldata_proxy'):
-            dialect = self.lconfig.get('dialect')
-            username = self.lconfig.get('username')
-            password = self.lconfig.get('password')
-            host = self.lconfig.get('host')
-            port = self.lconfig.get('port')
-            vdb = self.lconfig.get('vdb')
-            # url = 'dialect+driver://username:password@host:port/database'
-            engine = '%s://%s:%s@%s:%s/%s' % (
-                dialect, username, password, host, port, vdb
-            )
-            self._sqldata_proxy = self.sqlalchemy(engine=engine,
-                                                  **self.lconfig)
+            kwargs = deepcopy(self.lconfig)
+            if 'vdb' in kwargs:
+                # teiid "dialect" defined vdb as connection db
+                kwargs['db'] = kwargs['vdb']
+            self._sqldata_proxy = self.sqlalchemy(**kwargs)
         return self._sqldata_proxy
 
     def _typecast(self, field, value):
@@ -673,20 +666,19 @@ class Generic(pyclient):
         _type = NoneType if _type is None else _type
         if value is None:  # don't convert null values
             pass
-        elif is_null(value):
+        elif _type is NoneType:  # run this before is_empty; NoneType == NULL
+            # default type if unicode if none set
+            value = to_encoding(value)
+        elif is_empty(value, except_=False):
             value = None
         elif isinstance(value, _type):  # or values already of correct type
             pass
-        elif _type is NoneType:
-            value = to_encoding(value)
         else:
-            value = _type(value)
-            if isinstance(value, unicode):
-                value = to_encoding(value)
-            elif isinstance(value, str):
-                value = to_encoding(value)
+            _value = _type(value)
+            if isinstance(_value, basestring):
+                value = to_encoding(_value)
             else:
-                pass  # leave as-is
+                value = _value  # leave as-is
         return value
 
     def _unwrap(self, field, value):
@@ -730,4 +722,5 @@ class Generic(pyclient):
         if where:
             where = [where] if isinstance(where, basestring) else list(where)
             sql += ' WHERE %s' % ' OR '.join(where)
-        return sorted([r[_oid] for r in self._load_sql(sql)])
+        result = sorted([r[_oid] for r in self._load_sql(sql)])
+        return result

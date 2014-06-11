@@ -12,7 +12,7 @@ additional Pandas object helper functions which is
 used to load and manipulate cube objects.
 '''
 
-from __future__ import unicode_literals
+from __future__ import unicode_literals, absolute_import
 
 import logging
 logger = logging.getLogger('metrique')
@@ -48,7 +48,7 @@ except ImportError:
     DataFrame = object  # load as object, we'll fail at runtime
     logger.warn('pandas module is not installed')
 
-from metrique.utils import dt2ts, utcnow, ts2dt, is_null
+from metrique.utils import dt2ts, utcnow, ts2dt, is_empty
 
 
 def filtered(f):
@@ -474,9 +474,9 @@ class Result(DataFrame):
     def validate_data(self, data):
         err = False
         msg = ''
-        if is_null(data, except_=False):
+        if is_empty(data, except_=False):
             err = True
-            msg = 'data can not be null!'
+            msg = 'data can not be empty!'
         elif not isinstance(data, (list, tuple, Result)):
             err = True
             msg = 'expected a list of dictionaries; got %s' % type(data)

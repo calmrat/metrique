@@ -9,7 +9,7 @@ This module contains a basic reporting class
 for quickly generating textual reports.
 '''
 
-from __future__ import unicode_literals
+from __future__ import unicode_literals, absolute_import
 
 import os
 

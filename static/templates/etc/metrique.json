@@ -16,7 +16,7 @@
         "replica_set": "",
         "ssl": false,
         "ssl_certificate": "%s",
-        "tz_aware": true,
+        "tz_aware": false,
         "username": "admin",
         "write_concern": 0
     },

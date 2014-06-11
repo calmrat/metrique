@@ -11,7 +11,7 @@ This module contains utility functions shared between
 metrique sub-modules
 '''
 
-from __future__ import unicode_literals
+from __future__ import unicode_literals, absolute_import
 
 import logging
 logger = logging.getLogger('metrique')
@@ -25,7 +25,7 @@ except ImportError:
     logger.warn('anyconfig module is not installed!')
 
 from calendar import timegm
-import collections
+from collections import defaultdict, Mapping
 from copy import deepcopy
 import cPickle
 import cProfile as profiler
@@ -49,7 +49,7 @@ import gc
 from getpass import getuser
 import glob
 from hashlib import sha1
-from inspect import isfunction
+from inspect import isfunction, isclass
 import itertools
 import os
 
@@ -106,6 +106,46 @@ CACHE_DIR = os.environ.get('METRIQUE_CACHE')
 SRC_DIR = os.environ.get('METRIQUE_SRC')
 BACKUP_DIR = env.get('METRIQUE_BACKUP')
 STATIC_DIR = env.get('METRIQUE_STATIC')
+
+ZEROS = (0, 0.0, 0L)
+
+
+# FIXME: add tests
+def autoschema(objects, fast=True, exclude_keys=None):
+    logger.debug('AutoSchema generation started...')
+    is_true(objects, 'object samples can not be null')
+    objects = objects if isinstance(objects, (list, tuple)) else [objects]
+    schema = defaultdict(dict)
+    exclude_keys = exclude_keys or []
+    for o in objects:
+        for k, v in o.iteritems():
+            if k in schema or k in exclude_keys:
+                continue
+            elif schema[k].get('type') is not None:
+                # we already have this type
+                # FIXME: option to check rigerously all objects
+                # consistency; raise exception if values are of
+                # different type given same key, etc...
+                continue
+            else:
+                _type = type(v)
+                if _type in (list, tuple, set):
+                    schema[k]['container'] = True
+                    # FIXME: if the first object happens to be null
+                    # we auto set to UnicodeText type...
+                    # (default for type(None))
+                    # but this isn't always going to be accurate...
+                    if len(v) > 1:
+                        _t = type(v[0])
+                    else:
+                        _t = type(None)
+                    schema[k]['type'] = _t
+                else:
+                    schema[k]['type'] = _type
+        if fast is True:  # finish after first sample
+            break
+    logger.debug(' ... schema generated: %s' % schema)
+    return schema
 
 
 def backup(paths, saveas=None, ext=None):
@@ -369,24 +409,26 @@ def debug_setup(logger=None, level=None, log2file=None,
 def dt2ts(dt, drop_micro=False):
     ''' convert datetime objects to timestamp seconds (float) '''
     is_true(HAS_DATEUTIL, "`pip install python_dateutil` required")
-    # the equals check to 'NaT' is hack to avoid adding pandas as a dependency
-    if is_null(dt, except_=False):
-        return None
+    if is_empty(dt, except_=False):
+        ts = None
     elif isinstance(dt, (int, long, float)):  # its a ts already
         ts = float(dt)
     elif isinstance(dt, basestring):  # convert to datetime first
         parsed_dt = dt_parse(dt)
         ts = dt2ts(parsed_dt)
     else:
+        assert isinstance(dt, datetime)
         # keep micros; see: http://stackoverflow.com/questions/7031031
         ts = ((
             timegm(dt.timetuple()) * 1000.0) +
             (dt.microsecond / 1000.0)) / 1000.0
-        return ts
-    if drop_micro:
-        return float(int(ts))
+    if ts is None:
+        pass
+    elif drop_micro:
+        ts = float(int(ts))
     else:
-        return float(ts)
+        ts = float(ts)
+    return ts
 
 
 def file_is_empty(path, remove=False, msg=None):
@@ -476,6 +518,8 @@ def _get_timezone_converter(dt, from_tz, to_tz=None, tz_aware=False):
         return None
     else:
         to_tz = to_tz or pytz.UTC
+        if isinstance(to_tz, basestring):
+            to_tz = pytz.timezone(to_tz)
         dt = dt_parse(dt) if isinstance(dt, basestring) else dt
         if dt.tzinfo:
             # datetime instance already has tzinfo set
@@ -544,8 +588,17 @@ def git_clone(uri, pull=True, reflect=False, cache_dir=None, chdir=True):
         return repo_path
 
 
-def is_null(value, except_=True, msg=None):
-    msg = msg or ''
+def gimport(name, type_check=isclass, except_=False):
+    ''' load an already available obj from globals; check type, optionally '''
+    _obj = globals().get(name)
+    except_ and is_true(_obj, '%s not found in globals()')
+    except_ and is_true(type_check(_obj),
+                        'Invalid type; checked with %s' % type_check.__name__)
+    return _obj
+
+
+def is_empty(value, except_=True, msg=None):
+    msg = msg or '(%s) is not empty' % value
     if isinstance(value, basestring):
         value = value.strip()
     elif hasattr(value, 'empty'):
@@ -554,10 +607,29 @@ def is_null(value, except_=True, msg=None):
         # take the negative, since below we're
         # checking for cases where value 'is_null'
         value = not bool(value.empty)
+    elif value in ZEROS:
+        # 0, 0.0, 0L is not considered 'empty'
+        return False
     else:
         pass
+    _is_null = is_null(value, except_=False)
+    result = bool(_is_null or not value)
+    if not result and except_:
+        raise RuntimeError(msg)
+    else:
+        return result
+
+
+def is_null(value, except_=True, msg=None):
+    '''
+    # 0 is 'null' but not the type of null we're
+    # interested in same with empty lists and such
+    '''
+    msg = msg or '(%s) is not null' % value
+    # dataframes, even if empty, are not considered null
+    value = True if hasattr(value, 'empty') else value
     result = bool(
-        not value or
+        value is None or
         value != value or
         repr(value) == 'NaT')
     if not result and except_:
@@ -566,8 +638,8 @@ def is_null(value, except_=True, msg=None):
         return result
 
 
-def is_true(value, except_=True, msg=None):
-    msg = msg or ''
+def is_true(value, msg=None, except_=True):
+    msg = msg or 'bool(%s) is not True' % value
     result = bool(value)
     if not result and except_:
         raise RuntimeError(msg)
@@ -670,12 +742,19 @@ def load_json(path, **kwargs):
     return pd.read_json(path, **kwargs)
 
 
+# FIXME: add tests for *local_tz*
 def local_tz():
     if time.daylight:
         offsetHour = time.altzone / 3600
     else:
         offsetHour = time.timezone / 3600
     return 'Etc/GMT%+d' % offsetHour
+
+
+def local_tz_to_utc(dt):
+    dt = ts2dt(dt)
+    convert = get_timezone_converter(_local_tz)
+    return convert(dt)
 
 
 def _set_oid_func(_oid_func):
@@ -747,7 +826,7 @@ def load(path, filetype=None, as_df=False, retries=None,
         [objects.extend(load_file(ds, filetype, **kwargs))
             for ds in files]
 
-    if is_null(objects, except_=False) and not quiet:
+    if is_empty(objects, except_=False) and not quiet:
         raise RuntimeError("no objects extracted!")
     else:
         logger.debug("Data loaded successfully from %s" % path)
@@ -965,7 +1044,7 @@ def rupdate(source, target):
         see: http://stackoverflow.com/a/3233356/1289080
     '''
     for k, v in target.iteritems():
-        if isinstance(v, collections.Mapping):
+        if isinstance(v, Mapping):
             r = rupdate(source.get(k, {}), v)
             source[k] = r
         else:
@@ -1085,10 +1164,13 @@ def terminate(pid, sig=signal.SIGTERM):
 def to_encoding(str_, encoding=None, errors='replace'):
     errors = errors or 'replace'
     encoding = encoding or 'utf-8'
-    if not isinstance(str_, unicode):
-        return unicode(str(str_), encoding, errors)
+    if str_ is None:
+        return None
+    elif not isinstance(str_, unicode):
+        result = unicode(str(str_), encoding, errors)
     else:
-        return str_.encode(encoding, errors).decode('utf8')
+        result = str_.encode(encoding, errors).decode('utf8')
+    return result
 
 
 def ts2dt(ts, milli=False, tz_aware=False):
@@ -1096,10 +1178,12 @@ def ts2dt(ts, milli=False, tz_aware=False):
     # anything already a datetime will still be returned
     # tz_aware, if set to true
     is_true(HAS_DATEUTIL, "`pip install python_dateutil` required")
-    if is_null(ts, except_=False):
-        return None  # its not a timestamp
-    elif isinstance(ts, datetime):
+    if isinstance(ts, datetime):
         pass
+    elif is_empty(ts, except_=False):
+        return None  # its not a timestamp
+    elif isinstance(ts, (int, float, long)) and ts < 0:
+        return None
     elif isinstance(ts, basestring):
         try:
             ts = float(ts)
@@ -1114,7 +1198,6 @@ def ts2dt(ts, milli=False, tz_aware=False):
         ts = float(ts) / 1000.  # convert milli to seconds
     else:
         ts = float(ts)  # already in seconds
-
     return _get_datetime(ts, tz_aware)
 
 
@@ -1137,7 +1220,7 @@ def _get_datetime(value, tz_aware=None):
             return datetime.utcfromtimestamp(value)
 
 
-def utcnow(as_datetime=True, tz_aware=False, drop_micro=False):
+def utcnow(as_datetime=False, tz_aware=False, drop_micro=False):
     is_true(HAS_PYTZ, "`pip install pytz` required")
     if tz_aware:
         now = datetime.now(pytz.UTC)
@@ -1149,6 +1232,12 @@ def utcnow(as_datetime=True, tz_aware=False, drop_micro=False):
         return now
     else:
         return dt2ts(now, drop_micro)
+
+
+def utc_to_local_tz(dt):
+    dt = ts2dt(dt)
+    convert = get_timezone_converter('UTC', _local_tz)
+    return convert(dt)
 
 
 def urlretrieve(uri, saveas=None, retries=3, cache_dir=None):
@@ -1245,3 +1334,6 @@ def write_file(path, value, mode='w', force=False):
         raise RuntimeError('file exists, use different mode or force=True')
     with open(path, mode) as f:
         f.write(unicode(str(value)))
+
+
+_local_tz = local_tz()

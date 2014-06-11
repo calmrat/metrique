@@ -10,7 +10,7 @@ defaults and additional helper functionality for
 quickly generating plots with pandas and matplotlib
 '''
 
-from __future__ import unicode_literals
+from __future__ import unicode_literals, absolute_import
 
 try:
     import pandas as pd

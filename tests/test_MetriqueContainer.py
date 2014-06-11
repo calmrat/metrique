@@ -24,7 +24,7 @@ def test_api():
     from metrique import MetriqueContainer, MetriqueObject
     from metrique.utils import utcnow, remove_file, dt2ts, ts2dt
 
-    _expected_db_path = os.path.join(cache_dir, 'container_test.sqlite')
+    _expected_db_path = os.path.join(cache_dir, 'admin.sqlite')
     remove_file(_expected_db_path)
 
     _start = ts2dt('2001-01-01')
@@ -45,8 +45,9 @@ def test_api():
 
     # check various forms of passing in objects results in expected
     # container contents
+    db = 'admin'
     name = 'container_test'
-    c = MetriqueContainer(name=name)
+    c = MetriqueContainer(name=name, db=db)
     assert c == {}
     assert MetriqueContainer(name=name, objects=c) == {}
     assert MetriqueContainer(name=name, objects=objs_list) == r_objs_dict
@@ -56,10 +57,10 @@ def test_api():
 
     # setting version should result in all objects added having that version
     # note: version -> _v in MetriqueObject
-    assert mc._version == 0
+    assert mc.version == 0
     assert mc['1']['_v'] == 0
-    mc = MetriqueContainer(name=name, objects=objs_list, _version=3)
-    assert mc._version == 3
+    mc = MetriqueContainer(name=name, objects=objs_list, version=3)
+    assert mc.version == 3
     assert mc['1']['_v'] == 3
 
     # setting converts key to _id of value after being passed
@@ -104,6 +105,7 @@ def test_api():
 
     mc = MetriqueContainer(name=name, objects=objs_list)
     assert mc.df() is not None
+    assert mc.df().empty is False
 
     # local persistence; filter method queries .objects buffer
     # .persist dumps data to proxy db; but leaves the data in the buffer
