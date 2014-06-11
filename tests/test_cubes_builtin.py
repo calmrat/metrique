@@ -135,13 +135,14 @@ def test_gitdata_commit():
     db_file = os.path.join(cache_dir, '%s.sqlite' % name)
     remove_file(db_file)
 
-    uri = 'https://github.com/kejbaly2/tornadohttp.git'
+    uri_1 = 'https://github.com/kejbaly2/tornadohttp.git'
+    uri_2 = 'https://github.com/kejbaly2/metrique.git'
     m = pyclient(cube=name)
 
-    m.get_objects(uri=uri)
+    m.get_objects(uri=uri_1)
     k = len(m.objects)
     assert k > 0
-    m.get_objects(uri=uri, pull=True)
+    m.get_objects(uri=uri_1, pull=True)
     assert k == len(m.objects)
 
     # {u'files': {u'setup.py': {u'removed': 0, u'added': 3},
@@ -169,6 +170,15 @@ def test_gitdata_commit():
 
     _ids = m.objects.flush()
     assert len(_ids) == k
+
+    # load a second repo
+    # make sure our sessions are working as expected and
+    # a second call works as expected; eg, in the past
+    # there was a bug where we didn't load the table into
+    # metadata if the table wasn't being created for the
+    # first time and so non-standard types weren't
+    # defined in the session...
+    m.get_objects(uri=uri_2, flush=True)
 
     remove_file(m.repo.path, force=True)
     remove_file(db_file)

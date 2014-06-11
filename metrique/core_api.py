@@ -435,8 +435,8 @@ class MetriqueContainer(MutableMapping):
         s = time()
         [self.add(i) for i in items]
         diff = time() - s
-        logger.debug('... extended container by %s items in %ss' % (len(items),
-                                                                    int(diff)))
+        logger.debug('... extended container by %s items in %ss at %s/s' % (
+            len(items), int(diff), len(items) / diff))
 
     def flush(self, objects=None, batch_size=None, **kwargs):
         objects = objects or self.values()
@@ -485,6 +485,10 @@ class MetriqueContainer(MutableMapping):
         ''' wrapper for utils.load automated data loader '''
         return load(*args, **kwargs)
 
+    def itervalues(self):
+        for v in self.store.itervalues():
+            yield dict(v)
+
     def ls(self):
         raise NotImplementedError("Subclasses should implement this.")
 
@@ -508,18 +512,22 @@ class MetriqueContainer(MutableMapping):
                 self._proxy = self._proxy_cls
             # else: _proxy is a proxy_cls
             self._proxy = self._proxy(**kwargs)
-            name = self.config.get('name')
-            table = self._proxy.get_table(name, except_=False)
-            if table is None and self.config.get('autotable'):
-                schema = self.config.get('schema')
-                if not schema and self.store:
-                    schema = self._proxy.autoschema(self.store.values())
-                if schema:
-                    self._proxy.autotable(schema=schema, name=name,
-                                          create=True)
-                else:
-                    logger.warn('Failed to autotable; no schema '
-                                'or objects available in store')
+
+        name = self.config.get('name')
+        # if we have a table already, we want only to load
+        # a corresponding sqla.Table instance so our ORM
+        # works as expected; if no table and autotable:True,
+        # create the table too.
+        create = self.config.get('autotable')
+        schema = self.config.get('schema')
+        if not schema and self.store:
+            schema = self._proxy.autoschema(self.store.values())
+        if schema:
+            self._proxy.autotable(schema=schema, name=name,
+                                  create=create)
+        else:
+            logger.warn('Failed to autotable; no schema '
+                        'or objects available in store')
         return self._proxy
 
     def values(self):

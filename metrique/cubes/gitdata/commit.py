@@ -20,7 +20,7 @@ logger = logging.getLogger('metrique')
 import re
 
 from metrique import pyclient
-from metrique.utils import ts2dt, git_clone, sys_call, to_encoding, utcnow
+from metrique.utils import ts2dt, git_clone, sys_call
 
 related_re = re.compile('Related: (.+)$', re.I)
 resolves_re = re.compile('Resolves: (.+)$', re.I)
@@ -65,8 +65,8 @@ class Commit(pyclient):
         all_logs = re.sub('\n+', '\n', output)
         c_logs = [x for x in [s.strip() for s in all_logs.split('sha:')] if x]
 
-        now = utcnow()
         _end = None  # once was true, always is true...
+        objs = []
         for c_log in c_logs:
             sha, s, all_changes = c_log.partition('\n')
             #try:
@@ -112,6 +112,7 @@ class Commit(pyclient):
             obj['signed_off_by'] = signed_off_by_re.findall(c.message)
             obj['resolves'] = resolves_re.findall(c.message)
             obj['related'] = related_re.findall(c.message)
-            self.objects.add(obj)
+            objs.append(obj)
+        self.objects.extend(objs)
 
         return super(Commit, self).get_objects(**kwargs)

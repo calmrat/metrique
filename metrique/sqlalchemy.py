@@ -55,7 +55,7 @@ try:
 
     HAS_SQLALCHEMY = True
 
-    # for 2.7 to ensure all strings are unicode
+    # for py2.7 to ensure all strings are unicode
     class CoerceUTF8(TypeDecorator):
         """Safely coerce Python bytestrings to Unicode
         before passing off to the database."""
@@ -70,12 +70,10 @@ try:
         def python_type(self):
             return unicode
 
-    class JSONTyped(TypeDecorator):
+    class JSONDict(TypeDecorator):
         impl = pg.JSON
 
         def python_type(self):
-            # FIXME: should this be dict? or rather json
-            # and parser would check for json type?
             return dict
 
     class JSONTypedLite(TypeDecorator):
@@ -83,8 +81,7 @@ try:
 
         def process_bind_param(self, value, dialect):
             e = to_encoding
-            # must be a dict!
-            return None if value is None else e(json.dumps(dict(value)))
+            return None if value is None else e(json.dumps(value))
 
         def process_result_value(self, value, dialect):
             return {} if value is None else json.loads(value)
@@ -221,12 +218,11 @@ class SQLAlchemyProxy(object):
                   **kwargs):
         name = name or self.config.get('table')
         is_true(name, 'table name must be defined')
-        table = self.get_table(name, except_=False)
-        if table is None:
-            if schema is None:
-                schema = autoschema(objects=objects, **kwargs)
-            table = schema2table(name=name, schema=schema, Base=self.Base,
-                                 exclude_keys=self.RESTRICTED_KEYS)
+        # always load a sqla.Table into metadata so sessions act as expected
+        if schema is None:
+            schema = autoschema(objects=objects, **kwargs)
+        table = schema2table(name=name, schema=schema, Base=self.Base,
+                             exclude_keys=self.RESTRICTED_KEYS)
         if create and name not in self.table_names:
             table.__table__.create()
         table = self.get_table(name)
@@ -330,7 +326,7 @@ class SQLAlchemyProxy(object):
         self.engine_init()
         self.session_init()
         # clear existing Base, since we have bound connections, etc
-        # which need to be abandonded for new initlization
+        # which need to be abandonded for new initialization
         self._Base = None
 
     @property
@@ -372,6 +368,10 @@ class SQLAlchemyProxy(object):
     def proxy(self):
         return self.engine
 
+    @property
+    def session_auto(self):
+        return self.session_new(autocommit=True)
+
     def session_dispose(self):
         self._session.close()
         self._session = None
@@ -392,11 +392,9 @@ class SQLAlchemyProxy(object):
             self.session_init()
         return self._session
 
-    @property
-    def session_auto(self):
-        return self.session_new(autocommit=True)
-
     def session_new(self, **kwargs):
+        if not self._sessionmaker:
+            self.initialize()
         return self._sessionmaker(**kwargs)
 
     def _sqla_sqlite3(self, uri, isolation_level="READ UNCOMMITTED"):
@@ -430,7 +428,7 @@ class SQLAlchemyProxy(object):
         kwargs = dict(isolation_level=isolation_level)
         # override default dict and list column types
         types = {list: pg.ARRAY, tuple: pg.ARRAY, set: pg.ARRAY,
-                 dict: JSONTyped, datetime: DateTime}
+                 dict: JSONDict, datetime: DateTime}
         self.TYPE_MAP.update(types)
         bs = self.config['batch_size']
         # 999 batch_size is default for sqlite, postgres handles more at once

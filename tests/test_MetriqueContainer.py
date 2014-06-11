@@ -20,6 +20,32 @@ fixtures = os.path.join(testroot, 'fixtures')
 cache_dir = env['METRIQUE_CACHE']
 
 
+def test_datatypes():
+    from metrique import MetriqueContainer
+    from metrique.utils import utcnow, remove_file
+
+    o = {"_oid": 1,
+         "date": utcnow(),
+         "dict_null": {},
+         "dict": {'hello': 'world'},
+         "bool": True,
+         "null": None,
+         "list_null": [],
+         "list": [1, 2, 3]}
+    db = 'admin'
+    table = 'test'
+    c = MetriqueContainer(name=table, db=db)
+
+    c.drop()
+    remove_file(c._persist_path)
+
+    c.add(o)
+    c.persist()
+
+    c.drop()
+    remove_file(c._persist_path)
+
+
 def test_api():
     from metrique import MetriqueContainer, MetriqueObject
     from metrique.utils import utcnow, remove_file, dt2ts, ts2dt
