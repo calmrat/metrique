@@ -1,9 +1,16 @@
 {
     "metrique": {
+        "dialect": "sqlite",
+        "port": 5432,
+        "host": "127.0.0.1",
+        "host_": "%s",
+        "password": "%s",
+        "username": "admin",
+        "db": "admin",
         "debug": true,
         "log2file": true,
         "log2stdout": false,
-        "workers": 1
+        "workers": 2
     },
     "mongodb": {
         "auth": false,
@@ -19,15 +26,6 @@
         "tz_aware": false,
         "username": "admin",
         "write_concern": 0
-    },
-    "sqlalchemy": {
-        "dialect": "sqlite",
-        "port": 5432,
-        "host": "127.0.0.1",
-        "host_": "%s",
-        "password": "%s",
-        "username": "admin",
-        "db": "admin"
     },
     "celery": {
         "BROKER_URL": "sqlite://:memory:",

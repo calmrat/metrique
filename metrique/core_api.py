@@ -410,10 +410,11 @@ class MetriqueContainer(MutableMapping):
 
     @property
     def _persist_path(self):
-        is_true(self.name, "name can not be null!")
+        db = self.config.get('db')
+        is_true(db, "db can not be null!")
         cache_dir = self.config.get('cache_dir')
         suffix = '.sqlite'
-        fname = '%s%s' % (self.name, suffix)
+        fname = '%s%s' % (db, suffix)
         return os.path.join(cache_dir, fname)
 
     def add(self, item):

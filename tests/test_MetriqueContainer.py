@@ -24,9 +24,6 @@ def test_api():
     from metrique import MetriqueContainer, MetriqueObject
     from metrique.utils import utcnow, remove_file, dt2ts, ts2dt
 
-    _expected_db_path = os.path.join(cache_dir, 'admin.sqlite')
-    remove_file(_expected_db_path)
-
     _start = ts2dt('2001-01-01')
     _end = ts2dt('2001-01-02')
     a = {'_oid': 1, 'col_1': 1, 'col_2': utcnow(), '_start': _start}
@@ -45,21 +42,19 @@ def test_api():
 
     # check various forms of passing in objects results in expected
     # container contents
-    db = 'admin'
-    name = 'container_test'
-    c = MetriqueContainer(name=name, db=db)
+
     assert c == {}
-    assert MetriqueContainer(name=name, objects=c) == {}
-    assert MetriqueContainer(name=name, objects=objs_list) == r_objs_dict
-    assert MetriqueContainer(name=name, objects=objs_dict) == r_objs_dict
-    mc = MetriqueContainer(name=name, objects=objs_list)
-    assert MetriqueContainer(name=name, objects=mc) == r_objs_dict
+    assert MetriqueContainer(objects=c) == {}
+    assert MetriqueContainer(objects=objs_list) == r_objs_dict
+    assert MetriqueContainer(objects=objs_dict) == r_objs_dict
+    mc = MetriqueContainer(objects=objs_list)
+    assert MetriqueContainer(objects=mc) == r_objs_dict
 
     # setting version should result in all objects added having that version
     # note: version -> _v in MetriqueObject
     assert mc.version == 0
     assert mc['1']['_v'] == 0
-    mc = MetriqueContainer(name=name, objects=objs_list, version=3)
+    mc = MetriqueContainer(objects=objs_list, version=3)
     assert mc.version == 3
     assert mc['1']['_v'] == 3
 
@@ -103,7 +98,18 @@ def test_api():
     mc.clear()
     assert mc == {}
 
-    mc = MetriqueContainer(name=name, objects=objs_list)
+    db = 'admin'
+    name = 'container_test'
+    c = MetriqueContainer(name=name, db=db)
+
+    _expected_db_path = os.path.join(cache_dir, 'admin.sqlite')
+    # test drop
+    c.drop(True)
+    assert c._persist_path == _expected_db_path
+    # make sure we're working with a clean db
+    remove_file(_expected_db_path)
+
+    mc = MetriqueContainer(name=name, db=db, objects=objs_list)
     assert mc.df() is not None
     assert mc.df().empty is False
 
@@ -111,7 +117,7 @@ def test_api():
     # .persist dumps data to proxy db; but leaves the data in the buffer
     # .flush dumps data and removes all objects dumped
     # count queries proxy db
-    mc = MetriqueContainer(name=name, objects=objs_list)
+    mc = MetriqueContainer(name=name, db=db, objects=objs_list)
     _store = deepcopy(mc.store)
 
     assert len(mc.filter({'col_1': 1})) == 1

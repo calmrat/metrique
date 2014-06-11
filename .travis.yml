@@ -6,7 +6,7 @@ install:
   - "pip install coveralls virtualenv"
   - "pip install decorator"
   - "./metrique.py deploy --all"
-  - "./metrique.py firstboot metrique postgresql"
+  - "./metrique.py firstboot metrique postgresql mongodb"
 services: 
   - mongodb
 addons:
