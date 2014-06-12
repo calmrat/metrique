@@ -21,11 +21,6 @@ from collections import MutableMapping
 from copy import deepcopy
 from getpass import getuser
 from inspect import isclass
-try:
-    from lockfile import LockFile
-    HAS_LOCKFILE = True
-except ImportError:
-    HAS_LOCKFILE = False
 import os
 from operator import add
 
@@ -255,12 +250,11 @@ class MetriqueContainer(MutableMapping):
     _object_cls = None
     _proxy_cls = None
     _proxy = None
-    _proxy_kwargs = None
     _table = None
     version = 0
     config = None
     config_file = DEFAULT_CONFIG
-    config_key = 'metrique'
+    config_key = 'container'
     db = None
     default_fields = {'_start': 1, '_end': 1, '_oid': 1}
     name = None
@@ -269,9 +263,9 @@ class MetriqueContainer(MutableMapping):
     HASH_EXCLUDE_KEYS = tuple(HASH_EXCLUDE_KEYS)
 
     def __init__(self, name=None, db=None, schema=None, version=0,
-                 objects=None, proxy=None, proxy_kwargs=None,
+                 objects=None, proxy=None, proxy_config=None,
                  batch_size=999, config=None, config_file=DEFAULT_CONFIG,
-                 config_key='metrique', cache_dir=CACHE_DIR, autotable=True,
+                 config_key='container', cache_dir=CACHE_DIR, autotable=True,
                  **kwargs):
         '''
         Accept additional kwargs, but ignore them.
@@ -316,14 +310,12 @@ class MetriqueContainer(MutableMapping):
             proxy = globals().get(proxy)
             is_true(proxy, "Invalid (proxy) class: %s" % proxy)
 
-        if not self._object_cls:
+        if self._object_cls is None:
             self._object_cls = MetriqueObject
-        if not self._proxy_cls:
+        if self._proxy_cls is None:
             from metrique.sqlalchemy import SQLAlchemyProxy
             self._proxy_cls = SQLAlchemyProxy
         self._proxy = proxy
-        self._proxy_kwargs = deepcopy(
-            proxy_kwargs or MetriqueContainer._proxy_kwargs or {})
 
         self.store = deepcopy(MetriqueContainer.store or {})
         self._update(objects)
@@ -408,15 +400,6 @@ class MetriqueContainer(MutableMapping):
                                        fields=fields, date=date, alias=alias,
                                        distinct=distinct, limit=limit)
 
-    @property
-    def _persist_path(self):
-        db = self.config.get('db')
-        is_true(db, "db can not be null!")
-        cache_dir = self.config.get('cache_dir')
-        suffix = '.sqlite'
-        fname = '%s%s' % (db, suffix)
-        return os.path.join(cache_dir, fname)
-
     def add(self, item):
         item = self._encode(item)
         _id = item['_id']
@@ -435,7 +418,7 @@ class MetriqueContainer(MutableMapping):
         s = time()
         [self.add(i) for i in items]
         diff = time() - s
-        logger.debug('... extended container by %s items in %ss at %s/s' % (
+        logger.debug('... extended container by %s items in %ss at %.2f/s' % (
             len(items), int(diff), len(items) / diff))
 
     def flush(self, objects=None, batch_size=None, **kwargs):
@@ -494,9 +477,7 @@ class MetriqueContainer(MutableMapping):
 
     def persist(self, objects=None, autosnap=None):
         objects = objects or self.values()
-        # FIXME: lock is only necessary for sqlite...
-        with LockFile(self._persist_path):
-            return self.upsert(objects=objects, autosnap=autosnap)
+        return self.upsert(objects=objects, autosnap=autosnap)
 
     def pop(self, key):
         key = to_encoding(key)
@@ -504,11 +485,10 @@ class MetriqueContainer(MutableMapping):
 
     @property
     def proxy(self):
-        if not self._proxy or isclass(self._proxy):
+        if self._proxy is None or isclass(self._proxy):
             is_true(self.name, "name can not be null!")
             kwargs = deepcopy(self.config)
-            kwargs.update(self._proxy_kwargs)
-            if not self._proxy:
+            if self._proxy is None:
                 self._proxy = self._proxy_cls
             # else: _proxy is a proxy_cls
             self._proxy = self._proxy(**kwargs)
@@ -520,14 +500,26 @@ class MetriqueContainer(MutableMapping):
         # create the table too.
         create = self.config.get('autotable')
         schema = self.config.get('schema')
+        if name in self._proxy.meta_tables:
+            logger.warn('autotable "%s": already exists' % name)
+            return self._proxy
+
         if not schema and self.store:
+            # if we didn't get an expclit schema definition to use,
+            # autogenerate the schema from the store content, if any
             schema = self._proxy.autoschema(self.store.values())
+
         if schema:
+            if name in self._proxy.table_names:
+                # no reason to create the table again...
+                # but we still want to load the table class into metadata
+                create = False
             self._proxy.autotable(schema=schema, name=name,
                                   create=create)
+            logger.warn('autotable "%s": (create=%s): OK' % (name, create))
         else:
-            logger.warn('Failed to autotable; no schema '
-                        'or objects available in store')
+            logger.warn(
+                'autotable "%s": FAIL; no schema and store is empty' % name)
         return self._proxy
 
     def values(self):

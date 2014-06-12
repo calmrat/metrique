@@ -37,13 +37,13 @@ def test_datatypes():
     c = MetriqueContainer(name=table, db=db)
 
     c.drop()
-    remove_file(c._persist_path)
+    remove_file(c._proxy._sqlite_path)
 
     c.add(o)
     c.persist()
 
     c.drop()
-    remove_file(c._persist_path)
+    remove_file(c._proxy._sqlite_path)
 
 
 def test_api():
@@ -131,7 +131,7 @@ def test_api():
     _expected_db_path = os.path.join(cache_dir, 'admin.sqlite')
     # test drop
     c.drop(True)
-    assert c._persist_path == _expected_db_path
+    assert c.proxy._sqlite_path == _expected_db_path
     # make sure we're working with a clean db
     remove_file(_expected_db_path)
 

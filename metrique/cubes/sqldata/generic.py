@@ -36,17 +36,17 @@ import warnings
 
 from metrique import pyclient
 from metrique.utils import batch_gen, configure, debug_setup, ts2dt
-from metrique.utils import is_empty, to_encoding
+from metrique.utils import is_empty, to_encoding, dt2ts
 
 
 def get_full_history(cube, oids, flush=False, cube_name=None,
                      config=None, config_file=None, config_key=None,
-                     container=None, container_kwargs=None,
-                     proxy=None, proxy_kwargs=None, **kwargs):
+                     container=None, container_config=None,
+                     proxy=None, proxy_config=None, **kwargs):
     m = pyclient(cube=cube, name=cube_name, config=config,
                  config_file=config_file, config_key=config_key,
-                 container=container, container_kwargs=container_kwargs,
-                 proxy=proxy, proxy_kwargs=proxy_kwargs, **kwargs)
+                 container=container, container_config=container_config,
+                 proxy=proxy, proxy_config=proxy_config, **kwargs)
     results = []
     batch_size = m.lconfig.get('batch_size')
     for batch in batch_gen(oids, batch_size):
@@ -57,12 +57,12 @@ def get_full_history(cube, oids, flush=False, cube_name=None,
 
 def get_objects(cube, oids, flush=False, cube_name=None,
                 config=None, config_file=None, config_key=None,
-                container=None, container_kwargs=None,
-                proxy=None, proxy_kwargs=None, **kwargs):
+                container=None, container_config=None,
+                proxy=None, proxy_config=None, **kwargs):
     m = pyclient(cube=cube, name=cube_name, config=config,
                  config_file=config_file, config_key=config_key,
-                 container=container, container_kwargs=container_kwargs,
-                 proxy=proxy, proxy_kwargs=proxy_kwargs, **kwargs)
+                 container=container, container_config=container_config,
+                 proxy=proxy, proxy_config=proxy_config, **kwargs)
     results = []
     batch_size = m.lconfig.get('batch_size')
     for batch in batch_gen(oids, batch_size):
@@ -91,7 +91,6 @@ class Generic(pyclient):
     :param sql_batch_size: how many objects to query at a time
     '''
     dialect = None
-    config_key = 'sqldata'
     fields = None
 
     def __init__(self, vdb=None, retries=None, batch_size=None,
@@ -149,7 +148,7 @@ class Generic(pyclient):
 
         self.objects.extend(_objs)
         if flush:
-            return self.objects.flush(autosnap=False, schema=self.fields)
+            return self.objects.flush(autosnap=False)
         else:
             return self.objects.values()
 
@@ -161,6 +160,7 @@ class Generic(pyclient):
         # We want to consider only activities that happend before time_doc
         # do not move this, because time_doc._start changes
         # time_doc['_start'] is a timestamp, whereas act[0] is a datetime
+        # we need to be sure to convert act[0] (when) to timestamp!
         td_start = time_doc['_start']
         activities = filter(lambda act: (act[0] < td_start and
                                          act[1] in time_doc), activities)
@@ -191,7 +191,7 @@ class Generic(pyclient):
             if inconsistent:
                 self._log_inconsistency(last_doc, last_val, field,
                                         removed, added, when)
-                new_doc.setdefault('_e', {})
+                new_doc['_e'] = {} if not new_doc.get('_e') else new_doc['_e']
                 # set curreupted field value to the the value that was added
                 # and continue processing as if that issue didn't exist
                 new_doc['_e'][field] = added
@@ -202,7 +202,8 @@ class Generic(pyclient):
             # set start to creation time if available
             last_doc = batch_updates[-1]
             if creation_field:
-                creation_ts = last_doc[creation_field]
+                # again, we expect _start to be epoch float...
+                creation_ts = dt2ts(last_doc[creation_field])
                 if creation_ts < last_doc['_start']:
                     last_doc['_start'] = creation_ts
                 elif len(batch_updates) == 1:
@@ -345,7 +346,7 @@ class Generic(pyclient):
         return fieldmap
 
     def _generate_sql(self, _oids=None, sort=True):
-        db = self.lconfig.get('db')
+        db = self.lconfig.get('vdb') or self.lconfig.get('db')
         _oid = self.lconfig.get('_oid')
         if isinstance(_oid, (list, tuple)):
             _oid = _oid[0]  # get the db column, not the field alias
@@ -402,7 +403,7 @@ class Generic(pyclient):
 
         if HAS_JOBLIB and workers > 1:
             logger.debug(
-                'Getting Objects - Current Values (%s@%s)' % (
+                'Getting Objects [parallel]- Current Values (%s@%s)' % (
                     workers, w_batch_size))
             runner = Parallel(n_jobs=workers)
             func = delayed(get_objects)
@@ -410,15 +411,16 @@ class Generic(pyclient):
                 # suppress warning from joblib:
                 # UserWarning: Parallel loops cannot be nested ...
                 warnings.simplefilter("ignore")
+                logger.warn('%s %s' % (HAS_JOBLIB, workers))
                 result = runner(func(
                     cube=self._cube, oids=batch, flush=flush,
                     cube_name=self.name, config=self.config,
                     config_file=self.config_file,
                     config_key=self.config_key,
                     container=type(self.objects),
-                    container_kwargs=self._container_kwargs,
+                    container_config=self.container_config,
                     proxy=type(self.proxy),
-                    proxy_kwargs=self._proxy_kwargs)
+                    proxy_config=self.proxy_config)
                     for batch in batch_gen(oids, w_batch_size))
             # merge list of lists (batched) into single list
             result = [i for l in result for i in l]
@@ -434,7 +436,7 @@ class Generic(pyclient):
         if flush:
             return result
         else:
-            [self.objects.add(obj) for obj in result]
+            self.objects.extend(result)
             return self
 
     def _get_objects(self, oids, flush=False):
@@ -457,7 +459,7 @@ class Generic(pyclient):
         objects = self._prep_objects(objects)
         self.objects.extend(objects)
         if flush:
-            return self.objects.flush(autosnap=True, schema=self.fields)
+            return self.objects.flush(autosnap=True)
         else:
             return self.objects.values()
 
@@ -513,9 +515,9 @@ class Generic(pyclient):
                     config_file=self.config_file,
                     config_key=self.config_key,
                     container=type(self.objects),
-                    container_kwargs=self._container_kwargs,
+                    container_config=self.container_config,
                     proxy=type(self.proxy),
-                    proxy_kwargs=self._proxy_kwargs)
+                    proxy_config=self.proxy_config)
                     for batch in batch_gen(oids, w_batch_size))
             # merge list of lists (batched) into single list
             result = [i for l in result for i in l]
@@ -531,14 +533,14 @@ class Generic(pyclient):
         if flush:
             return result
         else:
-            [self.objects.add(obj) for obj in result]
+            self.objects.extend(result)
             return self
 
     def _left_join(self, select_as, select_prop, join_prop, join_table,
                    on_col, on_db=None, on_table=None, join_db=None, **kwargs):
         on_table = on_table or self.lconfig.get('table')
-        on_db = on_db or self.lconfig.get('db')
-        join_db = join_db or self.lconfig.get('db')
+        on_db = on_db or self.lconfig.get('vdb') or self.lconfig.get('db')
+        join_db = join_db or self.lconfig.get('vdb') or self.lconfig.get('db')
         return dict(select='%s.%s' % (select_as, select_prop),
                     sql='LEFT JOIN %s.%s %s ON %s.%s = %s.%s.%s' % (
                         join_db, join_table, select_as, select_as, join_prop,
@@ -635,13 +637,12 @@ class Generic(pyclient):
 
     @property
     def proxy(self):
+        # This proxy is connecting to the data source DB, not the container
+        # storage db
         if not hasattr(self, '_sqldata_proxy'):
-            kwargs = deepcopy(self.lconfig)
-            if 'vdb' in kwargs:
-                # teiid "dialect" defined vdb as connection db
-                kwargs['db'] = kwargs['vdb']
-            self._sqldata_proxy = self.sqlalchemy(**kwargs)
-        return self._sqldata_proxy
+            super(Generic, self).proxy_init(**self.proxy_config)
+            self._sqldata_proxy = self._proxy
+        return self._proxy
 
     def _typecast(self, field, value):
         _type = self.fields[field].get('type')
@@ -714,7 +715,7 @@ class Generic(pyclient):
         Query source database for a distinct list of oids.
         '''
         table = self.lconfig.get('table')
-        db = self.lconfig.get('db')
+        db = self.lconfig.get('vdb') or self.lconfig.get('db')
         _oid = self.lconfig.get('_oid')
         if isinstance(_oid, (list, tuple)):
             _oid = _oid[0]  # get the db column, not the field alias

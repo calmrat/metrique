@@ -52,6 +52,7 @@ from hashlib import sha1
 from inspect import isfunction, isclass
 import itertools
 import os
+from pprint import pformat
 
 try:
     import pandas as pd
@@ -520,7 +521,7 @@ def _get_timezone_converter(dt, from_tz, to_tz=None, tz_aware=False):
         to_tz = to_tz or pytz.UTC
         if isinstance(to_tz, basestring):
             to_tz = pytz.timezone(to_tz)
-        dt = dt_parse(dt) if isinstance(dt, basestring) else dt
+        dt = ts2dt(dt) if not isinstance(dt, datetime) else dt
         if dt.tzinfo:
             # datetime instance already has tzinfo set
             # WARN if not dt.tzinfo == from_tz?
@@ -1345,34 +1346,82 @@ class DictDiffer(object):
     (3) keys same in both but changed values
     (4) keys same in both and unchanged values
     """
-    def __init__(self, current_dict, past_dict):
-        current_dict = OrderedDict(sorted(current_dict.items(),
-                                          key=lambda t: t[0]))
-        past_dict = OrderedDict(sorted(past_dict.items(),
-                                       key=lambda t: t[0]))
-        self.current_dict, self.past_dict = current_dict, past_dict
-        self.set_current = set(current_dict.keys())
-        self.set_past = set(past_dict.keys())
-        self.intersect = self.set_current.intersection(self.set_past)
+    def __init__(self, dicts, added=True, removed=True,
+                 changed=False, unchanged=False, diff=True,
+                 exclude=None):
+        is_true(isinstance(dicts, (list, tuple)),
+                'dicts must be a list of dicts')
+        self._exclude = set(exclude or [])
+        self._added = added
+        self._removed = removed
+        self._changed = changed
+        self._unchanged = unchanged
+        self._diff = diff
 
-    def added(self):
-        return self.set_current - self.intersect
+        od = OrderedDict
+        s = sorted
+        sk = lambda t: t[0]
+        self.dicts = [od(s(d.iteritems(), key=sk)) for d in dicts]
 
-    def removed(self):
-        return self.set_past - self.intersect
+    def __getitem__(self, value):
+        is_true(isinstance(value, slice), 'expected slice')
+        dicts = self.dicts[value]
+        past_dict = dicts.pop(0)
+        _diffs = []
+        for current_dict in dicts:
+            current = set(current_dict.keys())
+            past = set(past_dict.keys())
+            intersect = current.intersection(past)
+            if self._exclude:
+                current = current - self._exclude
+                past = past - self._exclude
+                intersect = intersect - self._exclude
 
-    def changed(self):
-        return set(o for o in self.intersect
-                   if self.past_dict[o] != self.current_dict[o])
+            _diff = {}
+            if self._added:
+                added = self.added(current, intersect)
+                _diff['added'] = added
+            if self._removed:
+                removed = self.removed(past, intersect)
+                _diff['removed'] = removed
+            if self._changed:
+                changed = self.changed(past_dict, current_dict, intersect)
+                _diff['changed'] = changed
+            if self._unchanged:
+                unchanged = self.unchanged(past_dict, current_dict, intersect)
+                _diff['unchanged'] = unchanged
+            if self._diff:
+                diff = self.diff(past_dict, current_dict, intersect)
+                _diff['diff'] = diff
+            _diffs.append(_diff)
+            past_dict = current_dict
+        return _diffs
 
-    def unchanged(self):
-        return set(o for o in self.intersect
-                   if self.past_dict[o] == self.current_dict[o])
+    def added(self, current, intersect):
+        return current - intersect
+
+    def removed(self, past, intersect):
+        return past - intersect
+
+    def changed(self, past_dict, current_dict, intersect):
+        return set(o for o in intersect if past_dict[o] != current_dict[o])
+
+    def unchanged(self, past_dict, current_dict, intersect):
+        return set(o for o in intersect if past_dict[o] == current_dict[o])
+
+    def diff(self, past_dict, current_dict, intersect):
+        _dict = {}
+        for o in intersect:
+            was = past_dict[o]
+            now = current_dict[o]
+            if was != now:
+                _dict[o] = 'from %s to %s' % (repr(was), repr(now))
+        return _dict
 
     def __str__(self):
-        return ('Current: %s\nPast: %s\nAdded: %s\n'
-                'Removed: %s\nChanged: %s\nUnChanged: %s' % (
-                    self.current_dict, self.past_dict, self.added(),
-                    self.removed(), self.changed(), self.unchanged()))
+        return pformat(self[:], indent=2)
+
+    def __repr__(self):
+        return self.__str__()
 
 _local_tz = local_tz()

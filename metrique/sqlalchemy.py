@@ -20,6 +20,11 @@ logger = logging.getLogger('sqlalchemy')
 from copy import deepcopy
 from datetime import datetime
 from getpass import getuser
+try:
+    from lockfile import LockFile
+    HAS_LOCKFILE = True
+except ImportError:
+    HAS_LOCKFILE = False
 import os
 from operator import add
 
@@ -40,7 +45,7 @@ except ImportError:
 
 try:
     from sqlalchemy import create_engine, MetaData, Table
-    from sqlalchemy import Index, Column, Integer, DateTime
+    from sqlalchemy import Index, Column, Integer
     from sqlalchemy import Float, BigInteger, Boolean, UnicodeText
     from sqlalchemy import TypeDecorator
     from sqlalchemy import select, update, desc
@@ -48,6 +53,7 @@ try:
     from sqlalchemy.orm import sessionmaker
     from sqlalchemy.ext.declarative import declarative_base
     from sqlalchemy.sql.expression import func
+    from sqlalchemy.exc import OperationalError
     import sqlalchemy.dialects.sqlite as sqlite
     import sqlalchemy.dialects.postgresql as pg
 
@@ -135,7 +141,7 @@ DEFAULT_CONFIG = os.path.join(ETC_DIR, 'metrique.json')
 class SQLAlchemyProxy(object):
     _object_cls = None
     config = None
-    config_key = 'metrique'
+    config_key = 'proxy'
     config_file = DEFAULT_CONFIG
     RESERVED_USERNAMES = {'admin', 'test', 'metrique'}
     # these keys are already set, no overrides!
@@ -146,12 +152,14 @@ class SQLAlchemyProxy(object):
     _Base = None
     _engine = None
     _engine_uri = None
+    _lock_required = True
     _meta = None
+    _schema_name = None
     _session = None
     _sessionmaker = None
 
     def __init__(self, db=None, table=None, debug=None, config=None,
-                 config_key='metrique', config_file=DEFAULT_CONFIG,
+                 config_key='proxy', config_file=DEFAULT_CONFIG,
                  dialect='sqlite', driver=None, host='127.0.0.1',
                  port='5432', username=None, password=None,
                  connect_args=None, batch_size=999,
@@ -209,31 +217,153 @@ class SQLAlchemyProxy(object):
             from metrique.core_api import MetriqueObject
             self._object_cls = MetriqueObject
 
+    def _debug_setup_sqlalchemy_logging(self):
+        level = self.config.get('debug')
+        debug_setup(logger='sqlalchemy', level=level)
+
+    def _exec_transaction(self, cmd, params=None, session=None):
+        session = session or self.session_new()
+        try:
+            session.execute(cmd, params)
+            session.commit()
+        except Exception as e:
+            logger.error('Insert Error: %s' % e)
+            session.rollback()
+            raise
+
+    @staticmethod
+    def _index_default_name(columns, name=None):
+        if name:
+            ix = name
+        elif isinstance(columns, basestring):
+            ix = columns
+        elif isinstance(columns, (list, tuple)):
+            ix = '_'.join(columns)
+        else:
+            raise ValueError(
+                "unable to get default name from columns: %s" % columns)
+        # prefix ix_ to all index names
+        ix = re.sub('^ix_', '', ix)
+        ix = 'ix_%s' % ix
+        return ix
+
+    def _load_sql(self, sql):
+        # load sql kwargs from instance config
+        rows = self.session_auto.execute(sql)
+        objects = [dict(row) for row in rows]
+        return objects
+
+    def _parse_fields(self, table=None, fields=None, reflect=False, **kwargs):
+        table = self.get_table(table)
+        fields = parse.parse_fields(fields)
+        if fields in ([], {}):
+            fields = [c.name for c in table.columns]
+        if reflect:
+            fields = [c for c in table.columns if c.name in fields]
+        return fields
+
+    def _parse_query(self, table=None, query=None, fields=None, date=None,
+                     alias=None, distinct=None, limit=None, sort=None,
+                     descending=None):
+        _table = self.get_table(table, except_=True)
+        parser = parse.SQLAlchemyMQLParser(_table)
+        query = parser.parse(query=query, date=date,
+                             fields=fields, distinct=distinct,
+                             alias=alias)
+        if sort:
+            order_by = parse.parse_fields(fields=sort)[0]
+            if descending:
+                query = query.order_by(desc(order_by))
+            else:
+                query = query.order_by(order_by)
+        return query
+
+    def _sqla_sqlite3(self, uri, isolation_level="READ UNCOMMITTED"):
+        isolation_level = isolation_level or "READ UNCOMMITTED"
+        kwargs = dict(isolation_level=isolation_level)
+        return uri, kwargs
+
+    @property
+    def _sqlite_path(self):
+        db = self.config.get('db')
+        is_true(db, "db can not be null!")
+        cache_dir = self.config.get('cache_dir')
+        suffix = '.sqlite'
+        fname = '%s%s' % (db, suffix)
+        return os.path.join(cache_dir, fname)
+
+    def _sqla_teiid(self, uri, version=None, isolation_level="AUTOCOMMIT"):
+        uri = re.sub('^.*://', 'postgresql+psycopg2://', uri)
+        # version normally comes "'Teiid 8.5.0.Final'", which sqlalchemy
+        # failed to parse
+        version = version or (8, 2)
+        r_none = lambda *i: None
+        pg.base.PGDialect.description_encoding = str('utf8')
+        pg.base.PGDialect._check_unicode_returns = lambda *i: True
+        pg.base.PGDialect._get_server_version_info = lambda *i: version
+        pg.base.PGDialect.get_isolation_level = lambda *i: isolation_level
+        pg.base.PGDialect._get_default_schema_name = r_none
+        pg.psycopg2.PGDialect_psycopg2.set_isolation_level = r_none
+        return self._sqla_postgresql(uri=uri, version=version,
+                                     isolation_level=isolation_level)
+
+    def _sqla_postgresql(self, uri, version=None,
+                         isolation_level="READ COMMITTED"):
+        '''
+        expected uri form:
+        postgresql+psycopg2://%s:%s@%s:%s/%s' % (
+            username, password, host, port, vdb)
+        '''
+        isolation_level = isolation_level or "READ COMMITTED"
+        kwargs = dict(isolation_level=isolation_level)
+        # override default dict and list column types
+        types = {list: pg.ARRAY, tuple: pg.ARRAY, set: pg.ARRAY,
+                 dict: JSONDict, datetime: UTCEpoch}
+        self.TYPE_MAP.update(types)
+        bs = self.config['batch_size']
+        # 999 batch_size is default for sqlite, postgres handles more at once
+        self.config['batch_size'] = 5000 if bs == 999 else bs
+        self._lock_required = False
+        self._schema_name = 'public'
+        return uri, kwargs
+
+    # ######################## Cube API ################################
     def autoschema(self, objects, **kwargs):
         ''' wrapper around utils.autoschema function '''
         return autoschema(objects=objects, exclude_keys=self.RESTRICTED_KEYS,
                           **kwargs)
 
     def autotable(self, name=None, schema=None, objects=None, create=False,
-                  **kwargs):
+                  except_=False, **kwargs):
         name = name or self.config.get('table')
         is_true(name, 'table name must be defined')
-        # always load a sqla.Table into metadata so sessions act as expected
-        if schema is None:
-            schema = autoschema(objects=objects, **kwargs)
-        table = schema2table(name=name, schema=schema, Base=self.Base,
-                             exclude_keys=self.RESTRICTED_KEYS)
-        if create and name not in self.table_names:
-            table.__table__.create()
-        table = self.get_table(name)
+        if name not in self.meta_tables:
+            # load a sqla.Table into metadata so sessions act as expected
+            # unless it's already there, of course.
+            if schema is None:
+                schema = autoschema(objects=objects,
+                                    exclude_keys=self.RESTRICTED_KEYS,
+                                    **kwargs)
+            table = schema2table(name=name, schema=schema, Base=self.Base,
+                                 exclude_keys=self.RESTRICTED_KEYS)
+        try:
+            if create and name not in self.table_names:
+                table.__table__.create()
+        except Exception as e:
+            logger.error('Create Table %s: FAIL (%s)' % (name, e))
+            if except_:
+                raise
+        else:
+            logger.error('Create Table %s: OK' % name)
+            table = self.get_table(name, except_=except_)
         return table
 
     @property
     def Base(self):
         if not self._Base:
             metadata = MetaData(bind=self.engine)
-            metadata.reflect()
             self._Base = declarative_base(metadata=metadata)
+            self.meta_reflect(self._Base)
         return self._Base
 
     def columns(self, table=None, columns=None, reflect=False):
@@ -245,11 +375,6 @@ class SQLAlchemyProxy(object):
             columns = [c for c in table.columns if c.name in columns]
         return columns
 
-    def _debug_setup_sqlalchemy_logging(self):
-        level = self.config.get('debug')
-        debug_setup(logger='sqlalchemy', level=level)
-
-    # ######################## DB API ##################################
     @property
     def engine(self):
         if not self._engine:
@@ -302,17 +427,26 @@ class SQLAlchemyProxy(object):
             table = self.config.get('table')
         if isinstance(table, Table):
             # this is already the table we're looking for...
-            table = table
+            _table = table
         else:
             is_true(table, 'table must be defined!')
-            table = self.meta_tables.get(table)
+            _table = self.meta_tables.get(table)
         if except_:
-            is_true(isinstance(table, Table), 'table (%s) not found!' % table)
+            is_true(isinstance(_table, Table),
+                    'table (%s) not found! Got: %s' % (table, _table))
         if as_cls:
-            name = str(table.name)
-            defaults = dict(__tablename__=name, autoload=True)
-            table = type(name, (self.Base,), defaults)
-        return table
+            defaults = dict(__tablename__=table, autoload=True)
+            _table = type(str(table), (self.Base,), defaults)
+        return _table
+
+    def meta_reflect(self, Base=None, except_=False):
+        Base = Base or self.Base
+        try:
+            Base.metadata.reflect()
+        except OperationalError as e:
+            logger.warn('Failed to reflect db: %s' % e)
+            if except_:
+                raise
 
     @property
     def meta_tables(self):
@@ -320,7 +454,7 @@ class SQLAlchemyProxy(object):
 
     @property
     def table_names(self):
-        return self.inspector.get_table_names()
+        return self.inspector.get_table_names(self._schema_name)
 
     def initialize(self):
         self.engine_init()
@@ -332,37 +466,6 @@ class SQLAlchemyProxy(object):
     @property
     def inspector(self):
         return inspect(self.engine)
-
-    def _load_sql(self, sql):
-        # load sql kwargs from instance config
-        rows = self.session_auto.execute(sql)
-        objects = [dict(row) for row in rows]
-        return objects
-
-    def _parse_fields(self, table=None, fields=None, reflect=False, **kwargs):
-        table = self.get_table(table)
-        fields = parse.parse_fields(fields)
-        if fields in ([], {}):
-            fields = [c.name for c in table.columns]
-        if reflect:
-            fields = [c for c in table.columns if c.name in fields]
-        return fields
-
-    def _parse_query(self, table=None, query=None, fields=None, date=None,
-                     alias=None, distinct=None, limit=None, sort=None,
-                     descending=None):
-        _table = self.get_table(table, except_=True)
-        parser = parse.SQLAlchemyMQLParser(_table)
-        query = parser.parse(query=query, date=date,
-                             fields=fields, distinct=distinct,
-                             alias=alias)
-        if sort:
-            order_by = parse.parse_fields(fields=sort)[0]
-            if descending:
-                query = query.order_by(desc(order_by))
-            else:
-                query = query.order_by(order_by)
-        return query
 
     @property
     def proxy(self):
@@ -397,45 +500,6 @@ class SQLAlchemyProxy(object):
             self.initialize()
         return self._sessionmaker(**kwargs)
 
-    def _sqla_sqlite3(self, uri, isolation_level="READ UNCOMMITTED"):
-        isolation_level = isolation_level or "READ UNCOMMITTED"
-        kwargs = dict(isolation_level=isolation_level)
-        return uri, kwargs
-
-    def _sqla_teiid(self, uri, version=None, isolation_level="AUTOCOMMIT"):
-        uri = re.sub('^.*://', 'postgresql+psycopg2://', uri)
-        # version normally comes "'Teiid 8.5.0.Final'", which sqlalchemy
-        # failed to parse
-        version = version or (8, 2)
-        r_none = lambda *i: None
-        pg.base.PGDialect.description_encoding = str('utf8')
-        pg.base.PGDialect._check_unicode_returns = lambda *i: True
-        pg.base.PGDialect._get_server_version_info = lambda *i: version
-        pg.base.PGDialect.get_isolation_level = lambda *i: isolation_level
-        pg.base.PGDialect._get_default_schema_name = r_none
-        pg.psycopg2.PGDialect_psycopg2.set_isolation_level = r_none
-        return self._sqla_postgresql(uri=uri, version=version,
-                                     isolation_level=isolation_level)
-
-    def _sqla_postgresql(self, uri, version=None,
-                         isolation_level="READ COMMITTED"):
-        '''
-        expected uri form:
-        postgresql+psycopg2://%s:%s@%s:%s/%s' % (
-            username, password, host, port, vdb)
-        '''
-        isolation_level = isolation_level or "READ COMMITTED"
-        kwargs = dict(isolation_level=isolation_level)
-        # override default dict and list column types
-        types = {list: pg.ARRAY, tuple: pg.ARRAY, set: pg.ARRAY,
-                 dict: JSONDict, datetime: DateTime}
-        self.TYPE_MAP.update(types)
-        bs = self.config['batch_size']
-        # 999 batch_size is default for sqlite, postgres handles more at once
-        self.config['batch_size'] = 5000 if bs == 999 else bs
-        return uri, kwargs
-
-    # ######################## Cube API ################################
     def count(self, query=None, date=None, table=None):
         '''
         Run a pql mongodb based query on the given cube and return only
@@ -452,6 +516,7 @@ class SQLAlchemyProxy(object):
         sql_count = select([func.count()])
         query = self._parse_query(table=table, query=query, date=date,
                                   fields='id', alias='anon_x')
+
         if query is not None:
             query = sql_count.select_from(query)
         else:
@@ -577,22 +642,6 @@ class SQLAlchemyProxy(object):
         logger.debug("last %s.%s: %s" % (table, field, last))
         return last
 
-    @staticmethod
-    def _index_default_name(columns, name=None):
-        if name:
-            ix = name
-        elif isinstance(columns, basestring):
-            ix = columns
-        elif isinstance(columns, (list, tuple)):
-            ix = '_'.join(columns)
-        else:
-            raise ValueError(
-                "unable to get default name from columns: %s" % columns)
-        # prefix ix_ to all index names
-        ix = re.sub('^ix_', '', ix)
-        ix = 'ix_%s' % ix
-        return ix
-
     def index(self, fields, name=None, table=None, **kwargs):
         '''
         Build a new index on a cube.
@@ -637,14 +686,13 @@ class SQLAlchemyProxy(object):
         objects = objects.values() if isinstance(objects, dict) else objects
         is_true(isinstance(objects, list), 'objects must be a list')
         table = self.get_table(table)
-        session = session or self.session_new()
-        try:
-            session.execute(table.insert(), objects)
-            session.commit()
-        except Exception as e:
-            logger.error('Insert Error: %s' % e)
-            session.rollback()
-            raise
+        if self._lock_required:
+            with LockFile(self._sqlite_path):
+                self._exec_transaction(cmd=table.insert(), params=objects,
+                                       session=session)
+        else:
+            self._exec_transaction(cmd=table.insert(), params=objects,
+                                   session=session)
 
     def ls(self, startswith=None):
         '''
@@ -731,7 +779,7 @@ class SQLAlchemyProxy(object):
                     snap_k += 1
 
                 else:
-                    o = self._object_cls(**o)
+                    o = dict(self._object_cls(**o))
                     # don't try to set _id
                     _id = o.pop('_id')
                     assert _id == dup['_id']
@@ -823,7 +871,7 @@ def schema2table(name, schema, Base=None, type_map=None, exclude_keys=None):
         logger.debug('Reusing existing Base (%s)' % Base)
     Base = Base or declarative_base()
     type_map = type_map or deepcopy(TYPE_MAP)
-    logger.debug("Attempting to create table: %s..." % name)
+    logger.debug("Attempting to create Table class: %s..." % name)
     logger.debug(" ... Schema: %s" % schema)
     logger.debug(" ... Type Map: %s" % type_map)
 
@@ -832,9 +880,9 @@ def schema2table(name, schema, Base=None, type_map=None, exclude_keys=None):
         ', '.join(['%s=%s' % (k, v) for k, v in s.__dict__.iteritems()
                    if k != '_sa_instance_state']))
 
-    _ignore_keys = set(['_id', '_hash'])
-    __init__ = lambda s, kw: [setattr(s, k, v) for k, v in kw.iteritems()
-                              if k not in _ignore_keys]
+    #_ignore_keys = set(['_id', '_hash'])
+    #__init__ = lambda s, kw: [setattr(s, k, v) for k, v in kw.iteritems()
+    #                          if k not in _ignore_keys]
     defaults = {
         '__tablename__': name,
         '__table_args__': ({'extend_existing': True}),
@@ -849,7 +897,7 @@ def schema2table(name, schema, Base=None, type_map=None, exclude_keys=None):
         '_v': Column(Integer, default=0, nullable=False),
         '__v__': Column(CoerceUTF8, default=__version__, nullable=False),
         '_e': Column(type_map[dict]),
-        '__init__': __init__,
+        # '__init__': __init__,
         '__repr__': __repr__,
     }
 

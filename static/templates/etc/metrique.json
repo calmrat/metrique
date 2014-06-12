@@ -1,16 +1,27 @@
 {
     "metrique": {
+        "debug": true,
+        "log2file": true,
+        "log2stdout": false,
+        "workers": 2
+    },
+    "container": {
         "dialect": "sqlite",
         "port": 5432,
         "host": "127.0.0.1",
         "host_": "%s",
         "password": "%s",
         "username": "admin",
-        "db": "admin",
-        "debug": true,
-        "log2file": true,
-        "log2stdout": false,
-        "workers": 2
+        "db": "admin"
+    },
+    "proxy": {
+      "dialect": "sqlite",
+      "port": 5432,
+      "host": "127.0.0.1",
+      "host_": "%s",
+      "password": "%s",
+      "username": "admin",
+      "db": "admin"
     },
     "mongodb": {
         "auth": false,

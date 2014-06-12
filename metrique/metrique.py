@@ -71,6 +71,7 @@ And finishing with some querying and simple charting of the data.
 
 from __future__ import unicode_literals, absolute_import
 
+from collections import defaultdict
 from getpass import getuser
 import logging
 logger = logging.getLogger('metrique')
@@ -82,7 +83,7 @@ import os
 from time import time
 
 from metrique.utils import get_cube, load_config, configure, gimport
-from metrique.utils import debug_setup, autoschema, is_true
+from metrique.utils import debug_setup, is_true
 
 ETC_DIR = os.environ.get('METRIQUE_ETC')
 CACHE_DIR = os.environ.get('METRIQUE_CACHE')
@@ -134,17 +135,17 @@ class BaseClient(object):
     config_file = DEFAULT_CONFIG
     config_key = 'metrique'
     global_config_key = 'metrique'
-    mongodb_config_key = 'mongodb'
-    sqlalchemy_config_key = 'metrique'
+    #mongodb_config_key = 'mongodb'
+    #sqlalchemy_config_key = 'metrique'
+    container_config_key = 'container'
+    proxy_config_key = 'proxy'
     name = None
     fields = None
-    schema = None
     _container = None
     _container_cls = None
-    _container_kwargs = None
     _proxy = None
     _proxy_cls = None
-    _proxy_kwargs = None
+    _schema_keys = ('type', 'container')
     __metaclass__ = MetriqueFactory
 
     def __init__(self, name=None, db=None, config_file=DEFAULT_CONFIG,
@@ -152,8 +153,8 @@ class BaseClient(object):
                  cube_paths=None, debug=None, log_file='metrique.log',
                  log2file=True, log2stdout=False, workers=2,
                  log_dir=LOG_DIR, cache_dir=CACHE_DIR, etc_dir=ETC_DIR,
-                 tmp_dir=TMP_DIR, container=None, container_kwargs=None,
-                 proxy=None, proxy_kwargs=None, version=0, schema=None):
+                 tmp_dir=TMP_DIR, container=None, container_config=None,
+                 proxy=None, proxy_config=None, version=0, schema=None):
         '''
         :param cube_pkgs: list of package names where to search for cubes
         :param cube_paths: Additional paths to search for client cubes
@@ -165,7 +166,7 @@ class BaseClient(object):
         '''
         super(BaseClient, self).__init__()
 
-        name = name or self.name or BaseClient.name
+        self.name = name or self.name or BaseClient.name
 
         # cube class defined name
         # FIXME: this is ugly... and not obvious...
@@ -182,7 +183,7 @@ class BaseClient(object):
                        log_file=log_file,
                        log2file=log2file,
                        log2stdout=log2stdout,
-                       name=name,
+                       name=self.name,
                        schema=schema,
                        tmp_dir=tmp_dir,
                        version=version,
@@ -199,7 +200,7 @@ class BaseClient(object):
                         log2file=True,
                         log2stdout=False,
                         name=None,
-                        schema=None,
+                        schema={},
                         tmp_dir=TMP_DIR,
                         version=0,
                         workers=2)
@@ -217,8 +218,6 @@ class BaseClient(object):
                                 section_key=self.config_key,
                                 update=self.config)
 
-        self.name = self.lconfig.get('name')
-
         level = self.lconfig.get('debug')
         log2stdout = self.lconfig.get('log2stdout')
         log_format = None
@@ -229,10 +228,14 @@ class BaseClient(object):
                     log_format=log_format, log2file=log2file,
                     log_dir=log_dir, log_file=log_file)
 
-        self._container_kwargs = deepcopy(
-            container_kwargs or BaseClient._container_kwargs or {})
-        self._proxy_kwargs = deepcopy(
-            proxy_kwargs or BaseClient._proxy_kwargs or {})
+        container_config = dict(container_config or {})
+        container_config.setdefault('name', self.name)
+        container_config.setdefault('schema', schema)
+        self.config[self.container_config_key].update(container_config)
+
+        proxy_config = dict(proxy_config or {})
+        proxy_config.setdefault('table', self.name)
+        self.config[self.proxy_config_key].update(proxy_config)
 
         if isinstance(proxy, basestring):
             proxy = gimport(proxy)
@@ -242,16 +245,16 @@ class BaseClient(object):
             container = gimport(container)
         self._container = container
 
-        if not self._container_cls:
+        if self._container_cls is None:
             from metrique.core_api import MetriqueContainer
             self._container_cls = MetriqueContainer
-        if not self._proxy_cls:
+        if self._proxy_cls is None:
             from metrique.sqlalchemy import SQLAlchemyProxy
             self._proxy_cls = SQLAlchemyProxy
 
     @property
     def container(self):
-        if not self._container:
+        if self._container is None or isclass(self._container):
             self.container_init()
         return self._container
 
@@ -266,9 +269,6 @@ class BaseClient(object):
 
     @property
     def objects(self):
-        ''' BaseClient.objects is alias for BaseClient.container
-            for backwards compatability
-        '''
         return self.container
 
     @objects.setter
@@ -277,13 +277,9 @@ class BaseClient(object):
 
     @objects.deleter
     def objects(self):
-        # replaces existing container with a new, empty one
         del self.container
 
-    def get_cube(self, cube, init=True, name=None, copy_config=True,
-                 container=None, container_kwargs=None,
-                 proxy=None, proxy_kwargs=None, config_file=None,
-                 **kwargs):
+    def get_cube(self, cube, init=True, name=None, copy_config=True, **kwargs):
         '''wrapper for :func:`metrique.utils.get_cube`
 
         Locates and loads a metrique cube
@@ -297,60 +293,63 @@ class BaseClient(object):
         '''
         name = name or cube
         config = deepcopy(self.config) if copy_config else {}
-        config_file = config_file or self.config_file
-        container = container or type(self.objects)
-        container_kwargs = container_kwargs or self._container_kwargs
-        proxy_kwargs = proxy_kwargs or self._proxy_kwargs
+        config_file = self.config_file
+        container = type(self.objects)
+        container_config = deepcopy(self.container_config)
+        proxy = type(self.proxy)
+        proxy_config = deepcopy(self.proxy_config)
         return get_cube(cube=cube, init=init, name=name, config=config,
-                        config_file=config_file,
-                        container=container, container_kwargs=container_kwargs,
-                        proxy=proxy, proxy_kwargs=proxy_kwargs, **kwargs)
+                        config_file=config_file, container=container,
+                        container_config=container_config,
+                        proxy=proxy, proxy_config=proxy_config, **kwargs)
 
-    @property
-    def schema(self):
-        schema = getattr(self, 'schema', None)
-        fields = getattr(self, 'fields', None)
-        if schema and fields:
-            msg = 'ambiguous schema definition; both schema and fields defined'
-            raise RuntimeError(msg)
-        elif schema:
-            pass
-        elif fields:
-            schema = fields
-        else:
-            schema = autoschema(self.objects.values())
-        is_true(schema, 'schema not defined!')
-        return deepcopy(schema)
+    def _get_schema(self, except_=False):
+        # schema might have been passed in as kwarg and stored in the config
+        # or subclasses might define schema (and more) within self.fields attr
+        _schema = (self.container_config.get('schema') or
+                   getattr(self, 'fields') or {})
+        print self.container_config.get('schema')
+        print getattr(self, 'fields')
+        # in the case we derived our schema from 'fields' attr, we must filter
+        # out anything we're not specifically interested in
+        schema = defaultdict(dict)
+        for field, meta in _schema.iteritems():
+            for k, v in meta.iteritems():
+                schema[field].setdefault(k, {})
+                if k in self._schema_keys:
+                    schema[field][k] = v
+        except_ and is_true(schema, 'schema not defined!')
+        return schema
 
     def container_init(self, value=None, **kwargs):
-        # FIXME: lconfig should be 'cconfig' where cconfig loads
-        # 'container_config_key'
-        _kwargs = deepcopy(self.lconfig or {})
-        _kwargs.update(deepcopy(self._container_kwargs or {}))
-        if not self._container:
+        config = self.container_config
+        # try to get schema from any of the known places
+        # it could be derived from
+        schema = self._get_schema()
+        config.update(dict(schema=schema))
+        config.update(kwargs)
+        if self._container is None:
             self._container = self._container_cls
         msg = "Invalid container: %s" % self._container
         if isclass(self._container):
-            self._container = self._container(objects=value, **_kwargs)
+            self._container = self._container(objects=value, **config)
         is_true(isinstance(self._container, self._container_cls), msg)
         return self._container
 
     @property
     def proxy(self):
-        if not self._proxy:
+        if self._proxy is None:
             self.proxy_init()
         return self._proxy
 
-    def proxy_init(self):
-        # FIXME: lconfig should be 'pconfig' where cconfig loads
-        # 'proxy_config_key'
-        _kwargs = deepcopy(self.lconfig or {})
-        _kwargs.update(self._proxy_kwargs or {})
-        if not self._proxy:
+    def proxy_init(self, **kwargs):
+        config = self.proxy_config
+        config.update(kwargs)
+        if self._proxy is None:
             self._proxy = self._proxy_cls
         msg = "Invalid proxy: %s" % self._proxy
         if isclass(self._proxy):
-            self._proxy = self._proxy(**_kwargs)
+            self._proxy = self._proxy(**config)
         is_true(isinstance(self._proxy, self._proxy_cls), msg)
         return self._proxy
 
@@ -377,6 +376,20 @@ class BaseClient(object):
             return result
         else:
             return self
+
+    @property
+    def container_config(self):
+        if self.config:
+            return self.config.get(self.container_config_key) or {}
+        else:
+            return {}
+
+    @property
+    def proxy_config(self):
+        if self.config:
+            return self.config.get(self.proxy_config_key) or {}
+        else:
+            return {}
 
     @property
     def lconfig(self):
