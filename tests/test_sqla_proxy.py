@@ -228,11 +228,12 @@ def test_postgresql():
     p.config['db'] = _u
     p.config['table'] = TABLE
     p.initialize()
+    p.autotable(schema=schema)
     assert p.ls() == [TABLE]
 
     p.drop()
     try:
-        assert p.count() == 0
+        assert p.count()
     except RuntimeError:
         pass
 

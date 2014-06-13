@@ -448,21 +448,38 @@ class SQLAlchemyProxy(object):
         else:
             return list(rows)
 
-    def get_table(self, table=None, except_=True, as_cls=False):
+    def get_table(self, table=None, except_=True, as_cls=False,
+                  reflect=False, schema=None):
         if table is None:
             table = self.config.get('table')
+
         if isinstance(table, Table):
             # this is already the table we're looking for...
             _table = table
         else:
             is_true(table, 'table must be defined!')
             _table = self.meta_tables.get(table)
-        if except_:
-            is_true(isinstance(_table, Table),
-                    'table (%s) not found! Got: %s' % (table, _table))
-        if as_cls:
+            if reflect:
+                if _table is None and schema:
+                    # if we have a schema, try to load the full
+                    # Table class definition
+                    _table = self.autotable(schema=schema)
+                if _table is None:
+                    # this provides us ONLY with the SQL definied Table,
+                    # which might not include custom Types, etc (JSONType,
+                    # UTCEpoch, etc) but rather only the underlying SQL
+                    # types (Text, Float, etc) would need to call autotable...
+                    self.meta_reflect()
+                    _table = self.meta_tables.get(table)
+        except_ and is_true(isinstance(_table, Table),
+                            'table (%s) not found! Got: %s' % (table, _table))
+        if isinstance(_table, Table) and as_cls:
             defaults = dict(__tablename__=table, autoload=True)
             _table = type(str(table), (self.Base,), defaults)
+        elif _table is not None:
+            pass
+        else:
+            _table = None
         return _table
 
     def meta_reflect(self, Base=None, except_=False):
@@ -602,16 +619,20 @@ class SQLAlchemyProxy(object):
             tables = [self.config.get('table')]
         else:
             raise RuntimeError("table to drop must be defined!")
-        nulls = lambda t: False if t is None else True
-        _tables = filter(nulls,
-                         [self.get_table(n, except_=False) for n in tables])
+        _tables = []
+        for table in tables:
+            self.config['db_schema'] = None
+            _table = self.get_table(table, except_=False, reflect=True)
+            if _table is not None:
+                _tables.append(_table)
+
         if _tables:
             logger.warn("Permanently dropping %s" % tables)
             [t.drop() for t in _tables]
             # clear out existing 'cached' metadata
             self._Base = None
         else:
-            logger.warn("No tables found to drop, got %s" % tables)
+            logger.warn("No tables found to drop, got %s" % _tables)
         return
 
     def exists(self, table=None):
