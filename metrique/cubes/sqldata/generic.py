@@ -93,27 +93,21 @@ class Generic(pyclient):
     dialect = None
     fields = None
 
-    def __init__(self, vdb=None, retries=None, batch_size=None,
-                 worker_batch_size=None,
-                 config_key=None, config_file=None,
+    def __init__(self, retries=None, batch_size=None, worker_batch_size=None,
                  **kwargs):
         self.fields = self.fields or {}
-        super(Generic, self).__init__(config_file=config_file, **kwargs)
-        options = dict(vdb=vdb,
-                       retries=retries,
+        super(Generic, self).__init__(**kwargs)
+        options = dict(retries=retries,
                        batch_size=batch_size,
                        worker_batch_size=worker_batch_size)
-        defaults = dict(vdb=None,
-                        retries=1,
+        defaults = dict(retries=1,
                         batch_size=999,
                         worker_batch_size=5000)
-        self.config = self.config or {}
-        self.config_file = config_file or self.config_file
-        self.config_key = config_key or Generic.config_key
         self.config = configure(options, defaults,
                                 config_file=self.config_file,
                                 section_key=self.config_key,
                                 update=self.config)
+
         self.retry_on_error = (Exception, )
         self._setup_inconsistency_log()
 
@@ -346,7 +340,7 @@ class Generic(pyclient):
         return fieldmap
 
     def _generate_sql(self, _oids=None, sort=True):
-        db = self.lconfig.get('vdb') or self.lconfig.get('db')
+        db = self.lconfig.get('db_schema_name') or self.lconfig.get('db')
         _oid = self.lconfig.get('_oid')
         if isinstance(_oid, (list, tuple)):
             _oid = _oid[0]  # get the db column, not the field alias
@@ -411,7 +405,6 @@ class Generic(pyclient):
                 # suppress warning from joblib:
                 # UserWarning: Parallel loops cannot be nested ...
                 warnings.simplefilter("ignore")
-                logger.warn('%s %s' % (HAS_JOBLIB, workers))
                 result = runner(func(
                     cube=self._cube, oids=batch, flush=flush,
                     cube_name=self.name, config=self.config,
@@ -539,8 +532,10 @@ class Generic(pyclient):
     def _left_join(self, select_as, select_prop, join_prop, join_table,
                    on_col, on_db=None, on_table=None, join_db=None, **kwargs):
         on_table = on_table or self.lconfig.get('table')
-        on_db = on_db or self.lconfig.get('vdb') or self.lconfig.get('db')
-        join_db = join_db or self.lconfig.get('vdb') or self.lconfig.get('db')
+        on_db = (on_db or self.lconfig.get('db_schema_name') or
+                 self.lconfig.get('db'))
+        join_db = (join_db or self.lconfig.get('db_schema_name') or
+                   self.lconfig.get('db'))
         return dict(select='%s.%s' % (select_as, select_prop),
                     sql='LEFT JOIN %s.%s %s ON %s.%s = %s.%s.%s' % (
                         join_db, join_table, select_as, select_as, join_prop,
@@ -715,7 +710,7 @@ class Generic(pyclient):
         Query source database for a distinct list of oids.
         '''
         table = self.lconfig.get('table')
-        db = self.lconfig.get('vdb') or self.lconfig.get('db')
+        db = self.lconfig.get('db_schema_name') or self.lconfig.get('db')
         _oid = self.lconfig.get('_oid')
         if isinstance(_oid, (list, tuple)):
             _oid = _oid[0]  # get the db column, not the field alias

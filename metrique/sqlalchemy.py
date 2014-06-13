@@ -154,7 +154,6 @@ class SQLAlchemyProxy(object):
     _engine_uri = None
     _lock_required = True
     _meta = None
-    _schema_name = None
     _session = None
     _sessionmaker = None
 
@@ -163,7 +162,7 @@ class SQLAlchemyProxy(object):
                  dialect='sqlite', driver=None, host='127.0.0.1',
                  port='5432', username=None, password=None,
                  connect_args=None, batch_size=999,
-                 cache_dir=CACHE_DIR, **kwargs):
+                 cache_dir=CACHE_DIR, db_schema=None, **kwargs):
         '''
         Accept additional kwargs, but ignore them.
         '''
@@ -178,6 +177,7 @@ class SQLAlchemyProxy(object):
             cache_dir=cache_dir,
             connect_args=connect_args,
             db=db,
+            db_schema=db_schema,
             dialect=dialect,
             debug=debug,
             driver=driver,
@@ -191,6 +191,7 @@ class SQLAlchemyProxy(object):
             cache_dir=CACHE_DIR,
             connect_args=None,
             db=None,
+            db_schema=None,
             debug=logging.INFO,
             dialect='sqlite',
             driver=None,
@@ -297,13 +298,15 @@ class SQLAlchemyProxy(object):
         # version normally comes "'Teiid 8.5.0.Final'", which sqlalchemy
         # failed to parse
         version = version or (8, 2)
-        r_none = lambda *i: None
+        db_schema = self.config.get('db_schema')
+        r_none = lambda *i: db_schema
+        iso = lambda *i: isolation_level
         pg.base.PGDialect.description_encoding = str('utf8')
         pg.base.PGDialect._check_unicode_returns = lambda *i: True
         pg.base.PGDialect._get_server_version_info = lambda *i: version
-        pg.base.PGDialect.get_isolation_level = lambda *i: isolation_level
+        pg.base.PGDialect.get_isolation_level = iso
         pg.base.PGDialect._get_default_schema_name = r_none
-        pg.psycopg2.PGDialect_psycopg2.set_isolation_level = r_none
+        pg.psycopg2.PGDialect_psycopg2.set_isolation_level = iso
         return self._sqla_postgresql(uri=uri, version=version,
                                      isolation_level=isolation_level)
 
@@ -312,7 +315,7 @@ class SQLAlchemyProxy(object):
         '''
         expected uri form:
         postgresql+psycopg2://%s:%s@%s:%s/%s' % (
-            username, password, host, port, vdb)
+            username, password, host, port, db)
         '''
         isolation_level = isolation_level or "READ COMMITTED"
         kwargs = dict(isolation_level=isolation_level)
@@ -324,10 +327,11 @@ class SQLAlchemyProxy(object):
         # 999 batch_size is default for sqlite, postgres handles more at once
         self.config['batch_size'] = 5000 if bs == 999 else bs
         self._lock_required = False
-        self._schema_name = 'public'
+        # default schema name is 'public' for postgres
+        dsn = self.config['db_schema']
+        self.config['db_schema'] = dsn or 'public'
         return uri, kwargs
 
-    # ######################## Cube API ################################
     def autoschema(self, objects, **kwargs):
         ''' wrapper around utils.autoschema function '''
         return autoschema(objects=objects, exclude_keys=self.RESTRICTED_KEYS,
@@ -347,7 +351,7 @@ class SQLAlchemyProxy(object):
             table = schema2table(name=name, schema=schema, Base=self.Base,
                                  exclude_keys=self.RESTRICTED_KEYS)
         try:
-            if create and name not in self.table_names:
+            if create and name not in self.db_tables:
                 table.__table__.create()
         except Exception as e:
             logger.error('Create Table %s: FAIL (%s)' % (name, e))
@@ -363,7 +367,6 @@ class SQLAlchemyProxy(object):
         if not self._Base:
             metadata = MetaData(bind=self.engine)
             self._Base = declarative_base(metadata=metadata)
-            self.meta_reflect(self._Base)
         return self._Base
 
     def columns(self, table=None, columns=None, reflect=False):
@@ -374,6 +377,25 @@ class SQLAlchemyProxy(object):
         if reflect:
             columns = [c for c in table.columns if c.name in columns]
         return columns
+
+    @property
+    def db_schemas(self):
+        return self.inspector.get_schema_names()
+
+    @property
+    def db_columns(self, table=None):
+        table = table or self.config.get('table')
+        is_true(table, 'table name required; got %s' % table)
+        dsn = self.config.get('db_schema')
+        result = self.inspector.get_columns(table, dsn)
+        return sorted(r[0] for r in result)
+
+    @property
+    def db_tables(self, views=True):
+        dsn = self.config.get('db_schema')
+        result = self.inspector.get_table_names(dsn)
+        result += self.inspector.get_view_names(dsn) if views else []
+        return sorted(result)
 
     @property
     def engine(self):
@@ -419,8 +441,12 @@ class SQLAlchemyProxy(object):
         self._engine = create_engine(uri, echo=False, **_kwargs)
         return self._engine
 
-    def execute(self, query):
-        return self.session_auto.execute(query)
+    def execute(self, query, cursor=False):
+        rows = self.session_auto.execute(query)
+        if cursor:
+            return rows
+        else:
+            return list(rows)
 
     def get_table(self, table=None, except_=True, as_cls=False):
         if table is None:
@@ -451,10 +477,6 @@ class SQLAlchemyProxy(object):
     @property
     def meta_tables(self):
         return self.Base.metadata.tables
-
-    @property
-    def table_names(self):
-        return self.inspector.get_table_names(self._schema_name)
 
     def initialize(self):
         self.engine_init()
@@ -572,7 +594,7 @@ class SQLAlchemyProxy(object):
 
     def drop(self, tables=None, quiet=True):
         if tables is True:
-            tables = self.table_names
+            tables = self.db_tables
         elif isinstance(tables, basestring):
             tables = str2list(tables)
         elif self.config.get('table'):
@@ -594,7 +616,7 @@ class SQLAlchemyProxy(object):
 
     def exists(self, table=None):
         table = table or self.config.get('table')
-        return table in self.table_names
+        return table in self.db_tables
 
     def find(self, query=None, fields=None, date=None, sort=None,
              descending=False, one=False, raw=False, limit=None,
@@ -703,7 +725,7 @@ class SQLAlchemyProxy(object):
         '''
         logger.info('Listing cubes starting with "%s")' % startswith)
         startswith = unicode(startswith or '')
-        tables = sorted(name for name in self.table_names
+        tables = sorted(name for name in self.db_tables
                         if name.startswith(startswith))
         return tables
 
@@ -870,7 +892,8 @@ def schema2table(name, schema, Base=None, type_map=None, exclude_keys=None):
     if Base:
         logger.debug('Reusing existing Base (%s)' % Base)
     Base = Base or declarative_base()
-    type_map = type_map or deepcopy(TYPE_MAP)
+    schema = deepcopy(schema)
+    type_map = deepcopy(type_map or TYPE_MAP)
     logger.debug("Attempting to create Table class: %s..." % name)
     logger.debug(" ... Schema: %s" % schema)
     logger.debug(" ... Type Map: %s" % type_map)
@@ -901,8 +924,7 @@ def schema2table(name, schema, Base=None, type_map=None, exclude_keys=None):
         '__repr__': __repr__,
     }
 
-    schema_items = schema.items()
-    for k, v in schema_items:
+    for k, v in schema.items():
         if k in exclude_keys:
             ekeys = exclude_keys
             warnings.warn(

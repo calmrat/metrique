@@ -60,7 +60,7 @@ os.environ['METRIQUE_SRC'] = os.environ.get(
 # sys.stdout = codecs.getwriter('utf8')(sys.stdout)
 
 # ATTENTION: this is the main interface for clients!
-from metrique.metrique import BaseClient as pyclient
+from metrique.metrique import Metrique as pyclient
 from metrique.core_api import MetriqueContainer, MetriqueObject
 # avoid lint 'defined by not used' error
 pyclient, MetriqueContainer, MetriqueObject

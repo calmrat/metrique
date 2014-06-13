@@ -19,7 +19,6 @@ logger = logging.getLogger('metrique')
 
 from collections import MutableMapping
 from copy import deepcopy
-from getpass import getuser
 from inspect import isclass
 import os
 from operator import add
@@ -250,16 +249,15 @@ class MetriqueContainer(MutableMapping):
     _object_cls = None
     _proxy_cls = None
     _proxy = None
-    _table = None
-    version = 0
     config = None
     config_file = DEFAULT_CONFIG
     config_key = 'container'
     db = None
     default_fields = {'_start': 1, '_end': 1, '_oid': 1}
     name = None
+    proxy_config_key = 'proxy'
     store = None
-    schema = None
+    version = 0
     HASH_EXCLUDE_KEYS = tuple(HASH_EXCLUDE_KEYS)
 
     def __init__(self, name=None, db=None, schema=None, version=0,
@@ -274,16 +272,14 @@ class MetriqueContainer(MutableMapping):
         options = dict(autotable=autotable,
                        cache_dir=cache_dir,
                        batch_size=batch_size,
-                       db=db,  # db == database
                        default_fields=None,
-                       name=None,  # name == table
+                       name=None,
                        schema=schema,
                        version=int(version))
 
         defaults = dict(autotable=True,
                         cache_dir=CACHE_DIR,
                         batch_size=999,
-                        db=getuser(),
                         default_fields=MetriqueContainer.default_fields,
                         name=name,
                         schema={},
@@ -309,6 +305,11 @@ class MetriqueContainer(MutableMapping):
             # load the proxy class from globals()
             proxy = globals().get(proxy)
             is_true(proxy, "Invalid (proxy) class: %s" % proxy)
+        proxy_config = dict(proxy_config or {})
+        proxy_config.setdefault('db', db)
+        proxy_config.setdefault('table', self.name)
+        proxy_config.setdefault('config_file', self.config_file)
+        self.config.setdefault(self.proxy_config_key, {}).update(proxy_config)
 
         if self._object_cls is None:
             self._object_cls = MetriqueObject
@@ -405,6 +406,38 @@ class MetriqueContainer(MutableMapping):
         _id = item['_id']
         self.store[_id] = item
 
+    def autotable(self):
+        name = self.config.get('name')
+        # if we have a table already, we want only to load
+        # a corresponding sqla.Table instance so our ORM
+        # works as expected; if no table and autotable:True,
+        # create the table too.
+        create = self.config.get('autotable')
+        schema = self.config.get('schema')
+        if name in self._proxy.meta_tables:
+            logger.warn('autotable "%s": already exists' % name)
+            result = True
+        else:
+            if not schema and self.store:
+                # if we didn't get an expclit schema definition to use,
+                # autogenerate the schema from the store content, if any
+                schema = self._proxy.autoschema(self.store.values())
+
+            if schema:
+                if name in self._proxy.db_tables:
+                    # no reason to create the table again...
+                    # but we still want to load the table class into metadata
+                    create = False
+                self._proxy.autotable(schema=schema, name=name,
+                                      create=create)
+                logger.warn('autotable "%s": (create=%s): OK' % (name, create))
+                result = True
+            else:
+                logger.warn(
+                    'autotable "%s": FAIL; no schema; store is empty' % name)
+                result = False
+        return result
+
     def clear(self):
         self.store = {}
 
@@ -486,41 +519,21 @@ class MetriqueContainer(MutableMapping):
     @property
     def proxy(self):
         if self._proxy is None or isclass(self._proxy):
-            is_true(self.name, "name can not be null!")
-            kwargs = deepcopy(self.config)
-            if self._proxy is None:
-                self._proxy = self._proxy_cls
-            # else: _proxy is a proxy_cls
-            self._proxy = self._proxy(**kwargs)
-
-        name = self.config.get('name')
-        # if we have a table already, we want only to load
-        # a corresponding sqla.Table instance so our ORM
-        # works as expected; if no table and autotable:True,
-        # create the table too.
-        create = self.config.get('autotable')
-        schema = self.config.get('schema')
-        if name in self._proxy.meta_tables:
-            logger.warn('autotable "%s": already exists' % name)
-            return self._proxy
-
-        if not schema and self.store:
-            # if we didn't get an expclit schema definition to use,
-            # autogenerate the schema from the store content, if any
-            schema = self._proxy.autoschema(self.store.values())
-
-        if schema:
-            if name in self._proxy.table_names:
-                # no reason to create the table again...
-                # but we still want to load the table class into metadata
-                create = False
-            self._proxy.autotable(schema=schema, name=name,
-                                  create=create)
-            logger.warn('autotable "%s": (create=%s): OK' % (name, create))
-        else:
-            logger.warn(
-                'autotable "%s": FAIL; no schema and store is empty' % name)
+            self.proxy_init()
+        self.autotable()
         return self._proxy
+
+    @property
+    def proxy_config(self):
+        self.config.setdefault(self.proxy_config_key, {})
+        return self.config[self.proxy_config_key]
+
+    def proxy_init(self):
+        is_true(self.name, "name can not be null!")
+        if self._proxy is None:
+            self._proxy = self._proxy_cls
+        # else: _proxy is a proxy_cls
+        self._proxy = self._proxy(**self.proxy_config)
 
     def values(self):
         return [dict(v) for v in self.store.itervalues()]
