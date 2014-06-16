@@ -260,10 +260,10 @@ class MetriqueContainer(MutableMapping):
     version = 0
     HASH_EXCLUDE_KEYS = tuple(HASH_EXCLUDE_KEYS)
 
-    def __init__(self, name=None, db=None, schema=None, version=0,
+    def __init__(self, name=None, db=None, schema=None, version=None,
                  objects=None, proxy=None, proxy_config=None,
-                 batch_size=999, config=None, config_file=DEFAULT_CONFIG,
-                 config_key='container', cache_dir=CACHE_DIR, autotable=True,
+                 batch_size=None, config=None, config_file=None,
+                 config_key=None, cache_dir=None, autotable=True,
                  **kwargs):
         '''
         Accept additional kwargs, but ignore them.
@@ -275,7 +275,7 @@ class MetriqueContainer(MutableMapping):
                        default_fields=None,
                        name=None,
                        schema=schema,
-                       version=int(version))
+                       version=int(version or 0))
 
         defaults = dict(autotable=True,
                         cache_dir=CACHE_DIR,

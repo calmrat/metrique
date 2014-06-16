@@ -158,11 +158,11 @@ class SQLAlchemyProxy(object):
     _sessionmaker = None
 
     def __init__(self, db=None, table=None, debug=None, config=None,
-                 config_key='proxy', config_file=DEFAULT_CONFIG,
-                 dialect='sqlite', driver=None, host='127.0.0.1',
-                 port='5432', username=None, password=None,
-                 connect_args=None, batch_size=999,
-                 cache_dir=CACHE_DIR, db_schema=None, **kwargs):
+                 config_key=None, config_file=None,
+                 dialect=None, driver=None, host=None,
+                 port=None, username=None, password=None,
+                 connect_args=None, batch_size=None,
+                 cache_dir=None, db_schema=None, **kwargs):
         '''
         Accept additional kwargs, but ignore them.
         '''

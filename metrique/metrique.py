@@ -148,13 +148,13 @@ class Metrique(object):
     _schema_keys = ('type', 'container')
     __metaclass__ = MetriqueFactory
 
-    def __init__(self, name=None, db=None, config_file=DEFAULT_CONFIG,
-                 config=None, config_key='metrique', cube_pkgs=None,
+    def __init__(self, name=None, db=None, config_file=None,
+                 config=None, config_key=None, cube_pkgs=None,
                  cube_paths=None, debug=None, log_file='metrique.log',
                  log2file=True, log2stdout=False, workers=2,
                  log_dir=LOG_DIR, cache_dir=CACHE_DIR, etc_dir=ETC_DIR,
                  tmp_dir=TMP_DIR, container=None, container_config=None,
-                 proxy=None, proxy_config=None, version=0, schema=None):
+                 proxy=None, proxy_config=None, version=None, schema=None):
         '''
         :param cube_pkgs: list of package names where to search for cubes
         :param cube_paths: Additional paths to search for client cubes
