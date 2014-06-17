@@ -81,11 +81,11 @@ class MongoDBProxy(object):
     RESTRICTED_COLLECTIONS = ['admin', 'local', 'system', 'system.indexes']
     SSL_PEM = os.path.join(ETC_DIR, 'metrique.pem')
 
-    def __init__(self, db, table=None, host=None, port=None, username=None,
-                 password=None, auth=None, ssl=None, ssl_certificate=None,
-                 read_preference=None, replica_set=None,
-                 tz_aware=None, write_concern=None, config_file=None,
-                 config_key=None, **kwargs):
+    def __init__(self, db=None, table=None, host=None, port=None,
+                 username=None, password=None, auth=None, ssl=None,
+                 ssl_certificate=None, read_preference=None,
+                 replica_set=None, tz_aware=None, write_concern=None,
+                 config_file=None, config_key=None, **kwargs):
         '''
         Accept additional kwargs, but ignore them.
         '''
@@ -125,6 +125,9 @@ class MongoDBProxy(object):
                                 section_key=self.config_key,
                                 section_only=True,
                                 update=self.config)
+        # db is required; default db is db username else local username
+        self.config['db'] = self.config['db'] or self.config['username']
+        is_true(self.config.get('db'), 'db can not be null')
 
     def __repr__(self):
         db = self.config.get('db')

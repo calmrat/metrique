@@ -31,7 +31,10 @@ __requires__ = [
     'anyconfig',
     'decorator',
     'lockfile',
-    'pandas (>=0.13.0)',
+    # bug when installing numpy as dep;
+    # https://github.com/numpy/numpy/issues/2434
+    # install manually with metrique.py deploy or `pip install pandas`
+    #'pandas (>=0.13.0)',
     'python_dateutil',
     'pytz'
     'simplejson',
@@ -42,7 +45,7 @@ __irequires__ = [
     'anyconfig',
     'decorator',
     'lockfile',
-    'pandas>=0.13.0',
+    #'pandas>=0.13.0',
     'python_dateutil',
     'pytz',
     'simplejson',

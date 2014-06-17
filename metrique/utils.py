@@ -49,7 +49,7 @@ import gc
 from getpass import getuser
 import glob
 from hashlib import sha1
-from inspect import isfunction, isclass
+from inspect import isfunction
 import itertools
 import os
 from pprint import pformat
@@ -89,7 +89,6 @@ import sys
 import time
 import urllib
 
-active_virtualenv = lambda: os.environ.get('VIRTUAL_ENV', '')
 env = os.environ
 pjoin = os.path.join
 
@@ -98,7 +97,6 @@ json_encoder = json.JSONEncoder()
 DEFAULT_PKGS = ['metrique.cubes']
 
 INVALID_USERNAME_RE = re.compile('[^a-zA-Z_]')
-SHA1_HEXDIGEST = lambda o: sha1(repr(o)).hexdigest()
 
 HOME_DIR = os.environ.get('METRIQUE_HOME')
 PREFIX_DIR = os.environ.get('METRIQUE_PREFIX')
@@ -109,6 +107,10 @@ BACKUP_DIR = env.get('METRIQUE_BACKUP')
 STATIC_DIR = env.get('METRIQUE_STATIC')
 
 ZEROS = (0, 0.0, 0L)
+
+
+def active_virtualenv():
+    return os.environ.get('VIRTUAL_ENV', '')
 
 
 # FIXME: add tests
@@ -415,7 +417,10 @@ def dt2ts(dt, drop_micro=False):
     elif isinstance(dt, (int, long, float)):  # its a ts already
         ts = float(dt)
     elif isinstance(dt, basestring):  # convert to datetime first
-        parsed_dt = dt_parse(dt)
+        try:
+            parsed_dt = float(dt)
+        except (TypeError, ValueError):
+            parsed_dt = dt_parse(dt)
         ts = dt2ts(parsed_dt)
     else:
         assert isinstance(dt, datetime)
@@ -589,15 +594,6 @@ def git_clone(uri, pull=True, reflect=False, cache_dir=None, chdir=True):
         return repo_path
 
 
-def gimport(name, type_check=isclass, except_=False):
-    ''' load an already available obj from globals; check type, optionally '''
-    _obj = globals().get(name)
-    except_ and is_true(_obj, '%s not found in globals()')
-    except_ and is_true(type_check(_obj),
-                        'Invalid type; checked with %s' % type_check.__name__)
-    return _obj
-
-
 def is_empty(value, except_=True, msg=None):
     msg = msg or '(%s) is not empty' % value
     if isinstance(value, basestring):
@@ -665,7 +661,7 @@ def jsonhash(obj, root=True, exclude=None, hash_func=None):
     calculate the objects hash based on all field values
     '''
     if not hash_func:
-        hash_func = SHA1_HEXDIGEST
+        hash_func = sha1_hexdigest
     if isinstance(obj, dict):
         obj = obj.copy()  # don't affect the ref'd obj passed in
         keys = set(obj.iterkeys())
@@ -935,7 +931,6 @@ def profile(fn, cache_dir=CACHE_DIR):
 
 
 def _profile(filename, fn, *args, **kw):
-    load_stats = lambda: pstats.Stats(filename)
     gc.collect()
 
     began = time.time()
@@ -943,7 +938,7 @@ def _profile(filename, fn, *args, **kw):
                     filename=filename)
     ended = time.time()
 
-    return ended - began, load_stats, locals()['result']
+    return ended - began, pstats.Stats(filename), locals()['result']
 
 
 def rand_chars(size=6, chars=string.ascii_uppercase + string.digits,
@@ -1057,6 +1052,10 @@ def safestr(str_):
     ''' get back an alphanumeric only version of source '''
     str_ = str_ or ""
     return "".join(x for x in str_ if x.isalnum())
+
+
+def sha1_hexdigest(o):
+    return sha1(repr(o)).hexdigest()
 
 
 def str2list(item, delim=',', map_=None):
@@ -1360,8 +1359,11 @@ class DictDiffer(object):
 
         od = OrderedDict
         s = sorted
-        sk = lambda t: t[0]
-        self.dicts = [od(s(d.iteritems(), key=sk)) for d in dicts]
+
+        def skey(t):
+            return t[0]
+
+        self.dicts = [od(s(d.iteritems(), key=skey)) for d in dicts]
 
     def __getitem__(self, value):
         is_true(isinstance(value, slice), 'expected slice')

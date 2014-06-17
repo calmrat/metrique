@@ -31,12 +31,11 @@ except ImportError:
     HAS_JOBLIB = False
     logger.warn("joblib package not found!")
 
-from types import NoneType
 import warnings
 
 from metrique import pyclient
 from metrique.utils import batch_gen, configure, debug_setup, ts2dt
-from metrique.utils import is_empty, to_encoding, dt2ts
+from metrique.utils import dt2ts
 
 
 def get_full_history(cube, oids, flush=False, cube_name=None,
@@ -562,72 +561,13 @@ class Generic(pyclient):
     def _load_sql(self, sql):
         return self.proxy._load_sql(sql)
 
-    def _normalize_container(self, field, value):
-        container = self.fields[field].get('container')
-        is_list = isinstance(value, (list, tuple, set))
-        if container and not is_list:
-            # NORMALIZE to empty list []
-            return [value] if value else []
-        elif not container and is_list:
-            raise ValueError(
-                "Expected single value (%s), got list (%s)" % (
-                    field, value))
-        else:
-            return value
-
-    @staticmethod
-    def _prep_try(func, field, value):
-        error = {}
-        try:
-            value = func(field, value)
-        except Exception as e:
-            logger.error('%s(field=%s, value=%s) failed: %s' % (
-                func.__name__, field, value, e))
-            # set error field with original values
-            # set fallback value to None
-            error = {field: value}
-            value = None
-        return value, error
-
-    def _prep_object(self, obj):
-        fields = set(self.fields.keys())
-
-        for field, value in obj.iteritems():
-            error = {}
-            if field not in fields:
-                # skip over unexpected (meta) fields
-                continue
-            value = self._unwrap(field, value)
-            value = self._normalize_container(field, value)
-            value, error = self._prep_try(self._convert, field, value)
-            value, error = self._prep_try(self._typecast, field, value)
-            obj[field] = value
-        else:
-            obj.setdefault('_e', {}).update(error) if error else None
-
-        for field, value in obj.items():
-            # note: no iteritems because we're changing o as we loop
-            if field not in fields:
-                # skip over unexpected (meta) fields
-                continue
-            variants = self.fields[field].get('variants') or {}
-            for _field, func in variants.iteritems():
-                obj[_field] = func(obj)
-
+    def _prep_objects(self, objects):
         _oid = self.lconfig.get('_oid')
         if isinstance(_oid, (list, tuple)):
             _oid = _oid[1]  # get the field name, not the actual db column
-        obj['_oid'] = obj[_oid]  # map _oid
-
-        return obj
-
-    def _prep_objects(self, objects):
         for i, obj in enumerate(objects):
-            try:
-                objects[i] = self._prep_object(obj)
-            except Exception as e:
-                logger.error('Failed to prep object: %s\n%s' % (e, obj))
-                raise
+            obj['_oid'] = obj[_oid]  # map _oid
+            objects[i] = obj
         return objects
 
     @property
@@ -638,58 +578,6 @@ class Generic(pyclient):
             super(Generic, self).proxy_init(**self.proxy_config)
             self._sqldata_proxy = self._proxy
         return self._proxy
-
-    def _typecast(self, field, value):
-        _type = self.fields[field].get('type')
-        if self.fields[field].get('container'):
-            value = self._type_container(value, _type)
-        else:
-            value = self._type_single(value, _type)
-        return value
-
-    def _type_container(self, value, _type):
-        ' apply type to all values in the list '
-        if value is None:
-            # normalize null containers to empty list
-            return []
-        elif not isinstance(value, (list, tuple)):
-            raise ValueError("expected list type, got: %s" % type(value))
-        else:
-            return sorted(self._type_single(item, _type) for item in value)
-
-    def _type_single(self, value, _type):
-        ' apply type to the single value '
-        _type = NoneType if _type is None else _type
-        if value is None:  # don't convert null values
-            pass
-        elif _type is NoneType:  # run this before is_empty; NoneType == NULL
-            # default type if unicode if none set
-            value = to_encoding(value)
-        elif is_empty(value, except_=False):
-            value = None
-        elif isinstance(value, _type):  # or values already of correct type
-            pass
-        else:
-            _value = _type(value)
-            if isinstance(_value, basestring):
-                value = to_encoding(_value)
-            else:
-                value = _value  # leave as-is
-        return value
-
-    def _unwrap(self, field, value):
-        if type(value) is buffer:
-            # unwrap/convert the aggregated string 'buffer'
-            # objects to string
-            value = unicode(str(value), 'utf8')
-            # FIXME: this might cause issues if the buffered
-            # text has " quotes...
-            value = value.replace('"', '').strip()
-            if not value:
-                value = None
-            else:
-                value = value.split('\n')
-        return value
 
     def _setup_inconsistency_log(self):
         _log_file = self.gconfig.get('log_file').split('.log')[0]

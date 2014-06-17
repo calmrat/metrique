@@ -345,9 +345,7 @@ class SQLAlchemyProxy(object):
             # load a sqla.Table into metadata so sessions act as expected
             # unless it's already there, of course.
             if schema is None:
-                schema = autoschema(objects=objects,
-                                    exclude_keys=self.RESTRICTED_KEYS,
-                                    **kwargs)
+                schema = self.autoschema(objects=objects, **kwargs)
             table = schema2table(name=name, schema=schema, Base=self.Base,
                                  exclude_keys=self.RESTRICTED_KEYS)
         try:

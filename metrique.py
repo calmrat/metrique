@@ -129,10 +129,6 @@ DEFAULT_SUPERVISORD_CONF = utils.read_file('templates/etc/supervisord.conf')
 
 
 ###############################################################################
-def adjust_options(options, args):
-    options.no_site_packages = True
-virtualenv.adjust_options = adjust_options
-
 
 def backup_clean(args, path, prefix):
     keep = args.keep if args.keep != 0 else 3
@@ -524,7 +520,7 @@ def deploy(args):
 
     if args.develop:
         path = pjoin(virtenv, 'lib/python2.7/site-packages/metrique*')
-        utils.remove_file(path)
+        utils.remove_file(path, force=True)
         develop(args)
 
     # run py.test after install
@@ -622,10 +618,10 @@ def postgresql_firstboot(force=False):
         P = PASSWORD
         tz = "set timezone TO 'GMT';"
         encoding = "set client_encoding TO 'utf8';"
-        admin_db = "CREATE DATABASE admin WITH OWNER admin;"
         admin_user = "CREATE USER admin WITH PASSWORD \\'%s\\' SUPERUSER;" % P
-        test_db = "CREATE DATABASE test WITH OWNER test;"
+        admin_db = "CREATE DATABASE admin WITH OWNER admin;"
         test_user = "CREATE USER test WITH PASSWORD \\'%s\\' SUPERUSER;" % P
+        test_db = "CREATE DATABASE test WITH OWNER test;"
         [utils.sys_call(cmd % sql) for sql in (tz, encoding, admin_user,
                                                admin_db, test_user, test_db)]
     finally:

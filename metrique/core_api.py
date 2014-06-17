@@ -19,6 +19,8 @@ logger = logging.getLogger('metrique')
 
 from collections import MutableMapping
 from copy import deepcopy
+from datetime import datetime
+from functools import partial
 from inspect import isclass
 import os
 from operator import add
@@ -33,10 +35,11 @@ except ImportError:
 import re
 
 from time import time
+from types import NoneType
 import warnings
 
 from metrique._version import __version__
-from metrique.utils import utcnow, jsonhash, load
+from metrique.utils import utcnow, jsonhash, load, autoschema
 from metrique.utils import batch_gen, dt2ts, configure, to_encoding
 from metrique.utils import is_empty, is_true
 from metrique import parse
@@ -57,7 +60,7 @@ class MetriqueObject(MutableMapping):
     HASH_EXCLUDE_KEYS = tuple(HASH_EXCLUDE_KEYS)
 
     def __init__(self, _oid, _id=None, _hash=None, _start=None, _end=None,
-                 _e=None, _v=None, id=None, **kwargs):
+                 _e=None, _v=None, id=None, _schema=None, **kwargs):
         if _oid is None:
             raise RuntimeError("_oid can not be None!")
         # NOTE: we completely ignore incoming 'id' keys!
@@ -78,6 +81,7 @@ class MetriqueObject(MutableMapping):
             '__v__': __version__,
             '_e': _e,
         }
+        self._schema = deepcopy(_schema or {})
         self.update(kwargs)
         self._re_hash()
 
@@ -184,6 +188,96 @@ class MetriqueObject(MutableMapping):
             self.update({key, default})
         return self
 
+    def _normalize_container(self, value, schema):
+        container = schema.get('container')
+        is_list = isinstance(value, (list, tuple, set))
+        if container and not is_list:
+            # NORMALIZE to empty list []
+            return [value] if value else []
+        elif not container and is_list:
+            raise ValueError(
+                "expected single value, got list (%s)" % value)
+        else:
+            return value
+
+    def _unwrap(self, value):
+        if type(value) is buffer:
+            # unwrap/convert the aggregated string 'buffer'
+            # objects to string
+            value = to_encoding(value)
+            # FIXME: this might cause issues if the buffered
+            # text has " quotes...
+            value = value.replace('"', '').strip()
+            if not value:
+                value = None
+            else:
+                value = value.split('\n')
+        return value
+
+    def _convert(self, value, schema=None):
+        schema = schema or {}
+        convert = schema.get('convert')
+        container = schema.get('container')
+        if value is None:
+            return None
+        elif convert and container:
+            _convert = partial(convert)
+            value = map(_convert, value)
+        elif convert:
+            value = convert(value)
+        else:
+            value = value
+        return value
+
+    def _prep_value(self, value, schema):
+        value = self._unwrap(value)
+        value = self._normalize_container(value, schema)
+        value = self._convert(value, schema)
+        value = self._typecast(value, schema)
+        return value
+
+    def _typecast(self, value, schema):
+        _type = schema.get('type')
+        container = schema.get('container')
+        if container:
+            value = self._type_container(value, _type)
+        else:
+            value = self._type_single(value, _type)
+        return value
+
+    def _type_container(self, value, _type):
+        ' apply type to all values in the list '
+        if value is None:
+            # normalize null containers to empty list
+            return []
+        elif not isinstance(value, (list, tuple)):
+            raise ValueError("expected list type, got: %s" % type(value))
+        else:
+            return sorted(self._type_single(item, _type) for item in value)
+
+    def _type_single(self, value, _type):
+        ' apply type to the single value '
+        _type = NoneType if _type is None else _type
+        if value is None:  # don't convert null values
+            pass
+        elif _type is NoneType:  # run this before is_empty; NoneType == NULL
+            # default type if unicode if none set
+            value = to_encoding(value)
+        elif is_empty(value, except_=False):
+            value = None
+        elif isinstance(value, _type):  # or values already of correct type
+            pass
+        else:
+            _value = _type(value)
+            if isinstance(_value, basestring):
+                value = to_encoding(_value)
+            else:
+                value = _value  # leave as-is
+        # normalize all dates to epochs
+        if isinstance(value, datetime):
+            value = dt2ts(value)
+        return value
+
     def update(self, obj):
         for key, value in obj.iteritems():
             key = self.__keytransform__(key)
@@ -199,17 +293,32 @@ class MetriqueObject(MutableMapping):
                 is_true(isinstance(value, (dict, MutableMapping)),
                         '_e must be dict, got %s' % type(value))
             else:
-                pass
-
-            if isinstance(value, str):
-                value = unicode(value, 'utf8')
-            elif is_empty(value, except_=False):
-                # Normalize empty strings and NaN/NaT objects to None
-                value = None
-            else:
-                pass
+                schema = self._schema.get(key) or {}
+                try:
+                    value = self._prep_value(value, schema=schema)
+                except Exception as e:
+                    self.store['_e'] = self.store['_e'] or {}
+                    logger.error('convert(key=%s, value=%s) failed: %s' % (
+                        key, value, e))
+                    # set error field with original values
+                    # set fallback value to None
+                    self.store['_e'].update({key: value})
+                    value = None
+                self._add_variant(key, value, schema)
             self.store[key] = value
         self._re_hash()
+
+    def _add_variant(self, key, value, schema):
+        ''' also possible to define some function that takes
+            current value and creates a new value from it
+        '''
+        variants = schema.get(key, {}).get('variants')
+        if variants:
+            for _key, func in variants.iteritems():
+                _value = func(value)
+            self.store[_key] = _value
+        else:
+            return
 
 
 # FIXME: all objects should have the SAME keys;
@@ -259,6 +368,8 @@ class MetriqueContainer(MutableMapping):
     store = None
     version = 0
     HASH_EXCLUDE_KEYS = tuple(HASH_EXCLUDE_KEYS)
+    RESTRICTED_KEYS = ('id', '_id', '_hash', '_start', '_end',
+                       '_v', '__v__', '_e')
 
     def __init__(self, name=None, db=None, schema=None, version=None,
                  objects=None, proxy=None, proxy_config=None,
@@ -268,6 +379,7 @@ class MetriqueContainer(MutableMapping):
         '''
         Accept additional kwargs, but ignore them.
         '''
+        # FIXME: 'proxy' key should be value of self.proxy_config_key
         # null name -> anonymous table; no native ability to persist
         options = dict(autotable=autotable,
                        cache_dir=cache_dir,
@@ -304,20 +416,22 @@ class MetriqueContainer(MutableMapping):
         if isinstance(proxy, basestring):
             # load the proxy class from globals()
             proxy = globals().get(proxy)
-            is_true(proxy, "Invalid (proxy) class: %s" % proxy)
         proxy_config = dict(proxy_config or {})
         proxy_config.setdefault('db', db)
         proxy_config.setdefault('table', self.name)
+        proxy_config.setdefault('schema', self.schema)
         proxy_config.setdefault('config_file', self.config_file)
         self.config.setdefault(self.proxy_config_key, {}).update(proxy_config)
 
         if self._object_cls is None:
             self._object_cls = MetriqueObject
+
         if self._proxy_cls is None:
             from metrique.sqlalchemy import SQLAlchemyProxy
             self._proxy_cls = SQLAlchemyProxy
         self._proxy = proxy
 
+        # init and update internal store with passed in objects, if any
         self.store = deepcopy(MetriqueContainer.store or {})
         self._update(objects)
 
@@ -368,20 +482,20 @@ class MetriqueContainer(MutableMapping):
             return {}
         else:
             for k, v in self.default_fields.iteritems():
-                fields[k] = v if not k in fields else fields[k]
+                fields[k] = v if k not in fields else fields[k]
             return fields
 
-    def _encode(self, item):
-        if isinstance(item, self._object_cls):
+    def _encode(self, obj):
+        if isinstance(obj, self._object_cls):
             pass
-        elif isinstance(item, (MutableMapping, dict)):
-            if self.version > item.get('_v', 0):
-                item['_v'] = self.version
-            item = self._object_cls(**item)
+        elif isinstance(obj, (MutableMapping, dict)):
+            if self.version > obj.get('_v', 0):
+                obj['_v'] = self.version
+            obj = self._object_cls(_schema=self.schema, **obj)
         else:
             raise TypeError(
-                "object values must be dict-like; got %s" % type(item))
-        return item
+                "object values must be dict-like; got %s" % type(obj))
+        return obj
 
     @property
     def _exists(self):
@@ -401,10 +515,10 @@ class MetriqueContainer(MutableMapping):
                                        fields=fields, date=date, alias=alias,
                                        distinct=distinct, limit=limit)
 
-    def add(self, item):
-        item = self._encode(item)
-        _id = item['_id']
-        self.store[_id] = item
+    def add(self, obj):
+        obj = self._encode(obj)
+        _id = obj['_id']
+        self.store[_id] = obj
 
     def autotable(self):
         name = self.config.get('name')
@@ -413,22 +527,16 @@ class MetriqueContainer(MutableMapping):
         # works as expected; if no table and autotable:True,
         # create the table too.
         create = self.config.get('autotable')
-        schema = self.config.get('schema')
         if name in self._proxy.meta_tables:
             logger.warn('autotable "%s": already exists' % name)
             result = True
         else:
-            if not schema and self.store:
-                # if we didn't get an expclit schema definition to use,
-                # autogenerate the schema from the store content, if any
-                schema = self._proxy.autoschema(self.store.values())
-
-            if schema:
+            if self.schema:
                 if name in self._proxy.db_tables:
                     # no reason to create the table again...
                     # but we still want to load the table class into metadata
                     create = False
-                self._proxy.autotable(schema=schema, name=name,
+                self._proxy.autotable(schema=self.schema, name=name,
                                       create=create)
                 logger.warn('autotable "%s": (create=%s): OK' % (name, create))
                 result = True
@@ -447,12 +555,12 @@ class MetriqueContainer(MutableMapping):
             raise RuntimeError("`pip install pandas` required")
         return pd.DataFrame(self.store)
 
-    def extend(self, items):
+    def extend(self, objs):
         s = time()
-        [self.add(i) for i in items]
+        [self.add(i) for i in objs]
         diff = time() - s
-        logger.debug('... extended container by %s items in %ss at %.2f/s' % (
-            len(items), int(diff), len(items) / diff))
+        logger.debug('... extended container by %s objs in %ss at %.2f/s' % (
+            len(objs), int(diff), len(objs) / diff))
 
     def flush(self, objects=None, batch_size=None, **kwargs):
         objects = objects or self.values()
@@ -509,7 +617,6 @@ class MetriqueContainer(MutableMapping):
         raise NotImplementedError("Subclasses should implement this.")
 
     def persist(self, objects=None, autosnap=None):
-        objects = objects or self.values()
         return self.upsert(objects=objects, autosnap=autosnap)
 
     def pop(self, key):
@@ -535,8 +642,26 @@ class MetriqueContainer(MutableMapping):
         # else: _proxy is a proxy_cls
         self._proxy = self._proxy(**self.proxy_config)
 
+    def objects(self):
+        return self.store.values()
+
     def values(self):
         return [dict(v) for v in self.store.itervalues()]
+
+    @property
+    def schema(self):
+        schema = self.config.get('schema')
+        if not schema and self.store:
+            # if we didn't get an expclit schema definition to use,
+            # autogenerate the schema from the store content, if any
+            values = self.store.values()
+            if hasattr(self._proxy, 'autoschema'):
+                schema = self._proxy.autoschema(values)
+            else:
+                schema = autoschema(values,
+                                    exclude_keys=self.RESTRICTED_KEYS)
+            self.config['schema'] = schema
+        return schema
 
     def count(self, query=None, date=None):
         '''
@@ -602,7 +727,6 @@ class MetriqueContainer(MutableMapping):
         return self.proxy.index_list()
 
     def insert(self, objects):
-        objects = type(self)(objects=objects).values()
         return self.proxy.insert(table=self.name, objects=objects)
 
     def share(self, with_user, roles=None):
@@ -613,7 +737,6 @@ class MetriqueContainer(MutableMapping):
                                 roles=roles)
 
     def upsert(self, objects, autosnap=None):
-        objects = type(self)(objects=objects).values()
         return self.proxy.upsert(table=self.name, objects=objects,
                                  autosnap=autosnap)
 
