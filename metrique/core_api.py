@@ -19,7 +19,7 @@ logger = logging.getLogger('metrique')
 
 from collections import MutableMapping
 from copy import deepcopy
-from datetime import datetime
+from datetime import datetime, date
 from functools import partial
 from inspect import isclass
 import os
@@ -218,15 +218,20 @@ class MetriqueObject(MutableMapping):
         schema = schema or {}
         convert = schema.get('convert')
         container = schema.get('container')
-        if value is None:
-            return None
-        elif convert and container:
-            _convert = partial(convert)
-            value = map(_convert, value)
-        elif convert:
-            value = convert(value)
-        else:
-            value = value
+        try:
+            if value is None:
+                return None
+            elif convert and container:
+                _convert = partial(convert)
+                value = map(_convert, value)
+            elif convert:
+                value = convert(value)
+            else:
+                value = value
+        except Exception:
+            logger.error("convert Failed: %s(value=%s, container=%s)" % (
+                convert.__name__, value, container))
+            raise
         return value
 
     def _prep_value(self, value, schema):
@@ -266,16 +271,22 @@ class MetriqueObject(MutableMapping):
         elif is_empty(value, except_=False):
             value = None
         elif isinstance(value, _type):  # or values already of correct type
-            pass
+            # normalize all dates to epochs
+            value = dt2ts(value) if _type in [datetime, date] else value
         else:
-            _value = _type(value)
-            if isinstance(_value, basestring):
-                value = to_encoding(_value)
+            if _type in [datetime, date]:
+                # normalize all dates to epochs
+                value = dt2ts(value)
             else:
-                value = _value  # leave as-is
-        # normalize all dates to epochs
-        if isinstance(value, datetime):
-            value = dt2ts(value)
+                try:
+                    _value = _type(value)
+                except Exception:
+                    logger.error("typecast failed: %s(value=%s)" % (
+                        _type.__name__, value))
+                    raise
+                # make sure all string types are properly unicoded
+                is_string = isinstance(_value, basestring)
+                value = to_encoding(_value) if is_string else _value
         return value
 
     def update(self, obj):
@@ -298,7 +309,7 @@ class MetriqueObject(MutableMapping):
                     value = self._prep_value(value, schema=schema)
                 except Exception as e:
                     self.store['_e'] = self.store['_e'] or {}
-                    logger.error('convert(key=%s, value=%s) failed: %s' % (
+                    logger.error('prep(key=%s, value=%s) failed: %s' % (
                         key, value, e))
                     # set error field with original values
                     # set fallback value to None
@@ -556,6 +567,7 @@ class MetriqueContainer(MutableMapping):
         return pd.DataFrame(self.store)
 
     def extend(self, objs):
+        logger.debug('Extending container by %s objs...' % len(objs))
         s = time()
         [self.add(i) for i in objs]
         diff = time() - s

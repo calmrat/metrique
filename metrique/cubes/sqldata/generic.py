@@ -421,14 +421,17 @@ class Generic(pyclient):
                 'Getting Objects - Current Values (%s@%s)' % (
                     workers, s_batch_size))
             result = []
-            for batch in batch_gen(oids, s_batch_size):
+            _s = 0
+            for i, batch in enumerate(batch_gen(oids, s_batch_size)):
+                _e = _s + s_batch_size
+                logger.debug('Batch %s: %s-%s' % (i, _s, _e))
                 _ = self._get_objects(oids=batch, flush=flush)
                 result.extend(_)
+                _s = _e
 
         if flush:
             return result
         else:
-            self.objects.extend(result)
             return self
 
     def _get_objects(self, oids, flush=False):
@@ -518,14 +521,17 @@ class Generic(pyclient):
                 'Getting Full History (%s@%s)' % (
                     workers, s_batch_size))
             result = []
-            for batch in batch_gen(oids, s_batch_size):
+            _s = 0
+            for i, batch in enumerate(batch_gen(oids, s_batch_size)):
+                _e = _s + s_batch_size
+                logger.debug('Batch %s: %s-%s' % (i, _s, _e))
                 _ = self._activity_get_objects(oids=batch, flush=flush)
                 result.extend(_)
+                _s = _e
 
         if flush:
             return result
         else:
-            self.objects.extend(result)
             return self
 
     def _left_join(self, select_as, select_prop, join_prop, join_table,

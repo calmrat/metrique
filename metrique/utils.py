@@ -29,7 +29,7 @@ from collections import defaultdict, Mapping, OrderedDict
 from copy import deepcopy
 import cPickle
 import cProfile as profiler
-from datetime import datetime
+from datetime import datetime, date
 try:
     from dateutil.parser import parse as dt_parse
     HAS_DATEUTIL = True
@@ -423,7 +423,7 @@ def dt2ts(dt, drop_micro=False):
             parsed_dt = dt_parse(dt)
         ts = dt2ts(parsed_dt)
     else:
-        assert isinstance(dt, datetime)
+        assert isinstance(dt, (datetime, date))
         # keep micros; see: http://stackoverflow.com/questions/7031031
         ts = ((
             timegm(dt.timetuple()) * 1000.0) +
@@ -650,8 +650,8 @@ def json_encode_default(obj):
 
     :param obj: value to (possibly) convert
     '''
-    if isinstance(obj, datetime):
-        return dt2ts(obj)
+    if isinstance(obj, (datetime, date)):
+        return to_encoding(dt2ts(obj))
     else:
         return json_encoder.default(obj)
 

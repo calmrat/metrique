@@ -86,8 +86,9 @@ try:
         impl = sqlite.VARCHAR
 
         def process_bind_param(self, value, dialect):
-            e = to_encoding
-            return None if value is None else e(json.dumps(value))
+            return None if value is None else to_encoding(
+                json.dumps(value, default=json_encode_default,
+                           ensure_ascii=False))
 
         def process_result_value(self, value, dialect):
             return {} if value is None else json.loads(value)
@@ -131,6 +132,7 @@ from metrique import parse
 from metrique.utils import batch_gen, configure, to_encoding, autoschema
 from metrique.utils import debug_setup, is_true, str2list, list2str
 from metrique.utils import validate_roles, validate_password, validate_username
+from metrique.utils import json_encode_default
 from metrique.result import Result
 
 ETC_DIR = os.environ.get('METRIQUE_ETC')
