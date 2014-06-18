@@ -272,8 +272,10 @@ class Metrique(object):
 
     def container_init(self, value=None, **kwargs):
         config = self.container_config
+        # don't pass 'proxy' config section as kwarg, but rather as
+        # proxy_config kwarg
         config['proxy_config'] = config.get(self.proxy_config_key)
-        del config[self.proxy_config_key]
+        config[self.proxy_config_key] = None
         config.update(dict(schema=self.schema))
         config.update(kwargs)
         if self._container is None:

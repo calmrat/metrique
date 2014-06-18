@@ -392,7 +392,6 @@ class MetriqueContainer(MutableMapping):
         '''
         Accept additional kwargs, but ignore them.
         '''
-        # FIXME: 'proxy' key should be value of self.proxy_config_key
         # null name -> anonymous table; no native ability to persist
         options = dict(autotable=autotable,
                        cache_dir=cache_dir,
@@ -426,9 +425,6 @@ class MetriqueContainer(MutableMapping):
         self.version = (self.config.get('version') or
                         MetriqueContainer.version)
 
-        if isinstance(proxy, basestring):
-            # load the proxy class from globals()
-            proxy = globals().get(proxy)
         proxy_config = dict(proxy_config or {})
         proxy_config.setdefault('db', db)
         proxy_config.setdefault('table', self.name)
