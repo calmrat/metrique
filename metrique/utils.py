@@ -115,12 +115,13 @@ def active_virtualenv():
 
 # FIXME: add tests
 def autoschema(objects, fast=True, exclude_keys=None):
-    logger.debug('AutoSchema generation started...')
+    logger.debug('autoschema generation started...')
     is_true(objects, 'object samples can not be null')
     objects = objects if isinstance(objects, (list, tuple)) else [objects]
     schema = defaultdict(dict)
     exclude_keys = exclude_keys or []
     for o in objects:
+        logger.debug('autoschema model object: %s' % o)
         for k, v in o.iteritems():
             if k in schema or k in exclude_keys:
                 continue
@@ -651,12 +652,10 @@ def json_encode_default(obj):
     :param obj: value to (possibly) convert
     '''
     if isinstance(obj, (datetime, date)):
-        return to_encoding(dt2ts(obj))
+        result = dt2ts(obj)
     else:
-        print '*'*100
-        result = to_encoding(json_encoder.default(obj))
-        print type(result), result
-        return result
+        result = json_encoder.default(obj)
+    return to_encoding(result)
 
 
 def jsonhash(obj, root=True, exclude=None, hash_func=None):

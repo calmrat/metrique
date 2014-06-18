@@ -41,7 +41,7 @@ import warnings
 from metrique._version import __version__
 from metrique.utils import utcnow, jsonhash, load, autoschema
 from metrique.utils import batch_gen, dt2ts, configure, to_encoding
-from metrique.utils import is_empty, is_true
+from metrique.utils import is_empty, is_true, is_null
 from metrique import parse
 
 ETC_DIR = os.environ.get('METRIQUE_ETC')
@@ -262,7 +262,9 @@ class MetriqueObject(MutableMapping):
 
     def _type_single(self, value, _type):
         ' apply type to the single value '
-        if value is None or _type in [None, NoneType]:
+        if is_null(value, except_=False):
+            value = None
+        elif _type in [None, NoneType]:
             # don't convert null values
             # default type is the original type if none set
             pass
