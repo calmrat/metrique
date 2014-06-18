@@ -17,6 +17,7 @@ from __future__ import unicode_literals, absolute_import
 import logging
 logger = logging.getLogger('sqlalchemy')
 
+from collections import Mapping
 from copy import deepcopy
 from datetime import datetime
 from getpass import getuser
@@ -726,7 +727,7 @@ class SQLAlchemyProxy(object):
         return _ix
 
     def insert(self, objects, session=None, table=None):
-        objects = objects.values() if isinstance(objects, dict) else objects
+        objects = objects.values() if isinstance(objects, Mapping) else objects
         is_true(isinstance(objects, list), 'objects must be a list')
         table = self.get_table(table)
         if self._lock_required:
@@ -768,7 +769,7 @@ class SQLAlchemyProxy(object):
         return result
 
     def upsert(self, objects, autosnap=None, batch_size=None, table=None):
-        objects = objects.values() if isinstance(objects, dict) else objects
+        objects = objects.values() if isinstance(objects, Mapping) else objects
         is_true(isinstance(objects, list), 'objects must be a list')
         table = self.get_table(table)
         if autosnap is None:

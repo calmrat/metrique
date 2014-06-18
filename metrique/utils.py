@@ -653,7 +653,10 @@ def json_encode_default(obj):
     if isinstance(obj, (datetime, date)):
         return to_encoding(dt2ts(obj))
     else:
-        return json_encoder.default(obj)
+        print '*'*100
+        result = to_encoding(json_encoder.default(obj))
+        print type(result), result
+        return result
 
 
 def jsonhash(obj, root=True, exclude=None, hash_func=None):
@@ -662,7 +665,7 @@ def jsonhash(obj, root=True, exclude=None, hash_func=None):
     '''
     if not hash_func:
         hash_func = sha1_hexdigest
-    if isinstance(obj, dict):
+    if isinstance(obj, Mapping):
         obj = obj.copy()  # don't affect the ref'd obj passed in
         keys = set(obj.iterkeys())
         if root and exclude:
@@ -920,9 +923,8 @@ def profile(fn, cache_dir=CACHE_DIR):
     def wrapper(*args, **kw):
         saveas = os.path.join(cache_dir, 'pyprofile.txt')
         elapsed, stat_loader, result = _profile(saveas, fn, *args, **kw)
-        stats = stat_loader()
-        stats.sort_stats('cumulative')
-        stats.print_stats()
+        stat_loader.sort_stats('cumulative')
+        stat_loader.print_stats()
         # uncomment this to see who's calling what
         # stats.print_callers()
         remove_file(saveas)

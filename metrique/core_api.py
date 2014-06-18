@@ -17,7 +17,7 @@ from __future__ import unicode_literals, absolute_import
 import logging
 logger = logging.getLogger('metrique')
 
-from collections import MutableMapping
+from collections import Mapping, MutableMapping
 from copy import deepcopy
 from datetime import datetime, date
 from functools import partial
@@ -262,13 +262,12 @@ class MetriqueObject(MutableMapping):
 
     def _type_single(self, value, _type):
         ' apply type to the single value '
-        _type = NoneType if _type is None else _type
-        if value is None:  # don't convert null values
+        if value is None or _type in [None, NoneType]:
+            # don't convert null values
+            # default type is the original type if none set
             pass
-        elif _type is NoneType:  # run this before is_empty; NoneType == NULL
-            # default type if unicode if none set
-            value = to_encoding(value)
         elif is_empty(value, except_=False):
+            # fixme, rather leave as "empty" type? eg, list(), int(), etc.
             value = None
         elif isinstance(value, _type):  # or values already of correct type
             # normalize all dates to epochs
@@ -497,7 +496,7 @@ class MetriqueContainer(MutableMapping):
     def _encode(self, obj):
         if isinstance(obj, self._object_cls):
             pass
-        elif isinstance(obj, (MutableMapping, dict)):
+        elif isinstance(obj, (Mapping)):
             if self.version > obj.get('_v', 0):
                 obj['_v'] = self.version
             obj = self._object_cls(_schema=self.schema, **obj)
@@ -627,6 +626,7 @@ class MetriqueContainer(MutableMapping):
         raise NotImplementedError("Subclasses should implement this.")
 
     def persist(self, objects=None, autosnap=None):
+        objects = objects or self
         return self.upsert(objects=objects, autosnap=autosnap)
 
     def pop(self, key):

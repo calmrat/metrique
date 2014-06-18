@@ -573,7 +573,9 @@ def test_json_encode_default():
     dct = {"a": now, "b": "1"}
 
     _dct = json.loads(json.dumps(dct, default=json_encode_default))
-    assert isinstance(_dct["a"], float)
+    print type(_dct["a"])
+    assert isinstance(_dct["a"], unicode)
+    assert float(_dct["a"])
 
     dct = {"a": json_encode_default}
     try:
