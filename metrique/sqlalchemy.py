@@ -223,7 +223,14 @@ class SQLAlchemyProxy(object):
 
     def _debug_setup_sqlalchemy_logging(self):
         level = self.config.get('debug')
-        debug_setup(logger='sqlalchemy', level=level)
+        log2stdout = self.config.get('log2stdout')
+        log_format = None
+        log2file = self.config.get('log2file')
+        log_dir = self.config.get('log_dir')
+        log_file = self.config.get('log_file')
+        debug_setup(logger='sqlalchemy', level=level, log2stdout=log2stdout,
+                    log_format=log_format, log2file=log2file,
+                    log_dir=log_dir, log_file=log_file)
 
     def _exec_transaction(self, cmd, params=None, session=None):
         session = session or self.session_new()
@@ -302,11 +309,18 @@ class SQLAlchemyProxy(object):
         # failed to parse
         version = version or (8, 2)
         db_schema = self.config.get('db_schema')
-        r_none = lambda *i: db_schema
-        iso = lambda *i: isolation_level
+
+        def r_none(*args): return db_schema
+
+        def iso(*args): return isolation_level
+
+        def creturns(*args): return True
+
+        def sversion(*args): return version
+
         pg.base.PGDialect.description_encoding = str('utf8')
-        pg.base.PGDialect._check_unicode_returns = lambda *i: True
-        pg.base.PGDialect._get_server_version_info = lambda *i: version
+        pg.base.PGDialect._check_unicode_returns = creturns
+        pg.base.PGDialect._get_server_version_info = sversion
         pg.base.PGDialect.get_isolation_level = iso
         pg.base.PGDialect._get_default_schema_name = r_none
         pg.psycopg2.PGDialect_psycopg2.set_isolation_level = iso
@@ -863,7 +877,8 @@ class SQLAlchemyProxy(object):
         is_true(username, 'username required')
         logger.info('Disabling existing user %s' % username)
         u = update('pg_database')
-        #update pg_database set datallowconn = false where datname = 'applogs';
+        # update pg_database set datallowconn = false
+        # where datname = 'applogs';
         sql = u.where(
             "datname = '%s'" % username).values({'datallowconn': 'false'})
         result = self.session_auto.execute(sql)
@@ -911,8 +926,7 @@ def get_engine_uri(db, host='127.0.0.1', port=5432, dialect='sqlite',
 def schema2table(name, schema, Base=None, type_map=None, exclude_keys=None):
     is_true(name, "table name must be defined!")
     is_true(schema, "schema must be defined!")
-    if Base:
-        logger.debug('Reusing existing Base (%s)' % Base)
+    logger.debug('Reusing existing Base (%s)' % Base) if Base else None
     Base = Base or declarative_base()
     schema = deepcopy(schema)
     type_map = deepcopy(type_map or TYPE_MAP)
@@ -920,14 +934,12 @@ def schema2table(name, schema, Base=None, type_map=None, exclude_keys=None):
     logger.debug(" ... Schema: %s" % schema)
     logger.debug(" ... Type Map: %s" % type_map)
 
-    __repr__ = lambda s: '%s(%s)' % (
-        s.__tablename__,
-        ', '.join(['%s=%s' % (k, v) for k, v in s.__dict__.iteritems()
-                   if k != '_sa_instance_state']))
+    def __repr__(s):
+        return '%s(%s)' % (
+            s.__tablename__,
+            ', '.join(['%s=%s' % (k, v) for k, v in s.__dict__.iteritems()
+                      if k != '_sa_instance_state']))
 
-    #_ignore_keys = set(['_id', '_hash'])
-    #__init__ = lambda s, kw: [setattr(s, k, v) for k, v in kw.iteritems()
-    #                          if k not in _ignore_keys]
     defaults = {
         '__tablename__': name,
         '__table_args__': ({'extend_existing': True}),

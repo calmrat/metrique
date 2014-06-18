@@ -303,10 +303,10 @@ class Generic(pyclient):
         else:
             mtime = self.container.get_last_field(field='_start')
 
+        mtime = ts2dt(mtime)
         logger.debug("Last update mtime: %s" % mtime)
 
         if mtime:
-            mtime = ts2dt(mtime)
             if parse_timestamp is None:
                 parse_timestamp = self.lconfig.get('parse_timestamp', True)
             if parse_timestamp:
