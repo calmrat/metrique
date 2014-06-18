@@ -18,7 +18,7 @@ import logging
 logger = logging.getLogger('sqlalchemy')
 
 from collections import Mapping
-from copy import deepcopy
+from copy import copy
 from datetime import datetime
 from getpass import getuser
 try:
@@ -171,8 +171,8 @@ class SQLAlchemyProxy(object):
         '''
         is_true(HAS_SQLALCHEMY, '`pip install sqlalchemy` required')
         # use copy of class default value
-        self.RESERVED_USERNAMES = deepcopy(SQLAlchemyProxy.RESERVED_USERNAMES)
-        self.TYPE_MAP = deepcopy(SQLAlchemyProxy.TYPE_MAP)
+        self.RESERVED_USERNAMES = copy(SQLAlchemyProxy.RESERVED_USERNAMES)
+        self.TYPE_MAP = copy(SQLAlchemyProxy.TYPE_MAP)
         # default _start, _end is epoch timestamp
 
         options = dict(
@@ -203,7 +203,7 @@ class SQLAlchemyProxy(object):
             port=5432,
             table=None,
             username=getuser())
-        self.config = deepcopy(config or self.config or {})
+        self.config = copy(config or self.config or {})
         self.config_file = config_file or SQLAlchemyProxy.config_file
         self.config_key = config_key or SQLAlchemyProxy.config_key
         self.config = configure(options, defaults,
@@ -310,13 +310,17 @@ class SQLAlchemyProxy(object):
         version = version or (8, 2)
         db_schema = self.config.get('db_schema')
 
-        def r_none(*args): return db_schema
+        def r_none(*args):
+            return db_schema
 
-        def iso(*args): return isolation_level
+        def iso(*args):
+            return isolation_level
 
-        def creturns(*args): return True
+        def creturns(*args):
+            return True
 
-        def sversion(*args): return version
+        def sversion(*args):
+            return version
 
         pg.base.PGDialect.description_encoding = str('utf8')
         pg.base.PGDialect._check_unicode_returns = creturns
@@ -928,8 +932,8 @@ def schema2table(name, schema, Base=None, type_map=None, exclude_keys=None):
     is_true(schema, "schema must be defined!")
     logger.debug('Reusing existing Base (%s)' % Base) if Base else None
     Base = Base or declarative_base()
-    schema = deepcopy(schema)
-    type_map = deepcopy(type_map or TYPE_MAP)
+    schema = copy(schema)
+    type_map = copy(type_map or TYPE_MAP)
     logger.debug("Attempting to create Table class: %s..." % name)
     logger.debug(" ... Schema: %s" % schema)
     logger.debug(" ... Type Map: %s" % type_map)

@@ -18,7 +18,7 @@ import logging
 logger = logging.getLogger('metrique')
 
 from collections import Mapping, MutableMapping
-from copy import deepcopy
+from copy import copy
 from datetime import datetime, date
 from functools import partial
 from inspect import isclass
@@ -55,7 +55,6 @@ class MetriqueObject(MutableMapping):
     SPACE_RE = re.compile('\s+')
     UNDA_RE = re.compile('_+')
     IMMUTABLE_OBJ_KEYS = set(['_hash', '_id', 'id'])
-    TIMESTAMP_OBJ_KEYS = set(['_end', '_start'])
     _VERSION = 0
     HASH_EXCLUDE_KEYS = tuple(HASH_EXCLUDE_KEYS)
 
@@ -81,9 +80,8 @@ class MetriqueObject(MutableMapping):
             '__v__': __version__,
             '_e': _e,
         }
-        self._schema = deepcopy(_schema or {})
+        self._schema = copy(_schema or {})
         self.update(kwargs)
-        self._re_hash()
 
     def __getitem__(self, key):
         key = self.__keytransform__(key)
@@ -92,7 +90,6 @@ class MetriqueObject(MutableMapping):
     def __setitem__(self, key, value):
         key = self.__keytransform__(key)
         self.update({key: value})
-        self._re_hash()
 
     def __delitem__(self, key):
         self.pop(key)
@@ -135,17 +132,14 @@ class MetriqueObject(MutableMapping):
         return unicode(_id)
 
     def _gen_hash(self):
-        o = deepcopy(self.store)
+        o = copy(self.store)
         keys = set(o.keys())
         [o.pop(k) for k in self.HASH_EXCLUDE_KEYS if k in keys]
         return jsonhash(o)
 
     def _re_hash(self):
-        # FIXME: validate all meta fields; make sure typed
-        # correctly?
         self._validate_start_end()
-        # _id depends on _hash
-        # so first, _hash, then _id
+        # _id depends on _hash; so first, _hash, then _id
         self.store['_hash'] = self._gen_hash()
         self.store['_id'] = self._gen_id()
 
@@ -154,17 +148,12 @@ class MetriqueObject(MutableMapping):
         if _start is None:
             raise ValueError("_start (%s) must be set!" % _start)
         _end = self.get('_end')
-        # make sure we have the right type... float epoch
-        _start = dt2ts(_start)
-        _end = dt2ts(_end)
         if _end and _end < _start:
             raise ValueError(
                 "_end (%s) is before _start (%s)!" % (_end, _start))
-        self.store['_start'] = _start
-        self.store['_end'] = _end
 
     def as_dict(self, pop=None):
-        store = deepcopy(self.store)
+        store = copy(self.store)
         if pop:
             [store.pop(key, None) for key in pop]
         return store
@@ -174,7 +163,7 @@ class MetriqueObject(MutableMapping):
         is_true(key not in self.IMMUTABLE_OBJ_KEYS, '%s is immutable!' % key)
         value = self.store.pop(key)
         # _start and _end are simply 'reset' to dfault values if pop/deleted
-        if key in self.TIMESTAMP_OBJ_KEYS:
+        if key in ('_start', '_end'):
             if key == '_start':
                 self.store[key] = utcnow()
             else:
@@ -298,8 +287,7 @@ class MetriqueObject(MutableMapping):
                 warnings.warn(
                     'attempted update of immutable key detected: %s' % key)
                 continue
-            elif key in self.TIMESTAMP_OBJ_KEYS:
-                # ensure normalized timestamp
+            elif key in ('_end', '_start'):
                 value = dt2ts(value)
             elif key == '_e':  # _e is expected to be dict
                 value = None if not value else dict(value)
@@ -412,7 +400,7 @@ class MetriqueContainer(MutableMapping):
 
         # if config is passed in, set it, otherwise start
         # with class assigned default or empty dict
-        self.config = deepcopy(config or MetriqueContainer.config or {})
+        self.config = copy(config or MetriqueContainer.config or {})
         self.config_file = config_file or MetriqueContainer.config_file
         self.config_key = config_key or MetriqueContainer.config_key
         # load defaults + set args passed in
@@ -442,7 +430,7 @@ class MetriqueContainer(MutableMapping):
         self._proxy = proxy
 
         # init and update internal store with passed in objects, if any
-        self.store = deepcopy(MetriqueContainer.store or {})
+        self.store = copy(MetriqueContainer.store or {})
         self._update(objects)
 
     def _update(self, objects):
@@ -566,7 +554,7 @@ class MetriqueContainer(MutableMapping):
         return pd.DataFrame(self.store)
 
     def extend(self, objs):
-        logger.debug('Extending container by %s objs...' % len(objs))
+        logger.debug('extending container by %s objs...' % len(objs))
         s = time()
         [self.add(i) for i in objs]
         diff = time() - s

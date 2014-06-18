@@ -26,7 +26,7 @@ except ImportError:
 
 from calendar import timegm
 from collections import defaultdict, Mapping, OrderedDict
-from copy import deepcopy
+from copy import copy
 import cPickle
 import cProfile as profiler
 from datetime import datetime, date
@@ -226,10 +226,10 @@ def configure(options=None, defaults=None, config_file=None,
               section_key=None, update=None, section_only=False):
 
     config = load_config(config_file)
-    config = rupdate(config, deepcopy(update or {}))
+    config = rupdate(config, copy(update or {}))
 
-    opts = deepcopy(options or {})
-    defs = deepcopy(defaults or {})
+    opts = copy(options or {})
+    defs = copy(defaults or {})
 
     sk = section_key
 
@@ -596,7 +596,6 @@ def git_clone(uri, pull=True, reflect=False, cache_dir=None, chdir=True):
 
 
 def is_empty(value, except_=True, msg=None):
-    msg = msg or '(%s) is not empty' % to_encoding(value)
     if isinstance(value, basestring):
         value = value.strip()
     elif hasattr(value, 'empty'):
@@ -612,10 +611,12 @@ def is_empty(value, except_=True, msg=None):
         pass
     _is_null = is_null(value, except_=False)
     result = bool(_is_null or not value)
-    if not result and except_:
-        raise RuntimeError(msg)
-    else:
+    if result:
         return result
+    if except_:
+        msg = msg or '(%s) is not empty' % to_encoding(value)
+        raise RuntimeError(msg)
+    return result
 
 
 def is_null(value, except_=True, msg=None):
@@ -623,17 +624,18 @@ def is_null(value, except_=True, msg=None):
     # 0 is 'null' but not the type of null we're
     # interested in same with empty lists and such
     '''
-    msg = msg or '(%s) is not null' % to_encoding(value)
     # dataframes, even if empty, are not considered null
     value = True if hasattr(value, 'empty') else value
     result = bool(
         value is None or
         value != value or
         repr(value) == 'NaT')
-    if not result and except_:
-        raise RuntimeError(msg)
-    else:
+    if result:
         return result
+    if except_:
+        msg = msg or '(%s) is not null' % to_encoding(value)
+        raise RuntimeError(msg)
+    return result
 
 
 def is_true(value, msg=None, except_=True):

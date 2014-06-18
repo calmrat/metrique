@@ -75,7 +75,7 @@ from getpass import getuser
 import logging
 logger = logging.getLogger('metrique')
 
-from copy import deepcopy
+from copy import copy
 from inspect import isclass
 import os
 
@@ -206,7 +206,7 @@ class Metrique(object):
 
         # if config is passed in, set it, otherwise start
         # with class assigned default or empty dict
-        self.config = deepcopy(config or Metrique.config or {})
+        self.config = copy(config or Metrique.config or {})
         self.config_file = config_file or Metrique.config_file
         self.config_key = config_key or Metrique.config_key
         # load defaults + set args passed in
@@ -268,7 +268,7 @@ class Metrique(object):
     @property
     def container_config(self):
         self.config.setdefault(self.container_config_key, {})
-        return deepcopy(self.config[self.container_config_key])
+        return copy(self.config[self.container_config_key])
 
     def container_init(self, value=None, **kwargs):
         config = self.container_config
@@ -327,10 +327,10 @@ class Metrique(object):
         :param kwargs: additional :func:`metrique.utils.get_cube`
         '''
         name = name or cube
-        config = deepcopy(self.config) if copy_config else {}
+        config = copy(self.config) if copy_config else {}
         config_file = self.config_file
         container = type(self.objects)
-        container_config = deepcopy(self.container_config)
+        container_config = copy(self.container_config)
         proxy = str(type(self.proxy))
         return get_cube(cube=cube, init=init, name=name, config=config,
                         config_file=config_file, container=container,
@@ -368,7 +368,7 @@ class Metrique(object):
     @property
     def proxy_config(self):
         self.config.setdefault(self.proxy_config_key, {})
-        return deepcopy(self.config[self.proxy_config_key])
+        return copy(self.config[self.proxy_config_key])
 
     def proxy_init(self, **kwargs):
         config = self.proxy_config

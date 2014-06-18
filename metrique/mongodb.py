@@ -9,7 +9,7 @@ import logging
 logger = logging.getLogger('metrique')
 
 from collections import defaultdict
-from copy import deepcopy
+from copy import copy
 from getpass import getuser
 from operator import itemgetter
 import os
@@ -90,7 +90,7 @@ class MongoDBProxy(object):
         Accept additional kwargs, but ignore them.
         '''
         is_true(HAS_PYMONGO, '`pip install pymongo` 2.6+ required')
-        self.RESTRICTED_COLLECTIONS = deepcopy(self.RESTRICTED_COLLECTIONS)
+        self.RESTRICTED_COLLECTIONS = copy(self.RESTRICTED_COLLECTIONS)
         options = dict(auth=auth,
                        host=host,
                        db=db,

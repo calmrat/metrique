@@ -16,7 +16,7 @@ from __future__ import unicode_literals
 import logging
 logger = logging.getLogger('metrique')
 
-from copy import deepcopy
+from copy import copy
 from collections import defaultdict
 from dateutil.parser import parse as dt_parse
 from functools import partial
@@ -166,10 +166,10 @@ class Generic(pyclient):
             # check if this activity happened at the same time as the last one,
             # if it did then we need to group them together
             if last_doc['_end'] == when:
-                new_doc = deepcopy(last_doc)
+                new_doc = copy(last_doc)
                 last_doc = batch_updates.pop()
             else:
-                new_doc = deepcopy(last_doc)
+                new_doc = copy(last_doc)
                 new_doc['_start'] = when
                 new_doc['_end'] = when
                 last_doc['_start'] = when
@@ -330,7 +330,7 @@ class Generic(pyclient):
             fieldmap = self._sql_fieldmap
         else:
             fieldmap = defaultdict(str)
-            fields = deepcopy(self.fields)
+            fields = copy(self.fields)
             for field, opts in fields.iteritems():
                 field_id = opts.get('what')
                 if field_id is not None:
