@@ -47,10 +47,10 @@ def test_csvdata():
     # {u'symbol': u'$AJT', u'date': u'09/08/2008', u'close': 18.15, u'_start':
     # datetime.datetime(2014, 5, 28, 14, 9, 22, 999145), u'open': 17.84,
     # u'_oid': 11, u'_v': 0, u'_end': None, u'_hash':
-    # u'5a6d18a9c654886926e5f769d4bf4808df6cba39', u'__v__': u'0.3.1-1a',
+    # u'df65ff8265bf3997d4e23e7b22a6624b560714a5', u'__v__': u'0.3.1-1a',
     # u'_e': {}, u'_id': u'11'}
     _ids = m.objects._ids
-    _hash = '5a388d116969aafcf6e9a74f0298a4728a510705'
+    _hash = 'df65ff8265bf3997d4e23e7b22a6624b560714a5'
     _oid = 11
     _filtered = m.objects.filter(where={'_oid': _oid})
     print 'Object: %s' % _filtered
@@ -160,9 +160,9 @@ def test_gitdata_commit():
     # u'tree': u'66406ded27ba129ad1639928b079b821ab416fed', u'_end': None,
     # u'signed_off_by': None, u'parents':
     # ['78b311d90e35eb36016a7f41e75657754dbe0784'], u'_hash':
-    # u'2b408e995e0fed13833c36a61efd3622bad05ddc', u'__v__': u'0.3.1-1a',
+    # u'44eb9a9adbeda1c29af31a806c6d71c5baca88dd', u'__v__': u'0.3.1-1a',
     # u'_e': {}, u'_id': u'99dc1e5c4e3ab2c8ab5510e50a3edf64f9fcc705'}
-    _hash = '2b408e995e0fed13833c36a61efd3622bad05ddc'
+    _hash = '44eb9a9adbeda1c29af31a806c6d71c5baca88dd'
     _oid = '99dc1e5c4e3ab2c8ab5510e50a3edf64f9fcc705'
     _filtered = m.objects.filter(where={'_oid': _oid})
     assert len(_filtered) == 1

@@ -26,10 +26,10 @@ except ImportError:
 
 from calendar import timegm
 from collections import defaultdict, Mapping, OrderedDict
-from copy import deepcopy
+from copy import copy
 import cPickle
 import cProfile as profiler
-from datetime import datetime
+from datetime import datetime, date
 try:
     from dateutil.parser import parse as dt_parse
     HAS_DATEUTIL = True
@@ -49,7 +49,7 @@ import gc
 from getpass import getuser
 import glob
 from hashlib import sha1
-from inspect import isfunction, isclass
+from inspect import isfunction
 import itertools
 import os
 from pprint import pformat
@@ -89,7 +89,6 @@ import sys
 import time
 import urllib
 
-active_virtualenv = lambda: os.environ.get('VIRTUAL_ENV', '')
 env = os.environ
 pjoin = os.path.join
 
@@ -98,7 +97,6 @@ json_encoder = json.JSONEncoder()
 DEFAULT_PKGS = ['metrique.cubes']
 
 INVALID_USERNAME_RE = re.compile('[^a-zA-Z_]')
-SHA1_HEXDIGEST = lambda o: sha1(repr(o)).hexdigest()
 
 HOME_DIR = os.environ.get('METRIQUE_HOME')
 PREFIX_DIR = os.environ.get('METRIQUE_PREFIX')
@@ -111,14 +109,19 @@ STATIC_DIR = env.get('METRIQUE_STATIC')
 ZEROS = (0, 0.0, 0L)
 
 
+def active_virtualenv():
+    return os.environ.get('VIRTUAL_ENV', '')
+
+
 # FIXME: add tests
 def autoschema(objects, fast=True, exclude_keys=None):
-    logger.debug('AutoSchema generation started...')
+    logger.debug('autoschema generation started...')
     is_true(objects, 'object samples can not be null')
     objects = objects if isinstance(objects, (list, tuple)) else [objects]
     schema = defaultdict(dict)
     exclude_keys = exclude_keys or []
     for o in objects:
+        logger.debug('autoschema model object: %s' % o)
         for k, v in o.iteritems():
             if k in schema or k in exclude_keys:
                 continue
@@ -223,10 +226,10 @@ def configure(options=None, defaults=None, config_file=None,
               section_key=None, update=None, section_only=False):
 
     config = load_config(config_file)
-    config = rupdate(config, deepcopy(update or {}))
+    config = rupdate(config, copy(update or {}))
 
-    opts = deepcopy(options or {})
-    defs = deepcopy(defaults or {})
+    opts = copy(options or {})
+    defs = copy(defaults or {})
 
     sk = section_key
 
@@ -415,10 +418,13 @@ def dt2ts(dt, drop_micro=False):
     elif isinstance(dt, (int, long, float)):  # its a ts already
         ts = float(dt)
     elif isinstance(dt, basestring):  # convert to datetime first
-        parsed_dt = dt_parse(dt)
+        try:
+            parsed_dt = float(dt)
+        except (TypeError, ValueError):
+            parsed_dt = dt_parse(dt)
         ts = dt2ts(parsed_dt)
     else:
-        assert isinstance(dt, datetime)
+        assert isinstance(dt, (datetime, date))
         # keep micros; see: http://stackoverflow.com/questions/7031031
         ts = ((
             timegm(dt.timetuple()) * 1000.0) +
@@ -589,17 +595,7 @@ def git_clone(uri, pull=True, reflect=False, cache_dir=None, chdir=True):
         return repo_path
 
 
-def gimport(name, type_check=isclass, except_=False):
-    ''' load an already available obj from globals; check type, optionally '''
-    _obj = globals().get(name)
-    except_ and is_true(_obj, '%s not found in globals()')
-    except_ and is_true(type_check(_obj),
-                        'Invalid type; checked with %s' % type_check.__name__)
-    return _obj
-
-
 def is_empty(value, except_=True, msg=None):
-    msg = msg or '(%s) is not empty' % value
     if isinstance(value, basestring):
         value = value.strip()
     elif hasattr(value, 'empty'):
@@ -615,10 +611,12 @@ def is_empty(value, except_=True, msg=None):
         pass
     _is_null = is_null(value, except_=False)
     result = bool(_is_null or not value)
-    if not result and except_:
-        raise RuntimeError(msg)
-    else:
+    if result:
         return result
+    if except_:
+        msg = msg or '(%s) is not empty' % to_encoding(value)
+        raise RuntimeError(msg)
+    return result
 
 
 def is_null(value, except_=True, msg=None):
@@ -626,17 +624,18 @@ def is_null(value, except_=True, msg=None):
     # 0 is 'null' but not the type of null we're
     # interested in same with empty lists and such
     '''
-    msg = msg or '(%s) is not null' % value
     # dataframes, even if empty, are not considered null
     value = True if hasattr(value, 'empty') else value
     result = bool(
         value is None or
         value != value or
         repr(value) == 'NaT')
-    if not result and except_:
-        raise RuntimeError(msg)
-    else:
+    if result:
         return result
+    if except_:
+        msg = msg or '(%s) is not null' % to_encoding(value)
+        raise RuntimeError(msg)
+    return result
 
 
 def is_true(value, msg=None, except_=True):
@@ -654,10 +653,11 @@ def json_encode_default(obj):
 
     :param obj: value to (possibly) convert
     '''
-    if isinstance(obj, datetime):
-        return dt2ts(obj)
+    if isinstance(obj, (datetime, date)):
+        result = dt2ts(obj)
     else:
-        return json_encoder.default(obj)
+        result = json_encoder.default(obj)
+    return to_encoding(result)
 
 
 def jsonhash(obj, root=True, exclude=None, hash_func=None):
@@ -665,8 +665,8 @@ def jsonhash(obj, root=True, exclude=None, hash_func=None):
     calculate the objects hash based on all field values
     '''
     if not hash_func:
-        hash_func = SHA1_HEXDIGEST
-    if isinstance(obj, dict):
+        hash_func = sha1_hexdigest
+    if isinstance(obj, Mapping):
         obj = obj.copy()  # don't affect the ref'd obj passed in
         keys = set(obj.iterkeys())
         if root and exclude:
@@ -924,9 +924,8 @@ def profile(fn, cache_dir=CACHE_DIR):
     def wrapper(*args, **kw):
         saveas = os.path.join(cache_dir, 'pyprofile.txt')
         elapsed, stat_loader, result = _profile(saveas, fn, *args, **kw)
-        stats = stat_loader()
-        stats.sort_stats('cumulative')
-        stats.print_stats()
+        stat_loader.sort_stats('cumulative')
+        stat_loader.print_stats()
         # uncomment this to see who's calling what
         # stats.print_callers()
         remove_file(saveas)
@@ -935,7 +934,6 @@ def profile(fn, cache_dir=CACHE_DIR):
 
 
 def _profile(filename, fn, *args, **kw):
-    load_stats = lambda: pstats.Stats(filename)
     gc.collect()
 
     began = time.time()
@@ -943,7 +941,7 @@ def _profile(filename, fn, *args, **kw):
                     filename=filename)
     ended = time.time()
 
-    return ended - began, load_stats, locals()['result']
+    return ended - began, pstats.Stats(filename), locals()['result']
 
 
 def rand_chars(size=6, chars=string.ascii_uppercase + string.digits,
@@ -1057,6 +1055,10 @@ def safestr(str_):
     ''' get back an alphanumeric only version of source '''
     str_ = str_ or ""
     return "".join(x for x in str_ if x.isalnum())
+
+
+def sha1_hexdigest(o):
+    return sha1(repr(o)).hexdigest()
 
 
 def str2list(item, delim=',', map_=None):
@@ -1360,8 +1362,11 @@ class DictDiffer(object):
 
         od = OrderedDict
         s = sorted
-        sk = lambda t: t[0]
-        self.dicts = [od(s(d.iteritems(), key=sk)) for d in dicts]
+
+        def skey(t):
+            return t[0]
+
+        self.dicts = [od(s(d.iteritems(), key=skey)) for d in dicts]
 
     def __getitem__(self, value):
         is_true(isinstance(value, slice), 'expected slice')

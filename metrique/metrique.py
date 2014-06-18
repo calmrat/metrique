@@ -10,7 +10,7 @@
 '''
 metrique.core_api
 ~~~~~~~~~~~~~~~~~
-**Python/MongoDB data warehouse and information platform**
+**Python data warehouse and information platform**
 
 metrique is used to bring data from any number of arbitrary
 sources into unified data collections that supports
@@ -71,18 +71,17 @@ And finishing with some querying and simple charting of the data.
 
 from __future__ import unicode_literals, absolute_import
 
-from collections import defaultdict
 from getpass import getuser
 import logging
 logger = logging.getLogger('metrique')
 
-from copy import deepcopy
+from copy import copy
 from inspect import isclass
 import os
 
 from time import time
 
-from metrique.utils import get_cube, load_config, configure, gimport
+from metrique.utils import get_cube, load_config, configure
 from metrique.utils import debug_setup, is_true
 
 ETC_DIR = os.environ.get('METRIQUE_ETC')
@@ -134,9 +133,6 @@ class Metrique(object):
     config = None
     config_file = DEFAULT_CONFIG
     config_key = 'metrique'
-    global_config_key = 'metrique'
-    #mongodb_config_key = 'mongodb'
-    #sqlalchemy_config_key = 'metrique'
     container_config_key = 'container'
     proxy_config_key = 'proxy'
     name = None
@@ -145,16 +141,17 @@ class Metrique(object):
     _container_cls = None
     _proxy = None
     _proxy_cls = None
-    _schema_keys = ('type', 'container')
+    _schema_keys = ('type', 'container', 'convert', 'variants')
     __metaclass__ = MetriqueFactory
 
-    def __init__(self, name=None, db=None, config_file=DEFAULT_CONFIG,
-                 config=None, config_key='metrique', cube_pkgs=None,
+    def __init__(self, name=None, db=None, config_file=None,
+                 config=None, config_key=None, cube_pkgs=None,
                  cube_paths=None, debug=None, log_file='metrique.log',
                  log2file=True, log2stdout=False, workers=2,
                  log_dir=LOG_DIR, cache_dir=CACHE_DIR, etc_dir=ETC_DIR,
                  tmp_dir=TMP_DIR, container=None, container_config=None,
-                 proxy=None, proxy_config=None, version=0, schema=None):
+                 container_config_key=None, proxy=None, proxy_config=None,
+                 proxy_config_key=None, version=None, schema=None):
         '''
         :param cube_pkgs: list of package names where to search for cubes
         :param cube_paths: Additional paths to search for client cubes
@@ -209,9 +206,9 @@ class Metrique(object):
 
         # if config is passed in, set it, otherwise start
         # with class assigned default or empty dict
-        self.config = deepcopy(config or Metrique.config or {})
+        self.config = copy(config or Metrique.config or {})
         self.config_file = config_file or Metrique.config_file
-        self.config_key = config_key or Metrique.global_config_key
+        self.config_key = config_key or Metrique.config_key
         # load defaults + set args passed in
         self.config = configure(options, defaults,
                                 config_file=self.config_file,
@@ -228,23 +225,22 @@ class Metrique(object):
                     log_format=log_format, log2file=log2file,
                     log_dir=log_dir, log_file=log_file)
 
+        self.container_config_key = (container_config_key or
+                                     Metrique.container_config_key)
         container_config = dict(container_config or {})
         container_config.setdefault('name', self.name)
+        schema = schema or self.schema
         container_config.setdefault('schema', schema)
         container_config.setdefault('config_file', self.config_file)
         self.config[self.container_config_key].update(container_config)
 
+        self.proxy_config_key = proxy_config_key or Metrique.proxy_config_key
         proxy_config = dict(proxy_config or {})
         proxy_config.setdefault('table', self.name)
         proxy_config.setdefault('config_file', self.config_file)
         self.config.setdefault(self.proxy_config_key, {}).update(proxy_config)
 
-        if isinstance(proxy, basestring):
-            proxy = gimport(proxy)
         self._proxy = proxy
-
-        if isinstance(container, basestring):
-            container = gimport(container)
         self._container = container
 
         if self._container_cls is None:
@@ -253,22 +249,6 @@ class Metrique(object):
         if self._proxy_cls is None:
             from metrique.sqlalchemy import SQLAlchemyProxy
             self._proxy_cls = SQLAlchemyProxy
-
-    def _get_schema(self, except_=False):
-        # schema might have been passed in as kwarg and stored in the config
-        # or subclasses might define schema (and more) within self.fields attr
-        _schema = (self.container_config.get('schema') or
-                   getattr(self, 'fields') or {})
-        # in the case we derived our schema from 'fields' attr, we must filter
-        # out anything we're not specifically interested in
-        schema = defaultdict(dict)
-        for field, meta in _schema.iteritems():
-            for k, v in meta.iteritems():
-                schema[field].setdefault(k, {})
-                if k in self._schema_keys:
-                    schema[field][k] = v
-        except_ and is_true(schema, 'schema not defined!')
-        return schema
 
     @property
     def container(self):
@@ -288,14 +268,15 @@ class Metrique(object):
     @property
     def container_config(self):
         self.config.setdefault(self.container_config_key, {})
-        return self.config[self.container_config_key]
+        return copy(self.config[self.container_config_key])
 
     def container_init(self, value=None, **kwargs):
         config = self.container_config
-        # try to get schema from any of the known places
-        # it could be derived from
-        schema = self._get_schema()
-        config.update(dict(schema=schema))
+        # don't pass 'proxy' config section as kwarg, but rather as
+        # proxy_config kwarg
+        config['proxy_config'] = config.get(self.proxy_config_key)
+        config[self.proxy_config_key] = None
+        config.update(dict(schema=self.schema))
         config.update(kwargs)
         if self._container is None:
             self._container = self._container_cls
@@ -305,10 +286,14 @@ class Metrique(object):
         is_true(isinstance(self._container, self._container_cls), msg)
         return self._container
 
+    def flush(self, objects=None, autosnap=None, **kwargs):
+        return self.container.flush(objects=objects, autosnap=autosnap,
+                                    **kwargs)
+
     @property
     def gconfig(self):
         if self.config:
-            return self.config.get(self.global_config_key) or {}
+            return self.config.get(self.config_key) or {}
         else:
             return {}
 
@@ -322,7 +307,7 @@ class Metrique(object):
                      flush, autosnap, kwargs))
         if flush:
             s = time()
-            result = self.objects.flush(autosnap=autosnap, **kwargs)
+            result = self.flush(autosnap=autosnap, **kwargs)
             diff = time() - s
             logger.debug("Flush complete (%ss)" % int(diff))
             return result
@@ -342,11 +327,11 @@ class Metrique(object):
         :param kwargs: additional :func:`metrique.utils.get_cube`
         '''
         name = name or cube
-        config = deepcopy(self.config) if copy_config else {}
+        config = copy(self.config) if copy_config else {}
         config_file = self.config_file
         container = type(self.objects)
-        container_config = deepcopy(self.container_config)
-        proxy = type(self.proxy)
+        container_config = copy(self.container_config)
+        proxy = str(type(self.proxy))
         return get_cube(cube=cube, init=init, name=name, config=config,
                         config_file=config_file, container=container,
                         container_config=container_config,
@@ -383,7 +368,7 @@ class Metrique(object):
     @property
     def proxy_config(self):
         self.config.setdefault(self.proxy_config_key, {})
-        return self.config[self.proxy_config_key]
+        return copy(self.config[self.proxy_config_key])
 
     def proxy_init(self, **kwargs):
         config = self.proxy_config
@@ -395,3 +380,20 @@ class Metrique(object):
             self._proxy = self._proxy(**config)
         is_true(isinstance(self._proxy, self._proxy_cls), msg)
         return self._proxy
+
+    @property
+    def schema(self, except_=False):
+        # schema might have been passed in as kwarg and stored in the config
+        # or subclasses might define schema (and more) within self.fields attr
+        _schema = (self.container_config.get('schema') or
+                   getattr(self, 'fields') or {})
+        # in the case we derived our schema from 'fields' attr, we must filter
+        # out anything we're not specifically interested in
+        schema = {}
+        for field, meta in _schema.iteritems():
+            for k, v in meta.iteritems():
+                schema.setdefault(field, {})
+                if k in self._schema_keys:
+                    schema[field][k] = v
+        except_ and is_true(schema, 'schema not defined!')
+        return dict(schema)

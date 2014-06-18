@@ -17,7 +17,8 @@ from __future__ import unicode_literals, absolute_import
 import logging
 logger = logging.getLogger('sqlalchemy')
 
-from copy import deepcopy
+from collections import Mapping
+from copy import copy
 from datetime import datetime
 from getpass import getuser
 try:
@@ -86,8 +87,9 @@ try:
         impl = sqlite.VARCHAR
 
         def process_bind_param(self, value, dialect):
-            e = to_encoding
-            return None if value is None else e(json.dumps(value))
+            return None if value is None else to_encoding(
+                json.dumps(value, default=json_encode_default,
+                           ensure_ascii=False))
 
         def process_result_value(self, value, dialect):
             return {} if value is None else json.loads(value)
@@ -131,6 +133,7 @@ from metrique import parse
 from metrique.utils import batch_gen, configure, to_encoding, autoschema
 from metrique.utils import debug_setup, is_true, str2list, list2str
 from metrique.utils import validate_roles, validate_password, validate_username
+from metrique.utils import json_encode_default
 from metrique.result import Result
 
 ETC_DIR = os.environ.get('METRIQUE_ETC')
@@ -158,18 +161,18 @@ class SQLAlchemyProxy(object):
     _sessionmaker = None
 
     def __init__(self, db=None, table=None, debug=None, config=None,
-                 config_key='proxy', config_file=DEFAULT_CONFIG,
-                 dialect='sqlite', driver=None, host='127.0.0.1',
-                 port='5432', username=None, password=None,
-                 connect_args=None, batch_size=999,
-                 cache_dir=CACHE_DIR, db_schema=None, **kwargs):
+                 config_key=None, config_file=None,
+                 dialect=None, driver=None, host=None,
+                 port=None, username=None, password=None,
+                 connect_args=None, batch_size=None,
+                 cache_dir=None, db_schema=None, **kwargs):
         '''
         Accept additional kwargs, but ignore them.
         '''
         is_true(HAS_SQLALCHEMY, '`pip install sqlalchemy` required')
         # use copy of class default value
-        self.RESERVED_USERNAMES = deepcopy(SQLAlchemyProxy.RESERVED_USERNAMES)
-        self.TYPE_MAP = deepcopy(SQLAlchemyProxy.TYPE_MAP)
+        self.RESERVED_USERNAMES = copy(SQLAlchemyProxy.RESERVED_USERNAMES)
+        self.TYPE_MAP = copy(SQLAlchemyProxy.TYPE_MAP)
         # default _start, _end is epoch timestamp
 
         options = dict(
@@ -200,7 +203,7 @@ class SQLAlchemyProxy(object):
             port=5432,
             table=None,
             username=getuser())
-        self.config = deepcopy(config or self.config or {})
+        self.config = copy(config or self.config or {})
         self.config_file = config_file or SQLAlchemyProxy.config_file
         self.config_key = config_key or SQLAlchemyProxy.config_key
         self.config = configure(options, defaults,
@@ -220,7 +223,14 @@ class SQLAlchemyProxy(object):
 
     def _debug_setup_sqlalchemy_logging(self):
         level = self.config.get('debug')
-        debug_setup(logger='sqlalchemy', level=level)
+        log2stdout = self.config.get('log2stdout')
+        log_format = None
+        log2file = self.config.get('log2file')
+        log_dir = self.config.get('log_dir')
+        log_file = self.config.get('log_file')
+        debug_setup(logger='sqlalchemy', level=level, log2stdout=log2stdout,
+                    log_format=log_format, log2file=log2file,
+                    log_dir=log_dir, log_file=log_file)
 
     def _exec_transaction(self, cmd, params=None, session=None):
         session = session or self.session_new()
@@ -299,11 +309,22 @@ class SQLAlchemyProxy(object):
         # failed to parse
         version = version or (8, 2)
         db_schema = self.config.get('db_schema')
-        r_none = lambda *i: db_schema
-        iso = lambda *i: isolation_level
+
+        def r_none(*args):
+            return db_schema
+
+        def iso(*args):
+            return isolation_level
+
+        def creturns(*args):
+            return True
+
+        def sversion(*args):
+            return version
+
         pg.base.PGDialect.description_encoding = str('utf8')
-        pg.base.PGDialect._check_unicode_returns = lambda *i: True
-        pg.base.PGDialect._get_server_version_info = lambda *i: version
+        pg.base.PGDialect._check_unicode_returns = creturns
+        pg.base.PGDialect._get_server_version_info = sversion
         pg.base.PGDialect.get_isolation_level = iso
         pg.base.PGDialect._get_default_schema_name = r_none
         pg.psycopg2.PGDialect_psycopg2.set_isolation_level = iso
@@ -345,9 +366,7 @@ class SQLAlchemyProxy(object):
             # load a sqla.Table into metadata so sessions act as expected
             # unless it's already there, of course.
             if schema is None:
-                schema = autoschema(objects=objects,
-                                    exclude_keys=self.RESTRICTED_KEYS,
-                                    **kwargs)
+                schema = self.autoschema(objects=objects, **kwargs)
             table = schema2table(name=name, schema=schema, Base=self.Base,
                                  exclude_keys=self.RESTRICTED_KEYS)
         try:
@@ -726,7 +745,7 @@ class SQLAlchemyProxy(object):
         return _ix
 
     def insert(self, objects, session=None, table=None):
-        objects = objects.values() if isinstance(objects, dict) else objects
+        objects = objects.values() if isinstance(objects, Mapping) else objects
         is_true(isinstance(objects, list), 'objects must be a list')
         table = self.get_table(table)
         if self._lock_required:
@@ -768,7 +787,7 @@ class SQLAlchemyProxy(object):
         return result
 
     def upsert(self, objects, autosnap=None, batch_size=None, table=None):
-        objects = objects.values() if isinstance(objects, dict) else objects
+        objects = objects.values() if isinstance(objects, Mapping) else objects
         is_true(isinstance(objects, list), 'objects must be a list')
         table = self.get_table(table)
         if autosnap is None:
@@ -862,7 +881,8 @@ class SQLAlchemyProxy(object):
         is_true(username, 'username required')
         logger.info('Disabling existing user %s' % username)
         u = update('pg_database')
-        #update pg_database set datallowconn = false where datname = 'applogs';
+        # update pg_database set datallowconn = false
+        # where datname = 'applogs';
         sql = u.where(
             "datname = '%s'" % username).values({'datallowconn': 'false'})
         result = self.session_auto.execute(sql)
@@ -910,23 +930,20 @@ def get_engine_uri(db, host='127.0.0.1', port=5432, dialect='sqlite',
 def schema2table(name, schema, Base=None, type_map=None, exclude_keys=None):
     is_true(name, "table name must be defined!")
     is_true(schema, "schema must be defined!")
-    if Base:
-        logger.debug('Reusing existing Base (%s)' % Base)
+    logger.debug('Reusing existing Base (%s)' % Base) if Base else None
     Base = Base or declarative_base()
-    schema = deepcopy(schema)
-    type_map = deepcopy(type_map or TYPE_MAP)
+    schema = copy(schema)
+    type_map = copy(type_map or TYPE_MAP)
     logger.debug("Attempting to create Table class: %s..." % name)
     logger.debug(" ... Schema: %s" % schema)
     logger.debug(" ... Type Map: %s" % type_map)
 
-    __repr__ = lambda s: '%s(%s)' % (
-        s.__tablename__,
-        ', '.join(['%s=%s' % (k, v) for k, v in s.__dict__.iteritems()
-                   if k != '_sa_instance_state']))
+    def __repr__(s):
+        return '%s(%s)' % (
+            s.__tablename__,
+            ', '.join(['%s=%s' % (k, v) for k, v in s.__dict__.iteritems()
+                      if k != '_sa_instance_state']))
 
-    #_ignore_keys = set(['_id', '_hash'])
-    #__init__ = lambda s, kw: [setattr(s, k, v) for k, v in kw.iteritems()
-    #                          if k not in _ignore_keys]
     defaults = {
         '__tablename__': name,
         '__table_args__': ({'extend_existing': True}),
