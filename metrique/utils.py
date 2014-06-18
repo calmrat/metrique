@@ -595,7 +595,7 @@ def git_clone(uri, pull=True, reflect=False, cache_dir=None, chdir=True):
 
 
 def is_empty(value, except_=True, msg=None):
-    msg = msg or '(%s) is not empty' % value
+    msg = msg or '(%s) is not empty' % to_encoding(value)
     if isinstance(value, basestring):
         value = value.strip()
     elif hasattr(value, 'empty'):
@@ -622,7 +622,7 @@ def is_null(value, except_=True, msg=None):
     # 0 is 'null' but not the type of null we're
     # interested in same with empty lists and such
     '''
-    msg = msg or '(%s) is not null' % value
+    msg = msg or '(%s) is not null' % to_encoding(value)
     # dataframes, even if empty, are not considered null
     value = True if hasattr(value, 'empty') else value
     result = bool(

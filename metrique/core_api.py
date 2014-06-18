@@ -277,16 +277,17 @@ class MetriqueObject(MutableMapping):
             if _type in [datetime, date]:
                 # normalize all dates to epochs
                 value = dt2ts(value)
+            elif _type in [unicode, str]:
+                # make sure all string types are properly unicoded
+                value = to_encoding(value)
             else:
                 try:
-                    _value = _type(value)
+                    value = _type(value)
                 except Exception:
+                    value = to_encoding(value)
                     logger.error("typecast failed: %s(value=%s)" % (
                         _type.__name__, value))
                     raise
-                # make sure all string types are properly unicoded
-                is_string = isinstance(_value, basestring)
-                value = to_encoding(_value) if is_string else _value
         return value
 
     def update(self, obj):
@@ -308,9 +309,10 @@ class MetriqueObject(MutableMapping):
                 try:
                     value = self._prep_value(value, schema=schema)
                 except Exception as e:
+                    value = to_encoding(value)
                     self.store['_e'] = self.store['_e'] or {}
-                    logger.error('prep(key=%s, value=%s) failed: %s' % (
-                        key, value, e))
+                    msg = 'prep(key=%s, value=%s) failed: %s' % (key, value, e)
+                    logger.error(msg)
                     # set error field with original values
                     # set fallback value to None
                     self.store['_e'].update({key: value})
