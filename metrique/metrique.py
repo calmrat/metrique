@@ -83,6 +83,7 @@ from time import time
 
 from metrique.utils import get_cube, load_config, configure
 from metrique.utils import debug_setup, is_true, is_defined
+from metrique.utils import filename_append
 
 ETC_DIR = os.environ.get('METRIQUE_ETC')
 CACHE_DIR = os.environ.get('METRIQUE_CACHE')
@@ -146,12 +147,13 @@ class Metrique(object):
 
     def __init__(self, name=None, db=None, config_file=None,
                  config=None, config_key=None, cube_pkgs=None,
-                 cube_paths=None, debug=None, log_file='metrique.log',
-                 log2file=True, log2stdout=False, workers=2,
-                 log_dir=LOG_DIR, cache_dir=CACHE_DIR, etc_dir=ETC_DIR,
-                 tmp_dir=TMP_DIR, container=None, container_config=None,
-                 container_config_key=None, proxy=None, proxy_config=None,
-                 proxy_config_key=None, version=None, schema=None):
+                 cube_paths=None, debug=None, log_file=None,
+                 log2file=None, log2stdout=None, log_format=None,
+                 workers=None, log_dir=None, cache_dir=None,
+                 etc_dir=None, tmp_dir=None, container=None,
+                 container_config=None, container_config_key=None,
+                 proxy=None, proxy_config=None, proxy_config_key=None,
+                 version=None, schema=None):
         '''
         :param cube_pkgs: list of package names where to search for cubes
         :param cube_paths: Additional paths to search for client cubes
@@ -178,6 +180,7 @@ class Metrique(object):
                        etc_dir=etc_dir,
                        log_dir=log_dir,
                        log_file=log_file,
+                       log_format=log_format,
                        log2file=log2file,
                        log2stdout=log2stdout,
                        name=self.name,
@@ -194,6 +197,7 @@ class Metrique(object):
                         etc_dir=ETC_DIR,
                         log_file='metrique.log',
                         log_dir=LOG_DIR,
+                        log_format=None,
                         log2file=True,
                         log2stdout=False,
                         name=None,
@@ -217,10 +221,15 @@ class Metrique(object):
 
         level = self.lconfig.get('debug')
         log2stdout = self.lconfig.get('log2stdout')
-        log_format = None
+        log_format = self.lconfig.get('log_format')
         log2file = self.lconfig.get('log2file')
         log_dir = self.lconfig.get('log_dir')
+
         log_file = self.lconfig.get('log_file')
+        if self.name:
+            log_file = filename_append(log_file, '.%s' % self.name)
+            self.config[self.config_key]['log_file'] = log_file
+
         debug_setup(logger='metrique', level=level, log2stdout=log2stdout,
                     log_format=log_format, log2file=log2file,
                     log_dir=log_dir, log_file=log_file)
@@ -289,13 +298,6 @@ class Metrique(object):
     def flush(self, objects=None, autosnap=None, **kwargs):
         return self.container.flush(objects=objects, autosnap=autosnap,
                                     **kwargs)
-
-    @property
-    def gconfig(self):
-        if self.config:
-            return self.config.get(self.config_key) or {}
-        else:
-            return {}
 
     def get_objects(self, flush=False, autosnap=True, **kwargs):
         '''

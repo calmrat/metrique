@@ -88,6 +88,7 @@ import subprocess
 import sys
 import time
 import urllib
+import warnings
 
 env = os.environ
 pjoin = os.path.join
@@ -372,15 +373,14 @@ def debug_setup(logger=None, level=None, log2file=None,
         * log2file (bool)
         * log_file (path)
     '''
+    is_defined(log_file, 'log_file must be defined!')
     log2stdout = False if log2stdout is None else log2stdout
-    if log_format and isinstance(log_format, basestring):
-        log_format = logging.Formatter(log_format, "%Y%m%dT%H%M%S")
-    _log_format = "%(name)s.%(process)s:%(asctime)s:%(message)s"
-    _log_format = logging.Formatter(log_format, "%Y%m%dT%H%M%S")
+    _log_format = "%(levelname)s.%(name)s.%(process)s:%(asctime)s:%(message)s"
     log_format = log_format or _log_format
+    if isinstance(log_format, basestring):
+        log_format = logging.Formatter(log_format, "%Y%m%dT%H%M%S")
 
     log2file = True if log2file is None else log2file
-    log_file = log_file or 'metrique.log'
     log_dir = log_dir or LOGS_DIR or ''
     log_file = os.path.join(log_dir, log_file)
 
@@ -405,6 +405,8 @@ def debug_setup(logger=None, level=None, log2file=None,
         hdlr.setFormatter(log_format)
         logger.addHandler(hdlr)
     logger = _debug_set_level(logger, level)
+    if level <= logging.DEBUG and log2file:
+        warnings.warn('logging to %s' % log_file)
     return logger
 
 
@@ -447,6 +449,12 @@ def file_is_empty(path, remove=False, msg=None):
         return True
     else:
         return False
+
+
+def filename_append(orig_filename, append_str):
+    orig_filename = orig_filename or ''
+    name, ext = os.path.splitext(orig_filename)
+    return '%s%s%s' % (name, append_str, ext)
 
 
 def get_cube(cube, init=False, pkgs=None, cube_paths=None, config=None,
@@ -593,18 +601,18 @@ def git_clone(uri, pull=True, reflect=False, cache_dir=None, chdir=True):
         return repo_path
 
 
-def is_array(value, msg=None, except_=True, inc_set=False):
+def is_array(value, msg=None, except_=None, inc_set=False):
     check = (list, tuple, set) if inc_set else (list, tuple)
     result = isinstance(value, check)
     return is_true(result, msg=msg, except_=except_)
 
 
-def is_defined(value, msg=None, except_=True):
+def is_defined(value, msg=None, except_=None):
     result = not is_empty(value, except_=False)
     return is_true(result, msg=msg, except_=except_)
 
 
-def is_empty(value, msg=None, except_=True):
+def is_empty(value, msg=None, except_=None):
     # 0, 0.0, 0L are also considered 'empty'
     if hasattr(value, 'empty'):
         # dataframes must check for .empty
@@ -619,7 +627,7 @@ def is_empty(value, msg=None, except_=True):
     return is_true(result, msg=msg, except_=except_)
 
 
-def is_null(value, msg=None, except_=True):
+def is_null(value, msg=None, except_=None):
     '''
     # 0 is 'null' but not the type of null we're
     # interested in same with empty lists and such
@@ -633,12 +641,15 @@ def is_null(value, msg=None, except_=True):
     return is_true(result, msg=msg, except_=except_)
 
 
-def is_string(value, msg=None, except_=True):
+def is_string(value, msg=None, except_=None):
     result = isinstance(value, basestring)
     return is_true(result, msg=msg, except_=except_)
 
 
-def is_true(value, msg=None, except_=True):
+def is_true(value, msg=None, except_=None):
+    # if msg is passed in, implied except_=True; otherwise,
+    # respect what's passed
+    except_ = bool(msg) if except_ is None else except_
     result = bool(value is True)
     if result:
         return result
@@ -1351,7 +1362,7 @@ class DictDiffer(object):
     def __init__(self, dicts, added=True, removed=True,
                  changed=False, unchanged=False, diff=True,
                  exclude=None):
-        is_array(dicts, 'dicts must be a list of dicts')
+        is_array(dicts, 'dicts must be a list of dicts; got %s' % type(dicts))
         self._exclude = set(exclude or [])
         self._added = added
         self._removed = removed

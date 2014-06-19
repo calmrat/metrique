@@ -15,7 +15,7 @@ metrique.sqlalchemy
 from __future__ import unicode_literals, absolute_import
 
 import logging
-logger = logging.getLogger('sqlalchemy')
+logger = logging.getLogger('metrique')
 
 from collections import Mapping
 from copy import copy
@@ -134,10 +134,12 @@ from metrique.utils import batch_gen, configure, to_encoding, autoschema
 from metrique.utils import debug_setup, str2list, list2str
 from metrique.utils import validate_roles, validate_password, validate_username
 from metrique.utils import json_encode_default, is_true, is_array, is_defined
+from metrique.utils import DictDiffer
 from metrique.result import Result
 
 ETC_DIR = os.environ.get('METRIQUE_ETC')
-CACHE_DIR = os.environ.get('METRIQUE_CACHE') or '/tmp'
+CACHE_DIR = os.environ.get('METRIQUE_CACHE')
+LOG_DIR = os.environ.get('METRIQUE_LOGS')
 DEFAULT_CONFIG = os.path.join(ETC_DIR, 'metrique.json')
 
 
@@ -165,7 +167,9 @@ class SQLAlchemyProxy(object):
                  dialect=None, driver=None, host=None,
                  port=None, username=None, password=None,
                  connect_args=None, batch_size=None,
-                 cache_dir=None, db_schema=None, **kwargs):
+                 cache_dir=None, db_schema=None,
+                 log_file=None, log_dir=None, log2file=None,
+                 log2stdout=None, log_format=None, **kwargs):
         '''
         Accept additional kwargs, but ignore them.
         '''
@@ -185,6 +189,11 @@ class SQLAlchemyProxy(object):
             debug=debug,
             driver=driver,
             host=host,
+            log_dir=log_dir,
+            log_file=log_file,
+            log_format=log_format,
+            log2file=log2file,
+            log2stdout=log2stdout,
             password=password,
             port=None,
             table=table,
@@ -199,6 +208,11 @@ class SQLAlchemyProxy(object):
             dialect='sqlite',
             driver=None,
             host='127.0.0.1',
+            log_file='metrique.log',
+            log_dir=LOG_DIR,
+            log_format=None,
+            log2file=True,
+            log2stdout=False,
             password=None,
             port=5432,
             table=None,
@@ -223,8 +237,8 @@ class SQLAlchemyProxy(object):
 
     def _debug_setup_sqlalchemy_logging(self):
         level = self.config.get('debug')
+        log_format = self.config.get('log_format')
         log2stdout = self.config.get('log2stdout')
-        log_format = None
         log2file = self.config.get('log2file')
         log_dir = self.config.get('log_dir')
         log_file = self.config.get('log_file')
@@ -258,9 +272,23 @@ class SQLAlchemyProxy(object):
         ix = 'ix_%s' % ix
         return ix
 
-    def _load_sql(self, sql):
+    def _load_sql(self, sql, retries=1):
+        retries = int(retries or 1)
+        is_true(retries >= 1, 'retries value must be >= 1')
         # load sql kwargs from instance config
-        rows = self.session_auto.execute(sql)
+        OK, i = False, 1
+        while retries > 0:
+            try:
+                rows = self.session_auto.execute(sql)
+            except Exception as e:
+                logger.error('[%s of %s] SQL Load Error: %s' % (i, retries, e))
+                i += 1
+                retries -= 1
+            else:
+                OK = True
+                break
+        if not OK:
+            raise
         objects = [dict(row) for row in rows]
         return objects
 
@@ -407,7 +435,9 @@ class SQLAlchemyProxy(object):
         is_defined(table, 'table name required; got %s' % table)
         dsn = self.config.get('db_schema')
         result = self.inspector.get_columns(table, dsn)
-        return sorted(r[0] for r in result)
+        columns = sorted([r['name'] for r in result])
+        # return sorted([r[0] for r in result])
+        return columns
 
     @property
     def db_tables(self, views=True):
@@ -610,6 +640,20 @@ class SQLAlchemyProxy(object):
             checked |= fringe
             loop_k += 1
         return sorted(checked)
+
+    def dfind(self, query=None, fields=None, date=None, sort=None,
+              descending=False, one=False, raw=True, limit=None,
+              as_cursor=False, scalar=False, table=None):
+        # overides, we always want these
+        raw = True
+        date = '~' if date is None else date
+        as_cursor = False
+        scalar = False
+        objs = self.find(query=query, fields=fields, date=date, sort=sort,
+                         descending=descending, one=one, raw=raw, limit=limit,
+                         as_cursor=as_cursor, scalar=scalar, table=table)
+        exclude = ('id', '_id', '_hash', '_start', '_end')
+        return DictDiffer(objs, exclude=exclude)
 
     def distinct(self, fields, query=None, date='~', table=None):
         '''
@@ -949,7 +993,7 @@ def schema2table(name, schema, Base=None, type_map=None, exclude_keys=None):
         '__table_args__': ({'extend_existing': True}),
         'id': Column('id', Integer, primary_key=True),
         '_id': Column(CoerceUTF8, nullable=False, unique=True, index=True),
-        '_oid': Column(CoerceUTF8, nullable=False, index=True,
+        '_oid': Column(BigInteger, nullable=False, index=True,
                        unique=False),
         '_hash': Column(CoerceUTF8, nullable=False, index=True),
         '_start': Column(type_map[datetime], index=True,
@@ -985,10 +1029,6 @@ def schema2table(name, schema, Base=None, type_map=None, exclude_keys=None):
         else:
             schema[k] = Column(_type, name=k)
     defaults.update(schema)
-
-    # in case _oid isn't set yet, default to big int column
-    defaults.setdefault('_oid', Column(BigInteger, nullable=False,
-                                       index=True, unique=False))
 
     _table = type(str(name), (Base,), defaults)
     return _table

@@ -35,7 +35,7 @@ import warnings
 
 from metrique import pyclient
 from metrique.utils import batch_gen, configure, debug_setup, ts2dt
-from metrique.utils import dt2ts
+from metrique.utils import dt2ts, is_array
 
 
 def get_full_history(cube, oids, flush=False, cube_name=None,
@@ -99,7 +99,7 @@ class Generic(pyclient):
         options = dict(retries=retries,
                        batch_size=batch_size,
                        worker_batch_size=worker_batch_size)
-        defaults = dict(retries=1,
+        defaults = dict(retries=3,
                         batch_size=999,
                         worker_batch_size=5000)
         self.config = configure(options, defaults,
@@ -175,8 +175,6 @@ class Generic(pyclient):
                 last_doc['_start'] = when
             last_val = last_doc[field]
 
-            # FIXME: pass in field and call _type() within _activity_backwards?
-            # for added/removed?
             new_val, inconsistent = self._activity_backwards(new_doc[field],
                                                              removed, added)
             new_doc[field] = new_val
@@ -244,7 +242,7 @@ class Generic(pyclient):
         oids = []
         _c = self.container
         cube_does_not_exist = not (hasattr(_c, '_exists') and _c._exists)
-        if isinstance(force, (list, tuple, set)):
+        if is_array(force):
             oids = list(force)
         elif not force:
             if self.lconfig.get('delta_new_ids', True):
@@ -341,7 +339,7 @@ class Generic(pyclient):
     def _generate_sql(self, _oids=None, sort=True):
         db = self.lconfig.get('db_schema_name') or self.lconfig.get('db')
         _oid = self.lconfig.get('_oid')
-        if isinstance(_oid, (list, tuple)):
+        if is_array(_oid):
             _oid = _oid[0]  # get the db column, not the field alias
         table = self.lconfig.get('table')
 
@@ -382,7 +380,7 @@ class Generic(pyclient):
         :param last_update: manual override for 'changed since date'
         :param parse_timestamp: flag to convert timestamp timezones in-line
         '''
-        workers = self.gconfig.get('workers')
+        workers = self.lconfig.get('workers')
         # if we're using multiple workers, break the oids
         # according to worker batchsize, then each worker will
         # break the batch into smaller sql batch size batches
@@ -435,21 +433,8 @@ class Generic(pyclient):
             return self
 
     def _get_objects(self, oids, flush=False):
-        retries = self.lconfig.get('retries') or 1
         sql = self._generate_sql(oids)
-        while retries > 0:
-            try:
-                objects = self._load_sql(sql)
-                break
-            except self.retry_on_error as e:
-                logger.error('Fetch Failed: %s' % e)
-                if retries <= 1:
-                    raise
-                else:
-                    retries -= 1
-        else:
-            raise RuntimeError(
-                "Failed to fetch any objects from %s!" % len(oids))
+        objects = self._load_sql(sql)
         # set _oid
         objects = self._prep_objects(objects)
         self.objects.extend(objects)
@@ -467,7 +452,7 @@ class Generic(pyclient):
         '''
         table = self.lconfig.get('table')
         _oid = self.lconfig.get('_oid')
-        if isinstance(_oid, (list, tuple)):
+        if is_array(_oid):
             _oid = _oid[0]  # get the db column, not the field alias
         last_id = self.container.get_last_field(field='_oid')
         ids = []
@@ -489,7 +474,7 @@ class Generic(pyclient):
         hash values, so we need to always remove all existing object
         states and import fresh
         '''
-        workers = self.gconfig.get('workers')
+        workers = self.lconfig.get('workers')
         w_batch_size = self.lconfig.get('worker_batch_size')
         s_batch_size = self.lconfig.get('batch_size')
         # determine which oids will we query
@@ -564,12 +549,13 @@ class Generic(pyclient):
         msg = m.format(**incon)
         self.log_inconsistency(msg)
 
-    def _load_sql(self, sql):
-        return self.proxy._load_sql(sql)
+    def _load_sql(self, sql, retries=None):
+        retries = retries or self.lconfig.get('retries')
+        return self.proxy._load_sql(sql, retries=retries)
 
     def _prep_objects(self, objects):
         _oid = self.lconfig.get('_oid')
-        if isinstance(_oid, (list, tuple)):
+        if is_array(_oid):
             _oid = _oid[1]  # get the field name, not the actual db column
         for i, obj in enumerate(objects):
             obj['_oid'] = obj[_oid]  # map _oid
@@ -586,10 +572,10 @@ class Generic(pyclient):
         return self._proxy
 
     def _setup_inconsistency_log(self):
-        _log_file = self.gconfig.get('log_file').split('.log')[0]
+        _log_file = self.lconfig.get('log_file').split('.log')[0]
         basename = _log_file + '.inconsistencies'
         log_file = basename + '.log'
-        log_dir = self.gconfig.get('log_dir')
+        log_dir = self.lconfig.get('log_dir')
         log_file = os.path.join(log_dir, log_file)
 
         log_format = "%(message)s"
@@ -606,7 +592,7 @@ class Generic(pyclient):
         table = self.lconfig.get('table')
         db = self.lconfig.get('db_schema_name') or self.lconfig.get('db')
         _oid = self.lconfig.get('_oid')
-        if isinstance(_oid, (list, tuple)):
+        if is_array(_oid):
             _oid = _oid[0]  # get the db column, not the field alias
         sql = 'SELECT DISTINCT %s.%s FROM %s.%s' % (table, _oid, db, table)
         if where:

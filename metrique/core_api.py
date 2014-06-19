@@ -59,11 +59,11 @@ class MetriqueObject(MutableMapping):
 
     def __init__(self, _oid, _id=None, _hash=None, _start=None, _end=None,
                  _e=None, _v=None, id=None, _schema=None, **kwargs):
-        if _oid is None:
-            raise RuntimeError("_oid can not be None!")
+        is_defined(_oid, "_oid must be defined!")
         # NOTE: we completely ignore incoming 'id' keys!
         # id is RESERVED and ALWAYS expected to be 'autoincrement'
-        # upon insertion into DB.
+        # upon insertion into DB (though, its optional, depending
+        # on backend storage behaivor).
         if is_defined(id, except_=False):
             warnings.warn('non-null "id" keys detected, ignoring them!')
         _start = dt2ts(_start) or utcnow(as_datetime=False)
@@ -375,7 +375,7 @@ class MetriqueContainer(MutableMapping):
     def __init__(self, name=None, db=None, schema=None, version=None,
                  objects=None, proxy=None, proxy_config=None,
                  batch_size=None, config=None, config_file=None,
-                 config_key=None, cache_dir=None, autotable=True,
+                 config_key=None, cache_dir=None, autotable=None,
                  **kwargs):
         '''
         Accept additional kwargs, but ignore them.
