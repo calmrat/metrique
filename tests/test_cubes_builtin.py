@@ -32,7 +32,6 @@ def test_csvdata():
     db_file = os.path.join(cache_dir, '%s.sqlite' % name)
     remove_file(db_file)
     m = pyclient(cube='csvdata_rows', name=name)
-
     m.objects.drop()
 
     uri = os.path.join(fixtures, 'us-idx-eod.csv')
@@ -97,6 +96,8 @@ def test_load_json():
         return o
 
     m = pyclient(name=name)
+    m.objects.drop()
+
     path = os.path.join(fixtures, 'meps.json')
     objects = load(path, _oid=_oid_func, orient='index')
 
@@ -139,6 +140,7 @@ def test_gitdata_commit():
     uri_1 = 'https://github.com/kejbaly2/tornadohttp.git'
     uri_2 = 'https://github.com/kejbaly2/metrique.git'
     m = pyclient(cube=name)
+    m.objects.drop()
 
     m.get_objects(uri=uri_1)
     k = len(m.objects)
@@ -160,9 +162,9 @@ def test_gitdata_commit():
     # u'tree': u'66406ded27ba129ad1639928b079b821ab416fed', u'_end': None,
     # u'signed_off_by': None, u'parents':
     # ['78b311d90e35eb36016a7f41e75657754dbe0784'], u'_hash':
-    # u'44eb9a9adbeda1c29af31a806c6d71c5baca88dd', u'__v__': u'0.3.1-1a',
+    # u'8dac756d4955022fefb9b70c27b3b669c295c98e', u'__v__': u'0.3.1-1a',
     # u'_e': {}, u'_id': u'99dc1e5c4e3ab2c8ab5510e50a3edf64f9fcc705'}
-    _hash = '44eb9a9adbeda1c29af31a806c6d71c5baca88dd'
+    _hash = '8dac756d4955022fefb9b70c27b3b669c295c98e'
     _oid = '99dc1e5c4e3ab2c8ab5510e50a3edf64f9fcc705'
     _filtered = m.objects.filter(where={'_oid': _oid})
     assert len(_filtered) == 1
@@ -197,6 +199,7 @@ def test_osinfo_rpm():
     db_file = os.path.join(cache_dir, '%s.sqlite' % name)
     remove_file(db_file)
     m = pyclient(cube=name)
+    m.objects.drop()
 
     m.get_objects()
     k = len(m.objects)

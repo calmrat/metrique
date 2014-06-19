@@ -504,8 +504,10 @@ def test_is_empty():
     from metrique.utils import is_empty
     import pandas
     import numpy
-    empties = [None, '', '  \t\n\t  ', {}, [], pandas.DataFrame()]
-    not_empties = ['hello', -1, 1, 0.0, 0, 0L, {'key': 'value'}, [1]]
+    empties = [None, '', 0.0, 0, 0L, {}, [], pandas.DataFrame()]
+    not_empties = ['hello', '  \t\n\t  ',
+                   -1, 1,
+                   {'key': 'value'}, [1]]
     empties += [pandas.NaT, numpy.NaN]
     for x in empties:
         empty = is_empty(x, except_=False)
@@ -548,19 +550,29 @@ def test_is_null():
 
 def test_is_true():
     from metrique.utils import is_true
-    trues = [-1, 1, 0.1, True, 'h']
-    not_trues = ['', 0, None, False, [], {}]
-    for x in trues:
-        true = is_true(x, except_=False)
-        print '%s is true? %s' % (repr(x), true)
+    assert is_true(True) is True
+    assert is_true(None, except_=False) is False
+    try:
+        is_true('')
+    except RuntimeError:
+        pass
+
+
+def test_is_defined():
+    from metrique.utils import is_defined
+    defined = [-1, 1, 0.1, True, 'h']
+    not_defined = ['', 0, None, False, [], {}]
+    for x in defined:
+        true = is_defined(x, except_=False)
+        print '%s is defined? %s' % (repr(x), true)
         assert true is True
         try:
-            true = is_true(x, except_=True)
+            true = is_defined(x, except_=True)
         except RuntimeError:
             pass
-    for x in not_trues:
-        true = is_true(x, except_=False)
-        print '%s is true? %s' % (repr(x), true)
+    for x in not_defined:
+        true = is_defined(x, except_=False)
+        print '%s is defined? %s' % (repr(x), true)
         assert true is False
 
 

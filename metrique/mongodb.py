@@ -222,13 +222,18 @@ class MongoDBProxy(object):
             raise RuntimeError("unable to get db! (%s)" % e)
 
     def get_collection(self, name=None, db=None):
-        name = name or self.config.get('table')
-        is_defined(name, "collection name can not be null!")
-        if isinstance(name, Collection):
-            _cube = name
+        if isinstance(name, Collection) and name.name == name:
+            # we already have the collection...
+            return name
         else:
-            db = db or self.config.get('db')
-            _cube = self.get_db(db)[name]
+            name = name.name if isinstance(name, Collection) else name
+            name = name or self.config.get('table')
+            is_defined(name, "collection name can not be null!")
+            if isinstance(name, Collection):
+                _cube = name
+            else:
+                db = db or self.config.get('db')
+                _cube = self.get_db(db)[name]
         return _cube
 
     def initialize(self):

@@ -14,6 +14,7 @@ for exctacting commit data from a git repository.
 
 from __future__ import unicode_literals
 
+from datetime import datetime
 import logging
 logger = logging.getLogger('metrique')
 
@@ -37,6 +38,17 @@ class Commit(pyclient):
         * commit
     '''
     name = 'gitdata_repo'
+
+    @property
+    def fields(self):
+        return dict(parents=dict(container=True),
+                    author_time=dict(type=datetime),
+                    mergetag=dict(container=True),
+                    extra=dict(container=True),
+                    signed_off_by=dict(container=True),
+                    acked_by=dict(container=True),
+                    resolves=dict(container=True),
+                    related=dict(container=True))
 
     def get_objects(self, uri, pull=True, **kwargs):
         '''

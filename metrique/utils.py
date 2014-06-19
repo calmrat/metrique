@@ -106,8 +106,6 @@ SRC_DIR = os.environ.get('METRIQUE_SRC')
 BACKUP_DIR = env.get('METRIQUE_BACKUP')
 STATIC_DIR = env.get('METRIQUE_STATIC')
 
-ZEROS = (0, 0.0, 0L)
-
 
 def active_virtualenv():
     return os.environ.get('VIRTUAL_ENV', '')
@@ -440,7 +438,7 @@ def dt2ts(dt, drop_micro=False):
 
 def file_is_empty(path, remove=False, msg=None):
     path = to_encoding(path)
-    is_defined(os.path.isfile(path), '"%s" is not a file!' % path)
+    is_true(os.path.isfile(path), '"%s" is not a file!' % path)
     if bool(os.stat(path).st_size == 0):
         logger.info("%s is empty" % path)
         if remove:
@@ -602,22 +600,18 @@ def is_array(value, msg=None, except_=True, inc_set=False):
 
 
 def is_defined(value, msg=None, except_=True):
-    result = not is_null(value, except_=False)
+    result = not is_empty(value, except_=False)
     return is_true(result, msg=msg, except_=except_)
 
 
 def is_empty(value, msg=None, except_=True):
-    if isinstance(value, basestring):
-        value = value.strip()
-    elif hasattr(value, 'empty'):
+    # 0, 0.0, 0L are also considered 'empty'
+    if hasattr(value, 'empty'):
         # dataframes must check for .empty
         # since they don't define truth value attr
         # take the negative, since below we're
         # checking for cases where value 'is_null'
         value = not bool(value.empty)
-    elif value in ZEROS:
-        # 0, 0.0, 0L is not considered 'empty'
-        return False
     else:
         pass
     _is_null = is_null(value, except_=False)
@@ -631,7 +625,7 @@ def is_null(value, msg=None, except_=True):
     # interested in same with empty lists and such
     '''
     # dataframes, even if empty, are not considered null
-    value = True if hasattr(value, 'empty') else value
+    value = False if hasattr(value, 'empty') else value
     result = bool(
         value is None or
         value != value or
@@ -645,12 +639,13 @@ def is_string(value, msg=None, except_=True):
 
 
 def is_true(value, msg=None, except_=True):
-    if value is True:
-        return value
+    result = bool(value is True)
+    if result:
+        return result
     if except_:
         msg = msg or '(%s) is not True' % to_encoding(value)
         raise RuntimeError(msg)
-    return value
+    return result
 
 
 def json_encode_default(obj):
