@@ -131,9 +131,9 @@ import warnings
 from metrique._version import __version__
 from metrique import parse
 from metrique.utils import batch_gen, configure, to_encoding, autoschema
-from metrique.utils import debug_setup, is_true, str2list, list2str
+from metrique.utils import debug_setup, str2list, list2str
 from metrique.utils import validate_roles, validate_password, validate_username
-from metrique.utils import json_encode_default
+from metrique.utils import json_encode_default, is_true, is_array, is_defined
 from metrique.result import Result
 
 ETC_DIR = os.environ.get('METRIQUE_ETC')
@@ -213,7 +213,7 @@ class SQLAlchemyProxy(object):
                                 update=self.config)
         # db is required; default db is db username else local username
         self.config['db'] = self.config['db'] or self.config['username']
-        is_true(self.config.get('db'), 'db can not be null')
+        is_defined(self.config.get('db'), 'db can not be null')
         # setup sqlalchemy logging; redirect to metrique logger
         self._debug_setup_sqlalchemy_logging()
 
@@ -248,8 +248,8 @@ class SQLAlchemyProxy(object):
             ix = name
         elif isinstance(columns, basestring):
             ix = columns
-        elif isinstance(columns, (list, tuple)):
-            ix = '_'.join(columns)
+        elif is_array(columns, except_=False):
+            ix = '_'.join(tuple(columns))
         else:
             raise ValueError(
                 "unable to get default name from columns: %s" % columns)
@@ -297,7 +297,7 @@ class SQLAlchemyProxy(object):
     @property
     def _sqlite_path(self):
         db = self.config.get('db')
-        is_true(db, "db can not be null!")
+        is_defined(db, "db can not be null!")
         cache_dir = self.config.get('cache_dir')
         suffix = '.sqlite'
         fname = '%s%s' % (db, suffix)
@@ -361,7 +361,7 @@ class SQLAlchemyProxy(object):
     def autotable(self, name=None, schema=None, objects=None, create=False,
                   except_=False, **kwargs):
         name = name or self.config.get('table')
-        is_true(name, 'table name must be defined')
+        is_defined(name, 'table name must be defined')
         if name not in self.meta_tables:
             # load a sqla.Table into metadata so sessions act as expected
             # unless it's already there, of course.
@@ -404,7 +404,7 @@ class SQLAlchemyProxy(object):
     @property
     def db_columns(self, table=None):
         table = table or self.config.get('table')
-        is_true(table, 'table name required; got %s' % table)
+        is_defined(table, 'table name required; got %s' % table)
         dsn = self.config.get('db_schema')
         result = self.inspector.get_columns(table, dsn)
         return sorted(r[0] for r in result)
@@ -476,7 +476,7 @@ class SQLAlchemyProxy(object):
             # this is already the table we're looking for...
             _table = table
         else:
-            is_true(table, 'table must be defined!')
+            is_defined(table, 'table must be defined!')
             _table = self.meta_tables.get(table)
             if reflect:
                 if _table is None and schema:
@@ -698,7 +698,7 @@ class SQLAlchemyProxy(object):
         if table is None:
             last = None
         else:
-            is_true(field is not None, 'field must be defined!')
+            is_defined(field, 'field must be defined!')
             last = self.find(table=table, fields=field, scalar=True,
                              sort=field, limit=1, descending=True, date='~')
         logger.debug("last %s.%s: %s" % (table, field, last))
@@ -746,7 +746,7 @@ class SQLAlchemyProxy(object):
 
     def insert(self, objects, session=None, table=None):
         objects = objects.values() if isinstance(objects, Mapping) else objects
-        is_true(isinstance(objects, list), 'objects must be a list')
+        is_array(objects, 'objects must be a list')
         table = self.get_table(table)
         if self._lock_required:
             with LockFile(self._sqlite_path):
@@ -788,7 +788,7 @@ class SQLAlchemyProxy(object):
 
     def upsert(self, objects, autosnap=None, batch_size=None, table=None):
         objects = objects.values() if isinstance(objects, Mapping) else objects
-        is_true(isinstance(objects, list), 'objects must be a list')
+        is_array(objects, 'objects must be a list')
         table = self.get_table(table)
         if autosnap is None:
             # assume autosnap:True if all objects have _end:None
@@ -863,7 +863,7 @@ class SQLAlchemyProxy(object):
 
     def user_register(self, username, password):
         # FIXME: enable setting roles at creation time...
-        is_true((username and password), 'username and password required!')
+        is_true(bool(username and password), 'username and password required!')
         u = validate_username(username, self.RESERVED_USERNAMES)
         p = validate_password(password)
         logger.info('Registering new user %s' % u)
@@ -878,7 +878,7 @@ class SQLAlchemyProxy(object):
 
     def user_disable(self, username, table=None):
         table = self.get_table(table)
-        is_true(username, 'username required')
+        is_defined(username, 'username required')
         logger.info('Disabling existing user %s' % username)
         u = update('pg_database')
         # update pg_database set datallowconn = false
@@ -893,7 +893,7 @@ def get_engine_uri(db, host='127.0.0.1', port=5432, dialect='sqlite',
                    driver=None, username=None, password=None,
                    connect_args=None, cache_dir=None):
     cache_dir = cache_dir or CACHE_DIR
-    is_true(db, 'db can not be null')
+    is_defined(db, 'db can not be null')
     is_true(bool(dialect in [None, 'postgresql', 'sqlite', 'teiid']),
             'invalid dialect: %s' % dialect)
     if dialect and driver:
@@ -928,8 +928,8 @@ def get_engine_uri(db, host='127.0.0.1', port=5432, dialect='sqlite',
 
 
 def schema2table(name, schema, Base=None, type_map=None, exclude_keys=None):
-    is_true(name, "table name must be defined!")
-    is_true(schema, "schema must be defined!")
+    is_defined(name, "table name must be defined!")
+    is_defined(schema, "schema must be defined!")
     logger.debug('Reusing existing Base (%s)' % Base) if Base else None
     Base = Base or declarative_base()
     schema = copy(schema)

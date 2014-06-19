@@ -116,8 +116,8 @@ def active_virtualenv():
 # FIXME: add tests
 def autoschema(objects, fast=True, exclude_keys=None):
     logger.debug('autoschema generation started...')
-    is_true(objects, 'object samples can not be null')
-    objects = objects if isinstance(objects, (list, tuple)) else [objects]
+    is_defined(objects, 'object samples can not be null')
+    objects = tuple(objects) if is_array(objects, except_=False) else [objects]
     schema = defaultdict(dict)
     exclude_keys = exclude_keys or []
     for o in objects:
@@ -133,7 +133,7 @@ def autoschema(objects, fast=True, exclude_keys=None):
                 continue
             else:
                 _type = type(v)
-                if _type in (list, tuple, set):
+                if is_array(_type, except_=False):
                     schema[k]['container'] = True
                     # FIXME: if the first object happens to be null
                     # we auto set to UnicodeText type...
@@ -440,7 +440,7 @@ def dt2ts(dt, drop_micro=False):
 
 def file_is_empty(path, remove=False, msg=None):
     path = to_encoding(path)
-    is_true(os.path.isfile(path), '"%s" is not a file!' % path)
+    is_defined(os.path.isfile(path), '"%s" is not a file!' % path)
     if bool(os.stat(path).st_size == 0):
         logger.info("%s is empty" % path)
         if remove:
@@ -595,7 +595,18 @@ def git_clone(uri, pull=True, reflect=False, cache_dir=None, chdir=True):
         return repo_path
 
 
-def is_empty(value, except_=True, msg=None):
+def is_array(value, msg=None, except_=True, inc_set=False):
+    check = (list, tuple, set) if inc_set else (list, tuple)
+    result = isinstance(value, check)
+    return is_true(result, msg=msg, except_=except_)
+
+
+def is_defined(value, msg=None, except_=True):
+    result = not is_null(value, except_=False)
+    return is_true(result, msg=msg, except_=except_)
+
+
+def is_empty(value, msg=None, except_=True):
     if isinstance(value, basestring):
         value = value.strip()
     elif hasattr(value, 'empty'):
@@ -611,15 +622,10 @@ def is_empty(value, except_=True, msg=None):
         pass
     _is_null = is_null(value, except_=False)
     result = bool(_is_null or not value)
-    if result:
-        return result
-    if except_:
-        msg = msg or '(%s) is not empty' % to_encoding(value)
-        raise RuntimeError(msg)
-    return result
+    return is_true(result, msg=msg, except_=except_)
 
 
-def is_null(value, except_=True, msg=None):
+def is_null(value, msg=None, except_=True):
     '''
     # 0 is 'null' but not the type of null we're
     # interested in same with empty lists and such
@@ -630,21 +636,21 @@ def is_null(value, except_=True, msg=None):
         value is None or
         value != value or
         repr(value) == 'NaT')
-    if result:
-        return result
-    if except_:
-        msg = msg or '(%s) is not null' % to_encoding(value)
-        raise RuntimeError(msg)
-    return result
+    return is_true(result, msg=msg, except_=except_)
+
+
+def is_string(value, msg=None, except_=True):
+    result = isinstance(value, basestring)
+    return is_true(result, msg=msg, except_=except_)
 
 
 def is_true(value, msg=None, except_=True):
-    msg = msg or 'bool(%s) is not True' % value
-    result = bool(value)
-    if not result and except_:
+    if value is True:
+        return value
+    if except_:
+        msg = msg or '(%s) is not True' % to_encoding(value)
         raise RuntimeError(msg)
-    else:
-        return result
+    return value
 
 
 def json_encode_default(obj):
@@ -690,8 +696,8 @@ def jsonhash(obj, root=True, exclude=None, hash_func=None):
 
 def list2str(items, delim=','):
     delim = delim or ','
-    if isinstance(items, (list, tuple, set)):
-        item = delim.join(map(unicode, items))
+    if is_array(items, except_=False):
+        item = delim.join(map(unicode, tuple(items)))
     elif isinstance(items, basestring):
         # assume we already have a normalized delimited string
         item = items
@@ -905,8 +911,8 @@ def make_dirs(path, mode=0700, quiet=True):
 
 
 def move(path, dest, quiet=False):
-    if isinstance(path, (list, tuple)):
-        return [move(p, dest) for p in path]
+    if is_array(path, except_=False):
+        return [move(p, dest) for p in tuple(path)]
     else:
         assert isinstance(path, basestring)
         if os.path.exists(path):
@@ -990,11 +996,11 @@ def remove_file(path, force=False):
         return []
     # create a list from glob search or expect a list
     path = glob.glob(path) if isinstance(path, basestring) else list(path)
-    if isinstance(path, (list, tuple)):
+    if is_array(path, except_=False):
         if len(path) == 1:
             path = path[0]
         else:
-            return [remove_file(p, force=force) for p in path]
+            return [remove_file(p, force=force) for p in tuple(path)]
     assert bool(path) is True
     assert isinstance(path, basestring)
     cwd = os.getcwd()
@@ -1064,8 +1070,8 @@ def sha1_hexdigest(o):
 def str2list(item, delim=',', map_=None):
     if isinstance(item, basestring):
         items = item.split(delim)
-    elif isinstance(item, (list, tuple, set)):
-        items = map(unicode, list(item))
+    elif is_array(item, except_=False):
+        items = map(unicode, tuple(item))
     elif item is None:
         items = []
     else:
@@ -1266,9 +1272,8 @@ def urlretrieve(uri, saveas=None, retries=3, cache_dir=None):
 
 
 def validate_password(password):
-    is_str = isinstance(password, basestring)
     char_8_plus = password and len(password) >= 8
-    ok = all((is_str, char_8_plus))
+    ok = all((is_string(password, except_=False), char_8_plus))
     if not ok:
         raise ValueError("Invalid password; must be len(string) >= 8")
     return password
@@ -1351,8 +1356,7 @@ class DictDiffer(object):
     def __init__(self, dicts, added=True, removed=True,
                  changed=False, unchanged=False, diff=True,
                  exclude=None):
-        is_true(isinstance(dicts, (list, tuple)),
-                'dicts must be a list of dicts')
+        is_array(dicts, 'dicts must be a list of dicts')
         self._exclude = set(exclude or [])
         self._added = added
         self._removed = removed

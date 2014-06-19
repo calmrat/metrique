@@ -46,7 +46,7 @@ except ImportError:
 from metrique import MetriqueObject, MetriqueContainer
 from metrique import parse
 from metrique.result import Result
-from metrique.utils import configure, is_true
+from metrique.utils import configure, is_true, is_array, is_defined
 from metrique.utils import validate_username, validate_password, validate_roles
 
 ETC_DIR = os.environ.get('METRIQUE_ETC')
@@ -127,7 +127,7 @@ class MongoDBProxy(object):
                                 update=self.config)
         # db is required; default db is db username else local username
         self.config['db'] = self.config['db'] or self.config['username']
-        is_true(self.config.get('db'), 'db can not be null')
+        is_defined(self.config.get('db'), 'db can not be null')
 
     def __repr__(self):
         db = self.config.get('db')
@@ -223,7 +223,7 @@ class MongoDBProxy(object):
 
     def get_collection(self, name=None, db=None):
         name = name or self.config.get('table')
-        is_true(name, "collection name can not be null!")
+        is_defined(name, "collection name can not be null!")
         if isinstance(name, Collection):
             _cube = name
         else:
@@ -257,7 +257,7 @@ class MongoDBProxy(object):
         return self._proxy
 
     def set_db(self, db):
-        is_true(db, "[%s] Invalid db!" % db)
+        is_defined(db, "[%s] Invalid db!" % db)
         try:
             self.proxy[db]
         except OperationFailure as e:
@@ -317,14 +317,14 @@ class MongoDBProxy(object):
 
     def ensure_collection(self, collection=None, **kwargs):
         collection = collection or self.config.get('table')
-        is_true(collection, 'collection name can not be null!')
+        is_defined(collection, 'collection name can not be null!')
         db = self.get_db()
         return db.create_collection(collection, **kwargs)
 
     @property
     def exists(self, collection=None, db=None):
         collection = collection or self.config.get('table')
-        is_true(collection, 'collection must be defined!')
+        is_defined(collection, 'collection must be defined!')
         db = db or self.config['db']
         return collection in self.proxy.ls()
 
@@ -438,7 +438,7 @@ class MongoDBProxy(object):
         objects = objects.values() if isinstance(objects, dict) else objects
         # need to be sure we are working with dicts...
         objects = [dict(o) for o in objects]
-        is_true(isinstance(objects, list), 'objects must be a list')
+        is_array(objects, 'objects must be a list')
         if fast:
             _ids = [o['_id'] for o in objects]
             _cube.insert(objects, manipulate=False)
@@ -538,7 +538,7 @@ class MongoDBProxy(object):
         collection = self.get_collection(collection)
         objects = objects.values() if isinstance(objects, dict) else objects
         objects = [dict(o) for o in objects]
-        is_true(isinstance(objects, list), 'objects must be a list')
+        is_array(objects, 'objects must be a list')
         if autosnap is None:
             # assume autosnap:True if all objects have _end:None
             # otherwise, false (all objects have _end:non-null or
