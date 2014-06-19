@@ -82,7 +82,7 @@ import os
 from time import time
 
 from metrique.utils import get_cube, load_config, configure
-from metrique.utils import debug_setup, is_true
+from metrique.utils import debug_setup, is_true, is_defined
 
 ETC_DIR = os.environ.get('METRIQUE_ETC')
 CACHE_DIR = os.environ.get('METRIQUE_CACHE')
@@ -395,5 +395,5 @@ class Metrique(object):
                 schema.setdefault(field, {})
                 if k in self._schema_keys:
                     schema[field][k] = v
-        except_ and is_true(schema, 'schema not defined!')
+        except_ and is_defined(schema, 'schema not defined!')
         return dict(schema)

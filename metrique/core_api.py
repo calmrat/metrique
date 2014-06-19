@@ -20,7 +20,10 @@ logger = logging.getLogger('metrique')
 from collections import Mapping, MutableMapping
 from copy import copy
 from datetime import datetime, date
+<<<<<<< HEAD
 from functools import partial
+=======
+>>>>>>> 0.3.1-fixes
 from inspect import isclass
 import os
 from operator import add
@@ -41,7 +44,11 @@ import warnings
 from metrique._version import __version__
 from metrique.utils import utcnow, jsonhash, load, autoschema
 from metrique.utils import batch_gen, dt2ts, configure, to_encoding
+<<<<<<< HEAD
 from metrique.utils import is_empty, is_true, is_null
+=======
+from metrique.utils import is_empty, is_true, is_null, is_array, is_defined
+>>>>>>> 0.3.1-fixes
 from metrique import parse
 
 ETC_DIR = os.environ.get('METRIQUE_ETC')
@@ -179,11 +186,19 @@ class MetriqueObject(MutableMapping):
 
     def _normalize_container(self, value, schema):
         container = schema.get('container')
+<<<<<<< HEAD
         is_list = isinstance(value, (list, tuple, set))
         if container and not is_list:
             # NORMALIZE to empty list []
             return [value] if value else []
         elif not container and is_list:
+=======
+        _is_array = is_array(value, except_=False)
+        if container and not _is_array:
+            # NORMALIZE to empty list []
+            return [value] if value else []
+        elif not container and _is_array:
+>>>>>>> 0.3.1-fixes
             raise ValueError(
                 "expected single value, got list (%s)" % value)
         else:
@@ -211,12 +226,20 @@ class MetriqueObject(MutableMapping):
             if value is None:
                 return None
             elif convert and container:
+<<<<<<< HEAD
                 _convert = partial(convert)
                 value = map(_convert, value)
             elif convert:
                 value = convert(value)
             else:
                 value = value
+=======
+                value = map(convert, value)
+            elif convert:
+                value = convert(value)
+            else:
+                pass
+>>>>>>> 0.3.1-fixes
         except Exception:
             logger.error("convert Failed: %s(value=%s, container=%s)" % (
                 convert.__name__, value, container))
@@ -244,7 +267,11 @@ class MetriqueObject(MutableMapping):
         if value is None:
             # normalize null containers to empty list
             return []
+<<<<<<< HEAD
         elif not isinstance(value, (list, tuple)):
+=======
+        elif not is_array(value, except_=False):
+>>>>>>> 0.3.1-fixes
             raise ValueError("expected list type, got: %s" % type(value))
         else:
             return sorted(self._type_single(item, _type) for item in value)
@@ -306,21 +333,37 @@ class MetriqueObject(MutableMapping):
                     # set fallback value to None
                     self.store['_e'].update({key: value})
                     value = None
+<<<<<<< HEAD
                 self._add_variant(key, value, schema)
             self.store[key] = value
         self._re_hash()
 
     def _add_variant(self, key, value, schema):
+=======
+                self._add_variants(key, value, schema)
+            self.store[key] = value
+        self._re_hash()
+
+    def _add_variants(self, key, value, schema):
+>>>>>>> 0.3.1-fixes
         ''' also possible to define some function that takes
             current value and creates a new value from it
         '''
         variants = schema.get(key, {}).get('variants')
         if variants:
             for _key, func in variants.iteritems():
+<<<<<<< HEAD
                 _value = func(value)
             self.store[_key] = _value
         else:
             return
+=======
+                _schema = schema.get(_key)
+                is_defined(_schema, 'variant %s schema not defined!' % _key)
+                _value = func(value)
+                self.update({_key: _value}, _schema)
+        return
+>>>>>>> 0.3.1-fixes
 
 
 # FIXME: all objects should have the SAME keys;
@@ -436,8 +479,8 @@ class MetriqueContainer(MutableMapping):
     def _update(self, objects):
         if objects is None:
             pass
-        elif isinstance(objects, (list, tuple)):
-            [self.add(x) for x in objects]
+        elif is_array(objects, except_=False):
+            [self.add(x) for x in tuple(objects)]
         elif isinstance(objects, (dict, MutableMapping)):
             self.update(objects)
         elif isinstance(objects, MetriqueContainer):
@@ -636,7 +679,7 @@ class MetriqueContainer(MutableMapping):
         return self.config[self.proxy_config_key]
 
     def proxy_init(self):
-        is_true(self.name, "name can not be null!")
+        is_defined(self.name, "name can not be null!")
         if self._proxy is None:
             self._proxy = self._proxy_cls
         # else: _proxy is a proxy_cls
