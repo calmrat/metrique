@@ -624,6 +624,11 @@ def is_empty(value, msg=None, except_=None):
     return is_true(result, msg=msg, except_=except_)
 
 
+def is_false(value, msg=None, except_=None):
+    result = is_true(value, msg=msg, except_=False) is False
+    return result
+
+
 def is_null(value, msg=None, except_=None):
     '''
     # 0 is 'null' but not the type of null we're
@@ -1361,9 +1366,11 @@ class DictDiffer(object):
     """
     def __init__(self, dicts, added=True, removed=True,
                  changed=False, unchanged=False, diff=True,
-                 exclude=None):
+                 exclude=None, include=None):
         is_array(dicts, 'dicts must be a list of dicts; got %s' % type(dicts))
-        self._exclude = set(exclude or [])
+        is_false(exclude and include, 'set include or exclude, not both')
+        self._exclude = set(str2list(exclude) or [])
+        self._include = set(str2list(include) or [])
         self._added = added
         self._removed = removed
         self._changed = changed
@@ -1384,8 +1391,8 @@ class DictDiffer(object):
         past_dict = dicts.pop(0)
         _diffs = []
         for current_dict in dicts:
-            current = set(current_dict.keys())
-            past = set(past_dict.keys())
+            current = set(self._include or current_dict.keys())
+            past = set(self._include or past_dict.keys())
             intersect = current.intersection(past)
             if self._exclude:
                 current = current - self._exclude
@@ -1438,5 +1445,6 @@ class DictDiffer(object):
 
     def __repr__(self):
         return self.__str__()
+
 
 _local_tz = local_tz()

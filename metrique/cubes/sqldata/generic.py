@@ -16,7 +16,7 @@ from __future__ import unicode_literals
 import logging
 logger = logging.getLogger('metrique')
 
-from copy import copy
+from copy import copy, deepcopy
 from collections import defaultdict
 from dateutil.parser import parse as dt_parse
 from functools import partial
@@ -166,10 +166,10 @@ class Generic(pyclient):
             # check if this activity happened at the same time as the last one,
             # if it did then we need to group them together
             if last_doc['_end'] == when:
-                new_doc = copy(last_doc)
+                new_doc = deepcopy(last_doc)
                 last_doc = batch_updates.pop()
             else:
-                new_doc = copy(last_doc)
+                new_doc = deepcopy(last_doc)
                 new_doc['_start'] = when
                 new_doc['_end'] = when
                 last_doc['_start'] = when
@@ -221,21 +221,6 @@ class Generic(pyclient):
             inconsistent = val != added
             val = removed
         return val, inconsistent
-
-    def _convert(self, field, value):
-        convert = self.fields[field].get('convert')
-        container = self.fields[field].get('container')
-        if value is None:
-            return None
-        elif convert and container:
-            # FIXME: callers need to make convert STATIC (no self)
-            _convert = partial(convert)
-            value = map(_convert, value)
-        elif convert:
-            value = convert(value)
-        else:
-            value = value
-        return value
 
     def _delta_force(self, force=None, last_update=None, parse_timestamp=None):
         force = force or self.lconfig.get('force') or False
@@ -561,15 +546,6 @@ class Generic(pyclient):
             obj['_oid'] = obj[_oid]  # map _oid
             objects[i] = obj
         return objects
-
-    @property
-    def proxy(self):
-        # This proxy is connecting to the data source DB, not the container
-        # storage db
-        if not hasattr(self, '_sqldata_proxy'):
-            super(Generic, self).proxy_init(**self.proxy_config)
-            self._sqldata_proxy = self._proxy
-        return self._proxy
 
     def _setup_inconsistency_log(self):
         _log_file = self.lconfig.get('log_file').split('.log')[0]

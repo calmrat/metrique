@@ -152,7 +152,7 @@ class SQLAlchemyProxy(object):
     # these keys are already set, no overrides!
     RESTRICTED_KEYS = ('id', '_id', '_hash', '_start', '_end',
                        '_v', '__v__', '_e')
-    TYPE_MAP = TYPE_MAP
+    type_map = TYPE_MAP
     VALID_SHARE_ROLES = ['SELECT', 'INSERT', 'UPDATE', 'DELETE']
     _Base = None
     _engine = None
@@ -176,7 +176,7 @@ class SQLAlchemyProxy(object):
         is_true(HAS_SQLALCHEMY, '`pip install sqlalchemy` required')
         # use copy of class default value
         self.RESERVED_USERNAMES = copy(SQLAlchemyProxy.RESERVED_USERNAMES)
-        self.TYPE_MAP = copy(SQLAlchemyProxy.TYPE_MAP)
+        self.type_map = copy(SQLAlchemyProxy.type_map)
         # default _start, _end is epoch timestamp
 
         options = dict(
@@ -185,8 +185,9 @@ class SQLAlchemyProxy(object):
             connect_args=connect_args,
             db=db,
             db_schema=db_schema,
-            dialect=dialect,
+            default_fields=None,
             debug=debug,
+            dialect=dialect,
             driver=driver,
             host=host,
             log_dir=log_dir,
@@ -204,6 +205,7 @@ class SQLAlchemyProxy(object):
             connect_args=None,
             db=None,
             db_schema=None,
+            default_fields={'_start': 1, '_end': 1, '_oid': 1},
             debug=logging.INFO,
             dialect='sqlite',
             driver=None,
@@ -234,6 +236,16 @@ class SQLAlchemyProxy(object):
         if not self._object_cls:
             from metrique.core_api import MetriqueObject
             self._object_cls = MetriqueObject
+
+    def _apply_default_fields(self, fields):
+        fields = parse.parse_fields(fields)
+        if not fields:
+            return {}
+        else:
+            default_fields = self.config.get('default_fields')
+            for k, v in default_fields.iteritems():
+                fields[k] = v if k not in fields else fields[k]
+            return fields
 
     def _debug_setup_sqlalchemy_logging(self):
         level = self.config.get('debug')
@@ -371,7 +383,7 @@ class SQLAlchemyProxy(object):
         # override default dict and list column types
         types = {list: pg.ARRAY, tuple: pg.ARRAY, set: pg.ARRAY,
                  dict: JSONDict, datetime: UTCEpoch}
-        self.TYPE_MAP.update(types)
+        self.type_map.update(types)
         bs = self.config['batch_size']
         # 999 batch_size is default for sqlite, postgres handles more at once
         self.config['batch_size'] = 5000 if bs == 999 else bs
@@ -396,6 +408,7 @@ class SQLAlchemyProxy(object):
             if schema is None:
                 schema = self.autoschema(objects=objects, **kwargs)
             table = schema2table(name=name, schema=schema, Base=self.Base,
+                                 type_map=self.type_map,
                                  exclude_keys=self.RESTRICTED_KEYS)
         try:
             if create and name not in self.db_tables:
@@ -642,18 +655,16 @@ class SQLAlchemyProxy(object):
         return sorted(checked)
 
     def dfind(self, query=None, fields=None, date=None, sort=None,
-              descending=False, one=False, raw=True, limit=None,
-              as_cursor=False, scalar=False, table=None):
-        # overides, we always want these
+              descending=False, one=False, limit=None, table=None):
         raw = True
         date = '~' if date is None else date
         as_cursor = False
         scalar = False
+        sort = '_start'
         objs = self.find(query=query, fields=fields, date=date, sort=sort,
                          descending=descending, one=one, raw=raw, limit=limit,
                          as_cursor=as_cursor, scalar=scalar, table=table)
-        exclude = ('id', '_id', '_hash', '_start', '_end')
-        return DictDiffer(objs, exclude=exclude)
+        return DictDiffer(objs, include=fields)
 
     def distinct(self, fields, query=None, date='~', table=None):
         '''
@@ -704,9 +715,12 @@ class SQLAlchemyProxy(object):
 
     def find(self, query=None, fields=None, date=None, sort=None,
              descending=False, one=False, raw=False, limit=None,
-             as_cursor=False, scalar=False, table=None):
+             as_cursor=False, scalar=False, table=None,
+             default_fields=False):
         table = self.get_table(table)
         limit = limit if limit and limit >= 1 else 0
+        if default_fields:
+            fields = self._apply_default_fields(fields)
         fields = parse.parse_fields(fields)
         query = self._parse_query(table, query=query, fields=fields,
                                   date=date, limit=limit, sort=sort,

@@ -381,6 +381,7 @@ class Metrique(object):
         if isclass(self._proxy):
             self._proxy = self._proxy(**config)
         is_true(isinstance(self._proxy, self._proxy_cls), msg)
+        self._proxy.initialize()
         return self._proxy
 
     @property

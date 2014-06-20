@@ -278,7 +278,7 @@ class MetriqueObject(MutableMapping):
                     raise
         return value
 
-    def update(self, obj):
+    def update(self, obj, re_hash=True):
         for key, value in obj.iteritems():
             key = self.__keytransform__(key)
             if key in self.IMMUTABLE_OBJ_KEYS:
@@ -304,21 +304,24 @@ class MetriqueObject(MutableMapping):
                     # set fallback value to None
                     self.store['_e'].update({key: value})
                     value = None
-                self._add_variants(key, value, schema)
+                # FIXME: we should run this after all raw field data
+                # has been added to the store first so that we can
+                # create variants based on the entire obj, not just
+                # the value currently in the store at this time
+                self._add_variants(key=key, value=value, schema=schema)
             self.store[key] = value
-        self._re_hash()
+        if re_hash:
+            self._re_hash()
 
     def _add_variants(self, key, value, schema):
         ''' also possible to define some function that takes
             current value and creates a new value from it
         '''
-        variants = schema.get(key, {}).get('variants')
+        variants = schema.get('variants')
         if variants:
             for _key, func in variants.iteritems():
-                _schema = schema.get(_key)
-                is_defined(_schema, 'variant %s schema not defined!' % _key)
-                _value = func(value)
-                self.update({_key: _value}, _schema)
+                _value = func(value, self.store)
+                self.update({_key: _value}, re_hash=False)
         return
 
 
@@ -363,7 +366,6 @@ class MetriqueContainer(MutableMapping):
     config_file = DEFAULT_CONFIG
     config_key = 'container'
     db = None
-    default_fields = {'_start': 1, '_end': 1, '_oid': 1}
     name = None
     proxy_config_key = 'proxy'
     store = None
@@ -384,7 +386,6 @@ class MetriqueContainer(MutableMapping):
         options = dict(autotable=autotable,
                        cache_dir=cache_dir,
                        batch_size=batch_size,
-                       default_fields=None,
                        name=None,
                        schema=schema,
                        version=int(version or 0))
@@ -392,7 +393,6 @@ class MetriqueContainer(MutableMapping):
         defaults = dict(autotable=True,
                         cache_dir=CACHE_DIR,
                         batch_size=999,
-                        default_fields=MetriqueContainer.default_fields,
                         name=name,
                         schema={},
                         version=0)
@@ -473,15 +473,6 @@ class MetriqueContainer(MutableMapping):
 
     def __repr__(self):
         return repr(self.store)
-
-    def _apply_default_fields(self, fields):
-        fields = parse.parse_fields(fields)
-        if not fields:
-            return {}
-        else:
-            for k, v in self.default_fields.iteritems():
-                fields[k] = v if k not in fields else fields[k]
-            return fields
 
     def _encode(self, obj):
         if isinstance(obj, self._object_cls):
@@ -576,12 +567,11 @@ class MetriqueContainer(MutableMapping):
     def find(self, query=None, fields=None, date=None, sort=None,
              descending=False, one=False, raw=False, limit=None,
              as_cursor=False, scalar=False, default_fields=True):
-        if default_fields:
-            fields = self._apply_default_fields(fields)
         return self.proxy.find(table=self.name, query=query, fields=fields,
                                date=date, sort=sort, descending=descending,
                                one=one, raw=raw, limit=limit,
-                               as_cursor=as_cursor, scalar=scalar)
+                               as_cursor=as_cursor, scalar=scalar,
+                               default_fields=default_fields)
 
     def filter(self, where):
         if not isinstance(where, (dict, MutableMapping)):
