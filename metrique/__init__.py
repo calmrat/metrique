@@ -11,7 +11,7 @@ __version__, version_info
 
 # setup default root logger
 import logging
-log_format = "%(name)s.%(process)s:%(asctime)s:%(message)s"
+log_format = "%(levelname)s.%(name)s.%(process)s:%(asctime)s:%(message)s"
 logging.basicConfig(format=log_format)
 logger = logging.getLogger()
 logger.setLevel(logging.WARN)

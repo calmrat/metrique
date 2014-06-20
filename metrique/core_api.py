@@ -475,6 +475,7 @@ class MetriqueContainer(MutableMapping):
         return repr(self.store)
 
     def _apply_default_fields(self, fields):
+        fields = parse.parse_fields(fields)
         if not fields:
             return {}
         else:
@@ -574,8 +575,9 @@ class MetriqueContainer(MutableMapping):
 
     def find(self, query=None, fields=None, date=None, sort=None,
              descending=False, one=False, raw=False, limit=None,
-             as_cursor=False, scalar=False):
-        fields = self._apply_default_fields(fields)
+             as_cursor=False, scalar=False, default_fields=True):
+        if default_fields:
+            fields = self._apply_default_fields(fields)
         return self.proxy.find(table=self.name, query=query, fields=fields,
                                date=date, sort=sort, descending=descending,
                                one=one, raw=raw, limit=limit,
@@ -682,7 +684,6 @@ class MetriqueContainer(MutableMapping):
 
     def distinct(self, fields, query=None, date='~'):
         date = date or '~'
-        fields = parse.parse_fields(fields)
         query = self._parse_query(query=query, date=date, fields=fields,
                                   alias='anon_x', distinct=True)
         ret = [r[0] for r in self.proxy.session_auto.execute(query)]

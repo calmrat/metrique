@@ -106,12 +106,13 @@ SRC_DIR = os.environ.get('METRIQUE_SRC')
 BACKUP_DIR = env.get('METRIQUE_BACKUP')
 STATIC_DIR = env.get('METRIQUE_STATIC')
 
+# FIXME: add tests for local_tz, autoschema and more...
+
 
 def active_virtualenv():
     return os.environ.get('VIRTUAL_ENV', '')
 
 
-# FIXME: add tests
 def autoschema(objects, fast=True, exclude_keys=None):
     logger.debug('autoschema generation started...')
     is_defined(objects, 'object samples can not be null')
@@ -448,7 +449,7 @@ def file_is_empty(path, remove=False, msg=None):
 
 
 def filename_append(orig_filename, append_str):
-    orig_filename = orig_filename or ''
+    is_defined(orig_filename, 'filename must be defined!')
     name, ext = os.path.splitext(orig_filename)
     return '%s%s%s' % (name, append_str, ext)
 
@@ -751,7 +752,6 @@ def load_json(path, **kwargs):
     return pd.read_json(path, **kwargs)
 
 
-# FIXME: add tests for *local_tz*
 def local_tz():
     if time.daylight:
         offsetHour = time.altzone / 3600
@@ -1170,6 +1170,10 @@ def terminate(pid, sig=signal.SIGTERM):
     if pid_file:
         remove_file(pid_file)
     return
+
+
+def timediff(t0, msg=' ... done'):
+    return '   %s in \033[92m%.2f s\033[0m' % (msg, time() - t0)
 
 
 def to_encoding(str_, encoding=None, errors='replace'):

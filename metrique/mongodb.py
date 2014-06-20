@@ -223,17 +223,13 @@ class MongoDBProxy(object):
 
     def get_collection(self, name=None, db=None):
         if isinstance(name, Collection) and name.name == name:
-            # we already have the collection...
-            return name
+            return name  # we already have the collection...
         else:
             name = name.name if isinstance(name, Collection) else name
             name = name or self.config.get('table')
             is_defined(name, "collection name can not be null!")
-            if isinstance(name, Collection):
-                _cube = name
-            else:
-                db = db or self.config.get('db')
-                _cube = self.get_db(db)[name]
+            db = db or self.config.get('db')
+            _cube = self.get_db(db)[name]
         return _cube
 
     def initialize(self):
