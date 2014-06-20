@@ -612,7 +612,7 @@ class MetriqueContainer(MutableMapping):
             yield dict(v)
 
     def ls(self):
-        raise NotImplementedError("Subclasses should implement this.")
+        raise NotImplementedError
 
     def persist(self, objects=None, autosnap=None):
         objects = objects or self

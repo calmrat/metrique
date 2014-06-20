@@ -88,7 +88,6 @@ import subprocess
 import sys
 import time
 import urllib
-import warnings
 
 env = os.environ
 pjoin = os.path.join
@@ -373,7 +372,6 @@ def debug_setup(logger=None, level=None, log2file=None,
         * log2file (bool)
         * log_file (path)
     '''
-    is_defined(log_file, 'log_file must be defined!')
     log2stdout = False if log2stdout is None else log2stdout
     _log_format = "%(levelname)s.%(name)s.%(process)s:%(asctime)s:%(message)s"
     log_format = log_format or _log_format
@@ -381,9 +379,6 @@ def debug_setup(logger=None, level=None, log2file=None,
         log_format = logging.Formatter(log_format, "%Y%m%dT%H%M%S")
 
     log2file = True if log2file is None else log2file
-    log_dir = log_dir or LOGS_DIR or ''
-    log_file = os.path.join(log_dir, log_file)
-
     logger = logger or 'metrique'
     if isinstance(logger, basestring):
         logger = logging.getLogger(logger)
@@ -391,7 +386,10 @@ def debug_setup(logger=None, level=None, log2file=None,
         logger = logger or logging.getLogger(logger)
     logger.propagate = 0
     logger.handlers = []
-    if log2file and log_file:
+    if log2file:
+        log_dir = log_dir or LOGS_DIR
+        log_file = log_file or 'metrique'
+        log_file = os.path.join(log_dir, log_file)
         if truncate:
             # clear the existing data before writing (truncate)
             open(log_file, 'w+').close()
@@ -405,8 +403,6 @@ def debug_setup(logger=None, level=None, log2file=None,
         hdlr.setFormatter(log_format)
         logger.addHandler(hdlr)
     logger = _debug_set_level(logger, level)
-    if level <= logging.DEBUG and log2file:
-        warnings.warn('logging to %s' % log_file)
     return logger
 
 

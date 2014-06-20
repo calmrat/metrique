@@ -268,11 +268,12 @@ def test_debug_setup(capsys):
     assert isinstance(_l.handlers[0], logging.FileHandler)
 
     logger_test = logging.getLogger('test')
-    _l = debug_setup(logger=logger_test)
+    log_format = '%(message)s'
+    _l = debug_setup(logger=logger_test, log_format=log_format)
     assert _l is logger_test
     assert _l.name == 'test'
 
-    _l = debug_setup(logger=logger_test,
+    _l = debug_setup(logger=logger_test, log_format=log_format,
                      log2file=False, log2stdout=True)
     _l.info('*')
     out, err = [x.strip() for x in capsys.readouterr()]
@@ -281,7 +282,7 @@ def test_debug_setup(capsys):
 
     # no output should seen for info(), since we set level
     # to warn, but issue an info call
-    _l = debug_setup(logger=logger_test,
+    _l = debug_setup(logger=logger_test, log_format=log_format,
                      log2file=False, log2stdout=True,
                      level=logging.WARN)
     _l.info('*')
