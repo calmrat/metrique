@@ -363,7 +363,7 @@ class Metrique(object):
 
     @property
     def proxy(self):
-        if self._proxy is None:
+        if self._proxy is None or isclass(self._proxy):
             self.proxy_init()
         return self._proxy
 

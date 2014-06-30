@@ -731,7 +731,7 @@ class SQLAlchemyProxy(object):
         elif as_cursor:
             return rows
         elif one or limit == 1:
-            row = dict(rows.first())
+            row = dict(rows.first() or {})
             # implies raw
             return row
         elif limit > 1:

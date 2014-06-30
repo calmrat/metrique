@@ -19,7 +19,6 @@ logger = logging.getLogger('metrique')
 from copy import copy, deepcopy
 from collections import defaultdict
 from dateutil.parser import parse as dt_parse
-from functools import partial
 import os
 import pytz
 import re
