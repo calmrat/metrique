@@ -53,6 +53,8 @@ def test_batch_gen():
         next(batch_gen(None, 1))
     except StopIteration:
         pass
+    else:
+        assert False
 
     assert len(next(batch_gen([1], 1))) == 1
 
@@ -186,33 +188,44 @@ def test_configure():
         x = configure(config_file='I_DO_NOT_EXIST')
     except IOError:
         pass
+    else:
+        assert False
 
     try:  # should fail
         x = configure(config_file=config_file, section_key='I_DO_NOT_EXIST')
     except KeyError:
         pass
+    else:
+        assert False
 
     for arg in ('update', 'options', 'defaults'):
         try:
             x = configure(**{arg: 'I_SHOULD_BE_A_DICT'})
         except AttributeError:
             pass
+        else:
+            assert False
 
 
 def test_csv2list():
     ' args: item '
     from metrique.utils import csv2list
 
-    a_lst = ['a', 'b', 'c', 'd', 'e']
-    a_str = 'a, b,     c,    d , e'
-    assert csv2list(a_str) == a_lst
+    assert csv2list(None) == []
 
-    for i in [None, a_lst, {}, 1, 1.0]:
+    a_str = 'a, b,     c,    d , e'
+    a_lst = ['a', 'b', 'c', 'd', 'e']
+    assert csv2list(a_str) == a_lst
+    assert csv2list(a_lst) == a_lst
+
+    for i in [{}, 1, 1.0]:
         # try some non-string input values
         try:
             csv2list(i)
         except TypeError:
             pass
+        else:
+            assert False, "Converted %s to list" % i
 
 
 def test_cube_pkg_mod_cls():
@@ -346,12 +359,16 @@ def test_file_is_empty():
         file_is_empty('DOES_NOT_EXIST')
     except RuntimeError:
         pass
+    else:
+        assert False
 
     try:
         # not a valid path
         file_is_empty(True)
     except RuntimeError:
         pass
+    else:
+        assert False
 
     remove_file(f2)
     assert not exists(f2)
@@ -377,6 +394,8 @@ def test_get_cube():
         get_cube(cube='DOES_NOT_EXIST')
     except RuntimeError:
         pass
+    else:
+        assert False
 
 
 def test__get_datetime():
@@ -388,6 +407,8 @@ def test__get_datetime():
         now_tz == now  # can't compare tz_aware <> naive
     except TypeError:
         pass
+    else:
+        assert False
     # default is tz_aware=False
     assert _get_datetime(now_tz) == now
     assert _get_datetime(now) == now
@@ -408,6 +429,8 @@ def test_get_pid():
         get_pid(path)
     except IOError:
         pass
+    else:
+        assert False
 
     with open(path, 'w') as f:
         f.write("1")
@@ -421,7 +444,16 @@ def test_get_pid():
         get_pid(path)
     except ValueError:
         pass
+    else:
+        assert False
     remove_file(path)
+
+    try:
+        get_pid("boomboompow")
+    except IOError:
+        pass
+    else:
+        assert False
 
 
 def test_get_pids():
@@ -514,14 +546,16 @@ def test_is_empty():
         empty = is_empty(x, except_=False)
         print '%s is empty? %s' % (repr(x), empty)
         assert empty is True
-        try:
-            empty = is_empty(x, except_=True)
-        except RuntimeError:
-            pass
     for x in not_empties:
         empty = is_empty(x, except_=False)
         print '%s is empty? %s' % (repr(x), empty)
         assert empty is False
+        try:
+            empty = is_empty(x, except_=True)
+        except RuntimeError:
+            pass
+        else:
+            assert False
 
 
 def test_is_null():
@@ -539,14 +573,16 @@ def test_is_null():
         null = is_null(x, except_=False)
         print '%s is null? %s' % (repr(x), null)
         assert null is True
-        try:
-            null = is_null(x, except_=True)
-        except RuntimeError:
-            pass
     for x in not_nulls:
         null = is_null(x, except_=False)
         print '%s is null? %s' % (repr(x), null)
         assert null is False
+        try:
+            null = is_null(x, except_=True)
+        except RuntimeError:
+            pass
+        else:
+            assert False
 
 
 def test_is_true():
@@ -554,9 +590,11 @@ def test_is_true():
     assert is_true(True) is True
     assert is_true(None, except_=False) is False
     try:
-        is_true('')
+        is_true('', except_=True)
     except RuntimeError:
         pass
+    else:
+        assert False
 
 
 def test_is_defined():
@@ -567,14 +605,16 @@ def test_is_defined():
         true = is_defined(x, except_=False)
         print '%s is defined? %s' % (repr(x), true)
         assert true is True
-        try:
-            true = is_defined(x, except_=True)
-        except RuntimeError:
-            pass
     for x in not_defined:
         true = is_defined(x, except_=False)
         print '%s is defined? %s' % (repr(x), true)
         assert true is False
+        try:
+            true = is_defined(x, except_=True)
+        except RuntimeError:
+            pass
+        else:
+            assert False
 
 
 def test_json_encode_default():
@@ -594,6 +634,8 @@ def test_json_encode_default():
         _dct = json.dumps(dct, default=json_encode_default)
     except TypeError:
         pass
+    else:
+        assert False
 
 
 def test_jsonhash():
@@ -658,6 +700,8 @@ def test_list2str():
         list2str(list2str)
     except TypeError:
         pass
+    else:
+        assert False
 
 
 def test_load_file():
@@ -676,11 +720,15 @@ def test_load_file():
         load_file('DOES_NOT_EXIST')
     except IOError:
         pass
+    else:
+        assert False
 
     try:
         load_file(os.path.join(fixtures, 'file_with_unknown.extension'))
     except TypeError:
         pass
+    else:
+        assert False
 
 
 def test_load():
@@ -703,6 +751,8 @@ def test_load():
         x = load(path_glob, _oid=set_oid_func)
     except TypeError:
         pass
+    else:
+        assert False
 
     set_oid_func = lambda o: dict(_oid=42, **o)
     x = load(path_glob, _oid=set_oid_func)
@@ -721,12 +771,16 @@ def test_load():
         load(1)
     except ValueError:
         pass
+    else:
+        assert False, "Loaded 1"
 
     empty = os.path.join(fixtures, 'empty.csv')
     try:
         load(empty, header=None)
     except ValueError:
         pass
+    else:
+        assert False
 
     header = os.path.join(fixtures, 'header_only.csv')
     try:
@@ -738,6 +792,8 @@ def test_load():
         load('DOES_NOT_EXIST')
     except IOError:
         pass
+    else:
+        assert False, "Loaded DOES_NOT_EXIST"
 
     # check that we can grab data from the web
     uri = 'https://mysafeinfo.com/api/data?list=days&format=csv'
@@ -753,6 +809,8 @@ def test_load_config():
         x = load_config()
     except TypeError:
         pass
+    else:
+        assert False, "Running load_config() did not throw an error"
 
     x = load_config(path=None)
 
@@ -765,6 +823,8 @@ def test_load_config():
         x = load_config(path='BAD_PATH')
     except IOError:
         pass
+    else:
+        assert False, "Loaded config with bad path"
 
 
 def test_make_dirs():
@@ -784,6 +844,8 @@ def test_make_dirs():
             make_dirs(_)
         except OSError:
             pass
+        else:
+            assert False, "Made dirs with relative paths"
 
 
 def test_move():
@@ -816,6 +878,10 @@ def test_move():
         move('DOES_NOT_EXST', 'SOMEWHERE')
     except IOError:
         pass
+    else:
+        assert False, "Moving DOES_NOT_EXIST to SOMEWHERE did not throw an "\
+            "exception"
+
     assert move('DOES_NOT_EXST', 'SOMEWHERE', quiet=True) == []
 
 
@@ -851,6 +917,8 @@ def test_read_file():
         read_file('')
     except ValueError:
         pass
+    else:
+        assert False, "Managed to read file ''"
 
     content = 'col_1, col_2'
     f = read_file('header_only.csv', paths=paths).strip()
@@ -868,6 +936,8 @@ def test_read_file():
         read_file('DOES_NOT_EXIST')
     except IOError:
         pass
+    else:
+        assert False, "Read non-existing file"
 
 
 def test_remove_file():
@@ -892,6 +962,8 @@ def test_remove_file():
         remove_file(path)
     except RuntimeError:
         pass
+    else:
+        assert False, "Managed to remove a random path"
     assert remove_file(path, force=True) == path
 
 
@@ -941,20 +1013,23 @@ def test_str2list():
 
     assert str2list(None) == []
 
-    a_lst = ['a', 'b', 'c', 'd', 'e']
     a_str = 'a, b,     c,    d , e'
+    a_lst = ['a', 'b', 'c', 'd', 'e']
     assert str2list(a_str) == a_lst
+    assert str2list(a_lst) == a_lst
 
     b_str = '1, 2,     3,    4 , 5'
     b_lst = [1., 2., 3., 4., 5.]
     assert str2list(b_str, map_=float) == b_lst
 
-    for i in [None, a_lst, {}, 1, 1.0]:
+    for i in [{}, 1, 1.0]:
         # try some non-string input values
         try:
             str2list(i)
         except TypeError:
             pass
+        else:
+            assert False, "Managed to call str2list on non-string: %s" % i
 
 
 def test_sys_call():
@@ -964,6 +1039,8 @@ def test_sys_call():
         sys_call('ls FILE_THAT_DOES_NOT_EXIST')
     except Exception:
         pass
+    else:
+        assert False
 
     assert sys_call('ls FILE_THAT_DOES_NOT_EXIST', ignore_errors=True) is None
 
@@ -1012,13 +1089,15 @@ def test_to_encoding():
     assert to_encoding(str_, 'ascii')
 
     try:
-        to_encoding(str_, 'ascii', errors='strict')
+        to_encoding(str_utf8, 'ascii', errors='strict')
     except UnicodeEncodeError:
         pass
+    else:
+        assert False, "Manged to convert unicode to ascii when using strict"
 
 
 def test_ts2dt():
-    ''' args: ts, milli=False, tz_aware=True '''
+    ''' args: ts, milli=False, tz_aware=False'''
     from metrique.utils import ts2dt
 
     # FIXME: millisecond precision, better?
@@ -1033,9 +1112,12 @@ def test_ts2dt():
     ' tz_aware defaults to false '
     try:
         ' cant compare offset-naive and offset-aware datetimes '
-        assert ts2dt(now_time) == now_date
+        ts2dt(now_time, tz_aware=True) == now_date
     except TypeError:
         pass
+    else:
+        assert False, "Managed to compare offset-naive and offset-aware "\
+            "datetimes"
 
     assert ts2dt(now_date, tz_aware=False) == now_date
 
@@ -1046,6 +1128,8 @@ def test_ts2dt():
         ts2dt('not a valid datetime str') == now_date
     except TypeError:
         pass
+    else:
+        assert False, "Managed to convert an invalid timestamp to datetime"
 
 
 def test_urlretrieve():
@@ -1064,6 +1148,8 @@ def test_urlretrieve():
         urlretrieve('does not exist')
     except RuntimeError:
         pass
+    else:
+        assert False, "Retrieved non-existing url"
 
 
 def test_utcnow():
@@ -1100,6 +1186,8 @@ def test_validate_password():
             validate_password(bad)
         except ValueError:
             pass
+        else:
+            assert False, "Validated BAD password"
 
 
 def test_validate_roles():
@@ -1111,9 +1199,11 @@ def test_validate_roles():
 
     assert validate_roles(OK, valid_roles) == sorted(OK)
     try:
-        validate_roles(OK, valid_roles) == sorted(BAD)
+        validate_roles(BAD, valid_roles) == sorted(BAD)
     except ValueError:
         pass
+    else:
+        assert False, "Validated BAD role"
 
 
 def test_validate_username():
@@ -1134,6 +1224,8 @@ def test_validate_username():
             validate_username(bad, restricted_names=restricted)
         except (ValueError, TypeError):
             pass
+        else:
+            assert False, "Validated invalid username"
 
 
 def test_virtualenv():
@@ -1161,6 +1253,8 @@ def test_virtualenv():
         virtualenv_activate('virtenv_that_doesnt_exist')
     except OSError:
         pass
+    else:
+        assert False, "Activated non-existing virtenv"
 
 
 def test_write_file():
@@ -1177,13 +1271,15 @@ def test_write_file():
         write_file(f1, 'hello world')
     except RuntimeError:
         pass
+    else:
+        assert False, "File overwritten without force=True"
 
-    write_file(f1, 'hello world', force=True)
+    write_file(f1, 'hello metrique', force=True)
     assert exists(f1)
-    assert read_file(f1) == 'hello world'
+    assert read_file(f1) == 'hello metrique'
 
     write_file(f1, 'hello world', mode='a')
     assert exists(f1)
-    assert read_file(f1) == 'hello worldhello world'
+    assert read_file(f1) == 'hello metriquehello world'
 
     remove_file(f1)

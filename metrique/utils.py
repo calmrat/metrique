@@ -499,12 +499,7 @@ def get_cube(cube, init=False, pkgs=None, cube_paths=None, config=None,
 def get_pid(pid_file=None):
     if not pid_file:
         return 0
-    try:
-        return int(''.join(open(pid_file).readlines()).strip())
-    except IOError:
-        return -1
-    except ValueError:
-        return -2
+    return int(''.join(open(pid_file).readlines()).strip())
 
 
 def get_pids(pid_dir, prefix='', clear_stale=True):
