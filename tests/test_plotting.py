@@ -5,5 +5,4 @@
 
 
 def test_init():
-    from metrique.plotting import Container, Plotter, DiffPlotter
-    from metrique.plotting import BarPlot
+    from metrique.plotting import Plotter, DiffPlotter, BarPlot
