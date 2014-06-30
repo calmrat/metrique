@@ -34,10 +34,14 @@ def test_api():
         MetriqueObject()
     except TypeError:
         pass
+    else:
+        assert False
     try:
         MetriqueObject(**a)
     except TypeError:
         pass
+    else:
+        assert False
 
     # _oid can't be null either
     a['_oid'] = None
@@ -45,6 +49,8 @@ def test_api():
         MetriqueObject(**a)
     except RuntimeError:
         pass
+    else:
+        assert False
 
     a['_oid'] = 1
     o = MetriqueObject(**a)

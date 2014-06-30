@@ -99,6 +99,8 @@ def test_api():
         mc.ls()
     except NotImplementedError:
         pass
+    else:
+        assert False
 
     mc.extend([{'_oid': 6}, {'_oid': 7}])
     assert sorted(mc._oids) == [1, 2, 5, 6, 7]

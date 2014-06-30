@@ -40,6 +40,8 @@ def test_parse_fields():
         parse_fields(fields_dct_BAD, as_dict=True)
     except TypeError:
         pass
+    else:
+        assert False
 
     assert parse_fields(None) == []
     assert parse_fields(False) == []

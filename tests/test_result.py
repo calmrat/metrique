@@ -8,23 +8,27 @@ def test_init():
     from metrique.result import Result
     from metrique.utils import utcnow
 
-    # can't init with empty/null data
     try:
         Result()
     except RuntimeError:
         pass
+    else:
+        assert False, "Can't init with null data"
 
     try:
         Result({})
     except RuntimeError:
         pass
+    else:
+        assert False, "Can't init with empty data"
 
-    # _start and _end must be defined...
     try:
         data = [{'a': 1, 'b': 2}]
         Result(data)
     except RuntimeError:
         pass
+    else:
+        assert False, "_start and _end must be defined..."
 
     data = [{'_start': utcnow(), '_end': None, 'a': 1, 'b': 2}]
     Result(data)

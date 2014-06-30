@@ -43,6 +43,8 @@ def db_tester(proxy):
         O({'col_1': 1, 'col_3': _date})
     except TypeError:
         pass
+    else:
+        assert False
 
     _obj_1 = {'_oid': 1, 'col_1': 1, 'col_3': _date}
     obj_1 = [O(**_obj_1)]
@@ -162,6 +164,8 @@ def test_sqlite3():
         assert p.count() == 0
     except RuntimeError:
         pass
+    else:
+        assert False
 
     assert p.ls() == []
 
@@ -236,5 +240,7 @@ def test_postgresql():
         assert p.count()
     except RuntimeError:
         pass
+    else:
+        assert False
 
     assert p.ls() == []
