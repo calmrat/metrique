@@ -239,13 +239,8 @@ class SQLAlchemyProxy(object):
 
     def _apply_default_fields(self, fields):
         fields = parse.parse_fields(fields)
-        if not fields:
-            return {}
-        else:
-            default_fields = self.config.get('default_fields')
-            for k, v in default_fields.iteritems():
-                fields[k] = v if k not in fields else fields[k]
-            return fields
+        default_fields = self.config.get('default_fields')
+        return fields + [f for f in default_fields if f not in fields]
 
     def _debug_setup_sqlalchemy_logging(self):
         level = self.config.get('debug')
@@ -1022,7 +1017,7 @@ def schema2table(name, schema, Base=None, type_map=None, exclude_keys=None):
 
     for k, v in schema.items():
         if k in exclude_keys:
-            ekeys = exclude_keys
+            ekeys = list(exclude_keys)
             warnings.warn(
                 'non-null restricted keys detected %s; ignoring!' % ekeys)
             continue

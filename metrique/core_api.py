@@ -58,9 +58,7 @@ class MetriqueObject(MutableMapping):
 
     def __init__(self, _oid, _id=None, _hash=None, _start=None, _end=None,
                  _e=None, _v=None, id=None, _schema=None, **kwargs):
-        print _oid, '*'*1000
         is_defined(_oid, "_oid must be defined!")
-        print 'Z'*100
         # NOTE: we completely ignore incoming 'id' keys!
         # id is RESERVED and ALWAYS expected to be 'autoincrement'
         # upon insertion into DB (though, its optional, depending
