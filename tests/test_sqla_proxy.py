@@ -39,9 +39,20 @@ def db_tester(proxy):
 
     assert p.ls() == []
 
+    # must pass _oid as kwarg
+    obj = {'col_1': 1, 'col_3': _date}
     try:
-        O({'col_1': 1, 'col_3': _date})
+        O(**obj)
     except TypeError:
+        pass
+    else:
+        assert False
+
+    # _oid can't be null
+    obj = {'_oid': None, 'col_1': 1, 'col_3': _date}
+    try:
+        O(**obj)
+    except RuntimeError:
         pass
     else:
         assert False

@@ -41,7 +41,6 @@ from metrique._version import __version__
 from metrique.utils import utcnow, jsonhash, load, autoschema
 from metrique.utils import batch_gen, dt2ts, configure, to_encoding
 from metrique.utils import is_empty, is_true, is_null, is_array, is_defined
-from metrique import parse
 
 ETC_DIR = os.environ.get('METRIQUE_ETC')
 CACHE_DIR = os.environ.get('METRIQUE_CACHE') or '/tmp'
@@ -59,7 +58,9 @@ class MetriqueObject(MutableMapping):
 
     def __init__(self, _oid, _id=None, _hash=None, _start=None, _end=None,
                  _e=None, _v=None, id=None, _schema=None, **kwargs):
+        print _oid, '*'*1000
         is_defined(_oid, "_oid must be defined!")
+        print 'Z'*100
         # NOTE: we completely ignore incoming 'id' keys!
         # id is RESERVED and ALWAYS expected to be 'autoincrement'
         # upon insertion into DB (though, its optional, depending
