@@ -80,8 +80,11 @@ class Result(DataFrame):
             raise RuntimeError("`pip install pandas` required")
         if not HAS_NUMPY:
             raise RuntimeError("`pip install numpy` required")
-        self.validate_data(data)
+        if is_empty(data, except_=False):
+            raise ValueError('data can not be empty!')
         super(Result, self).__init__(data)
+        if '_start' not in self or '_end' not in self:
+            raise ValueError('_start and _end must be defined')
         # The converts are here so that None is converted to NaT
         self.to_datetime('_start')
         self.to_datetime('_end')
@@ -299,7 +302,7 @@ class Result(DataFrame):
 
     def persistent_oid_counts(self, dates):
         '''
-        Counts have many objects (identified by their oids) existed before
+        Counts how many objects (identified by their oids) existed before
         or on a given date.
 
         :param dates: list of the dates the count should be computed.
@@ -470,23 +473,3 @@ class Result(DataFrame):
 
     def notempty(self, field):
         return self[field].astype(bool)
-
-    def validate_data(self, data):
-        err = False
-        msg = ''
-        if is_empty(data, except_=False):
-            err = True
-            msg = 'data can not be empty!'
-        elif not isinstance(data, (list, tuple, Result)):
-            err = True
-            msg = 'expected a list of dictionaries; got %s' % type(data)
-        elif '_start' not in data[0].keys():
-            err = True
-            msg = '_start must be defined; got %s' % data[0]
-        elif '_end' not in data[0].keys():
-            err = True
-            msg = '_end must be defined; got %s' % data[0]
-        if err:
-            raise RuntimeError(msg)
-        else:
-            return True
