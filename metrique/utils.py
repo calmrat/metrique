@@ -91,6 +91,7 @@ import urllib
 
 env = os.environ
 pjoin = os.path.join
+NoneType = type(None)
 
 json_encoder = json.JSONEncoder()
 
@@ -113,8 +114,8 @@ def active_virtualenv():
     return os.environ.get('VIRTUAL_ENV', '')
 
 
-def autoschema(objects, fast=True, exclude_keys=None):
-    logger.debug('autoschema generation started...')
+def autoschema(objects, fast=False, exclude_keys=None):
+    logger.debug('autoschema generation started... Fast: %s' % fast)
     is_defined(objects, 'object samples can not be null')
     objects = tuple(objects) if is_array(objects, except_=False) else [objects]
     schema = defaultdict(dict)
@@ -122,9 +123,10 @@ def autoschema(objects, fast=True, exclude_keys=None):
     for o in objects:
         logger.debug('autoschema model object: %s' % o)
         for k, v in o.iteritems():
-            if k in schema or k in exclude_keys:
+            schema_type = schema.get(k, {}).get('type')
+            if k in exclude_keys:
                 continue
-            elif schema[k].get('type') is not None:
+            elif schema_type not in [None, NoneType]:
                 # we already have this type
                 # FIXME: option to check rigerously all objects
                 # consistency; raise exception if values are of
@@ -141,7 +143,7 @@ def autoschema(objects, fast=True, exclude_keys=None):
                     if len(v) > 1:
                         _t = type(v[0])
                     else:
-                        _t = type(None)
+                        _t = NoneType
                     schema[k]['type'] = _t
                 else:
                     schema[k]['type'] = _type

@@ -361,6 +361,7 @@ class MetriqueContainer(MutableMapping):
     _object_cls = None
     _proxy_cls = None
     _proxy = None
+    _schema_generated = False
     config = None
     config_file = DEFAULT_CONFIG
     config_key = 'container'
@@ -515,23 +516,22 @@ class MetriqueContainer(MutableMapping):
         # works as expected; if no table and autotable:True,
         # create the table too.
         create = self.config.get('autotable')
-        if name in self._proxy.meta_tables:
+        if name in self.proxy.meta_tables:
             logger.warn('autotable "%s": already exists' % name)
             result = True
+        elif self.schema:
+            if name in self.proxy.db_tables:
+                # no reason to create the table again...
+                # but we still want to load the table class into metadata
+                create = False
+            self.proxy.autotable(schema=self.schema, name=name,
+                                 create=create)
+            logger.warn('autotable "%s": (create=%s): OK' % (name, create))
+            result = True
         else:
-            if self.schema:
-                if name in self._proxy.db_tables:
-                    # no reason to create the table again...
-                    # but we still want to load the table class into metadata
-                    create = False
-                self._proxy.autotable(schema=self.schema, name=name,
-                                      create=create)
-                logger.warn('autotable "%s": (create=%s): OK' % (name, create))
-                result = True
-            else:
-                logger.warn(
-                    'autotable "%s": FAIL; no schema; store is empty' % name)
-                result = False
+            logger.warn(
+                'autotable "%s": FAIL; no schema; store is empty' % name)
+            result = False
         return result
 
     def clear(self):
@@ -617,7 +617,6 @@ class MetriqueContainer(MutableMapping):
     def proxy(self):
         if self._proxy is None or isclass(self._proxy):
             self.proxy_init()
-        self.autotable()
         return self._proxy
 
     @property
@@ -640,17 +639,15 @@ class MetriqueContainer(MutableMapping):
 
     @property
     def schema(self):
-        schema = self.config.get('schema')
-        if not schema and self.store:
-            # if we didn't get an expclit schema definition to use,
+        schema = self.config.get('schema') or {}
+        if not (self._schema_generated or schema) and self.store:
+            # if we don't get an expclit schema definition to use,
             # autogenerate the schema from the store content, if any
-            values = self.store.values()
-            if hasattr(self._proxy, 'autoschema'):
-                schema = self._proxy.autoschema(values)
-            else:
-                schema = autoschema(values,
-                                    exclude_keys=self.RESTRICTED_KEYS)
+            values = self.values()
+            _schema = autoschema(values, exclude_keys=self.RESTRICTED_KEYS)
+            schema = {k: v for k, v in _schema.iteritems() if k not in schema}
             self.config['schema'] = schema
+            self._schema_generated = True
         return schema
 
     def count(self, query=None, date=None):

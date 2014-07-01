@@ -143,6 +143,7 @@ class Metrique(object):
     _proxy = None
     _proxy_cls = None
     _schema_keys = ('type', 'container', 'convert', 'variants')
+    _schema = None
     __metaclass__ = MetriqueFactory
 
     def __init__(self, name=None, db=None, config_file=None,
@@ -246,6 +247,7 @@ class Metrique(object):
         self.proxy_config_key = proxy_config_key or Metrique.proxy_config_key
         proxy_config = dict(proxy_config or {})
         proxy_config.setdefault('table', self.name)
+        proxy_config.setdefault('schema', schema)
         proxy_config.setdefault('config_file', self.config_file)
         self.config.setdefault(self.proxy_config_key, {}).update(proxy_config)
 
@@ -285,7 +287,6 @@ class Metrique(object):
         # proxy_config kwarg
         config['proxy_config'] = config.get(self.proxy_config_key)
         config[self.proxy_config_key] = None
-        config.update(dict(schema=self.schema))
         config.update(kwargs)
         if self._container is None:
             self._container = self._container_cls
@@ -386,17 +387,17 @@ class Metrique(object):
 
     @property
     def schema(self, except_=False):
-        # schema might have been passed in as kwarg and stored in the config
-        # or subclasses might define schema (and more) within self.fields attr
-        _schema = (self.container_config.get('schema') or
-                   getattr(self, 'fields') or {})
-        # in the case we derived our schema from 'fields' attr, we must filter
-        # out anything we're not specifically interested in
-        schema = {}
-        for field, meta in _schema.iteritems():
-            for k, v in meta.iteritems():
-                schema.setdefault(field, {})
-                if k in self._schema_keys:
-                    schema[field][k] = v
-        except_ and is_defined(schema, 'schema not defined!')
-        return dict(schema)
+        if not self._schema:
+            # schema (and more) might be defined within self.fields attr
+            _schema = dict(getattr(self, 'fields') or {})
+            # in the case we derived our schema from 'fields' attr,
+            # but we must **filter out** all invalid schema keys
+            schema = {}
+            for field, meta in _schema.iteritems():
+                for k, v in meta.iteritems():
+                    schema.setdefault(field, {})
+                    if k in self._schema_keys:
+                        schema[field][k] = v
+            except_ and is_defined(schema, 'schema not defined!')
+            self._schema = dict(_schema)
+        return self._schema

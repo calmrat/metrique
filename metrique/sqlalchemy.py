@@ -169,7 +169,8 @@ class SQLAlchemyProxy(object):
                  connect_args=None, batch_size=None,
                  cache_dir=None, db_schema=None,
                  log_file=None, log_dir=None, log2file=None,
-                 log2stdout=None, log_format=None, **kwargs):
+                 log2stdout=None, log_format=None, schema=None,
+                 **kwargs):
         '''
         Accept additional kwargs, but ignore them.
         '''
@@ -197,6 +198,7 @@ class SQLAlchemyProxy(object):
             log2stdout=log2stdout,
             password=password,
             port=None,
+            schema=schema,
             table=table,
             username=username)
         defaults = dict(
@@ -217,6 +219,7 @@ class SQLAlchemyProxy(object):
             log2stdout=False,
             password=None,
             port=5432,
+            schema=None,
             table=None,
             username=getuser())
         self.config = copy(config or self.config or {})
@@ -392,9 +395,10 @@ class SQLAlchemyProxy(object):
         return autoschema(objects=objects, exclude_keys=self.RESTRICTED_KEYS,
                           **kwargs)
 
-    def autotable(self, name=None, schema=None, objects=None, create=False,
+    def autotable(self, name=None, schema=None, objects=None, create=True,
                   except_=False, **kwargs):
         name = name or self.config.get('table')
+        schema = schema or self.config.get('schema')
         is_defined(name, 'table name must be defined')
         if name not in self.meta_tables:
             # load a sqla.Table into metadata so sessions act as expected
@@ -505,7 +509,8 @@ class SQLAlchemyProxy(object):
             return list(rows)
 
     def get_table(self, table=None, except_=True, as_cls=False,
-                  reflect=False, schema=None):
+                  reflect=True, schema=None):
+        schema = schema or self.config.get('schema')
         if table is None:
             table = self.config.get('table')
 
