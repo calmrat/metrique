@@ -1000,7 +1000,7 @@ def schema2table(name, schema, Base=None, type_map=None, exclude_keys=None):
     # always exclude the following 'system' keys, as they are
     # hard coded and should remain consistent across containers
     exclude_keys = list(exclude_keys or [])
-    exclude_keys.append(['id', '_id', '_hash', '_start',
+    exclude_keys.extend(['id', '_id', '_hash', '_start',
                         '_end', '_v', '__v__', '_e'])
     exclude_keys = sorted(set(exclude_keys))
 
