@@ -86,12 +86,51 @@ class MetriqueObject(MutableMapping):
         return self.store[key]
 
     def __setitem__(self, key, value):
+        self._setitem_no_rehash(key, value)
+        self._re_hash()
+
+    def _setitem_no_rehash(self, key, value):
         key = self.__keytransform__(key)
-        self.update({key: value})
+        if key in self.IMMUTABLE_OBJ_KEYS:
+            warnings.warn(
+                'attempted update of immutable key detected: %s' % key)
+            continue
+        elif key in ('_end', '_start'):
+            value = dt2ts(value)
+        elif key == '_e':  # _e is expected to be dict or None
+            value = None if not value else dict(value)
+            is_true(isinstance(value, (dict, MutableMapping)),
+                    '_e must be dict, got %s' % type(value))
+        else:
+            schema = self._schema.get(key) or {}
+            try:
+                value = self._prep_value(value, schema=schema)
+            except Exception as e:
+                value = to_encoding(value)
+                self.store['_e'] = self.store['_e'] or {}
+                msg = 'prep(key=%s, value=%s) failed: %s' % (key, value, e)
+                logger.error(msg)
+                # set error field with original values
+                # set fallback value to None
+                self.store['_e'].update({key: value})
+                value = None
+            # FIXME: we should run this after all raw field data
+            # has been added to the store first so that we can
+            # create variants based on the entire obj, not just
+            # the value currently in the store at this time
+            self._add_variants(key=key, value=value, schema=schema)
+        self.store[key] = value
 
     def __delitem__(self, key):
-        self.pop(key)
-        return None
+        key = self.__keytransform__(key)
+        is_true(key not in self.IMMUTABLE_OBJ_KEYS, '%s is immutable!' % key)
+        del self.store[key]
+        # _start and _end are simply 'reset' to dfault values if pop/deleted
+        if key == '_start':
+            self.store[key] = utcnow()
+        if key == '_end':
+            self.store[key] = None
+        self._re_hash()
 
     def __iter__(self):
         return iter(self.store)
@@ -155,25 +194,6 @@ class MetriqueObject(MutableMapping):
         if pop:
             [store.pop(key, None) for key in pop]
         return store
-
-    def pop(self, key):
-        key = self.__keytransform__(key)
-        is_true(key not in self.IMMUTABLE_OBJ_KEYS, '%s is immutable!' % key)
-        value = self.store.pop(key)
-        # _start and _end are simply 'reset' to dfault values if pop/deleted
-        if key in ('_start', '_end'):
-            if key == '_start':
-                self.store[key] = utcnow()
-            else:
-                self.store[key] = None
-        self._re_hash()
-        return value
-
-    def setdefault(self, key, default):
-        key = self.__keytransform__(key)
-        if key not in self.store:
-            self.update({key, default})
-        return self
 
     def _normalize_container(self, value, schema):
         container = schema.get('container')
@@ -279,36 +299,7 @@ class MetriqueObject(MutableMapping):
 
     def update(self, obj, re_hash=True):
         for key, value in obj.iteritems():
-            key = self.__keytransform__(key)
-            if key in self.IMMUTABLE_OBJ_KEYS:
-                warnings.warn(
-                    'attempted update of immutable key detected: %s' % key)
-                continue
-            elif key in ('_end', '_start'):
-                value = dt2ts(value)
-            elif key == '_e':  # _e is expected to be dict or None
-                value = None if not value else dict(value)
-                is_true(isinstance(value, (dict, MutableMapping)),
-                        '_e must be dict, got %s' % type(value))
-            else:
-                schema = self._schema.get(key) or {}
-                try:
-                    value = self._prep_value(value, schema=schema)
-                except Exception as e:
-                    value = to_encoding(value)
-                    self.store['_e'] = self.store['_e'] or {}
-                    msg = 'prep(key=%s, value=%s) failed: %s' % (key, value, e)
-                    logger.error(msg)
-                    # set error field with original values
-                    # set fallback value to None
-                    self.store['_e'].update({key: value})
-                    value = None
-                # FIXME: we should run this after all raw field data
-                # has been added to the store first so that we can
-                # create variants based on the entire obj, not just
-                # the value currently in the store at this time
-                self._add_variants(key=key, value=value, schema=schema)
-            self.store[key] = value
+            self._setitem_no_rehash(key, value)
         if re_hash:
             self._re_hash()
 
