@@ -312,10 +312,9 @@ class SQLAlchemyProxy(object):
                      alias=None, distinct=None, limit=None, sort=None,
                      descending=None):
         _table = self.get_table(table, except_=True)
-        parser = parse.SQLAlchemyMQLParser(_table)
-        query = parser.parse(query=query, date=date,
-                             fields=fields, distinct=distinct,
-                             alias=alias)
+        query = parse.parse(_table, query=query, date=date,
+                            fields=fields, distinct=distinct,
+                            alias=alias)
         if sort:
             order_by = parse.parse_fields(fields=sort)[0]
             if descending:

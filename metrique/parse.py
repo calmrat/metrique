@@ -19,7 +19,7 @@ except ImportError as e:
     HAS_SQLALCHEMY = False
 
 
-from metrique.utils import ts2dt, dt2ts, is_true
+from metrique.utils import ts2dt, dt2ts
 
 
 def parse_fields(fields, as_dict=False):
@@ -71,9 +71,6 @@ def date_range(date, func='date'):
     on the left and ends on the date on the right.
     ie, from date to date.
     '''
-    # FIXME: should "before" really include (<=) the target date?
-    # eg, ~2001-01-01 currently means "up to and INCLUDING 2001-01-01"
-    # shouldn't it just mean 'up to' (<)?
     if isinstance(date, basestring):
         date = date.strip()
     if not date:
@@ -81,10 +78,9 @@ def date_range(date, func='date'):
     if date == '~':
         return ''
 
-    _b4 = '_start <= %s("%s")'
-    before = lambda d: _b4 % (func, ts2dt(d) if d else None)
-    _after = '(_end >= %s("%s") or _end == None)'
-    after = lambda d: _after % (func, ts2dt(d) if d else None)
+    before = lambda d: '_start < %s("%s")' % (func, ts2dt(d) if d else None)
+    after = lambda d: '(_end >= %s("%s") or _end == None)' % \
+        (func, ts2dt(d) if d else None)
     split = date.split('~')
     # replace all occurances of 'T' with ' '
     # this is used for when datetime is passed in
@@ -93,8 +89,7 @@ def date_range(date, func='date'):
     # and drop all occurances of 'timezone' like substring
     # FIXME: need to adjust (to UTC) for the timezone info we're dropping!
     split = [re.sub('\+\d\d:\d\d', '', d.replace('T', ' ')) for d in split]
-    if len(split) == 1:
-        # 'dt'
+    if len(split) == 1:  # 'dt'
         return '%s and %s' % (before(split[0]), after(split[0]))
     elif split[0] in ['', None]:  # '~dt'
         return before(split[1])
@@ -104,18 +99,18 @@ def date_range(date, func='date'):
         return '%s and %s' % (before(split[1]), after(split[0]))
 
 
-class SQLAlchemyMQLParser(object):
+class MQLInterpreter(object):
     '''
-    Simple sytax parser that converts to SQL
+    Simple interpreter that interprets MQL using SQLAlchemy constructs.
     '''
     def __init__(self, table):
         '''
         :param sqlalchemy.Table table:
             the table definition
         '''
-        is_true(isinstance(table, Table),
-                'table must be instance of sqlalchemy.Table;'
-                ' got %s' % type(table))
+        if not isinstance(table, Table):
+            raise ValueError('table must be instance of sqlalchemy.Table;'
+                             ' got %s' % type(table))
         self.table = table
         self.scalars = []
         self.arrays = []
@@ -133,37 +128,9 @@ class SQLAlchemyMQLParser(object):
             else:
                 self.scalars.append(field.name)
 
-    def parse(self, query=None, date=None, fields=None,
-              distinct=False, limit=None, alias=None):
-        date = date_range(date)
-        if query and date:
-            query = '%s and %s' % (query, date)
-        elif date:
-            query = date
-        elif query:
-            pass
-        else:  # date is null, query is not
-            query = None
-
-        fields = parse_fields(fields=fields) or None
-        fields = fields if fields is not None else [self.table]
-
-        msg = 'parse(query=%s, fields=%s)' % (query, fields)
-        msg = re.sub(' in \[[^\]]+\]', ' in [...]', msg)
-        logger.debug(msg)
-        kwargs = {}
-        if query:
-            tree = ast.parse(query, mode='eval').body
-            query = self.p(tree)
-            kwargs['whereclause'] = query
-        if distinct:
-            kwargs['distinct'] = distinct
-        query = select(fields, from_obj=self.table, **kwargs)
-        if limit >= 1:
-            query = query.limit(limit)
-        if alias:
-            query = query.alias(alias)
-        return query
+    def parse(self, s):
+        tree = ast.parse(s, mode='eval').body
+        return self.p(tree)
 
     def p(self, node):
         try:
@@ -242,10 +209,7 @@ class SQLAlchemyMQLParser(object):
 
     def p_Name(self, node):
         if node.id in ['None', 'True', 'False']:
-            if node.id in ['None', 'False']:
-                return None
-            elif node.id == 'True':
-                return 'NOT NULL'
+            return eval(node.id)
         if node.id in self.scalars + self.arrays:
             return self.table.c[node.id]
         raise ValueError('Unknown field: %s' % node.id)
@@ -272,3 +236,36 @@ class SQLAlchemyMQLParser(object):
             return ('regex', self.p(node.args[0]))
         else:
             raise ValueError('Unknown function: %s' % node.func.id)
+
+
+def parse(table, query=None, date=None, fields=None,
+          distinct=False, limit=None, alias=None):
+    date = date_range(date)
+    if query and date:
+        query = '%s and %s' % (query, date)
+    elif date:
+        query = date
+    elif query:
+        pass
+    else:  # date is null, query is not
+        query = None
+
+    fields = parse_fields(fields=fields) or None
+    fields = fields if fields is not None else [table]
+
+    msg = 'parse(query=%s, fields=%s)' % (query, fields)
+    msg = re.sub(' in \[[^\]]+\]', ' in [...]', msg)
+    logger.debug(msg)
+    kwargs = {}
+    if query:
+        interpreter = MQLInterpreter(table)
+        query = interpreter.parse(query)
+        kwargs['whereclause'] = query
+    if distinct:
+        kwargs['distinct'] = distinct
+    query = select(fields, from_obj=table, **kwargs)
+    if limit >= 1:
+        query = query.limit(limit)
+    if alias:
+        query = query.alias(alias)
+    return query
