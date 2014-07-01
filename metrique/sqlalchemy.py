@@ -997,6 +997,13 @@ def schema2table(name, schema, Base=None, type_map=None, exclude_keys=None):
             ', '.join(['%s=%s' % (k, v) for k, v in s.__dict__.iteritems()
                       if k != '_sa_instance_state']))
 
+    # always exclude the following 'system' keys, as they are
+    # hard coded and should remain consistent across containers
+    exclude_keys = list(exclude_keys or [])
+    exclude_keys.append(['id', '_id', '_hash', '_start',
+                        '_end', '_v', '__v__', '_e'])
+    exclude_keys = sorted(set(exclude_keys))
+
     defaults = {
         '__tablename__': name,
         '__table_args__': ({'extend_existing': True}),
@@ -1011,15 +1018,13 @@ def schema2table(name, schema, Base=None, type_map=None, exclude_keys=None):
         '_v': Column(Integer, default=0, nullable=False),
         '__v__': Column(CoerceUTF8, default=__version__, nullable=False),
         '_e': Column(type_map[dict]),
-        # '__init__': __init__,
         '__repr__': __repr__,
     }
 
     for k, v in schema.items():
         if k in exclude_keys:
-            ekeys = list(exclude_keys)
             warnings.warn(
-                'non-null restricted keys detected %s; ignoring!' % ekeys)
+                'restricted schema key detected %s; ignoring!' % k)
             continue
         __type = v.get('type')
         if __type is None:
@@ -1029,15 +1034,15 @@ def schema2table(name, schema, Base=None, type_map=None, exclude_keys=None):
             _list_type = type_map[list]
             if _list_type is pg.ARRAY:
                 _list_type = _list_type(_type)
-            schema[k] = Column(_list_type)
+            defaults[k] = Column(_list_type)
         elif k == '_oid':
             # in case _oid is defined in the schema,
             # make sure we index it and it's unique
-            schema[k] = Column(_type, nullable=False, index=True,
-                               unique=False)
+            defaults[k] = Column(_type, nullable=False, index=True,
+                                 unique=False)
         else:
-            schema[k] = Column(_type, name=k)
-    defaults.update(schema)
+            defaults[k] = Column(_type, name=k)
 
+    logger.debug(" ... Table Schema Final: %s" % defaults)
     _table = type(str(name), (Base,), defaults)
     return _table
