@@ -232,7 +232,7 @@ def configure(options=None, defaults=None, config_file=None,
 
     sk = section_key
 
-    if not sk and (section_key or section_only):
+    if (section_key or section_only) and not (sk and sk in config):
         raise KeyError('section %s not set' % sk)
 
     # work only with the given section, if specified
