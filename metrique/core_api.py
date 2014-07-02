@@ -500,7 +500,8 @@ class MetriqueContainer(MutableMapping):
     def add(self, obj):
         schema = self.schema
         if not schema:
-            logger('add: no schema found, autogening based on object contents')
+            logger.debug(
+                'add: no schema found, autogening based on object contents')
             schema = autoschema(obj)
         is_defined(schema, 'schema not defined! got:%s' % self.schema)
         obj = self._prep_object(obj, schema)
