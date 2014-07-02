@@ -37,6 +37,8 @@ from metrique.utils import batch_gen, configure, debug_setup, ts2dt
 from metrique.utils import dt2ts, is_array
 
 
+# FIXME: pass in workers=1 and call standard *get* func rather than
+# private _*get*?
 def get_full_history(cube, oids, flush=False, cube_name=None,
                      config=None, config_file=None, config_key=None,
                      container=None, container_config=None,

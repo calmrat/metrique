@@ -75,14 +75,14 @@ from getpass import getuser
 import logging
 logger = logging.getLogger('metrique')
 
-from copy import copy
+from copy import copy, deepcopy
 from inspect import isclass
 import os
 
 from time import time
 
 from metrique.utils import get_cube, load_config, configure
-from metrique.utils import debug_setup, is_true, is_defined
+from metrique.utils import debug_setup, is_true
 from metrique.utils import filename_append
 
 ETC_DIR = os.environ.get('METRIQUE_ETC')
@@ -142,7 +142,7 @@ class Metrique(object):
     _container_cls = None
     _proxy = None
     _proxy_cls = None
-    _schema_keys = ('type', 'container', 'convert', 'variants')
+    _schema_valid_keys = ('type', 'container', 'convert', 'variants')
     _schema = None
     __metaclass__ = MetriqueFactory
 
@@ -239,15 +239,12 @@ class Metrique(object):
                                      Metrique.container_config_key)
         container_config = dict(container_config or {})
         container_config.setdefault('name', self.name)
-        schema = schema or self.schema
-        container_config.setdefault('schema', schema)
         container_config.setdefault('config_file', self.config_file)
         self.config[self.container_config_key].update(container_config)
 
         self.proxy_config_key = proxy_config_key or Metrique.proxy_config_key
         proxy_config = dict(proxy_config or {})
         proxy_config.setdefault('table', self.name)
-        proxy_config.setdefault('schema', schema)
         proxy_config.setdefault('config_file', self.config_file)
         self.config.setdefault(self.proxy_config_key, {}).update(proxy_config)
 
@@ -260,6 +257,9 @@ class Metrique(object):
         if self._proxy_cls is None:
             from metrique.sqlalchemy import SQLAlchemyProxy
             self._proxy_cls = SQLAlchemyProxy
+
+        self._schema = schema
+
 
     @property
     def container(self):
@@ -283,6 +283,8 @@ class Metrique(object):
 
     def container_init(self, value=None, **kwargs):
         config = self.container_config
+        # initiate container with current schema
+        config['schema'] = self.schema
         # don't pass 'proxy' config section as kwarg, but rather as
         # proxy_config kwarg
         config['proxy_config'] = config.get(self.proxy_config_key)
@@ -386,18 +388,24 @@ class Metrique(object):
         return self._proxy
 
     @property
-    def schema(self, except_=False):
+    def schema(self):
         if not self._schema:
             # schema (and more) might be defined within self.fields attr
-            _schema = dict(getattr(self, 'fields') or {})
-            # in the case we derived our schema from 'fields' attr,
-            # but we must **filter out** all invalid schema keys
-            schema = {}
-            for field, meta in _schema.iteritems():
-                for k, v in meta.iteritems():
-                    schema.setdefault(field, {})
-                    if k in self._schema_keys:
-                        schema[field][k] = v
-            except_ and is_defined(schema, 'schema not defined!')
-            self._schema = dict(_schema)
+            schema = getattr(self, 'fields')
+            # otherwise, the container itself might have a schema defined,
+            # assuming there are values already in the container store
+            if not schema:
+                schema = self.container.schema
+            # filter out invalid schema keys (eg, if derived from .fields)
+            schema = self._schema_filter(schema)
+            self._schema = schema
         return self._schema
+
+    def _schema_filter(self, schema):
+        # remove all schema illegal meta keys
+        schema = deepcopy(schema)
+        for field, meta in schema.iteritems():
+            for k in meta.keys():
+                if k not in self._schema_valid_keys:
+                    del schema[field][k]
+        return dict(schema)

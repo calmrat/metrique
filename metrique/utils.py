@@ -452,6 +452,8 @@ def file_is_empty(path, remove=False, msg=None):
 
 def filename_append(orig_filename, append_str):
     is_defined(orig_filename, 'filename must be defined!')
+    # make sure we don't duplicate the append str
+    orig_filename = re.sub(append_str, '', orig_filename)
     name, ext = os.path.splitext(orig_filename)
     return '%s%s%s' % (name, append_str, ext)
 
