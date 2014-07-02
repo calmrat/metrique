@@ -92,7 +92,7 @@ try:
                            ensure_ascii=False))
 
         def process_result_value(self, value, dialect):
-            return {} if value is None else json.loads(value)
+            return None if value is None else json.loads(value)
 
         def python_type(self):
             return dict
@@ -242,6 +242,12 @@ class SQLAlchemyProxy(object):
 
     def _apply_default_fields(self, fields):
         fields = parse.parse_fields(fields)
+        if not fields:
+            # only add default fields if other fields
+            # already set; if not fields are set, we
+            # have '~' case and default fields are already
+            # included
+            return fields
         default_fields = self.config.get('default_fields')
         return fields + [f for f in default_fields if f not in fields]
 
@@ -715,12 +721,13 @@ class SQLAlchemyProxy(object):
     def find(self, query=None, fields=None, date=None, sort=None,
              descending=False, one=False, raw=False, limit=None,
              as_cursor=False, scalar=False, table=None,
-             default_fields=False):
+             default_fields=True):
         table = self.get_table(table)
         limit = limit if limit and limit >= 1 else 0
-        if default_fields:
-            fields = self._apply_default_fields(fields)
         fields = parse.parse_fields(fields)
+        if default_fields:
+            # force default_fields if we will return back Result (non-raw)
+            fields = self._apply_default_fields(fields)
         query = self._parse_query(table, query=query, fields=fields,
                                   date=date, limit=limit, sort=sort,
                                   descending=descending)
@@ -751,13 +758,15 @@ class SQLAlchemyProxy(object):
 
         :param field: field name to query
         '''
+        field = field if is_array(field) else [field]
         table = self.get_table(table, except_=False)
         if table is None:
             last = None
         else:
             is_defined(field, 'field must be defined!')
             last = self.find(table=table, fields=field, scalar=True,
-                             sort=field, limit=1, descending=True, date='~')
+                             sort=field, limit=1, descending=True,
+                             date='~', default_fields=False)
         logger.debug("last %s.%s: %s" % (table, field, last))
         return last
 

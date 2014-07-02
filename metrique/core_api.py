@@ -57,7 +57,7 @@ class MetriqueObject(MutableMapping):
     HASH_EXCLUDE_KEYS = tuple(HASH_EXCLUDE_KEYS)
 
     def __init__(self, _oid, _id=None, _hash=None, _start=None, _end=None,
-                 _e=None, _v=None, id=None, _schema=None, **kwargs):
+                 _e=None, _v=None, id=None, **kwargs):
         is_defined(_oid, "_oid must be defined!")
         # NOTE: we completely ignore incoming 'id' keys!
         # id is RESERVED and ALWAYS expected to be 'autoincrement'
@@ -76,9 +76,8 @@ class MetriqueObject(MutableMapping):
             '_end': _end,
             '_v': _v or self._VERSION,
             '__v__': __version__,
-            '_e': _e,
+            '_e': _e or {},
         }
-        self._schema = copy(_schema or {})
         self.update(kwargs)
 
     def __getitem__(self, key):
@@ -97,26 +96,13 @@ class MetriqueObject(MutableMapping):
             return
         elif key in ('_end', '_start'):
             value = dt2ts(value)
-        elif key == '_e':  # _e is expected to be dict or None
-            value = None if not value else dict(value)
+        elif key == '_e':  # _e is expected to be dict
+            value = dict(value) if is_defined(value) else {}
         else:
-            schema = self._schema.get(key) or {}
-            try:
-                value = self._prep_value(value, schema=schema)
-            except Exception as e:
-                value = to_encoding(value)
-                self.store['_e'] = self.store['_e'] or {}
-                msg = 'prep(key=%s, value=%s) failed: %s' % (key, value, e)
-                logger.error(msg)
-                # set error field with original values
-                # set fallback value to None
-                self.store['_e'].update({key: value})
-                value = None
-            # FIXME: we should run this after all raw field data
-            # has been added to the store first so that we can
-            # create variants based on the entire obj, not just
-            # the value currently in the store at this time
-            self._add_variants(key=key, value=value, schema=schema)
+            pass
+        # FIXME: do we want to normalize here to None?
+        # or leave empty lists/dicts as-is?
+        #self.store[key] = None if is_empty(value) else value
         self.store[key] = value
 
     def __delitem__(self, key):
@@ -193,124 +179,11 @@ class MetriqueObject(MutableMapping):
             [store.pop(key, None) for key in pop]
         return store
 
-    def _normalize_container(self, value, schema):
-        container = schema.get('container')
-        _is_array = is_array(value, except_=False)
-        if container and not _is_array:
-            # NORMALIZE to empty list []
-            return [value] if value else []
-        elif not container and _is_array:
-            raise ValueError(
-                "expected single value, got list (%s)" % value)
-        else:
-            return value
-
-    def _unwrap(self, value):
-        if type(value) is buffer:
-            # unwrap/convert the aggregated string 'buffer'
-            # objects to string
-            value = to_encoding(value)
-            # FIXME: this might cause issues if the buffered
-            # text has " quotes...
-            value = value.replace('"', '').strip()
-            if not value:
-                value = None
-            else:
-                value = value.split('\n')
-        return value
-
-    def _convert(self, value, schema=None):
-        schema = schema or {}
-        convert = schema.get('convert')
-        container = schema.get('container')
-        try:
-            if value is None:
-                return None
-            elif convert and container:
-                value = map(convert, value)
-            elif convert:
-                value = convert(value)
-            else:
-                pass
-        except Exception:
-            logger.error("convert Failed: %s(value=%s, container=%s)" % (
-                convert.__name__, value, container))
-            raise
-        return value
-
-    def _prep_value(self, value, schema):
-        value = self._unwrap(value)
-        value = self._normalize_container(value, schema)
-        value = self._convert(value, schema)
-        value = self._typecast(value, schema)
-        return value
-
-    def _typecast(self, value, schema):
-        _type = schema.get('type')
-        container = schema.get('container')
-        if container:
-            value = self._type_container(value, _type)
-        else:
-            value = self._type_single(value, _type)
-        return value
-
-    def _type_container(self, value, _type):
-        ' apply type to all values in the list '
-        if value is None:
-            # normalize null containers to empty list
-            return []
-        elif not is_array(value, except_=False):
-            raise ValueError("expected list type, got: %s" % type(value))
-        else:
-            return sorted(self._type_single(item, _type) for item in value)
-
-    def _type_single(self, value, _type):
-        ' apply type to the single value '
-        if is_null(value, except_=False):
-            value = None
-        elif _type in [None, NoneType]:
-            # don't convert null values
-            # default type is the original type if none set
-            pass
-        elif is_empty(value, except_=False):
-            # fixme, rather leave as "empty" type? eg, list(), int(), etc.
-            value = None
-        elif isinstance(value, _type):  # or values already of correct type
-            # normalize all dates to epochs
-            value = dt2ts(value) if _type in [datetime, date] else value
-        else:
-            if _type in [datetime, date]:
-                # normalize all dates to epochs
-                value = dt2ts(value)
-            elif _type in [unicode, str]:
-                # make sure all string types are properly unicoded
-                value = to_encoding(value)
-            else:
-                try:
-                    value = _type(value)
-                except Exception:
-                    value = to_encoding(value)
-                    logger.error("typecast failed: %s(value=%s)" % (
-                        _type.__name__, value))
-                    raise
-        return value
-
     def update(self, obj, re_hash=True):
         for key, value in obj.iteritems():
             self._setitem_no_rehash(key, value)
         if re_hash:
             self._re_hash()
-
-    def _add_variants(self, key, value, schema):
-        ''' also possible to define some function that takes
-            current value and creates a new value from it
-        '''
-        variants = schema.get('variants')
-        if variants:
-            for _key, func in variants.iteritems():
-                _value = func(value, self.store)
-                self.update({_key: _value}, re_hash=False)
-        return
 
 
 # FIXME: all objects should have the SAME keys;
@@ -403,10 +276,11 @@ class MetriqueContainer(MutableMapping):
         self.version = (self.config.get('version') or
                         MetriqueContainer.version)
 
+        schema = self.schema
         proxy_config = dict(proxy_config or {})
         proxy_config.setdefault('db', db)
         proxy_config.setdefault('table', self.name)
-        proxy_config.setdefault('schema', self.schema)
+        proxy_config.setdefault('schema', schema)
         proxy_config.setdefault('config_file', self.config_file)
         self.config.setdefault(self.proxy_config_key, {}).update(proxy_config)
 
@@ -424,21 +298,8 @@ class MetriqueContainer(MutableMapping):
 
         # get current state of schema; will be config passed in value
         # or autogenerated based on current container contents otherwise
-        self.config['schema'] = self.schema
+        self.config['schema'] = schema
         self._schema_generated = is_defined(self.config['schema'])
-
-    def _update(self, objects):
-        if objects is None:
-            pass
-        elif is_array(objects, except_=False):
-            [self.add(x) for x in tuple(objects)]
-        elif isinstance(objects, (dict, MutableMapping)):
-            self.update(objects)
-        elif isinstance(objects, MetriqueContainer):
-            [self.add(x) for x in objects.values()]
-        else:
-            raise ValueError(
-                "objs must be None, a list, tuple, dict or MetriqueContainer")
 
     def __getitem__(self, key):
         if isinstance(key, slice):
@@ -472,17 +333,16 @@ class MetriqueContainer(MutableMapping):
     def __repr__(self):
         return repr(self.store)
 
-    def _encode(self, obj):
-        if isinstance(obj, self._object_cls):
-            pass
-        elif isinstance(obj, (Mapping)):
-            if self.version > obj.get('_v', 0):
-                obj['_v'] = self.version
-            obj = self._object_cls(_schema=self.schema, **obj)
-        else:
-            raise TypeError(
-                "object values must be dict-like; got %s" % type(obj))
-        return obj
+    def _add_variants(self, key, value, schema):
+        ''' also possible to define some function that takes
+            current value and creates a new value from it
+        '''
+        variants = schema.get('variants')
+        if variants:
+            for _key, func in variants.iteritems():
+                _value = func(value, self.store)
+                self.update({_key: _value}, re_hash=False)
+        return
 
     @property
     def _exists(self):
@@ -502,10 +362,146 @@ class MetriqueContainer(MutableMapping):
                                        fields=fields, date=date, alias=alias,
                                        distinct=distinct, limit=limit)
 
+    def _normalize_container(self, value, schema):
+        container = schema.get('container') or is_array(value)
+        _is_array = is_array(value, except_=False)
+        if container and not _is_array:
+            # NORMALIZE to empty list []
+            return [value] if value else []
+        elif not container and _is_array:
+            raise ValueError(
+                "expected single value, got list (%s)" % value)
+        else:
+            return value
+
+    def _unwrap(self, value):
+        if type(value) is buffer:
+            # unwrap/convert the aggregated string 'buffer'
+            # objects to string
+            value = to_encoding(value)
+            # FIXME: this might cause issues if the buffered
+            # text has " quotes...
+            value = value.replace('"', '').strip()
+            if not value:
+                value = None
+            else:
+                value = value.split('\n')
+        return value
+
+    def _convert(self, value, schema=None):
+        schema = schema or {}
+        convert = schema.get('convert')
+        container = schema.get('container')
+        try:
+            if value is None:
+                return None
+            elif convert and container:
+                value = map(convert, value)
+            elif convert:
+                value = convert(value)
+            else:
+                pass
+        except Exception:
+            logger.error("convert Failed: %s(value=%s, container=%s)" % (
+                convert.__name__, value, container))
+            raise
+        return value
+
+    def _prep_object(self, obj, schema):
+        for key, value in obj.items():
+            _schema = schema.get(key) or {}
+            try:
+                obj[key] = self._prep_value(value, schema=_schema)
+            except Exception as e:
+                value = to_encoding(value)
+                obj.setdefault('_e', {})
+                msg = 'prep(key=%s, value=%s) failed: %s' % (key, value, e)
+                logger.error(msg)
+                # set error field with original values
+                # set fallback value to None
+                obj['_e'].update({key: value})
+                obj[key] = None
+            self._add_variants(key, value, _schema)
+        obj['_v'] = self.version
+        obj = self._object_cls(**obj)
+        return obj
+
+    def _prep_value(self, value, schema):
+        value = self._unwrap(value)
+        value = self._normalize_container(value, schema)
+        value = self._convert(value, schema)
+        value = self._typecast(value, schema)
+        return value
+
+    def _typecast(self, value, schema):
+        _type = schema.get('type')
+        container = schema.get('container')
+        if container:
+            value = self._type_container(value, _type)
+        else:
+            value = self._type_single(value, _type)
+        return value
+
+    def _type_container(self, value, _type):
+        ' apply type to all values in the list '
+        if value is None:
+            # normalize null containers to empty list
+            return []
+        elif not is_array(value, except_=False):
+            raise ValueError("expected list type, got: %s" % type(value))
+        else:
+            return sorted(self._type_single(item, _type) for item in value)
+
+    def _type_single(self, value, _type):
+        ' apply type to the single value '
+        if is_null(value, except_=False):
+            value = None
+        elif _type in [None, NoneType]:
+            # don't convert null values
+            # default type is the original type if none set
+            pass
+        elif is_empty(value, except_=False):
+            # fixme, rather leave as "empty" type? eg, list(), int(), etc.
+            value = None
+        elif isinstance(value, _type):  # or values already of correct type
+            # normalize all dates to epochs
+            value = dt2ts(value) if _type in [datetime, date] else value
+        else:
+            if _type in [datetime, date]:
+                # normalize all dates to epochs
+                value = dt2ts(value)
+            elif _type in [unicode, str]:
+                # make sure all string types are properly unicoded
+                value = to_encoding(value)
+            else:
+                try:
+                    value = _type(value)
+                except Exception:
+                    value = to_encoding(value)
+                    logger.error("typecast failed: %s(value=%s)" % (
+                        _type.__name__, value))
+                    raise
+        return value
+
+    def _update(self, objects):
+        if is_null(objects):
+            pass
+        elif is_array(objects, except_=False):
+            [self.add(x) for x in tuple(objects)]
+        elif isinstance(objects, Mapping):
+            self.update(objects)
+        elif isinstance(objects, MetriqueContainer):
+            self.update(objects.values())
+        else:
+            raise ValueError(
+                "objs must be None, a list, tuple, dict or MetriqueContainer")
+
     def add(self, obj):
-        obj = self._encode(obj)
-        _id = obj['_id']
-        self.store[_id] = obj
+        schema = self.schema or autoschema(obj)
+        obj = self._prep_object(obj, schema)
+        # objects are stored indexed by _id
+        self.store[obj['_id']] = obj
+        self._schema_generated = False
 
     def autotable(self):
         name = self.config.get('name')
@@ -571,7 +567,7 @@ class MetriqueContainer(MutableMapping):
                                default_fields=default_fields)
 
     def filter(self, where):
-        if not isinstance(where, (dict, MutableMapping)):
+        if not isinstance(where, Mapping):
             raise ValueError("where must be a dict")
         else:
             result = []
@@ -618,6 +614,8 @@ class MetriqueContainer(MutableMapping):
     def proxy(self):
         if self._proxy is None or isclass(self._proxy):
             self.proxy_init()
+        # make sure we aways have the current schema definition applied
+        self._proxy.config['schema'] = self.schema
         return self._proxy
 
     @property
@@ -627,10 +625,13 @@ class MetriqueContainer(MutableMapping):
 
     def proxy_init(self):
         is_defined(self.name, "name can not be null!")
+        config = self.proxy_config
+        # make sure we pass along the current schema definition
+        config['schema'] = self.schema
         if self._proxy is None:
             self._proxy = self._proxy_cls
         # else: _proxy is a proxy_cls
-        self._proxy = self._proxy(**self.proxy_config)
+        self._proxy = self._proxy(**config)
 
     def objects(self):
         return self.store.values()

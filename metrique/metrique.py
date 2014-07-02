@@ -260,7 +260,6 @@ class Metrique(object):
 
         self._schema = schema
 
-
     @property
     def container(self):
         if self._container is None or isclass(self._container):
@@ -284,7 +283,7 @@ class Metrique(object):
     def container_init(self, value=None, **kwargs):
         config = self.container_config
         # initiate container with current schema
-        config['schema'] = self.schema
+        config['schema'] = self._schema
         # don't pass 'proxy' config section as kwarg, but rather as
         # proxy_config kwarg
         config['proxy_config'] = config.get(self.proxy_config_key)

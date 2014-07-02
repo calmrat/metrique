@@ -95,6 +95,7 @@ NoneType = type(None)
 
 json_encoder = json.JSONEncoder()
 
+ZEROS = [0, 0.0, 0L]
 DEFAULT_PKGS = ['metrique.cubes']
 
 INVALID_USERNAME_RE = re.compile('[^a-zA-Z_]')
@@ -609,6 +610,9 @@ def is_defined(value, msg=None, except_=None):
 
 
 def is_empty(value, msg=None, except_=None):
+    '''
+    is defined, but null or empty like value
+    '''
     # 0, 0.0, 0L are also considered 'empty'
     if hasattr(value, 'empty'):
         # dataframes must check for .empty
@@ -616,6 +620,9 @@ def is_empty(value, msg=None, except_=None):
         # take the negative, since below we're
         # checking for cases where value 'is_null'
         value = not bool(value.empty)
+    elif value in ZEROS:
+        # will check for the negative below
+        value = True
     else:
         pass
     _is_null = is_null(value, except_=False)
@@ -630,8 +637,7 @@ def is_false(value, msg=None, except_=None):
 
 def is_null(value, msg=None, except_=None):
     '''
-    # 0 is 'null' but not the type of null we're
-    # interested in same with empty lists and such
+    ie, "is not defined"
     '''
     # dataframes, even if empty, are not considered null
     value = False if hasattr(value, 'empty') else value

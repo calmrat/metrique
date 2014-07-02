@@ -537,9 +537,10 @@ def test_is_empty():
     from metrique.utils import is_empty
     import pandas
     import numpy
-    empties = [None, '', 0.0, 0, 0L, {}, [], pandas.DataFrame()]
+    empties = [None, '', {}, [], pandas.DataFrame()]
     not_empties = ['hello', '  \t\n\t  ',
-                   -1, 1,
+                   0.0, 0, 0L,
+                   -1, 1, 1.0, 1L,
                    {'key': 'value'}, [1]]
     empties += [pandas.NaT, numpy.NaN]
     for x in empties:
@@ -599,8 +600,8 @@ def test_is_true():
 
 def test_is_defined():
     from metrique.utils import is_defined
-    defined = [-1, 1, 0.1, True, 'h']
-    not_defined = ['', 0, None, False, [], {}]
+    defined = [0, -1, 1, 0.1, False, True, 'h']
+    not_defined = ['', None, [], {}]
     for x in defined:
         true = is_defined(x, except_=False)
         print '%s is defined? %s' % (repr(x), true)

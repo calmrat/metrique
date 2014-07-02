@@ -24,9 +24,8 @@ from metrique.utils import ts2dt, dt2ts
 
 def parse_fields(fields, as_dict=False):
     _fields = {}
-    if fields in [None, False]:
-        _fields = {}
-    elif fields in ['~', True]:
+    if fields in ['~', None, False, True, {}, []]:
+        # all these signify 'all fields'
         _fields = {}
     elif isinstance(fields, dict):
         _fields.update(
@@ -78,7 +77,7 @@ def date_range(date, func='date'):
     if date == '~':
         return ''
 
-    before = lambda d: '_start < %s("%s")' % (func, ts2dt(d) if d else None)
+    before = lambda d: '_start <= %s("%s")' % (func, ts2dt(d) if d else None)
     after = lambda d: '(_end >= %s("%s") or _end == None)' % \
         (func, ts2dt(d) if d else None)
     split = date.split('~')
@@ -251,7 +250,7 @@ def parse(table, query=None, date=None, fields=None,
         query = None
 
     fields = parse_fields(fields=fields) or None
-    fields = fields if fields is not None else [table]
+    fields = fields if fields else [table]
 
     msg = 'parse(query=%s, fields=%s)' % (query, fields)
     msg = re.sub(' in \[[^\]]+\]', ' in [...]', msg)

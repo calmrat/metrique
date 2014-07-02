@@ -63,7 +63,9 @@ def test_date_range():
 
     _end_null = '_end == None'
     _all = ''
+    # date~ is from/including date...
     _after = '(_end >= date("%s") or %s)' % (dt, _end_null)
+    # ~date is up to and INCLUDING date...
     _before = '_start <= date("%s")' % dt
     _after_before = '%s and %s' % (_before, _after)
 

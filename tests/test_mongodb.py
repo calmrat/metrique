@@ -49,7 +49,8 @@ def test_mongodb():
     assert p.proxy.alive()
 
     # drop all dbs
-    [p.drop_db(_) for _ in p.proxy.database_names() if _ not in ['admin', 'local']]
+    [p.drop_db(_) for _ in p.proxy.database_names() if _ not in ['admin',
+                                                                 'local']]
 
     dbs = sorted(p.proxy.database_names())
     try:
@@ -99,6 +100,7 @@ def test_mongodb():
     p.insert([obj_2])
     assert p.count('_oid == 2', date=None) == 0
     assert p.count('_oid == 2', date='%s~' % _start) == 1
+    # update to and including date...
     assert p.count('_oid == 2', date='~%s' % _start) == 1
     assert p.count('_oid == 2', date='~') == 1
     assert p.count('_oid == 2', date='~%s' % _before) == 0
