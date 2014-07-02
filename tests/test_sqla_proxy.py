@@ -126,9 +126,7 @@ def db_tester(proxy):
     # should be four object versions in total at this point
     assert p.count(date='~') == 4
 
-    print '*'*100
     # last _oid should be 3
-    logger.warn('*'*100)
     assert p.get_last_field('_oid') == 3
     obj_3.update({'_oid': 0})
     print '... Update 2: %s' % obj_3
