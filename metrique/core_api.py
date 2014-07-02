@@ -94,13 +94,11 @@ class MetriqueObject(MutableMapping):
         if key in self.IMMUTABLE_OBJ_KEYS:
             warnings.warn(
                 'attempted update of immutable key detected: %s' % key)
-            continue
+            return
         elif key in ('_end', '_start'):
             value = dt2ts(value)
         elif key == '_e':  # _e is expected to be dict or None
             value = None if not value else dict(value)
-            is_true(isinstance(value, (dict, MutableMapping)),
-                    '_e must be dict, got %s' % type(value))
         else:
             schema = self._schema.get(key) or {}
             try:
