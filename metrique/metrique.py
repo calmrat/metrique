@@ -258,12 +258,15 @@ class Metrique(object):
             from metrique.sqlalchemy import SQLAlchemyProxy
             self._proxy_cls = SQLAlchemyProxy
 
+        # set initial schema definition override, if provided
         self._schema = schema
 
     @property
     def container(self):
         if self._container is None or isclass(self._container):
             self.container_init()
+        # make sure container always has the current schema
+        self._container.config['schema'] = self.schema
         return self._container
 
     @container.setter
@@ -282,8 +285,6 @@ class Metrique(object):
 
     def container_init(self, value=None, **kwargs):
         config = self.container_config
-        # initiate container with current schema
-        config['schema'] = self._schema
         # don't pass 'proxy' config section as kwarg, but rather as
         # proxy_config kwarg
         config['proxy_config'] = config.get(self.proxy_config_key)

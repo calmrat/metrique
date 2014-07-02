@@ -338,11 +338,12 @@ class MetriqueContainer(MutableMapping):
             current value and creates a new value from it
         '''
         variants = schema.get('variants')
+        obj = {}
         if variants:
             for _key, func in variants.iteritems():
                 _value = func(value, self.store)
-                self.update({_key: _value}, re_hash=False)
-        return
+                obj.update({_key: _value})
+        return obj
 
     @property
     def _exists(self):
@@ -411,7 +412,7 @@ class MetriqueContainer(MutableMapping):
         for key, value in obj.items():
             _schema = schema.get(key) or {}
             try:
-                obj[key] = self._prep_value(value, schema=_schema)
+                value = self._prep_value(value, schema=_schema)
             except Exception as e:
                 value = to_encoding(value)
                 obj.setdefault('_e', {})
@@ -420,8 +421,10 @@ class MetriqueContainer(MutableMapping):
                 # set error field with original values
                 # set fallback value to None
                 obj['_e'].update({key: value})
-                obj[key] = None
-            self._add_variants(key, value, _schema)
+                value = None
+            obj[key] = value
+            variants = self._add_variants(key, value, _schema)
+            obj.update(variants)
         obj['_v'] = self.version
         obj = self._object_cls(**obj)
         return obj
@@ -488,16 +491,18 @@ class MetriqueContainer(MutableMapping):
             pass
         elif is_array(objects, except_=False):
             [self.add(x) for x in tuple(objects)]
-        elif isinstance(objects, Mapping):
-            self.update(objects)
         elif isinstance(objects, MetriqueContainer):
-            self.update(objects.values())
+            [self.add(o) for o in objects.values()]
         else:
             raise ValueError(
                 "objs must be None, a list, tuple, dict or MetriqueContainer")
 
     def add(self, obj):
-        schema = self.schema or autoschema(obj)
+        schema = self.schema
+        if not schema:
+            logger('add: no schema found, autogening based on object contents')
+            schema = autoschema(obj)
+        is_defined(schema, 'schema not defined! got:%s' % self.schema)
         obj = self._prep_object(obj, schema)
         # objects are stored indexed by _id
         self.store[obj['_id']] = obj
