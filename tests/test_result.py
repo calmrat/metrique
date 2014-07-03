@@ -16,7 +16,7 @@ def test_init():
     else:
         assert False, "_start and _end must be defined..."
 
-    data = [{'_start': utcnow(), '_end': None, 'a': 1, 'b': 2}]
+    data = [{'_start': utcnow(), '_end': None, '_oid': 1, 'b': 2}]
     Result(data)
 
 
