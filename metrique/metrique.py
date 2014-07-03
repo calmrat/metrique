@@ -273,8 +273,8 @@ class Metrique(object):
         if self._container is None or isclass(self._container):
             self.container_init()
         # in case we haven't assigned schema, but the calling cube
-        # does have .fields attr, assign it as the schema...
-        if not self.container_config['schema'] and hasattr(self, 'fields'):
+        # does have non-null .fields attr, assign it as the schema...
+        if not self.container_config['schema'] and getattr(self, 'fields', 0):
             self._container.config['schema'] = getattr(self, 'fields')
         return self._container
 
