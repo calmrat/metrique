@@ -745,9 +745,7 @@ class SQLAlchemyProxy(object):
         else:
             rows = rows.fetchall()
         rows = [dict(r) for r in rows]
-        if not rows:
-            return None
-        elif raw:
+        if raw:
             return rows
         else:
             return Result(rows, date)

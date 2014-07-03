@@ -9,20 +9,6 @@ def test_init():
     from metrique.utils import utcnow
 
     try:
-        Result()
-    except ValueError:
-        pass
-    else:
-        assert False, "Can't init with null data"
-
-    try:
-        Result({})
-    except ValueError:
-        pass
-    else:
-        assert False, "Can't init with empty data"
-
-    try:
         data = [{'a': 1, 'b': 2}]
         Result(data)
     except ValueError:

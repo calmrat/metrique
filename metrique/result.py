@@ -48,7 +48,7 @@ except ImportError:
     DataFrame = object  # load as object, we'll fail at runtime
     logger.warn('pandas module is not installed')
 
-from metrique.utils import dt2ts, utcnow, ts2dt, is_empty
+from metrique.utils import dt2ts, utcnow, ts2dt
 
 
 def filtered(f):
@@ -80,11 +80,14 @@ class Result(DataFrame):
             raise RuntimeError("`pip install pandas` required")
         if not HAS_NUMPY:
             raise RuntimeError("`pip install numpy` required")
-        if is_empty(data, except_=False):
-            raise ValueError('data can not be empty!')
         super(Result, self).__init__(data)
-        if '_start' not in self or '_end' not in self:
-            raise ValueError('_start and _end must be defined')
+        if data is not None and len(data) and \
+                any([c not in self for c in ['_oid', '_start', '_end']]):
+            raise ValueError('_oid, _start and _end must be defined')
+        if data is None or not len(data):
+            # add the essential columns
+            for c in ['_oid', '_start', '_end']:
+                data[c] = []
         # The converts are here so that None is converted to NaT
         self.to_datetime('_start')
         self.to_datetime('_end')
