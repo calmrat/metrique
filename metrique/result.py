@@ -87,7 +87,7 @@ class Result(DataFrame):
         if data is None or not len(data):
             # add the essential columns
             for c in ['_oid', '_start', '_end']:
-                data[c] = []
+                self[c] = []
         # The converts are here so that None is converted to NaT
         self.to_datetime('_start')
         self.to_datetime('_end')
