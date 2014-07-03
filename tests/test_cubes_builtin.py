@@ -112,10 +112,10 @@ def test_load_json():
     # u'_oid': 28615, u'name': u'Roberts Z\u012aLE', u'url':
     # u'http://www.europarl.euro...rs/expert/committees/view.do?id=28615',
     # u'_v': 0, u'phone_bxl': u'+32 (0)2 28 45224', u'_end': None, u'_hash':
-    # u'c8c07016b6f3652a01869474d2b035f96d30bc0c', u'__v__': u'0.3.1-1a',
+    # u'823c4c5b9f7f7750f3d20a247d2d23540e7936b3', u'__v__': u'0.3.1-1a',
     # u'party': u'European Conservatives and Reformists', u'_e': {}, u'_id':
     # u'28615', u'email': None}
-    _hash = 'c8c07016b6f3652a01869474d2b035f96d30bc0c'
+    _hash = '823c4c5b9f7f7750f3d20a247d2d23540e7936b3'
     _filtered = m.objects.filter(where={'_oid': 28615})
     assert len(_filtered) == 1
     print 'Object: %s' % _filtered
@@ -162,9 +162,9 @@ def test_gitdata_commit():
     # u'tree': u'66406ded27ba129ad1639928b079b821ab416fed', u'_end': None,
     # u'signed_off_by': None, u'parents':
     # ['78b311d90e35eb36016a7f41e75657754dbe0784'], u'_hash':
-    # u'a60a7a52f74ae1f4de3587f2c475a84179cf2fed', u'__v__': u'0.3.1-1a',
+    # u'3f2c75a327315e29929b6dbdcc9be1c1390d27cd', u'__v__': u'0.3.1-1a',
     # u'_e': {}, u'_id': u'99dc1e5c4e3ab2c8ab5510e50a3edf64f9fcc705'}
-    _hash = 'a60a7a52f74ae1f4de3587f2c475a84179cf2fed'
+    _hash = '3f2c75a327315e29929b6dbdcc9be1c1390d27cd'
     _oid = '99dc1e5c4e3ab2c8ab5510e50a3edf64f9fcc705'
     _filtered = m.objects.filter(where={'_oid': _oid})
     assert len(_filtered) == 1
@@ -201,7 +201,9 @@ def test_osinfo_rpm():
     m = pyclient(cube=name)
     m.objects.drop()
 
+    print 'Getting RPM objects; might take a few seconds.'
     m.get_objects()
+    print ' ... done.'
     k = len(m.objects)
     assert k > 0
 

@@ -57,7 +57,6 @@ def test_api():
     ma = MetriqueObject(**a)
     mb = MetriqueObject(**b)
     objs_list = [a, b]
-    objs_dict = {'1': a, '2': b}
     r_objs_dict = {'1': ma, '2': mb}
 
     c = MetriqueContainer()
@@ -72,7 +71,6 @@ def test_api():
     assert c == {}
     assert MetriqueContainer(objects=c) == {}
     assert MetriqueContainer(objects=objs_list) == r_objs_dict
-    assert MetriqueContainer(objects=objs_dict) == r_objs_dict
     mc = MetriqueContainer(objects=objs_list)
     assert MetriqueContainer(objects=mc) == r_objs_dict
 

@@ -143,7 +143,6 @@ class Metrique(object):
     _proxy = None
     _proxy_cls = None
     _schema_valid_keys = ('type', 'container', 'convert', 'variants')
-    _schema = None
     __metaclass__ = MetriqueFactory
 
     def __init__(self, name=None, db=None, config_file=None,
@@ -235,11 +234,18 @@ class Metrique(object):
                     log_format=log_format, log2file=log2file,
                     log_dir=log_dir, log_file=log_file)
 
+        if not schema:
+            # schema (and more) might be defined within self.fields attr
+            schema = getattr(self, 'fields') or {}
+            # filter out invalid schema keys (eg, if derived from .fields)
+            schema = self._schema_filter(schema)
+
         self.container_config_key = (container_config_key or
                                      Metrique.container_config_key)
         container_config = dict(container_config or {})
         container_config.setdefault('name', self.name)
         container_config.setdefault('config_file', self.config_file)
+        container_config.setdefault('schema', schema)
         self.config[self.container_config_key].update(container_config)
 
         self.proxy_config_key = proxy_config_key or Metrique.proxy_config_key
@@ -258,15 +264,10 @@ class Metrique(object):
             from metrique.sqlalchemy import SQLAlchemyProxy
             self._proxy_cls = SQLAlchemyProxy
 
-        # set initial schema definition override, if provided
-        self._schema = schema
-
     @property
     def container(self):
         if self._container is None or isclass(self._container):
             self.container_init()
-        # make sure container always has the current schema
-        self._container.config['schema'] = self.schema
         return self._container
 
     @container.setter
@@ -386,20 +387,6 @@ class Metrique(object):
         is_true(isinstance(self._proxy, self._proxy_cls), msg)
         self._proxy.initialize()
         return self._proxy
-
-    @property
-    def schema(self):
-        if not self._schema:
-            # schema (and more) might be defined within self.fields attr
-            schema = getattr(self, 'fields')
-            # otherwise, the container itself might have a schema defined,
-            # assuming there are values already in the container store
-            if not schema:
-                schema = self.container.schema
-            # filter out invalid schema keys (eg, if derived from .fields)
-            schema = self._schema_filter(schema)
-            self._schema = schema
-        return self._schema
 
     def _schema_filter(self, schema):
         # remove all schema illegal meta keys
