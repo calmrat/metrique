@@ -183,12 +183,13 @@ class MQLInterpreter(object):
         # Eq, NotEq, Gt, GtE, Lt, LtE, In, NotIn
         if node.left.id in self.arrays:
             return self.arr_op_dict[op]((left, right))
-        elif isinstance(right, tuple) and right[0] == 'regex':
+        elif isinstance(right, tuple) and right[0] in ['regex', 'iregex']:
+            oper = "~" if right[0] == 'regex' else "~*"
             regex = right[1]
             if op == 'Eq':
-                return left.op("~")(regex)
+                return left.op(oper)(regex)
             if op == 'NotEq':
-                return left.op("!~")(regex)
+                return left.op("!" + oper)(regex)
             raise ValueError('Unsupported operation for regex: %s' % op)
         else:
             return self.op_dict[op]((left, right))
@@ -231,8 +232,8 @@ class MQLInterpreter(object):
                 # convert all datetimes to float epoch
                 node.args[0].s = dt2ts(node.args[0].s)
                 return self.p(node.args[0])
-        elif node.func.id == 'regex':
-            return ('regex', self.p(node.args[0]))
+        elif node.func.id in ['regex', 'iregex']:
+            return (node.func.id, self.p(node.args[0]))
         else:
             raise ValueError('Unknown function: %s' % node.func.id)
 
