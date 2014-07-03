@@ -206,11 +206,15 @@ class Metrique(object):
                         version=0,
                         workers=2)
 
-        # FIXME: update os.environ LOG_DIR, ETC_DIR, etc to config'd value
+        if not self.config:
+            self.config = {}
+        if not self.config.get(self.config_key):
+            self.config[self.config_key] = {}
 
+        # FIXME: update os.environ LOG_DIR, ETC_DIR, etc to config'd value
         # if config is passed in, set it, otherwise start
         # with class assigned default or empty dict
-        self.config = copy(config or Metrique.config or {})
+        self.config.update(copy(config or Metrique.config or {}))
         self.config_file = config_file or Metrique.config_file
         self.config_key = config_key or Metrique.config_key
         # load defaults + set args passed in
@@ -228,7 +232,7 @@ class Metrique(object):
         log_file = self.lconfig.get('log_file')
         if self.name:
             log_file = filename_append(log_file, '.%s' % self.name)
-            self.config[self.config_key]['log_file'] = log_file
+            self.lconfig['log_file'] = log_file
 
         debug_setup(logger='metrique', level=level, log2stdout=log2stdout,
                     log_format=log_format, log2file=log2file,
@@ -268,6 +272,10 @@ class Metrique(object):
     def container(self):
         if self._container is None or isclass(self._container):
             self.container_init()
+        # in case we haven't assigned schema, but the calling cube
+        # does have .fields attr, assign it as the schema...
+        if not self.container_config['schema'] and hasattr(self, 'fields'):
+            self._container.config['schema'] = getattr(self, 'fields')
         return self._container
 
     @container.setter
@@ -345,10 +353,7 @@ class Metrique(object):
 
     @property
     def lconfig(self):
-        if self.config:
-            return self.config.get(self.config_key) or {}
-        else:
-            return {}
+        return self.config[self.config_key]
 
     def load_config(self, path):
         return load_config(path)
