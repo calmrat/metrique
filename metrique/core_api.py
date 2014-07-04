@@ -654,6 +654,7 @@ class MetriqueContainer(MutableMapping):
                                   alias='anon_x', distinct=True)
         ret = [r[0] for r in self.proxy.session_auto.execute(query)]
         if ret and isinstance(ret[0], list):
+            ret = map(lambda v: v or [], ret)
             ret = reduce(add, ret, [])
         return sorted(set(ret))
 
