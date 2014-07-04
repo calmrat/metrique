@@ -363,16 +363,12 @@ class MongoDBProxy(object):
         result = find(spec, fields=fields, sort=sort, explain=explain,
                       skip=skip, limit=limit)
 
-        if one or explain or as_cursor:
-            return result
-        result = list(result)
-        if not result:
-            return None
         if merge_versions:
             result = self._merge_versions(result)
-        if raw:
+        if one or explain or as_cursor or raw:
             return result
         else:
+            result = list(result)
             return Result(result, date)
 
     def get_last_field(self, field,  collection=None):
