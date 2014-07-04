@@ -254,7 +254,7 @@ def parse(table, query=None, date=None, fields=None,
     fields = fields if fields else [table]
 
     msg = 'parse(query=%s, fields=%s)' % (query, fields)
-    msg = re.sub(' in \[[^\]]+\]', ' in [...]', msg)
+    #msg = re.sub(' in \[[^\]]+\]', ' in [...]', msg)
     logger.debug(msg)
     kwargs = {}
     if query:

@@ -653,7 +653,7 @@ class SQLAlchemyProxy(object):
             query = '_oid in %s' % list(fringe)
             docs = self.find(table=table, query=query, fields=[field],
                              date=date, raw=True)
-            fringe = {id for doc in docs for oid in doc[field]
+            fringe = {oid for doc in docs for oid in doc[field]
                       if oid not in checked}
             checked |= fringe
             loop_k += 1
