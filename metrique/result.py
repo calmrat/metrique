@@ -5,14 +5,14 @@
 
 '''
 metrique.result
-~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~
 
 This module contains a Pandas DataFrame wrapper and
 additional Pandas object helper functions which is
 used to load and manipulate cube objects.
 '''
 
-from __future__ import unicode_literals
+from __future__ import unicode_literals, absolute_import
 
 import logging
 logger = logging.getLogger('metrique')
@@ -29,10 +29,13 @@ from datetime import timedelta
 
 try:
     import numpy as np
+    NUMPY_NUMERICAL = [np.float16, np.float32, np.float64, np.float128,
+                       np.int8, np.int16, np.int32, np.int64]
     HAS_NUMPY = True
 except ImportError:
-    HAS_NUMPY = False
     logger.warn('numpy module is not installed')
+    NUMPY_NUMERICAL = []
+    HAS_NUMPY = False
 
 try:
     from pandas import DataFrame, Series
@@ -46,9 +49,6 @@ except ImportError:
     logger.warn('pandas module is not installed')
 
 from metrique.utils import dt2ts, utcnow, ts2dt
-
-NUMPY_NUMERICAL = [np.float16, np.float32, np.float64, np.float128,
-                   np.int8, np.int16, np.int32, np.int64]
 
 
 def filtered(f):
@@ -81,6 +81,13 @@ class Result(DataFrame):
         if not HAS_NUMPY:
             raise RuntimeError("`pip install numpy` required")
         super(Result, self).__init__(data)
+        if data is not None and len(data) and \
+                any([c not in self for c in ['_oid', '_start', '_end']]):
+            raise ValueError('_oid, _start and _end must be defined')
+        if data is None or not len(data):
+            # add the essential columns
+            for c in ['_oid', '_start', '_end']:
+                self[c] = []
         # The converts are here so that None is converted to NaT
         self.to_datetime('_start')
         self.to_datetime('_end')
@@ -298,7 +305,7 @@ class Result(DataFrame):
 
     def persistent_oid_counts(self, dates):
         '''
-        Counts have many objects (identified by their oids) existed before
+        Counts how many objects (identified by their oids) existed before
         or on a given date.
 
         :param dates: list of the dates the count should be computed.

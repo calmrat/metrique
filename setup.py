@@ -31,20 +31,25 @@ __requires__ = [
     'anyconfig',
     'decorator',
     'lockfile',
-    'pandas (>=0.13.0)',
+    # bug when installing numpy as dep;
+    # https://github.com/numpy/numpy/issues/2434
+    # install manually with metrique.py deploy or `pip install pandas`
+    #'pandas (>=0.13.0)',
     'python_dateutil',
     'pytz'
     'simplejson',
+    'sqlalchemy (>=0.9.4)',
     'virtualenv (>=1.11)',
 ]
 __irequires__ = [
     'anyconfig',
     'decorator',
     'lockfile',
-    'pandas>=0.13.0',
+    #'pandas>=0.13.0',
     'python_dateutil',
     'pytz',
     'simplejson',
+    'sqlalchemy>=0.9.4',
     'virtualenv>=1.11',
 ]
 pip_src = 'https://pypi.python.org/packages/source'
@@ -53,7 +58,7 @@ __deplinks__ = []
 with open('README.rst') as _file:
     readme = _file.read()
 
-github = 'https://github.com/drpoovilleorg/metrique'
+github = 'https://github.com/kejbaly2/metrique'
 download_url = '%s/archive/master.zip' % github
 
 default_setup = dict(

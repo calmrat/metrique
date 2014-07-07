@@ -6,12 +6,13 @@ install:
   - "pip install coveralls virtualenv"
   - "pip install decorator"
   - "./metrique.py deploy --all"
+  - "./metrique.py firstboot metrique postgresql mongodb"
 services: 
   - mongodb
 addons:
     postgresql: "9.3"
 script: 
-  - "coverage run --source=metrique -m py.test tests"
+  - "coverage run --source=metrique -m py.test tests -m 'not perf'"
 #before_script:
 #  - psql -c 'CREATE USER admin;' -U postgres
 #  - psql -c 'create database admin WITH OWNER admin;' -U postgres

@@ -30,6 +30,11 @@ integration with popular python scientific computing libraries
 to faciliate creation and publication of a wide variety of analysis 
 and reports, large and small. 
 
+Backends currently supported are as follows:
+ * PostgreSQL (sqlalchemy)
+ * SQLite (sqlalchemy)
+ * MongoDB (pymongo)
+
 **Author:** "Chris Ward" <cward@redhat.com>
 **Sources:** https://github.com/kejbaly2/metrique
 
@@ -44,37 +49,38 @@ The instructions given below assume fedora rpm package names::
     sudo yum install openssl git gcc gcc-c++ gcc-gfortran
     sudo yum install freetype-devel libpng-devel # matplotlib deps
 
-    # optional
-    sudo yum install mongodb mongodb-server postgresql postgresql-devel
-
-    # additional python global dependencies, from pip
-    sudo pip install pip-accel  # faster cached pip installed
+    # optional MongoDB
+    sudo yum install postgresql postgresql-devel postgresql-server
+    # optional PostgreSQL
+    sudo yum install mongodb mongodb-server
 
     # make sure our core package managers are up2date
-    sudo pip-accel install -U distribute setuptools
+    sudo pip install -U distribute setuptools
 
     # our installation directory should always be a py virtualenv
-    sudo pip-accel install virtualenv
+    sudo pip install virtualenv
 
     # get metrique sources
     git clone https://github.com/kejbaly2/metrique.git
     cd metrique
 
-    # deploy metrique master branch into a virtual environment
+    # deploy metrique master branch into a virtual environment,
     # including dependencies. 
-    # NOTE this can take ~10 minutes to compile everything from source!
-    ./metrique.py -V ~/virtenv-metrique-master deploy --all
+    # NOTE this can take ~5-10 minutes to compile everything from source!
+    ./metrique.py -V ~/metrique.master deploy --all --develop
 
     # activate the virtual environment
     source ~/metrique.master/bin/activate
 
-    ./metrique.py firstboot sys
+    ./metrique.py firstboot metrique
 
-    # optional: run config default mongodb environment and start
-    ./metrique.py firstboot mongodb
-    ./metrique.py mongodb start
-    # optional: run config default postgresql environment and start
+    # optional: setup default postgresql environment and start
     ./metrique.py firstboot postgresql
+    # optional: edit ~/.metrique/postgresql_db/*.conf
     ./metrique.py postgresql start
 
-    # launch ipython, connect to a metriqued instance and start mining!
+    # optional: setup default mongodb environment and start
+    ./metrique.py firstboot mongodb
+    ./metrique.py mongodb start
+
+    # launch ipython and start mining!

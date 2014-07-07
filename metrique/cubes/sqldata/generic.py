@@ -11,15 +11,14 @@ This module contains the cube methods for extracting
 data from generic SQL data sources.
 '''
 
-from __future__ import unicode_literals
+from __future__ import unicode_literals, absolute_import
 
 import logging
 logger = logging.getLogger('metrique')
 
-from copy import deepcopy
+from copy import copy, deepcopy
 from collections import defaultdict
 from dateutil.parser import parse as dt_parse
-from functools import partial
 import os
 import pytz
 import re
@@ -31,22 +30,23 @@ except ImportError:
     HAS_JOBLIB = False
     logger.warn("joblib package not found!")
 
-from types import NoneType
 import warnings
 
 from metrique import pyclient
 from metrique.utils import batch_gen, configure, debug_setup, ts2dt
-from metrique.utils import is_null, to_encoding
+from metrique.utils import dt2ts, is_array
 
 
+# FIXME: pass in workers=1 and call standard *get* func rather than
+# private _*get*?
 def get_full_history(cube, oids, flush=False, cube_name=None,
                      config=None, config_file=None, config_key=None,
-                     container=None, container_kwargs=None,
-                     proxy=None, proxy_kwargs=None, **kwargs):
+                     container=None, container_config=None,
+                     proxy=None, proxy_config=None, **kwargs):
     m = pyclient(cube=cube, name=cube_name, config=config,
                  config_file=config_file, config_key=config_key,
-                 container=container, container_kwargs=container_kwargs,
-                 proxy=proxy, proxy_kwargs=proxy_kwargs, **kwargs)
+                 container=container, container_config=container_config,
+                 proxy=proxy, proxy_config=proxy_config, **kwargs)
     results = []
     batch_size = m.lconfig.get('batch_size')
     for batch in batch_gen(oids, batch_size):
@@ -57,12 +57,12 @@ def get_full_history(cube, oids, flush=False, cube_name=None,
 
 def get_objects(cube, oids, flush=False, cube_name=None,
                 config=None, config_file=None, config_key=None,
-                container=None, container_kwargs=None,
-                proxy=None, proxy_kwargs=None, **kwargs):
+                container=None, container_config=None,
+                proxy=None, proxy_config=None, **kwargs):
     m = pyclient(cube=cube, name=cube_name, config=config,
                  config_file=config_file, config_key=config_key,
-                 container=container, container_kwargs=container_kwargs,
-                 proxy=proxy, proxy_kwargs=proxy_kwargs, **kwargs)
+                 container=container, container_config=container_config,
+                 proxy=proxy, proxy_config=proxy_config, **kwargs)
     results = []
     batch_size = m.lconfig.get('batch_size')
     for batch in batch_gen(oids, batch_size):
@@ -91,33 +91,23 @@ class Generic(pyclient):
     :param sql_batch_size: how many objects to query at a time
     '''
     dialect = None
-    config_key = 'sqldata'
     fields = None
 
-    def __init__(self, vdb=None, retries=None, batch_size=None,
-                 worker_batch_size=None,
-                 config_key=None, config_file=None,
+    def __init__(self, retries=None, batch_size=None, worker_batch_size=None,
                  **kwargs):
-        super(Generic, self).__init__(config_file=config_file, **kwargs)
-        # FIXME: alias == self.schema
         self.fields = self.fields or {}
-        options = dict(vdb=vdb,
-                       retries=retries,
+        super(Generic, self).__init__(**kwargs)
+        options = dict(retries=retries,
                        batch_size=batch_size,
-                       worker_batch_size=worker_batch_size
-                       )
-        defaults = dict(vdb=None,
-                        retries=1,
-                        batch_size=1000,
-                        worker_batch_size=5000,
-                        )
-        self.config = self.config or {}
-        self.config_file = config_file or self.config_file
-        self.config_key = config_key or Generic.config_key
+                       worker_batch_size=worker_batch_size)
+        defaults = dict(retries=3,
+                        batch_size=999,
+                        worker_batch_size=5000)
         self.config = configure(options, defaults,
                                 config_file=self.config_file,
                                 section_key=self.config_key,
                                 update=self.config)
+
         self.retry_on_error = (Exception, )
         self._setup_inconsistency_log()
 
@@ -143,13 +133,16 @@ class Generic(pyclient):
         objects = self.objects.values()
         # dict, has format: oid: [(when, field, removed, added)]
         activities = self.activity_get(oids)
+        _objs = []
         for doc in objects:
             _oid = doc['_oid']
             acts = activities.setdefault(_oid, [])  # no activity default
             objs = self._activity_import_doc(doc, acts)
-            self.objects.extend(objs)
+            _objs.extend(objs)
+
+        self.objects.extend(_objs)
         if flush:
-            return self.objects.flush(autosnap=False, schema=self.fields)
+            return self.objects.flush(autosnap=False)
         else:
             return self.objects.values()
 
@@ -161,6 +154,7 @@ class Generic(pyclient):
         # We want to consider only activities that happend before time_doc
         # do not move this, because time_doc._start changes
         # time_doc['_start'] is a timestamp, whereas act[0] is a datetime
+        # we need to be sure to convert act[0] (when) to timestamp!
         td_start = time_doc['_start']
         activities = filter(lambda act: (act[0] < td_start and
                                          act[1] in time_doc), activities)
@@ -182,8 +176,6 @@ class Generic(pyclient):
                 last_doc['_start'] = when
             last_val = last_doc[field]
 
-            # FIXME: pass in field and call _type() within _activity_backwards?
-            # for added/removed?
             new_val, inconsistent = self._activity_backwards(new_doc[field],
                                                              removed, added)
             new_doc[field] = new_val
@@ -191,7 +183,7 @@ class Generic(pyclient):
             if inconsistent:
                 self._log_inconsistency(last_doc, last_val, field,
                                         removed, added, when)
-                new_doc.setdefault('_e', {})
+                new_doc['_e'] = {} if not new_doc.get('_e') else new_doc['_e']
                 # set curreupted field value to the the value that was added
                 # and continue processing as if that issue didn't exist
                 new_doc['_e'][field] = added
@@ -202,7 +194,8 @@ class Generic(pyclient):
             # set start to creation time if available
             last_doc = batch_updates[-1]
             if creation_field:
-                creation_ts = last_doc[creation_field]
+                # again, we expect _start to be epoch float...
+                creation_ts = dt2ts(last_doc[creation_field])
                 if creation_ts < last_doc['_start']:
                     last_doc['_start'] = creation_ts
                 elif len(batch_updates) == 1:
@@ -230,27 +223,12 @@ class Generic(pyclient):
             val = removed
         return val, inconsistent
 
-    def _convert(self, field, value):
-        convert = self.fields[field].get('convert')
-        container = self.fields[field].get('container')
-        if value is None:
-            return None
-        elif convert and container:
-            # FIXME: callers need to make convert STATIC (no self)
-            _convert = partial(convert)
-            value = map(_convert, value)
-        elif convert:
-            value = convert(value)
-        else:
-            value = value
-        return value
-
     def _delta_force(self, force=None, last_update=None, parse_timestamp=None):
         force = force or self.lconfig.get('force') or False
         oids = []
         _c = self.container
         cube_does_not_exist = not (hasattr(_c, '_exists') and _c._exists)
-        if isinstance(force, (list, tuple, set)):
+        if is_array(force):
             oids = list(force)
         elif not force:
             if self.lconfig.get('delta_new_ids', True):
@@ -307,12 +285,12 @@ class Generic(pyclient):
             else:
                 mtime = last_update
         else:
-            mtime = self.container.get_last_field('_start')
+            mtime = self.container.get_last_field(field='_start')
 
+        mtime = ts2dt(mtime)
         logger.debug("Last update mtime: %s" % mtime)
 
         if mtime:
-            mtime = ts2dt(mtime)
             if parse_timestamp is None:
                 parse_timestamp = self.lconfig.get('parse_timestamp', True)
             if parse_timestamp:
@@ -336,7 +314,7 @@ class Generic(pyclient):
             fieldmap = self._sql_fieldmap
         else:
             fieldmap = defaultdict(str)
-            fields = deepcopy(self.fields)
+            fields = copy(self.fields)
             for field, opts in fields.iteritems():
                 field_id = opts.get('what')
                 if field_id is not None:
@@ -345,9 +323,9 @@ class Generic(pyclient):
         return fieldmap
 
     def _generate_sql(self, _oids=None, sort=True):
-        db = self.lconfig.get('db')
+        db = self.lconfig.get('db_schema_name') or self.lconfig.get('db')
         _oid = self.lconfig.get('_oid')
-        if isinstance(_oid, (list, tuple)):
+        if is_array(_oid):
             _oid = _oid[0]  # get the db column, not the field alias
         table = self.lconfig.get('table')
 
@@ -388,7 +366,7 @@ class Generic(pyclient):
         :param last_update: manual override for 'changed since date'
         :param parse_timestamp: flag to convert timestamp timezones in-line
         '''
-        workers = self.gconfig.get('workers')
+        workers = self.lconfig.get('workers')
         # if we're using multiple workers, break the oids
         # according to worker batchsize, then each worker will
         # break the batch into smaller sql batch size batches
@@ -402,7 +380,7 @@ class Generic(pyclient):
 
         if HAS_JOBLIB and workers > 1:
             logger.debug(
-                'Getting Objects - Current Values (%s@%s)' % (
+                'Getting Objects [parallel]- Current Values (%s@%s)' % (
                     workers, w_batch_size))
             runner = Parallel(n_jobs=workers)
             func = delayed(get_objects)
@@ -416,9 +394,9 @@ class Generic(pyclient):
                     config_file=self.config_file,
                     config_key=self.config_key,
                     container=type(self.objects),
-                    container_kwargs=self._container_kwargs,
+                    container_config=self.container_config,
                     proxy=type(self.proxy),
-                    proxy_kwargs=self._proxy_kwargs)
+                    proxy_config=self.proxy_config)
                     for batch in batch_gen(oids, w_batch_size))
             # merge list of lists (batched) into single list
             result = [i for l in result for i in l]
@@ -427,37 +405,27 @@ class Generic(pyclient):
                 'Getting Objects - Current Values (%s@%s)' % (
                     workers, s_batch_size))
             result = []
-            for batch in batch_gen(oids, s_batch_size):
+            _s = 0
+            for i, batch in enumerate(batch_gen(oids, s_batch_size)):
+                _e = _s + s_batch_size
+                logger.debug('batch %s: %s-%s or %s' % (i, _s, _e, len(oids)))
                 _ = self._get_objects(oids=batch, flush=flush)
                 result.extend(_)
+                _s = _e
 
         if flush:
             return result
         else:
-            [self.objects.add(obj) for obj in result]
             return self
 
     def _get_objects(self, oids, flush=False):
-        retries = self.lconfig.get('retries') or 1
         sql = self._generate_sql(oids)
-        while retries > 0:
-            try:
-                objects = self._load_sql(sql)
-                break
-            except self.retry_on_error as e:
-                logger.error('Fetch Failed: %s' % e)
-                if retries <= 1:
-                    raise
-                else:
-                    retries -= 1
-        else:
-            raise RuntimeError(
-                "Failed to fetch any objects from %s!" % len(oids))
+        objects = self._load_sql(sql)
         # set _oid
         objects = self._prep_objects(objects)
-        [self.objects.add(o) for o in objects]
+        self.objects.extend(objects)
         if flush:
-            return self.objects.flush(autosnap=True, schema=self.fields)
+            return self.objects.flush(autosnap=True)
         else:
             return self.objects.values()
 
@@ -470,9 +438,9 @@ class Generic(pyclient):
         '''
         table = self.lconfig.get('table')
         _oid = self.lconfig.get('_oid')
-        if isinstance(_oid, (list, tuple)):
+        if is_array(_oid):
             _oid = _oid[0]  # get the db column, not the field alias
-        last_id = self.container.get_last_field('_oid')
+        last_id = self.container.get_last_field(field='_oid')
         ids = []
         if last_id:
             try:  # try to convert to integer... if not, assume unicode value
@@ -492,7 +460,7 @@ class Generic(pyclient):
         hash values, so we need to always remove all existing object
         states and import fresh
         '''
-        workers = self.gconfig.get('workers')
+        workers = self.lconfig.get('workers')
         w_batch_size = self.lconfig.get('worker_batch_size')
         s_batch_size = self.lconfig.get('batch_size')
         # determine which oids will we query
@@ -513,9 +481,9 @@ class Generic(pyclient):
                     config_file=self.config_file,
                     config_key=self.config_key,
                     container=type(self.objects),
-                    container_kwargs=self._container_kwargs,
+                    container_config=self.container_config,
                     proxy=type(self.proxy),
-                    proxy_kwargs=self._proxy_kwargs)
+                    proxy_config=self.proxy_config)
                     for batch in batch_gen(oids, w_batch_size))
             # merge list of lists (batched) into single list
             result = [i for l in result for i in l]
@@ -524,21 +492,26 @@ class Generic(pyclient):
                 'Getting Full History (%s@%s)' % (
                     workers, s_batch_size))
             result = []
-            for batch in batch_gen(oids, s_batch_size):
+            _s = 0
+            for i, batch in enumerate(batch_gen(oids, s_batch_size)):
+                _e = _s + s_batch_size
+                logger.debug('batch %s: %s-%s or %s' % (i, _s, _e, len(oids)))
                 _ = self._activity_get_objects(oids=batch, flush=flush)
                 result.extend(_)
+                _s = _e
 
         if flush:
             return result
         else:
-            [self.objects.add(obj) for obj in result]
             return self
 
     def _left_join(self, select_as, select_prop, join_prop, join_table,
                    on_col, on_db=None, on_table=None, join_db=None, **kwargs):
         on_table = on_table or self.lconfig.get('table')
-        on_db = on_db or self.lconfig.get('db')
-        join_db = join_db or self.lconfig.get('db')
+        on_db = (on_db or self.lconfig.get('db_schema_name') or
+                 self.lconfig.get('db'))
+        join_db = (join_db or self.lconfig.get('db_schema_name') or
+                   self.lconfig.get('db'))
         return dict(select='%s.%s' % (select_as, select_prop),
                     sql='LEFT JOIN %s.%s %s ON %s.%s = %s.%s.%s' % (
                         join_db, join_table, select_as, select_as, join_prop,
@@ -562,152 +535,24 @@ class Generic(pyclient):
         msg = m.format(**incon)
         self.log_inconsistency(msg)
 
-    def _load_sql(self, sql):
-        return self.proxy._load_sql(sql)
-
-    def _normalize_container(self, field, value):
-        container = self.fields[field].get('container')
-        is_list = isinstance(value, (list, tuple, set))
-        if container and not is_list:
-            # NORMALIZE to empty list []
-            return [value] if value else []
-        elif not container and is_list:
-            raise ValueError(
-                "Expected single value (%s), got list (%s)" % (
-                    field, value))
-        else:
-            return value
-
-    @staticmethod
-    def _prep_try(func, field, value):
-        error = {}
-        try:
-            value = func(field, value)
-        except Exception as e:
-            logger.error('%s(field=%s, value=%s) failed: %s' % (
-                func.__name__, field, value, e))
-            # set error field with original values
-            # set fallback value to None
-            error = {field: value}
-            value = None
-        return value, error
-
-    def _prep_object(self, obj):
-        fields = set(self.fields.keys())
-
-        for field, value in obj.iteritems():
-            error = {}
-            if field not in fields:
-                # skip over unexpected (meta) fields
-                continue
-            value = self._unwrap(field, value)
-            value = self._normalize_container(field, value)
-            value, error = self._prep_try(self._convert, field, value)
-            value, error = self._prep_try(self._typecast, field, value)
-            obj[field] = value
-        else:
-            obj.setdefault('_e', {}).update(error) if error else None
-
-        for field, value in obj.items():
-            # note: no iteritems because we're changing o as we loop
-            if field not in fields:
-                # skip over unexpected (meta) fields
-                continue
-            variants = self.fields[field].get('variants') or {}
-            for _field, func in variants.iteritems():
-                obj[_field] = func(obj)
-
-        _oid = self.lconfig.get('_oid')
-        if isinstance(_oid, (list, tuple)):
-            _oid = _oid[1]  # get the field name, not the actual db column
-        obj['_oid'] = obj[_oid]  # map _oid
-
-        return obj
+    def _load_sql(self, sql, retries=None):
+        retries = retries or self.lconfig.get('retries')
+        return self.proxy._load_sql(sql, retries=retries)
 
     def _prep_objects(self, objects):
+        _oid = self.lconfig.get('_oid')
+        if is_array(_oid):
+            _oid = _oid[1]  # get the field name, not the actual db column
         for i, obj in enumerate(objects):
-            try:
-                objects[i] = self._prep_object(obj)
-            except Exception as e:
-                logger.error('Failed to prep object: %s\n%s' % (e, obj))
-                raise
+            obj['_oid'] = obj[_oid]  # map _oid
+            objects[i] = obj
         return objects
 
-    @property
-    def proxy(self):
-        if not hasattr(self, '_sqldata_proxy'):
-            dialect = self.lconfig.get('dialect')
-            username = self.lconfig.get('username')
-            password = self.lconfig.get('password')
-            host = self.lconfig.get('host')
-            port = self.lconfig.get('port')
-            vdb = self.lconfig.get('vdb')
-            # url = 'dialect+driver://username:password@host:port/database'
-            engine = '%s://%s:%s@%s:%s/%s' % (
-                dialect, username, password, host, port, vdb
-            )
-            self._sqldata_proxy = self.sqlalchemy(engine=engine,
-                                                  **self.lconfig)
-        return self._sqldata_proxy
-
-    def _typecast(self, field, value):
-        _type = self.fields[field].get('type')
-        if self.fields[field].get('container'):
-            value = self._type_container(value, _type)
-        else:
-            value = self._type_single(value, _type)
-        return value
-
-    def _type_container(self, value, _type):
-        ' apply type to all values in the list '
-        if value is None:
-            # normalize null containers to empty list
-            return []
-        elif not isinstance(value, (list, tuple)):
-            raise ValueError("expected list type, got: %s" % type(value))
-        else:
-            return sorted(self._type_single(item, _type) for item in value)
-
-    def _type_single(self, value, _type):
-        ' apply type to the single value '
-        _type = NoneType if _type is None else _type
-        if value is None:  # don't convert null values
-            pass
-        elif is_null(value):
-            value = None
-        elif isinstance(value, _type):  # or values already of correct type
-            pass
-        elif _type is NoneType:
-            value = to_encoding(value)
-        else:
-            value = _type(value)
-            if isinstance(value, unicode):
-                value = to_encoding(value)
-            elif isinstance(value, str):
-                value = to_encoding(value)
-            else:
-                pass  # leave as-is
-        return value
-
-    def _unwrap(self, field, value):
-        if type(value) is buffer:
-            # unwrap/convert the aggregated string 'buffer'
-            # objects to string
-            value = unicode(str(value), 'utf8')
-            # FIXME: this might cause issues if the buffered
-            # text has " quotes...
-            value = value.replace('"', '').strip()
-            if not value:
-                value = None
-            else:
-                value = value.split('\n')
-        return value
-
     def _setup_inconsistency_log(self):
-        _log_file = self.gconfig.get('log_file').split('.log')[0]
+        _log_file = self.lconfig.get('log_file').split('.log')[0]
         basename = _log_file + '.inconsistencies'
         log_file = basename + '.log'
-        log_dir = self.gconfig.get('log_dir')
+        log_dir = self.lconfig.get('log_dir')
         log_file = os.path.join(log_dir, log_file)
 
         log_format = "%(message)s"
@@ -722,12 +567,13 @@ class Generic(pyclient):
         Query source database for a distinct list of oids.
         '''
         table = self.lconfig.get('table')
-        db = self.lconfig.get('db')
+        db = self.lconfig.get('db_schema_name') or self.lconfig.get('db')
         _oid = self.lconfig.get('_oid')
-        if isinstance(_oid, (list, tuple)):
+        if is_array(_oid):
             _oid = _oid[0]  # get the db column, not the field alias
         sql = 'SELECT DISTINCT %s.%s FROM %s.%s' % (table, _oid, db, table)
         if where:
             where = [where] if isinstance(where, basestring) else list(where)
             sql += ' WHERE %s' % ' OR '.join(where)
-        return sorted([r[_oid] for r in self._load_sql(sql)])
+        result = sorted([r[_oid] for r in self._load_sql(sql)])
+        return result

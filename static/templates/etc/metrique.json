@@ -3,7 +3,34 @@
         "debug": true,
         "log2file": true,
         "log2stdout": false,
-        "workers": 1
+        "workers": 2
+    },
+    "container": {
+     "proxy": {
+       "dialect": "sqlite",
+       "port": 5432,
+       "host": "127.0.0.1",
+       "host_": "%s",
+       "password": "%s",
+       "username": "admin",
+       "db": "admin"
+     },
+     "dialect": "sqlite",
+     "port": 5432,
+     "host": "127.0.0.1",
+     "host_": "%s",
+     "password": "%s",
+     "username": "admin",
+     "db": "admin"
+    },
+    "proxy": {
+      "dialect": "sqlite",
+      "port": 5432,
+      "host": "127.0.0.1",
+      "host_": "%s",
+      "password": "%s",
+      "username": "admin",
+      "db": "admin"
     },
     "mongodb": {
         "auth": false,
@@ -16,18 +43,9 @@
         "replica_set": "",
         "ssl": false,
         "ssl_certificate": "%s",
-        "tz_aware": true,
+        "tz_aware": false,
         "username": "admin",
         "write_concern": 0
-    },
-    "sqlalchemy": {
-        "engine": "postgresql",
-        "port": 5432,
-        "host": "127.0.0.1",
-        "host_": "%s",
-        "password": "%s",
-        "username": "admin",
-        "db": "admin"
     },
     "celery": {
         "BROKER_URL": "sqlite://:memory:",

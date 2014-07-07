@@ -1,5 +1,15 @@
 Release Notes
 =============
+0.3.1
+-----
+* data typecasting and normalization happens now at the container level
+* and a bunch of bug fixes
+* simplified, consistent object type/state checker functions added to utils
+* more tests!
+* default container backend is sqlite+sqlalchemy
+* updated and abstracted mql parser
+* from __future__ import unicode_literals, absolute_imports
+
 0.3.0
 -----
 * metriqued server dropped; metriquet -> github.com/kejbaly2/tornadohttp

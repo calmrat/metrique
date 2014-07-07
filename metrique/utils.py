@@ -5,13 +5,13 @@
 
 '''
 metrique.utils
-~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~
 
 This module contains utility functions shared between
-metrique sub-modules
+metrique sub-modules.
 '''
 
-from __future__ import unicode_literals
+from __future__ import unicode_literals, absolute_import
 
 import logging
 logger = logging.getLogger('metrique')
@@ -25,11 +25,11 @@ except ImportError:
     logger.warn('anyconfig module is not installed!')
 
 from calendar import timegm
-import collections
-from copy import deepcopy
+from collections import defaultdict, Mapping, OrderedDict
+from copy import copy
 import cPickle
 import cProfile as profiler
-from datetime import datetime
+from datetime import datetime, date
 try:
     from dateutil.parser import parse as dt_parse
     HAS_DATEUTIL = True
@@ -52,6 +52,7 @@ from hashlib import sha1
 from inspect import isfunction
 import itertools
 import os
+from pprint import pformat
 
 try:
     import pandas as pd
@@ -88,23 +89,69 @@ import sys
 import time
 import urllib
 
-from metrique.containers import SQLite3
-
-active_virtualenv = lambda: os.environ.get('VIRTUAL_ENV', '')
 env = os.environ
 pjoin = os.path.join
+NoneType = type(None)
 
 json_encoder = json.JSONEncoder()
 
+ZEROS = [0, 0.0, 0L]
 DEFAULT_PKGS = ['metrique.cubes']
 
-SHA1_HEXDIGEST = lambda o: sha1(repr(o)).hexdigest()
+INVALID_USERNAME_RE = re.compile('[^a-zA-Z_]')
 
+HOME_DIR = os.environ.get('METRIQUE_HOME')
+PREFIX_DIR = os.environ.get('METRIQUE_PREFIX')
 LOGS_DIR = os.environ.get('METRIQUE_LOGS')
 CACHE_DIR = os.environ.get('METRIQUE_CACHE')
 SRC_DIR = os.environ.get('METRIQUE_SRC')
 BACKUP_DIR = env.get('METRIQUE_BACKUP')
 STATIC_DIR = env.get('METRIQUE_STATIC')
+
+# FIXME: add tests for local_tz, autoschema and more...
+
+
+def active_virtualenv():
+    return os.environ.get('VIRTUAL_ENV', '')
+
+
+def autoschema(objects, fast=False, exclude_keys=None):
+    logger.debug('autoschema generation started... Fast: %s' % fast)
+    is_defined(objects, 'object samples can not be null')
+    objects = tuple(objects) if is_array(objects, except_=False) else [objects]
+    schema = defaultdict(dict)
+    exclude_keys = exclude_keys or []
+    for o in objects:
+        logger.debug('autoschema model object: %s' % o)
+        for k, v in o.iteritems():
+            schema_type = schema.get(k, {}).get('type')
+            if k in exclude_keys:
+                continue
+            elif schema_type not in [None, NoneType]:
+                # we already have this type
+                # FIXME: option to check rigerously all objects
+                # consistency; raise exception if values are of
+                # different type given same key, etc...
+                continue
+            else:
+                _type = type(v)
+                if is_array(_type, except_=False):
+                    schema[k]['container'] = True
+                    # FIXME: if the first object happens to be null
+                    # we auto set to UnicodeText type...
+                    # (default for type(None))
+                    # but this isn't always going to be accurate...
+                    if len(v) > 1:
+                        _t = type(v[0])
+                    else:
+                        _t = NoneType
+                    schema[k]['type'] = _t
+                else:
+                    schema[k]['type'] = _type
+        if fast is True:  # finish after first sample
+            break
+    logger.debug(' ... schema generated: %s' % schema)
+    return schema
 
 
 def backup(paths, saveas=None, ext=None):
@@ -125,6 +172,8 @@ def backup(paths, saveas=None, ext=None):
         raise RuntimeError('Install pigz or gzip!')
 
     saveas = '%s.%s' % (saveas, ext)
+    if not os.path.isabs(saveas):
+        saveas = os.path.join(CACHE_DIR, saveas)
     cmd = 'tar -c %s -f %s %s' % (ucp, saveas, paths)
     sys_call(cmd)
     assert os.path.exists(saveas)
@@ -179,14 +228,14 @@ def configure(options=None, defaults=None, config_file=None,
               section_key=None, update=None, section_only=False):
 
     config = load_config(config_file)
-    config = rupdate(config, deepcopy(update or {}))
+    config = rupdate(config, copy(update or {}))
 
-    opts = deepcopy(options or {})
-    defs = deepcopy(defaults or {})
+    opts = copy(options or {})
+    defs = copy(defaults or {})
 
     sk = section_key
 
-    if not sk and (section_key or section_only):
+    if (section_key or section_only) and not (sk and sk in config):
         raise KeyError('section %s not set' % sk)
 
     # work only with the given section, if specified
@@ -270,20 +319,6 @@ def csv2list(item, delim=',', map_=None):
     return str2list(item, delim=delim, map_=None)
 
 
-def str2list(item, delim=',', map_=None):
-    if isinstance(item, basestring):
-        items = item.split(delim)
-    elif isinstance(item, (list, tuple, set)):
-        items = map(unicode, list(item))
-    elif item is None:
-        items = []
-    else:
-        raise TypeError('Expected a csv string (or existing list)')
-    items = [s.strip() for s in items]
-    items = map(map_, items) if map_ else items
-    return items
-
-
 def cube_pkg_mod_cls(cube):
     '''
     Used to dynamically importing cube classes
@@ -342,17 +377,12 @@ def debug_setup(logger=None, level=None, log2file=None,
         * log_file (path)
     '''
     log2stdout = False if log2stdout is None else log2stdout
-    if log_format and isinstance(log_format, basestring):
-        log_format = logging.Formatter(log_format, "%Y%m%dT%H%M%S")
-    _log_format = "%(name)s.%(process)s:%(asctime)s:%(message)s"
-    _log_format = logging.Formatter(log_format, "%Y%m%dT%H%M%S")
+    _log_format = "%(levelname)s.%(name)s.%(process)s:%(asctime)s:%(message)s"
     log_format = log_format or _log_format
+    if isinstance(log_format, basestring):
+        log_format = logging.Formatter(log_format, "%Y%m%dT%H%M%S")
 
     log2file = True if log2file is None else log2file
-    log_file = log_file or 'metrique.log'
-    log_dir = log_dir or LOGS_DIR or ''
-    log_file = os.path.join(log_dir, log_file)
-
     logger = logger or 'metrique'
     if isinstance(logger, basestring):
         logger = logging.getLogger(logger)
@@ -360,7 +390,10 @@ def debug_setup(logger=None, level=None, log2file=None,
         logger = logger or logging.getLogger(logger)
     logger.propagate = 0
     logger.handlers = []
-    if log2file and log_file:
+    if log2file:
+        log_dir = log_dir or LOGS_DIR
+        log_file = log_file or 'metrique'
+        log_file = os.path.join(log_dir, log_file)
         if truncate:
             # clear the existing data before writing (truncate)
             open(log_file, 'w+').close()
@@ -380,23 +413,50 @@ def debug_setup(logger=None, level=None, log2file=None,
 def dt2ts(dt, drop_micro=False):
     ''' convert datetime objects to timestamp seconds (float) '''
     is_true(HAS_DATEUTIL, "`pip install python_dateutil` required")
-    # the equals check to 'NaT' is hack to avoid adding pandas as a dependency
-    if is_null(dt, except_=False):
-        return None
+    if is_empty(dt, except_=False):
+        ts = None
     elif isinstance(dt, (int, long, float)):  # its a ts already
-        ts = dt
+        ts = float(dt)
     elif isinstance(dt, basestring):  # convert to datetime first
-        parsed_dt = dt_parse(dt)
+        try:
+            parsed_dt = float(dt)
+        except (TypeError, ValueError):
+            parsed_dt = dt_parse(dt)
         ts = dt2ts(parsed_dt)
     else:
-        # FIXME: microseconds/milliseconds are being dropped!
-        # see: http://stackoverflow.com/questions/7031031
-        # for possible solution?
-        ts = timegm(dt.timetuple())
-    if drop_micro:
-        return float(int(ts))
+        assert isinstance(dt, (datetime, date))
+        # keep micros; see: http://stackoverflow.com/questions/7031031
+        ts = ((
+            timegm(dt.timetuple()) * 1000.0) +
+            (dt.microsecond / 1000.0)) / 1000.0
+    if ts is None:
+        pass
+    elif drop_micro:
+        ts = float(int(ts))
     else:
-        return float(ts)
+        ts = float(ts)
+    return ts
+
+
+def file_is_empty(path, remove=False, msg=None):
+    path = to_encoding(path)
+    is_true(os.path.isfile(path), '"%s" is not a file!' % path)
+    if bool(os.stat(path).st_size == 0):
+        logger.info("%s is empty" % path)
+        if remove:
+            logger.info("... %s removed" % path)
+            remove_file(path)
+        return True
+    else:
+        return False
+
+
+def filename_append(orig_filename, append_str):
+    is_defined(orig_filename, 'filename must be defined!')
+    # make sure we don't duplicate the append str
+    orig_filename = re.sub(append_str, '', orig_filename)
+    name, ext = os.path.splitext(orig_filename)
+    return '%s%s%s' % (name, append_str, ext)
 
 
 def get_cube(cube, init=False, pkgs=None, cube_paths=None, config=None,
@@ -444,12 +504,7 @@ def get_cube(cube, init=False, pkgs=None, cube_paths=None, config=None,
 def get_pid(pid_file=None):
     if not pid_file:
         return 0
-    try:
-        return int(''.join(open(pid_file).readlines()).strip())
-    except IOError:
-        return -1
-    except ValueError:
-        return -2
+    return int(''.join(open(pid_file).readlines()).strip())
 
 
 def get_pids(pid_dir, prefix='', clear_stale=True):
@@ -466,31 +521,34 @@ def get_pids(pid_dir, prefix='', clear_stale=True):
     return map(int, pids)
 
 
-def _get_timezone_converter(dt, from_tz, tz_aware=False):
+def _get_timezone_converter(dt, from_tz, to_tz=None, tz_aware=False):
     if from_tz is None:
         raise TypeError("from_tz can not be null!")
     elif dt is None:
         return None
     else:
-        dt = dt_parse(dt) if isinstance(dt, basestring) else dt
+        to_tz = to_tz or pytz.UTC
+        if isinstance(to_tz, basestring):
+            to_tz = pytz.timezone(to_tz)
+        dt = ts2dt(dt) if not isinstance(dt, datetime) else dt
         if dt.tzinfo:
             # datetime instance already has tzinfo set
             # WARN if not dt.tzinfo == from_tz?
             try:
-                dt = dt.astimezone(pytz.UTC)
+                dt = dt.astimezone(to_tz)
             except ValueError:
                 # date has invalid timezone; replace with expected
                 dt = dt.replace(tzinfo=from_tz)
-                dt = dt.astimezone(pytz.UTC)
+                dt = dt.astimezone(to_tz)
         else:
             # set tzinfo as from_tz then convert to utc
-            dt = from_tz.localize(dt).astimezone(pytz.UTC)
+            dt = from_tz.localize(dt).astimezone(to_tz)
         if not tz_aware:
             dt = dt.replace(tzinfo=None)
         return dt
 
 
-def get_timezone_converter(from_timezone, tz_aware=False):
+def get_timezone_converter(from_timezone, to_tz=None, tz_aware=False):
     '''
     return a function that converts a given
     datetime object from a timezone to utc
@@ -502,10 +560,11 @@ def get_timezone_converter(from_timezone, tz_aware=False):
     is_true(HAS_DATEUTIL, "`pip install python_dateutil` required")
     is_true(HAS_PYTZ, "`pip install pytz` required")
     from_tz = pytz.timezone(from_timezone)
-    return partial(_get_timezone_converter, from_tz=from_tz, tz_aware=tz_aware)
+    return partial(_get_timezone_converter, from_tz=from_tz, to_tz=to_tz,
+                   tz_aware=tz_aware)
 
 
-def git_clone(uri, pull=True, reflect=False, cache_dir=None):
+def git_clone(uri, pull=True, reflect=False, cache_dir=None, chdir=True):
     '''
     Given a git repo, clone (cache) it locally.
 
@@ -528,7 +587,9 @@ def git_clone(uri, pull=True, reflect=False, cache_dir=None):
     if pull and not from_cache:
         os.chdir(repo_path)
         cmd = 'git pull'
-        sys_call(cmd)
+        sys_call(cmd, cwd=repo_path)
+    if chdir:
+        os.chdir(repo_path)
     if reflect:
         if not HAS_DULWICH:
             raise RuntimeError("`pip install dulwich` required!")
@@ -537,47 +598,85 @@ def git_clone(uri, pull=True, reflect=False, cache_dir=None):
         return repo_path
 
 
-def is_null(value, except_=True, msg=None):
-    msg = msg or ''
-    if isinstance(value, basestring):
-        value = value.strip()
-    elif hasattr(value, 'empty'):
+def is_array(value, msg=None, except_=None, inc_set=False):
+    check = (list, tuple, set) if inc_set else (list, tuple)
+    result = isinstance(value, check)
+    return is_true(result, msg=msg, except_=except_)
+
+
+def is_defined(value, msg=None, except_=None):
+    result = not is_empty(value, except_=False)
+    return is_true(result, msg=msg, except_=except_)
+
+
+def is_empty(value, msg=None, except_=None):
+    '''
+    is defined, but null or empty like value
+    '''
+    # 0, 0.0, 0L are also considered 'empty'
+    if hasattr(value, 'empty'):
         # dataframes must check for .empty
         # since they don't define truth value attr
         # take the negative, since below we're
         # checking for cases where value 'is_null'
         value = not bool(value.empty)
+    elif value in ZEROS:
+        # will check for the negative below
+        value = True
     else:
         pass
+    _is_null = is_null(value, except_=False)
+    result = bool(_is_null or not value)
+    return is_true(result, msg=msg, except_=except_)
+
+
+def is_false(value, msg=None, except_=None):
+    result = is_true(value, msg=msg, except_=False) is False
+    return result
+
+
+def is_null(value, msg=None, except_=None):
+    '''
+    ie, "is not defined"
+    '''
+    # dataframes, even if empty, are not considered null
+    value = False if hasattr(value, 'empty') else value
     result = bool(
-        not value or
+        value is None or
         value != value or
         repr(value) == 'NaT')
-    if not result and except_:
-        raise RuntimeError(msg)
-    else:
+    return is_true(result, msg=msg, except_=except_)
+
+
+def is_string(value, msg=None, except_=None):
+    result = isinstance(value, basestring)
+    return is_true(result, msg=msg, except_=except_)
+
+
+def is_true(value, msg=None, except_=None):
+    # if msg is passed in, implied except_=True; otherwise,
+    # respect what's passed
+    except_ = bool(msg) if except_ is None else except_
+    result = bool(value is True)
+    if result:
         return result
-
-
-def is_true(value, except_=True, msg=None):
-    msg = msg or ''
-    result = bool(value)
-    if not result and except_:
+    if except_:
+        msg = msg or '(%s) is not True' % to_encoding(value)
         raise RuntimeError(msg)
-    else:
-        return result
+    return result
 
 
-def json_encode(obj):
+def json_encode_default(obj):
     '''
     Convert datetime.datetime to timestamp
 
     :param obj: value to (possibly) convert
     '''
-    if isinstance(obj, datetime):
-        return dt2ts(obj)
+    if isinstance(obj, (datetime, date)):
+        result = dt2ts(obj)
     else:
-        return json_encoder.default(obj)
+        result = json_encoder.default(obj)
+    return to_encoding(result)
 
 
 def jsonhash(obj, root=True, exclude=None, hash_func=None):
@@ -585,8 +684,8 @@ def jsonhash(obj, root=True, exclude=None, hash_func=None):
     calculate the objects hash based on all field values
     '''
     if not hash_func:
-        hash_func = SHA1_HEXDIGEST
-    if isinstance(obj, dict):
+        hash_func = sha1_hexdigest
+    if isinstance(obj, Mapping):
         obj = obj.copy()  # don't affect the ref'd obj passed in
         keys = set(obj.iterkeys())
         if root and exclude:
@@ -610,8 +709,8 @@ def jsonhash(obj, root=True, exclude=None, hash_func=None):
 
 def list2str(items, delim=','):
     delim = delim or ','
-    if isinstance(items, (list, tuple, set)):
-        item = delim.join(map(unicode, items))
+    if is_array(items, except_=False):
+        item = delim.join(map(unicode, tuple(items)))
     elif isinstance(items, basestring):
         # assume we already have a normalized delimited string
         item = items
@@ -634,8 +733,6 @@ def load_file(path, filetype=None, as_df=False, **kwargs):
         result = load_json(path, **kwargs)
     elif filetype in ['pickle']:
         result = load_pickle(path, **kwargs)
-    elif filetype in ['sqlite']:
-        result = load_shelve(path, **kwargs)
     else:
         raise TypeError("Invalid filetype: %s" % filetype)
     return _data_export(result, as_df=as_df)
@@ -665,27 +762,21 @@ def load_json(path, **kwargs):
     return pd.read_json(path, **kwargs)
 
 
-def load_shelve(path, as_list=True):
-    '''
-    shelve expects each object to be indexed
-    by one of it's column values (ie, _oid)
-    where value is the entire object which maps
-    to the given column value (ie, {_oid: {obj with _oid})
-
-    Ideally, we would use 'shelve' module directly, but it's
-    causing issues since it depends on bsddb4.7 or less which isn't
-    available in travis-ci testing environment...
-    Same goes for gdbm..
-    Use reliable old sqlite3 instead!
-    '''
-    cube = SQLite3(path)
-    if as_list:
-        return cube.values()
+def local_tz():
+    if time.daylight:
+        offsetHour = time.altzone / 3600
     else:
-        return cube
+        offsetHour = time.timezone / 3600
+    return 'Etc/GMT%+d' % offsetHour
 
 
-def _set_oid_func(_oid_func):
+def local_tz_to_utc(dt):
+    dt = ts2dt(dt)
+    convert = get_timezone_converter(_local_tz)
+    return convert(dt)
+
+
+def set_oid_func(_oid_func):
     k = itertools.count(1)
 
     def __oid_func(o):
@@ -724,7 +815,7 @@ def load(path, filetype=None, as_df=False, retries=None,
     :param kwargs: additional filetype loader method kwargs
     '''
     is_true(HAS_PANDAS, "`pip install pandas` required")
-    set_oid = _set_oid_func(_oid)
+    set_oid = set_oid_func(_oid)
 
     # kwargs are for passing ftype load options (csv.delimiter, etc)
     # expect the use of globs; eg, file* might result in fileN (file1,
@@ -754,7 +845,7 @@ def load(path, filetype=None, as_df=False, retries=None,
         [objects.extend(load_file(ds, filetype, **kwargs))
             for ds in files]
 
-    if is_null(objects, except_=False) and not quiet:
+    if is_empty(objects, except_=False) and not quiet:
         raise RuntimeError("no objects extracted!")
     else:
         logger.debug("Data loaded successfully from %s" % path)
@@ -832,8 +923,8 @@ def make_dirs(path, mode=0700, quiet=True):
 
 
 def move(path, dest, quiet=False):
-    if isinstance(path, (list, tuple)):
-        return [move(p, dest) for p in path]
+    if is_array(path, except_=False):
+        return [move(p, dest) for p in tuple(path)]
     else:
         assert isinstance(path, basestring)
         if os.path.exists(path):
@@ -851,9 +942,8 @@ def profile(fn, cache_dir=CACHE_DIR):
     def wrapper(*args, **kw):
         saveas = os.path.join(cache_dir, 'pyprofile.txt')
         elapsed, stat_loader, result = _profile(saveas, fn, *args, **kw)
-        stats = stat_loader()
-        stats.sort_stats('cumulative')
-        stats.print_stats()
+        stat_loader.sort_stats('cumulative')
+        stat_loader.print_stats()
         # uncomment this to see who's calling what
         # stats.print_callers()
         remove_file(saveas)
@@ -862,7 +952,6 @@ def profile(fn, cache_dir=CACHE_DIR):
 
 
 def _profile(filename, fn, *args, **kw):
-    load_stats = lambda: pstats.Stats(filename)
     gc.collect()
 
     began = time.time()
@@ -870,7 +959,7 @@ def _profile(filename, fn, *args, **kw):
                     filename=filename)
     ended = time.time()
 
-    return ended - began, load_stats, locals()['result']
+    return ended - began, pstats.Stats(filename), locals()['result']
 
 
 def rand_chars(size=6, chars=string.ascii_uppercase + string.digits,
@@ -913,28 +1002,38 @@ def read_file(rel_path, paths=None, raw=False, as_list=False, *args, **kwargs):
         return ''.join(fd_lines)
 
 
-def remove_file(path, quiet=True, force=False):
+def remove_file(path, force=False):
+    logger.warn('Removing %s' % str(path))
     if not path:
         return []
     # create a list from glob search or expect a list
     path = glob.glob(path) if isinstance(path, basestring) else list(path)
-    if isinstance(path, (list, tuple)):
+    if is_array(path, except_=False):
         if len(path) == 1:
             path = path[0]
         else:
-            return [remove_file(p) for p in path]
+            return [remove_file(p, force=force) for p in tuple(path)]
+    assert bool(path) is True
     assert isinstance(path, basestring)
+    cwd = os.getcwd()
+    is_true(os.path.isabs(path),
+            'paths to remove must be absolute; got %s' % path)
     if os.path.exists(path):
         if os.path.isdir(path):
+            if cwd == path:
+                logger.warn('removing dir tree we are currently in. (%s) '
+                            'chdir to metrique home: %s' % (cwd, PREFIX_DIR))
+                assert os.path.exists(PREFIX_DIR)
+                os.chdir(PREFIX_DIR)
             if force:
                 shutil.rmtree(path)
             else:
                 raise RuntimeError(
-                    '%s is a directory; use force=True to remove!')
+                    '%s is a directory; use force=True to remove!' % path)
         else:
             os.remove(path)
-    elif not quiet:
-        logger.warn('[remove] %s not found' % path)
+    else:
+        logger.warn('%s not found' % path)
     return path
 
 
@@ -962,7 +1061,7 @@ def rupdate(source, target):
         see: http://stackoverflow.com/a/3233356/1289080
     '''
     for k, v in target.iteritems():
-        if isinstance(v, collections.Mapping):
+        if isinstance(v, Mapping):
             r = rupdate(source.get(k, {}), v)
             source[k] = r
         else:
@@ -976,11 +1075,27 @@ def safestr(str_):
     return "".join(x for x in str_ if x.isalnum())
 
 
-def _sys_call(cmd, shell=True, cwd=None, quiet=False, bg=False):
-    cwd = cwd or os.getcwd()
-    os.chdir(cwd)
+def sha1_hexdigest(o):
+    return sha1(repr(o)).hexdigest()
+
+
+def str2list(item, delim=',', map_=None):
+    if isinstance(item, basestring):
+        items = item.split(delim)
+    elif is_array(item, except_=False):
+        items = map(unicode, tuple(item))
+    elif item is None:
+        items = []
+    else:
+        raise TypeError('Expected a csv string (or existing list)')
+    items = [s.strip() for s in items]
+    items = map(map_, items) if map_ else items
+    return items
+
+
+def _sys_call(cmd, shell=True, quiet=False, bg=False):
     if not quiet:
-        logger.info('Running: %s' % cmd)
+        logger.info('Running: `%s`' % cmd)
 
     if isinstance(cmd, basestring):
         cmd = re.sub('\s+', ' ', cmd)
@@ -1011,14 +1126,19 @@ def _sys_call(cmd, shell=True, cwd=None, quiet=False, bg=False):
 
 def sys_call(cmd, sig=None, sig_func=None, shell=True, cwd=None, quiet=False,
              fork=False, pid_file=None, ignore_errors=False, bg=False):
+    _path = os.getcwd()
+    cwd = cwd or _path
     try:
         if fork:
+            logger.warn('*' * 50 + 'FORKING' + '*' * 50)
             bg = True
             pid = os.fork()
             if pid == 0:  # child
-                # FIXME: install signals?
-                #signal.signal(sig, sig_func) if sig and sig_func else None
-                p = _sys_call(cmd, shell=shell, cwd=cwd, quiet=quiet, bg=bg)
+                try:
+                    p = _sys_call(cmd, shell=shell, quiet=quiet, bg=bg)
+                finally:
+                    os.chdir(_path)
+
                 with open(pid_file, 'w') as f:
                     f.write(str(p.pid))
                 p.wait()
@@ -1027,7 +1147,10 @@ def sys_call(cmd, sig=None, sig_func=None, shell=True, cwd=None, quiet=False,
             else:
                 return pid_file
         else:
-            output = _sys_call(cmd, shell=shell, cwd=cwd, quiet=quiet, bg=bg)
+            try:
+                output = _sys_call(cmd, shell=shell, quiet=quiet, bg=bg)
+            finally:
+                os.chdir(_path)
     except Exception as e:
         logger.warn('Error: %s' % e)
         if ignore_errors:
@@ -1059,16 +1182,20 @@ def terminate(pid, sig=signal.SIGTERM):
     return
 
 
-def to_encoding(ustring, encoding=None, errors='replace'):
+def timediff(t0, msg=' ... done'):
+    return '   %s in \033[92m%.2f s\033[0m' % (msg, time() - t0)
+
+
+def to_encoding(str_, encoding=None, errors='replace'):
     errors = errors or 'replace'
     encoding = encoding or 'utf-8'
-    if isinstance(ustring, basestring):
-        if not isinstance(ustring, unicode):
-            return unicode(ustring, encoding, errors)
-        else:
-            return ustring.encode(encoding, errors).decode('utf8')
+    if str_ is None:
+        return None
+    elif not isinstance(str_, unicode):
+        result = unicode(str(str_), encoding, errors)
     else:
-        raise ValueError('basestring type required')
+        result = str_.encode(encoding, errors).decode('utf8')
+    return result
 
 
 def ts2dt(ts, milli=False, tz_aware=False):
@@ -1076,10 +1203,12 @@ def ts2dt(ts, milli=False, tz_aware=False):
     # anything already a datetime will still be returned
     # tz_aware, if set to true
     is_true(HAS_DATEUTIL, "`pip install python_dateutil` required")
-    if is_null(ts, except_=False):
-        return None  # its not a timestamp
-    elif isinstance(ts, datetime):
+    if isinstance(ts, datetime):
         pass
+    elif is_empty(ts, except_=False):
+        return None  # its not a timestamp
+    elif isinstance(ts, (int, float, long)) and ts < 0:
+        return None
     elif isinstance(ts, basestring):
         try:
             ts = float(ts)
@@ -1094,7 +1223,6 @@ def ts2dt(ts, milli=False, tz_aware=False):
         ts = float(ts) / 1000.  # convert milli to seconds
     else:
         ts = float(ts)  # already in seconds
-
     return _get_datetime(ts, tz_aware)
 
 
@@ -1104,7 +1232,9 @@ def _get_datetime(value, tz_aware=None):
         if isinstance(value, datetime):
             return value.replace(tzinfo=pytz.UTC)
         else:
-            return datetime.fromtimestamp(value, tz=pytz.UTC)
+            value = datetime.fromtimestamp(value, tz=pytz.UTC)
+            value.replace(tzinfo=pytz.UTC)
+            return value
     else:
         if isinstance(value, datetime):
             if value.tzinfo:
@@ -1115,7 +1245,7 @@ def _get_datetime(value, tz_aware=None):
             return datetime.utcfromtimestamp(value)
 
 
-def utcnow(as_datetime=True, tz_aware=False, drop_micro=False):
+def utcnow(as_datetime=False, tz_aware=False, drop_micro=False):
     is_true(HAS_PYTZ, "`pip install pytz` required")
     if tz_aware:
         now = datetime.now(pytz.UTC)
@@ -1129,6 +1259,12 @@ def utcnow(as_datetime=True, tz_aware=False, drop_micro=False):
         return dt2ts(now, drop_micro)
 
 
+def utc_to_local_tz(dt):
+    dt = ts2dt(dt)
+    convert = get_timezone_converter('UTC', _local_tz)
+    return convert(dt)
+
+
 def urlretrieve(uri, saveas=None, retries=3, cache_dir=None):
     '''urllib.urlretrieve wrapper'''
     retries = int(retries) if retries else 3
@@ -1140,13 +1276,45 @@ def urlretrieve(uri, saveas=None, retries=3, cache_dir=None):
         except Exception as e:
             retries -= 1
             logger.warn(
-                'Failed getting %s: %s (retry:%s in 1s)' % (
+                'Failed getting uri "%s": %s (retry:%s in 1s)' % (
                     uri, e, retries))
-            time.sleep(1)
+            time.sleep(.2)
             continue
         else:
             break
+    else:
+        raise RuntimeError("Failed to retrieve uri: %s" % uri)
     return _path
+
+
+def validate_password(password):
+    char_8_plus = password and len(password) >= 8
+    ok = all((is_string(password, except_=False), char_8_plus))
+    if not ok:
+        raise ValueError("Invalid password; must be len(string) >= 8")
+    return password
+
+
+def validate_roles(roles, valid_roles):
+    roles = set(str2list(roles, map_=unicode))
+    if not roles <= set(valid_roles):
+        raise ValueError("invalid roles %s, try: %s" % (roles, valid_roles))
+    return sorted(roles)
+
+
+def validate_username(username, restricted_names=None):
+    if not isinstance(username, basestring):
+        raise TypeError("username must be a string")
+    elif INVALID_USERNAME_RE.search(username):
+        raise ValueError(
+            "Invalid username '%s'; "
+            "lowercase, ascii alpha [a-z_] characters only!" % username)
+    else:
+        username = username.lower()
+    if restricted_names and username in restricted_names:
+        raise ValueError(
+            "username '%s' is not permitted" % username)
+    return username
 
 
 def virtualenv_deactivate():
@@ -1185,6 +1353,103 @@ def virtualenv_activate(virtenv=None):
         raise OSError("Invalid virtual env; %s not found" % activate_this)
 
 
-def write_file(path, value, mode='w'):
+def write_file(path, value, mode='w', force=False):
+    if os.path.exists(path) and mode == 'w' and not force:
+        raise RuntimeError('file exists, use different mode or force=True')
     with open(path, mode) as f:
         f.write(unicode(str(value)))
+
+
+class DictDiffer(object):
+    """
+    # snagged from http://stackoverflow.com/a/1165552/1289080
+    Calculate the difference between two dictionaries as:
+    (1) items added
+    (2) items removed
+    (3) keys same in both but changed values
+    (4) keys same in both and unchanged values
+    """
+    def __init__(self, dicts, added=True, removed=True,
+                 changed=False, unchanged=False, diff=True,
+                 exclude=None, include=None):
+        is_array(dicts, 'dicts must be a list of dicts; got %s' % type(dicts))
+        is_false(exclude and include, 'set include or exclude, not both')
+        self._exclude = set(str2list(exclude) or [])
+        self._include = set(str2list(include) or [])
+        self._added = added
+        self._removed = removed
+        self._changed = changed
+        self._unchanged = unchanged
+        self._diff = diff
+
+        od = OrderedDict
+        s = sorted
+
+        def skey(t):
+            return t[0]
+
+        self.dicts = [od(s(d.iteritems(), key=skey)) for d in dicts]
+
+    def __getitem__(self, value):
+        is_true(isinstance(value, slice), 'expected slice')
+        dicts = self.dicts[value]
+        past_dict = dicts.pop(0)
+        _diffs = []
+        for current_dict in dicts:
+            current = set(self._include or current_dict.keys())
+            past = set(self._include or past_dict.keys())
+            intersect = current.intersection(past)
+            if self._exclude:
+                current = current - self._exclude
+                past = past - self._exclude
+                intersect = intersect - self._exclude
+
+            _diff = {}
+            if self._added:
+                added = self.added(current, intersect)
+                _diff['added'] = added
+            if self._removed:
+                removed = self.removed(past, intersect)
+                _diff['removed'] = removed
+            if self._changed:
+                changed = self.changed(past_dict, current_dict, intersect)
+                _diff['changed'] = changed
+            if self._unchanged:
+                unchanged = self.unchanged(past_dict, current_dict, intersect)
+                _diff['unchanged'] = unchanged
+            if self._diff:
+                diff = self.diff(past_dict, current_dict, intersect)
+                _diff['diff'] = diff
+            _diffs.append(_diff)
+            past_dict = current_dict
+        return _diffs
+
+    def added(self, current, intersect):
+        return current - intersect
+
+    def removed(self, past, intersect):
+        return past - intersect
+
+    def changed(self, past_dict, current_dict, intersect):
+        return set(o for o in intersect if past_dict[o] != current_dict[o])
+
+    def unchanged(self, past_dict, current_dict, intersect):
+        return set(o for o in intersect if past_dict[o] == current_dict[o])
+
+    def diff(self, past_dict, current_dict, intersect):
+        _dict = {}
+        for o in intersect:
+            was = past_dict[o]
+            now = current_dict[o]
+            if was != now:
+                _dict[o] = 'from %s to %s' % (repr(was), repr(now))
+        return _dict
+
+    def __str__(self):
+        return pformat(self[:], indent=2)
+
+    def __repr__(self):
+        return self.__str__()
+
+
+_local_tz = local_tz()

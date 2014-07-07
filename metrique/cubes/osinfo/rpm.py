@@ -13,7 +13,7 @@ for extracting installed RPM details on a RPM based system.
 .. note:: Target system expected to be RPM based!
 '''
 
-from __future__ import unicode_literals
+from __future__ import unicode_literals, absolute_import
 
 import logging
 logger = logging.getLogger('metrique')
@@ -51,7 +51,7 @@ class Rpm(pyclient):
 
     def __init__(self, fields=FIELDS, ssh_host=None,
                  ssh_user=None, ssh_pass=None, **kwargs):
-        self.fields = fields
+        self._fields = fields
         self.ssh_host = ssh_host
         self.ssh_user = ssh_user or getpass.getuser()
         self.ssh_pass = ssh_pass
@@ -95,7 +95,7 @@ class Rpm(pyclient):
             * sourcerpm
             * summary
         '''
-        fmt = ':::'.join('%%{%s}' % f for f in self.fields)
+        fmt = ':::'.join('%%{%s}' % f for f in self._fields)
         if self.ssh_host:
             output = self._ssh_cmd(fmt)
         else:
@@ -111,7 +111,7 @@ class Rpm(pyclient):
             for i, item in enumerate(line):
                 if item == '(none)':
                     item = None
-                obj[self.fields[i]] = item
+                obj[self._fields[i]] = item
             obj['_oid'] = '%s__%s' % (host, obj['nvra'])
             self.objects.add(obj)
         return super(Rpm, self).get_objects(**kwargs)
