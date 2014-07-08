@@ -41,7 +41,7 @@
         "write_concern": 0
     },
     "celery": {
-        "BROKER_URL": "sqla+sqlite:///%s",
+        "BROKER_URL": "sqla+sqlite:///%s"
     },
     "celery_mongodb": {
         "BROKER_URL": "mongodb://admin:%s@127.0.0.1:27017",

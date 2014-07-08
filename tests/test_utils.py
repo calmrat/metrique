@@ -192,7 +192,8 @@ def test_configure():
         assert False
 
     # shouldn't fail, but instead, returns empty dict
-    x = configure(config_file=config_file, section_key='I_DO_NOT_EXIST')
+    x = configure(config_file=config_file, section_key='I_DO_NOT_EXIST',
+                  section_only=True)
     assert x == {}
 
     for arg in ('update', 'options', 'defaults'):

@@ -446,6 +446,14 @@ class SQLAlchemyProxy(object):
             columns = [c for c in table.columns if c.name in columns]
         return columns
 
+    def db_exists(self, db=None):
+        db = db or self.config.get('db')
+        # FIXME:  this isn't supported in SQLite, for example
+        # need better abstraction?
+        sql = "SELECT datname FROM pg_database WHERE datname = '%s'" % db
+        result = self.session_auto.execute(sql).scalar() or False
+        return bool(result)
+
     @property
     def db_schemas(self):
         return self.inspector.get_schema_names()
@@ -865,7 +873,7 @@ class SQLAlchemyProxy(object):
         roles = list2str(roles)
         logger.info('Sharing cube %s with %s (%s)' % (table, with_user, roles))
         sql = 'GRANT %s ON %s TO %s' % (roles, table, with_user)
-        return list(self.session_auto.execute(sql))
+        return self.session_auto.execute(sql)
 
     def upsert(self, objects, autosnap=None, batch_size=None, table=None):
         objects = objects.values() if isinstance(objects, Mapping) else objects
@@ -946,9 +954,11 @@ class SQLAlchemyProxy(object):
         # FIXME:  this isn't supported in SQLite, for example
         # need better abstraction?
         username = validate_username(username, self.RESERVED_USERNAMES)
-        sql = ("SELECT * FROM pg_catalog.pg_user "
-               "WHERE  usename = '%s'" % username)
-        return self.session_auto.execute(sql)
+        # usename, not username!
+        sql = ("SELECT usename FROM pg_catalog.pg_user "
+               "WHERE usename = '%s'" % username)
+        result = self.session_auto.execute(sql).scalar() or False
+        return bool(result)
 
     def user_register(self, username, password):
         # FIXME: enable setting roles at creation time...
@@ -967,7 +977,7 @@ class SQLAlchemyProxy(object):
             logger.info('User created: %s' % u)
         else:
             logger.info('User exists: %s' % u)
-        if not self.exists():
+        if not self.db_exists(u):
             cnx.execute(s_db)
             logger.info('DB created: %s' % u)
         else:

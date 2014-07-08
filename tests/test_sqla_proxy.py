@@ -155,7 +155,7 @@ def db_tester(proxy):
     assert 'ix_col_1' not in ix
     p.index('col_1')
     ix = [i['name'] for i in p.index_list().get(TABLE)]
-    assert 'ix_col_1' in ix
+    assert 'ix_bla_col_1' in ix
 
 
 def test_get_engine_uri():
@@ -228,8 +228,7 @@ def test_postgresql():
     new_p = rand_chars(8)
     p.user_register(username=new_u, password=new_p)
 
-    q = "SELECT 1 FROM pg_roles WHERE rolname='%s'" % new_u
-    assert tuple(p.execute(q)) == ((1, ), )
+    assert p.user_exists(new_u) is True
 
     # Sharing
     p.share(new_u)
@@ -244,7 +243,7 @@ def test_postgresql():
     assert p.ls() == []
 
     q = 'SELECT current_user;'
-    assert tuple(p.execute(q)) == ((new_u, ), )
+    assert p.execute(q)[0] == {'current_user': new_u}
 
     p.autotable(name=NEW_TABLE, schema=schema, create=True)
     assert p.ls() == [NEW_TABLE]
