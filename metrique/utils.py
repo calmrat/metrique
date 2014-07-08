@@ -505,7 +505,7 @@ def get_cube(cube, init=False, pkgs=None, cube_paths=None, config=None,
 
 
 def get_pid(pid_file=None):
-    if not pid_file:
+    if not (pid_file and os.path.exists(pid_file)):
         return 0
     return int(''.join(open(pid_file).readlines()).strip())
 

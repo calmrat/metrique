@@ -14,7 +14,7 @@
        "password": "%s",
        "username": "admin",
        "db": "admin"
-     },
+     }
     },
     "proxy": {
       "dialect": "sqlite",

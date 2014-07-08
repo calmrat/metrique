@@ -423,12 +423,8 @@ def test_get_pid():
 
     path = os.path.join(cache_dir, '%s.pid' % rand_chars(prefix='get_pid'))
 
-    try:
-        get_pid(path)
-    except IOError:
-        pass
-    else:
-        assert False
+    # invalid path returns 0
+    assert get_pid(path) == 0
 
     with open(path, 'w') as f:
         f.write("1")
@@ -438,6 +434,7 @@ def test_get_pid():
 
     with open(path, 'w') as f:
         f.write("a")
+
     try:
         get_pid(path)
     except ValueError:
@@ -446,12 +443,8 @@ def test_get_pid():
         assert False
     remove_file(path)
 
-    try:
-        get_pid("boomboompow")
-    except IOError:
-        pass
-    else:
-        assert False
+    # invalid path returns 0
+    assert get_pid("boomboompow") == 0
 
 
 def test_get_pids():
