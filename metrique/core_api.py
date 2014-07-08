@@ -424,7 +424,8 @@ class MetriqueContainer(MutableMapping):
 
     def __setitem__(self, key, value):
         '''
-        Add (set) object value. key being used to set is irrelevant and ignored!
+        Add (set) object value. key being used to set is irrelevant
+        and ignored!
         '''
         self.add(value)
 
@@ -456,10 +457,6 @@ class MetriqueContainer(MutableMapping):
                 _value = func(value, self.store)
                 obj.update({_key: _value})
         return obj
-
-    @property
-    def _exists(self):
-        raise NotImplementedError("FIXME")
 
     @property
     def _ids(self):
@@ -567,6 +564,8 @@ class MetriqueContainer(MutableMapping):
         return obj
 
     def _prep_value(self, value, schema):
+        # NOTE: if we fail anywhere in here, no changes made here will
+        # be 'saved'; buffer's for example will remain buffers, etc.
         value = self._unwrap(value)
         value = self._normalize_container(value, schema)
         value = self._convert(value, schema)
@@ -729,7 +728,10 @@ class MetriqueContainer(MutableMapping):
     def ls(self):
         raise NotImplementedError
 
-    def persist(self, objects=None, autosnap=None):
+    def persist(self, objects=None, autosnap=None, **kwargs):
+        '''
+        kwargs accepted, but ignored.
+        '''
         objects = objects or self
         return self.upsert(objects=objects, autosnap=autosnap)
 
@@ -822,7 +824,8 @@ class MetriqueContainer(MutableMapping):
         :param collection: cube name
         :param owner: username of cube owner
         '''
-        return self.proxy.index(self.name, fields=fields, name=name, **kwargs)
+        return self.proxy.index(fields=fields, name=name, table=self.name,
+                                **kwargs)
 
     def index_list(self):
         '''

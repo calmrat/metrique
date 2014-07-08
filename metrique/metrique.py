@@ -307,6 +307,7 @@ class Metrique(object):
         return self._container
 
     def flush(self, objects=None, autosnap=None, **kwargs):
+        self.container.autotable()
         return self.container.flush(objects=objects, autosnap=autosnap,
                                     **kwargs)
 

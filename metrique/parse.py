@@ -73,7 +73,7 @@ def parse_fields(fields, as_dict=False):
 
 def date_range(date, func='date'):
     '''
-    return back start and end dates given date string
+    Return back start and end dates given date string
 
     :param date: metrique date (range) to apply to pql query
 
@@ -271,7 +271,21 @@ class MQLInterpreter(object):
 
 def parse(table, query=None, date=None, fields=None,
           distinct=False, limit=None, alias=None):
+    '''
+    Given a SQLAlchemy Table() instance, generate a SQLAlchemy
+    Query() instance with the given parameters.
+
+    :param table: SQLAlchemy Table() instance
+    :param query: MQL query
+    :param date: metrique date range query
+    :param date: metrique date range query element
+    :param fields: list of field names to return as columns
+    :param distinct: apply DISTINCT to this query
+    :param limit: apply LIMIT to this query
+    :param alias: apply ALIAS AS to this query
+    '''
     date = date_range(date)
+    limit = int(limit or -1)
     if query and date:
         query = '%s and %s' % (query, date)
     elif date:
@@ -282,7 +296,7 @@ def parse(table, query=None, date=None, fields=None,
         query = None
 
     fields = parse_fields(fields=fields) or None
-    fields = fields if fields else [table]
+    fields = fields if fields else [t for t in dict(table.columns)]
 
     msg = 'parse(query=%s, fields=%s)' % (query, fields)
     #msg = re.sub(' in \[[^\]]+\]', ' in [...]', msg)

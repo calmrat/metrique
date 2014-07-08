@@ -95,6 +95,10 @@ try:
     class JSONDict(TypeDecorator):
         impl = pg.JSON
 
+        def process_bind_param(self, value, dialect):
+            return None if value is None else json.dumps(
+                value, default=json_encode_default, ensure_ascii=False)
+
         def python_type(self):
             return dict
 
@@ -185,7 +189,7 @@ class SQLAlchemyProxy(object):
                  cache_dir=None, db_schema=None,
                  log_file=None, log_dir=None, log2file=None,
                  log2stdout=None, log_format=None, schema=None,
-                 **kwargs):
+                 retries=None, **kwargs):
         '''
         Accept additional kwargs, but ignore them.
         '''
@@ -213,6 +217,7 @@ class SQLAlchemyProxy(object):
             log2stdout=log2stdout,
             password=password,
             port=None,
+            retries=retries,
             schema=schema,
             table=table,
             username=username)
@@ -234,6 +239,7 @@ class SQLAlchemyProxy(object):
             log2stdout=False,
             password=None,
             port=5432,
+            retries=1,
             schema=None,
             table=None,
             username=getuser())
@@ -287,14 +293,17 @@ class SQLAlchemyProxy(object):
             session.rollback()
             raise
 
-    @staticmethod
-    def _index_default_name(columns, name=None):
+    def _index_default_name(self, columns, name=None):
+        table = self.config.get('table')
+        is_defined(table, 'table must be defined!')
         if name:
             ix = name
         elif isinstance(columns, basestring):
-            ix = columns
+            ix = '%s_%s' % (table, columns)
+            #ix = columns
         elif is_array(columns, except_=False):
-            ix = '_'.join(tuple(columns))
+            ix = '%s_%s' % (table, '_'.join(tuple(columns)))
+            #ix = '_'.join(tuple(columns))
         else:
             raise ValueError(
                 "unable to get default name from columns: %s" % columns)
@@ -302,26 +311,6 @@ class SQLAlchemyProxy(object):
         ix = re.sub('^ix_', '', ix)
         ix = 'ix_%s' % ix
         return ix
-
-    def _load_sql(self, sql, retries=1):
-        retries = int(retries or 1)
-        is_true(retries >= 1, 'retries value must be >= 1')
-        # load sql kwargs from instance config
-        OK, i = False, 1
-        while retries > 0:
-            try:
-                rows = self.session_auto.execute(sql)
-            except Exception as e:
-                logger.error('[%s of %s] SQL Load Error: %s' % (i, retries, e))
-                i += 1
-                retries -= 1
-            else:
-                OK = True
-                break
-        if not OK:
-            raise
-        objects = [dict(row) for row in rows]
-        return objects
 
     def _parse_fields(self, table=None, fields=None, reflect=False, **kwargs):
         table = self.get_table(table)
@@ -338,7 +327,7 @@ class SQLAlchemyProxy(object):
         _table = self.get_table(table, except_=True)
         query = parse.parse(_table, query=query, date=date,
                             fields=fields, distinct=distinct,
-                            alias=alias)
+                            alias=alias, limit=limit)
         if sort:
             order_by = parse.parse_fields(fields=sort)[0]
             if descending:
@@ -522,12 +511,26 @@ class SQLAlchemyProxy(object):
         self._engine = create_engine(uri, echo=False, **_kwargs)
         return self._engine
 
-    def execute(self, query, cursor=False):
-        rows = self.session_auto.execute(query)
-        if cursor:
+    def execute(self, query, cursor=False, retries=1):
+        retries = int(retries or self.config.get('retries') or 1)
+        is_true(retries >= 1, 'retries value must be >= 1')
+        OK, i = False, 1
+        while retries > 0:
+            try:
+                rows = self.session_auto.execute(query)
+            except Exception as e:
+                logger.error('[%s of %s] SQL Load Error: %s' % (i, retries, e))
+                i += 1
+                retries -= 1
+            else:
+                OK = True
+                break
+        if not OK:
+            raise
+        elif cursor:
             return rows
         else:
-            return list(rows)
+            return list(dict(row) for row in rows)
 
     def get_table(self, table=None, except_=True, as_cls=False,
                   reflect=True, schema=None):
@@ -780,7 +783,7 @@ class SQLAlchemyProxy(object):
             last = self.find(table=table, fields=field, scalar=True,
                              sort=field, limit=1, descending=True,
                              date='~', default_fields=False)
-        logger.debug("last %s.%s: %s" % (table, field, last))
+        logger.debug("last %s.%s: %s" % (table, list2str(field), last))
         return last
 
     def index(self, fields, name=None, table=None, **kwargs):
@@ -862,8 +865,7 @@ class SQLAlchemyProxy(object):
         roles = list2str(roles)
         logger.info('Sharing cube %s with %s (%s)' % (table, with_user, roles))
         sql = 'GRANT %s ON %s TO %s' % (roles, table, with_user)
-        result = self.session_auto.execute(sql)
-        return result
+        return list(self.session_auto.execute(sql))
 
     def upsert(self, objects, autosnap=None, batch_size=None, table=None):
         objects = objects.values() if isinstance(objects, Mapping) else objects
@@ -940,6 +942,14 @@ class SQLAlchemyProxy(object):
         session.commit()
         return sorted(map(unicode, _ids))
 
+    def user_exists(self, username):
+        # FIXME:  this isn't supported in SQLite, for example
+        # need better abstraction?
+        username = validate_username(username, self.RESERVED_USERNAMES)
+        sql = ("SELECT * FROM pg_catalog.pg_user "
+               "WHERE  usename = '%s'" % username)
+        return self.session_auto.execute(sql)
+
     def user_register(self, username, password):
         # FIXME: enable setting roles at creation time...
         is_true(bool(username and password), 'username and password required!')
@@ -947,13 +957,21 @@ class SQLAlchemyProxy(object):
         p = validate_password(password)
         logger.info('Registering new user %s' % u)
         # FIXME: make a generic method which runs list of sql statements
-        sql = ("CREATE USER %s WITH PASSWORD '%s';" % (u, p),
-               "CREATE DATABASE %s WITH OWNER %s;" % (u, u))
-        # can't run in a transaction...
+        s_u = "CREATE USER %s WITH PASSWORD '%s';" % (u, p)
+        s_db = "CREATE DATABASE %s WITH OWNER %s;" % (u, u)
         cnx = self.engine.connect()
-        cnx.execution_options(isolation_level='AUTOCOMMIT')
-        result = [cnx.execute(s) for s in sql]
-        return result
+        # can't run in a transaction...
+        cnx.connection.set_isolation_level(0)
+        if not self.user_exists(username):
+            cnx.execute(s_u)
+            logger.info('User created: %s' % u)
+        else:
+            logger.info('User exists: %s' % u)
+        if not self.exists():
+            cnx.execute(s_db)
+            logger.info('DB created: %s' % u)
+        else:
+            logger.info('DB exists: %s' % u)
 
     def user_disable(self, username, table=None):
         table = self.get_table(table)
@@ -964,8 +982,12 @@ class SQLAlchemyProxy(object):
         # where datname = 'applogs';
         sql = u.where(
             "datname = '%s'" % username).values({'datallowconn': 'false'})
-        result = self.session_auto.execute(sql)
-        return result
+        return self.session_auto.execute(sql)
+
+    def whoami(self):
+        # FIXME: not compatible with all SQL backends...
+        sql = 'SELECT CURRENT_USER'
+        return self.session_auto.execute(sql).scalar()
 
 
 def get_engine_uri(db, host='127.0.0.1', port=5432, dialect='sqlite',

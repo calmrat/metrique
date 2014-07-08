@@ -191,12 +191,9 @@ def test_configure():
     else:
         assert False
 
-    try:  # should fail
-        x = configure(config_file=config_file, section_key='I_DO_NOT_EXIST')
-    except KeyError:
-        pass
-    else:
-        assert False
+    # shouldn't fail, but instead, returns empty dict
+    x = configure(config_file=config_file, section_key='I_DO_NOT_EXIST')
+    assert x == {}
 
     for arg in ('update', 'options', 'defaults'):
         try:

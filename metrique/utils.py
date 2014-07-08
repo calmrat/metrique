@@ -103,6 +103,7 @@ INVALID_USERNAME_RE = re.compile('[^a-zA-Z_]')
 HOME_DIR = os.environ.get('METRIQUE_HOME')
 PREFIX_DIR = os.environ.get('METRIQUE_PREFIX')
 LOGS_DIR = os.environ.get('METRIQUE_LOGS')
+ETC_DIR = os.environ.get('METRIQUE_ETC')
 CACHE_DIR = os.environ.get('METRIQUE_CACHE')
 SRC_DIR = os.environ.get('METRIQUE_SRC')
 BACKUP_DIR = env.get('METRIQUE_BACKUP')
@@ -236,10 +237,12 @@ def configure(options=None, defaults=None, config_file=None,
     sk = section_key
 
     if (section_key or section_only) and not (sk and sk in config):
-        raise KeyError('section %s not set' % sk)
-
-    # work only with the given section, if specified
-    working_config = config[sk] if sk in config else config
+        #raise KeyError('section %s not set' % sk)
+        logger.warn('section %s not set' % sk)
+        working_config = {}
+    else:
+        # work only with the given section, if specified
+        working_config = config[sk] if sk in config else config
 
     # if section key is already configured, ie, we initiated with
     # config set already, set options not set as None
@@ -609,18 +612,18 @@ def is_defined(value, msg=None, except_=None):
     return is_true(result, msg=msg, except_=except_)
 
 
-def is_empty(value, msg=None, except_=None):
+def is_empty(value, msg=None, except_=None, inc_zeros=True):
     '''
     is defined, but null or empty like value
     '''
-    # 0, 0.0, 0L are also considered 'empty'
     if hasattr(value, 'empty'):
         # dataframes must check for .empty
         # since they don't define truth value attr
         # take the negative, since below we're
         # checking for cases where value 'is_null'
         value = not bool(value.empty)
-    elif value in ZEROS:
+    elif inc_zeros and value in ZEROS:
+        # also consider 0, 0.0, 0L as 'empty'
         # will check for the negative below
         value = True
     else:
@@ -1128,6 +1131,8 @@ def sys_call(cmd, sig=None, sig_func=None, shell=True, cwd=None, quiet=False,
              fork=False, pid_file=None, ignore_errors=False, bg=False):
     _path = os.getcwd()
     cwd = cwd or _path
+    is_true(bool(not fork or (fork and pid_file)),
+            'pid_file must be defined when forking!')
     try:
         if fork:
             logger.warn('*' * 50 + 'FORKING' + '*' * 50)

@@ -18,9 +18,7 @@ logger = logging.getLogger('metrique')
 
 from copy import copy, deepcopy
 from collections import defaultdict
-from dateutil.parser import parse as dt_parse
 import os
-import pytz
 import re
 
 try:
@@ -30,19 +28,17 @@ except ImportError:
     HAS_JOBLIB = False
     logger.warn("joblib package not found!")
 
-import warnings
-
 from metrique import pyclient
 from metrique.utils import batch_gen, configure, debug_setup, ts2dt
-from metrique.utils import dt2ts, is_array
+from metrique.utils import dt2ts, is_array, str2list
 
 
-# FIXME: pass in workers=1 and call standard *get* func rather than
-# private _*get*?
 def get_full_history(cube, oids, flush=False, cube_name=None,
                      config=None, config_file=None, config_key=None,
                      container=None, container_config=None,
                      proxy=None, proxy_config=None, **kwargs):
+    # force a single worker to avoid 'nested' (invalid) joblib runs.
+    kwargs['workers'] = 1
     m = pyclient(cube=cube, name=cube_name, config=config,
                  config_file=config_file, config_key=config_key,
                  container=container, container_config=container_config,
@@ -59,6 +55,8 @@ def get_objects(cube, oids, flush=False, cube_name=None,
                 config=None, config_file=None, config_key=None,
                 container=None, container_config=None,
                 proxy=None, proxy_config=None, **kwargs):
+    # force a single worker to avoid 'nested' (invalid) joblib runs.
+    kwargs['workers'] = 1
     m = pyclient(cube=cube, name=cube_name, config=config,
                  config_file=config_file, config_key=config_key,
                  container=container, container_config=container_config,
@@ -76,19 +74,12 @@ class Generic(pyclient):
     Base, common functionality driver for connecting
     and extracting data from SQL databases.
 
-    It is expected that specific database connectors will
-    subclass this basecube to implement db specific connection
-    methods, etc.
-
     :cvar fields: cube fields definitions
-    :cvar defaults: cube default property container (cube specific meta-data)
+    :cvar dialect: SQLAlchemy dialect to use for proxy connection
 
-    :param sql_host: teiid hostname
-    :param sql_port: teiid port
-    :param sql_username: sql username
-    :param sql_password: sql password
-    :param sql_retries: number of times before we give up on a query
-    :param sql_batch_size: how many objects to query at a time
+    :param retries: number of times before we give up on a query
+    :param batch_size: how many objects to query at a time
+    :param worker_batch_size: how many objects to send to each worker
     '''
     dialect = None
     fields = None
@@ -227,7 +218,6 @@ class Generic(pyclient):
         force = force or self.lconfig.get('force') or False
         oids = []
         _c = self.container
-        cube_does_not_exist = not (hasattr(_c, '_exists') and _c._exists)
         if is_array(force):
             oids = list(force)
         elif not force:
@@ -240,7 +230,7 @@ class Generic(pyclient):
                 # get only those oids that have changed since last update
                 oids.extend(self.get_changed_oids(last_update,
                                                   parse_timestamp))
-        elif force is True or cube_does_not_exist:
+        elif force is True or not _c.exists():
             # if force or if the container doesn't exist
             # get a list of all known object ids
             oids = self.sql_get_oids()
@@ -269,36 +259,30 @@ class Generic(pyclient):
         mtime_columns = self.lconfig.get('delta_mtime', [])
         if not (mtime_columns and last_update):
             return []
-        if isinstance(mtime_columns, basestring):
-            mtime_columns = [mtime_columns]
+        mtime_columns = str2list(mtime_columns)
         where = []
         for _column in mtime_columns:
-            _sql = "%s > %s" % (_column, last_update)
+            # >= so we include anything that changed exactly
+            # at the same time as our last update
+            # FIXME: should we also include a 'resolution margin',
+            # ie, 30 seconds PRIOR to the last_update to raise likelihood we
+            # don't miss some data which changed between start
+            # of processing and time when _start was generated, etc?
+            _sql = "%s >= %s" % (_column, last_update)
             where.append(_sql)
         return self.sql_get_oids(where)
 
     def _fetch_mtime(self, last_update=None, parse_timestamp=None):
-        mtime = None
-        if last_update:
-            if isinstance(last_update, basestring):
-                mtime = dt_parse(last_update)
-            else:
-                mtime = last_update
-        else:
-            mtime = self.container.get_last_field(field='_start')
-
-        mtime = ts2dt(mtime)
+        if not last_update:
+            last_update = self.container.get_last_field(field='_start')
+        # We need the timezone, to readjust relative to the server's tz
+        mtime = ts2dt(last_update, tz_aware=True)
+        mtime = mtime.strftime('%Y-%m-%d %H:%M:%S %z') if mtime else mtime
         logger.debug("Last update mtime: %s" % mtime)
-
         if mtime:
             if parse_timestamp is None:
                 parse_timestamp = self.lconfig.get('parse_timestamp', True)
             if parse_timestamp:
-                if not (hasattr(mtime, 'tzinfo') and mtime.tzinfo):
-                    # We need the timezone, to readjust relative to the
-                    # server's tz
-                    mtime = mtime.replace(tzinfo=pytz.utc)
-                mtime = mtime.strftime('%Y-%m-%d %H:%M:%S %z')
                 dt_format = "yyyy-MM-dd HH:mm:ss z"
                 mtime = "parseTimestamp('%s', '%s')" % (mtime, dt_format)
             else:
@@ -373,9 +357,8 @@ class Generic(pyclient):
         # otherwise, single threaded, use sql batch size
         w_batch_size = self.lconfig.get('worker_batch_size')
         s_batch_size = self.lconfig.get('batch_size')
-        # set the 'index' of sql columns so we can extract
-        # out the sql rows and know which column : field
-        # determine which oids will we query
+
+        # get list of oids which we plan to update
         oids = self._delta_force(force, last_update, parse_timestamp)
 
         if HAS_JOBLIB and workers > 1:
@@ -384,20 +367,16 @@ class Generic(pyclient):
                     workers, w_batch_size))
             runner = Parallel(n_jobs=workers)
             func = delayed(get_objects)
-            with warnings.catch_warnings():
-                # suppress warning from joblib:
-                # UserWarning: Parallel loops cannot be nested ...
-                warnings.simplefilter("ignore")
-                result = runner(func(
-                    cube=self._cube, oids=batch, flush=flush,
-                    cube_name=self.name, config=self.config,
-                    config_file=self.config_file,
-                    config_key=self.config_key,
-                    container=type(self.objects),
-                    container_config=self.container_config,
-                    proxy=type(self.proxy),
-                    proxy_config=self.proxy_config)
-                    for batch in batch_gen(oids, w_batch_size))
+            result = runner(func(
+                cube=self._cube, oids=batch, flush=flush,
+                cube_name=self.name, config=self.config,
+                config_file=self.config_file,
+                config_key=self.config_key,
+                container=type(self.objects),
+                container_config=self.container_config,
+                proxy=type(self.proxy),
+                proxy_config=self.proxy_config)
+                for batch in batch_gen(oids, w_batch_size))
             # merge list of lists (batched) into single list
             result = [i for l in result for i in l]
         else:
@@ -471,20 +450,16 @@ class Generic(pyclient):
                     workers, w_batch_size))
             runner = Parallel(n_jobs=workers)
             func = delayed(get_full_history)
-            with warnings.catch_warnings():
-                # suppress warning from joblib:
-                # UserWarning: Parallel loops cannot be nested ...
-                warnings.simplefilter("ignore")
-                result = runner(func(
-                    cube=self._cube, oids=batch, flush=flush,
-                    cube_name=self.name, config=self.config,
-                    config_file=self.config_file,
-                    config_key=self.config_key,
-                    container=type(self.objects),
-                    container_config=self.container_config,
-                    proxy=type(self.proxy),
-                    proxy_config=self.proxy_config)
-                    for batch in batch_gen(oids, w_batch_size))
+            result = runner(func(
+                cube=self._cube, oids=batch, flush=flush,
+                cube_name=self.name, config=self.config,
+                config_file=self.config_file,
+                config_key=self.config_key,
+                container=type(self.objects),
+                container_config=self.container_config,
+                proxy=type(self.proxy),
+                proxy_config=self.proxy_config)
+                for batch in batch_gen(oids, w_batch_size))
             # merge list of lists (batched) into single list
             result = [i for l in result for i in l]
         else:
@@ -537,7 +512,7 @@ class Generic(pyclient):
 
     def _load_sql(self, sql, retries=None):
         retries = retries or self.lconfig.get('retries')
-        return self.proxy._load_sql(sql, retries=retries)
+        return self.proxy.execute(query=sql, retries=retries)
 
     def _prep_objects(self, objects):
         _oid = self.lconfig.get('_oid')

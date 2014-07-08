@@ -7,6 +7,8 @@
 Commandline interface for managing metrique deployments
 '''
 
+from __future__ import unicode_literals, absolute_import
+
 import datetime
 import getpass
 import glob
@@ -95,10 +97,11 @@ MONGODB_JSON = pjoin(ETC_DIR, 'mongodb.json')
 MONGODB_JS = pjoin(ETC_DIR, 'mongodb_firstboot.js')
 MONGODB_KEYFILE = pjoin(ETC_DIR, 'mongodb.key')
 
-CELERY_JSON = pjoin(ETC_DIR, 'celery.json')
 CELERYD_PIDFILE = pjoin(PIDS_DIR, 'celeryd.pid')
 CELERYBEAT_PIDFILE = pjoin(PIDS_DIR, 'celerybeat.pid')
-CELERY_LOGFILE = pjoin(LOGS_DIR, 'celeryd.log')
+CELERYD_LOGFILE = pjoin(LOGS_DIR, 'celeryd.log')
+CELERYBEAT_LOGFILE = pjoin(LOGS_DIR, 'celerybeat.log')
+CELERYD_BROKER_DB = pjoin(CACHE_DIR, 'celeryd.db')
 
 NGINX_FIRSTBOOT_PATH = pjoin(PREFIX_DIR, '.firstboot_nginx')
 NGINX_CONF = pjoin(ETC_DIR, 'nginx.conf')
@@ -146,12 +149,12 @@ def celeryd_terminate(sig=None, frame=None):
 def celeryd_loop(args):
     fork = not args.nofork
     x = 'worker'
-    logfile = '--logfile=%s' % CELERY_LOGFILE
+    logfile = '--logfile=%s' % CELERYD_LOGFILE
     loglvl = '-l INFO'
     pidfile = '--pidfile=%s' % CELERYD_PIDFILE
     app = '-A %s' % args.tasks_mod
     cmd = 'celery %s %s %s %s %s' % (x, logfile, loglvl, pidfile, app)
-    utils.sys_call(cmd, fork=fork)
+    utils.sys_call(cmd, fork=fork, pid_file=CELERYD_PIDFILE)
 
 
 def celeryd_task(args):
@@ -178,12 +181,12 @@ def celerybeat_terminate(sig=None, frame=None):
 def celerybeat_run(args):
     fork = not args.nofork
     x = 'beat'
-    logfile = '--logfile=%s' % CELERY_LOGFILE
+    logfile = '--logfile=%s' % CELERYBEAT_LOGFILE
     loglvl = '-l INFO'
     pidfile = '--pidfile=%s' % CELERYBEAT_PIDFILE
     app = '-A %s' % args.tasks_mod
     cmd = 'celery %s %s %s %s %s' % (x, logfile, loglvl, pidfile, app)
-    utils.sys_call(cmd, fork=fork)
+    utils.sys_call(cmd, fork=fork, pid_file=CELERYBEAT_PIDFILE)
 
 
 def celerybeat(args):
@@ -674,7 +677,8 @@ def pyclient_firstboot(force=False):
 
     DEFAULT_METRIQUE_JSON = DEFAULT_METRIQUE_JSON % (
         LOCAL_IP, PASSWORD, LOCAL_IP, PASSWORD,
-        LOCAL_IP, PASSWORD, LOCAL_IP, PASSWORD, SSL_PEM,
+        LOCAL_IP, PASSWORD, SSL_PEM,
+        CELERYD_BROKER_DB,
         PASSWORD, PASSWORD, LOCAL_IP)
 
     default_conf(METRIQUE_JSON, DEFAULT_METRIQUE_JSON)
@@ -821,7 +825,7 @@ def main():
     _firstboot.add_argument('command',
                             nargs='+',
                             choices=['metrique', 'mongodb', 'postgresql',
-                                     'celery', 'supervisord', 'nginx'])
+                                     'supervisord', 'nginx'])
     _firstboot.add_argument('-f', '--force', action='store_true')
     #_firstboot.add_argument('-A', '--no-auth', action='store_true')
     _firstboot.set_defaults(func=firstboot)
@@ -922,10 +926,11 @@ def main():
     logger.debug('User Path   : %s' % PREFIX_DIR)
     logger.debug('-' * 30)
 
+    # Activate the virtual environment in this python session if
+    # parent env has one set
+    # unless we are deploying
     if args.action != 'deploy':
-        # Activate the virtual environment in this python session if
-        # parent env has one set
-        utils.virtualenv_deactivate()
+        utils.virtualenv_activate()
 
     # run command
     args.func(args)
