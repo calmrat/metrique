@@ -25,7 +25,7 @@ except ImportError:
     logger.warn('decorator module is not installed')
 
 
-from datetime import timedelta
+from datetime import timedelta, datetime
 
 try:
     import numpy as np
@@ -48,7 +48,7 @@ except ImportError:
     DataFrame = object  # load as object, we'll fail at runtime
     logger.warn('pandas module is not installed')
 
-from metrique.utils import dt2ts, utcnow, ts2dt
+from metrique.utils import dt2ts, ts2dt
 
 
 def filtered(f):
@@ -245,7 +245,7 @@ class Result(DataFrame):
         end = Timestamp(end or max(Timestamp(self._end.max()),
                                    self._start.max()))
         # FIXME: end != end ?
-        end = utcnow() if repr(end) == 'NaT' else end
+        end = datetime.utcnow() if repr(end) == 'NaT' else end
         start = start if self.check_in_bounds(start) else self._lbound
         end = end if self.check_in_bounds(end) else self._rbound
 
@@ -378,7 +378,7 @@ class Result(DataFrame):
                 max_start_ser_map[oid] = row
 
         vals = max_start_ser_map.values()
-        cut_ts = utcnow()
+        cut_ts = datetime.utcnow()
         ages = []
         for row in vals:
             end = row[i_end]
