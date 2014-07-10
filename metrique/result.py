@@ -101,6 +101,24 @@ class Result(DataFrame):
         if '_end' in self.columns:
             self._end_isnull = self._end.isnull()
 
+    def __getitem__(self, key):
+        try:
+            return super(Result, self).__getitem__(key)
+        except KeyError as e:
+            if not len(self):
+                return pd.Series(dtype=object)
+            else:
+                raise e
+
+    def __getattr__(self, key):
+        try:
+            return super(Result, self).__getattr__(key)
+        except AttributeError as e:
+            if not len(self):
+                return pd.Series(dtype=object)
+            else:
+                raise e
+
     def to_datetime(self, column):
         '''
         This function converts epoch timestamps to datetimes.
