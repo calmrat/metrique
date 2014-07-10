@@ -49,6 +49,13 @@ class Result(DataFrame):
     def __init__(self, data=None, date=None):
         super(Result, self).__init__(data)
         # The converts are here so that None is converted to NaT
+        if data is not None and len(data) and \
+                any([c not in self for c in ['_oid', '_start', '_end']]):
+            raise ValueError('_oid, _start and _end must be defined')
+        if data is None or not len(data):
+            # add the essential columns
+            for c in ['_oid', '_start', '_end']:
+                self[c] = []
         self.to_datetime('_start')
         self.to_datetime('_end')
         if isinstance(data, Result):
