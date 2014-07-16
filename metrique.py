@@ -67,15 +67,16 @@ env['PIP_DOWNLOAD_CACHE'] = env.get('PIP_DOWNLOAD_CACHE', PIP_CACHE_DIR)
 env['PIP_ACCEL_CACHE'] = env.get('PIP_ACCEL_CACHE', PIP_ACCEL_DIR)
 env['PYTHON_EGG_CACHE'] = env.get('PYTHON_EGG_CACHE', PIP_EGGS)
 
-TRASH_DIR = env.get('METRIQUE_TRASH', pjoin(PREFIX_DIR, 'trash'))
-LOGS_DIR = env.get('METRIQUE_LOGS', pjoin(PREFIX_DIR, 'logs'))
-ETC_DIR = env.get('METRIQUE_ETC', pjoin(PREFIX_DIR, 'etc'))
-PIDS_DIR = env.get('METRIQUE_PIDS', pjoin(PREFIX_DIR, 'pids'))
-BACKUP_DIR = env.get('METRIQUE_BACKUP', pjoin(PREFIX_DIR, 'backup'))
-TMP_DIR = env.get('METRIQUE_TMP', pjoin(PREFIX_DIR, 'tmp'))
-CACHE_DIR = env.get('METRIQUE_CACHE', pjoin(PREFIX_DIR, 'cache'))
-MONGODB_DIR = env.get('METRIQUE_MONGODB', pjoin(PREFIX_DIR, 'mongodb'))
-STATIC_DIR = env.get('METRIQUE_STATIC', pjoin(PREFIX_DIR, 'static'))
+TRASH_DIR = env.get('METRIQUE_TRASH')
+LOGS_DIR = env.get('METRIQUE_LOGS')
+ETC_DIR = env.get('METRIQUE_ETC')
+PIDS_DIR = env.get('METRIQUE_PIDS')
+BACKUP_DIR = env.get('METRIQUE_BACKUP')
+TMP_DIR = env.get('METRIQUE_TMP')
+CACHE_DIR = env.get('METRIQUE_CACHE')
+MONGODB_DIR = env.get('METRIQUE_MONGODB')
+STATIC_DIR = env.get('METRIQUE_STATIC')
+TEMPLATES_DIR = env.get('METRIQUE_TEMPLATES')
 
 METRIQUE_FIRSTBOOT_PATH = pjoin(PREFIX_DIR, '.firstboot_metrique')
 METRIQUE_JSON = pjoin(ETC_DIR, 'metrique.json')
@@ -412,7 +413,7 @@ def rsync(args):
 
 
 def trash(args=None):
-    named = getattr(args, 'named')
+    named = getattr(args, 'named', None)
     named = '%s-%s' % (named[0], NOW) if named else NOW
     supervisord_terminate()
     celerybeat_terminate()
@@ -575,13 +576,6 @@ def ssl(args=None):
     os.chmod(SSL_PEM, 0600)
 
 
-def default_conf(path, template):
-    if os.path.exists(path):
-        path = '.'.join([path, 'default'])
-    utils.write_file(path, template)
-    logger.info("Installed %s ..." % path)
-
-
 def firstboot(args=None, force=False):
     # make sure we have some basic defaults configured in the environment
     force = getattr(args, 'force', force)
@@ -649,7 +643,7 @@ def mongodb_firstboot(force=False):
         MONGODB_KEYFILE)
     DEFAULT_MONGODB_JS = DEFAULT_MONGODB_JS % (PASSWORD)
 
-    default_conf(MONGODB_CONF, DEFAULT_MONGODB_CONF)
+    utils.write_file(MONGODB_CONF, DEFAULT_MONGODB_CONF)
     utils.write_file(MONGODB_FIRSTBOOT_PATH, '')
 
 
@@ -657,7 +651,7 @@ def mongodb_install_admin():
     # by installing 'admin' user in Travis-ci we enable
     # authentication; flag here is to disable that
     # for testing
-    default_conf(MONGODB_JS, DEFAULT_MONGODB_JS)
+    utils.write_file(MONGODB_JS, DEFAULT_MONGODB_JS)
     mongodb_start(fork=True, fast=True)
     logger.debug('MongoDB forking, sleeping for a moment...')
     time.sleep(1)
@@ -681,7 +675,7 @@ def pyclient_firstboot(force=False):
         CELERYD_BROKER_DB,
         PASSWORD, PASSWORD, LOCAL_IP)
 
-    default_conf(METRIQUE_JSON, DEFAULT_METRIQUE_JSON)
+    utils.write_file(METRIQUE_JSON, DEFAULT_METRIQUE_JSON)
     utils.write_file(METRIQUE_FIRSTBOOT_PATH, '')
 
 
@@ -701,7 +695,7 @@ def supervisord_firstboot(force=False):
         LOGS_DIR, USER, ENVIRONMENT, LOCAL_IP, PASSWORD,
         SUPERVISORD_HISTORYFILE)
 
-    default_conf(SUPERVISORD_CONF, DEFAULT_SUPERVISORD_CONF)
+    utils.write_file(SUPERVISORD_CONF, DEFAULT_SUPERVISORD_CONF)
     utils.write_file(SUPERVISORD_FIRSTBOOT_PATH, '')
 
 
@@ -719,7 +713,7 @@ def nginx_firstboot(force=False):
         NGINX_ERROR_LOG, NGINX_ACCESS_LOG, LOCAL_IP, SSL_CERT, SSL_KEY,
         STATIC_DIR)
 
-    default_conf(NGINX_CONF, DEFAULT_NGINX_CONF)
+    utils.write_file(NGINX_CONF, DEFAULT_NGINX_CONF)
     utils.write_file(NGINX_FIRSTBOOT_PATH, '')
 
 

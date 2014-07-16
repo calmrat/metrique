@@ -915,6 +915,7 @@ def load_config(path):
 
 
 def make_dirs(path, mode=0700, quiet=True):
+    path = path or ''
     if not path.startswith('/'):
         raise OSError("requires absolute path! got %s" % path)
     if os.path.exists(path):
@@ -1080,6 +1081,12 @@ def safestr(str_):
 
 def sha1_hexdigest(o):
     return sha1(repr(o)).hexdigest()
+
+
+def ssl_gen(cert_path, key_path):
+    logger.debug("Generating self-signed SSL certificate + key + combined pem")
+    sys_call('openssl req -new -x509 -days 365 -nodes '
+             '-out %s -keyout %s -batch' % (cert_path, key_path))
 
 
 def str2list(item, delim=',', map_=None):
@@ -1358,11 +1365,22 @@ def virtualenv_activate(virtenv=None):
         raise OSError("Invalid virtual env; %s not found" % activate_this)
 
 
-def write_file(path, value, mode='w', force=False):
-    if os.path.exists(path) and mode == 'w' and not force:
-        raise RuntimeError('file exists, use different mode or force=True')
+def write_file(path, value, mode='w', force=False, exists_ext='new'):
+    is_true(mode in ('w', 'a'), 'invalid write mode: %s' % mode)
+    exists = os.path.exists(path)
+    is_w = mode == 'w'
+    # force if we set it to true or if exists_ext is None
+    if exists and is_w and not force:
+        if exists_ext:
+            # doesn't overwrite the existing file, but write the new
+            # file with an extension
+            path = '%s.%s' % (path, exists_ext)
+            logger.warn("File exists, saving instead as %s" % path)
+        else:
+            raise RuntimeError("File exists; use force=True to overwrite")
     with open(path, mode) as f:
         f.write(unicode(str(value)))
+    logger.info("Installed %s ..." % path)
 
 
 class DictDiffer(object):

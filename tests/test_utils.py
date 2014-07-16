@@ -1260,7 +1260,7 @@ def test_write_file():
 
     # can't overwrite files with default settings
     try:
-        write_file(f1, 'hello world')
+        write_file(f1, 'hello world', force=False, exists_ext=None)
     except RuntimeError:
         pass
     else:
@@ -1273,5 +1273,11 @@ def test_write_file():
     write_file(f1, 'hello world', mode='a')
     assert exists(f1)
     assert read_file(f1) == 'hello metriquehello world'
+
+    # done remove the file; write it again, second time will write '.new' file
+    # .new file added to new file on write is exists_ext not null
+    write_file(f1, 'hello world', force=False, exists_ext='new')
+    assert read_file(f1)
+    assert read_file('%s.new' % f1)
 
     remove_file(f1)

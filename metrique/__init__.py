@@ -35,6 +35,16 @@ os.environ['METRIQUE_CACHE'] = os.environ.get(
     'METRIQUE_CACHE', os.path.join(prefix, 'cache'))
 os.environ['METRIQUE_STATIC'] = os.environ.get(
     'METRIQUE_STATIC', os.path.join(prefix, 'static'))
+os.environ['METRIQUE_TEMPLATES'] = os.environ.get(
+    'METRIQUE_TEMPLATES', os.path.join(prefix, 'static/templates'))
+os.environ['METRIQUE_PIDS'] = os.environ.get(
+    'METRIQUE_PIDS', os.path.join(prefix, 'pids'))
+os.environ['METRIQUE_MONGODB'] = os.environ.get(
+    'METRIQUE_MONGODB', os.path.join(prefix, 'mongodb'))
+os.environ['METRIQUE_TRASH'] = os.environ.get(
+    'METRIQUE_TRASH', os.path.join(prefix, 'trash'))
+os.environ['METRIQUE_BACKUP'] = os.environ.get(
+    'METRIQUE_BACKUP', os.path.join(prefix, 'backup'))
 # if this isn't set in env already, we can only guess...
 # first guess is top-level directory holding the metrique module
 _mod_file = os.path.abspath(__file__)
