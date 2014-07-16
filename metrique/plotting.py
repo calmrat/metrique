@@ -48,7 +48,7 @@ CNAMES = {'blue': 0, 'b': 0,
 
 def timestamp_figure(figure, stamp=True):
     # drop seconds:
-    t = str(utcnow(as_datetime=False)).split('.')[0][:-3]
+    t = str(utcnow(as_datetime=True)).split('.')[0][:-3]
     if isinstance(stamp, basestring):
         t = '%s %s' % (stamp, t)
     figure.text(0.95, 0.05, t, fontsize=12, color='gray',
@@ -136,6 +136,7 @@ class Plotter(object):
         :params list list_of_colors:
             A list of colors to use.
         '''
+        self.fill = stacked
         colors = range(len(list_of_label_series)) if colors is None else colors
         if stacked:
             ssum = 0

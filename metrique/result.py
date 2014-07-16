@@ -75,12 +75,12 @@ def filtered(f):
 
 class Result(DataFrame):
     ''' Custom DataFrame implementation for Metrique '''
-    def __init__(self, data=None, date=None):
+    def __init__(self, data=None, date=None, **kwargs):
         if not HAS_PANDAS:
             raise RuntimeError("`pip install pandas` required")
         if not HAS_NUMPY:
             raise RuntimeError("`pip install numpy` required")
-        super(Result, self).__init__(data)
+        super(Result, self).__init__(data, **kwargs)
         if data is not None and len(data) and \
                 any([c not in self for c in ['_oid', '_start', '_end']]):
             raise ValueError('_oid, _start and _end must be defined')

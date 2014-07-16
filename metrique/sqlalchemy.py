@@ -770,11 +770,13 @@ class SQLAlchemyProxy(object):
             rows = rows.fetchmany(limit)
         else:
             rows = rows.fetchall()
-        rows = [dict(r) for r in rows]
         if raw:
-            return rows
+            return [dict(r) for r in rows]
         else:
-            return Result(rows, date)
+            if rows:
+                return Result(rows, date, columns=rows[0].keys())
+            else:
+                return Result(rows, date)
 
     def get_last_field(self, field, table=None):
         '''Shortcut for querying to get the last field value for
