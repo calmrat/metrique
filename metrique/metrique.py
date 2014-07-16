@@ -267,6 +267,9 @@ class Metrique(object):
             from metrique.sqlalchemy import SQLAlchemyProxy
             self._proxy_cls = SQLAlchemyProxy
 
+    def __len__(self):
+        return len(self.container)
+
     @property
     def container(self):
         if self._container is None or isclass(self._container):
