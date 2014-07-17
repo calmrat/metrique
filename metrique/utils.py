@@ -29,6 +29,7 @@ from collections import defaultdict, Mapping, OrderedDict
 from copy import copy
 import cPickle
 import cProfile as profiler
+import csv
 from datetime import datetime, date
 try:
     from dateutil.parser import parse as dt_parse
@@ -753,11 +754,19 @@ def load_pickle(path, **kwargs):
     return result
 
 
-def load_csv(path, **kwargs):
-    is_true(HAS_PANDAS, "`pip install pandas` required")
-    kwargs.setdefault('skipinitialspace', True)
-    # load the file according to filetype
-    return pd.read_csv(path, **kwargs)
+def load_csv(path, use_pandas=False, **kwargs):
+    if use_pandas:
+        is_true(HAS_PANDAS, "`pip install pandas` required")
+        kwargs.setdefault('skipinitialspace', True)
+        # load the file according to filetype
+        return pd.read_csv(path, **kwargs)
+    else:
+        _csv = open(path, 'rU')
+        has_header = csv.Sniffer().has_header(_csv.read(1024))
+        _csv.seek(0)
+        is_true(has_header, "csv doesn't have a header defining field names!")
+        fields = csv.reader(_csv).next()
+        return csv.DictReader(_csv, fieldnames=fields, **kwargs)
 
 
 def load_json(path, **kwargs):
@@ -839,6 +848,8 @@ def load(path, filetype=None, as_df=False, retries=None,
     else:
         path = re.sub('^file://', '', path)
         path = os.path.expanduser(path)
+        # assume relative to cwd if not already absolute path
+        path = path if os.path.isabs(path) else pjoin(os.getcwd(), path)
         files = sorted(glob.glob(os.path.expanduser(path)))
         if not files:
             raise IOError("failed to load: %s" % path)
@@ -975,7 +986,21 @@ def rand_chars(size=6, chars=string.ascii_uppercase + string.digits,
     return chars
 
 
-def read_file(rel_path, paths=None, raw=False, as_list=False, *args, **kwargs):
+def read_in_chunks(file_object, chunk_size=1024):
+    """
+    Lazy function (generator) to read a file piece by piece.
+    Default chunk size: 1k.
+    See: http://stackoverflow.com/a/519653
+    """
+    while True:
+        data = file_object.read(chunk_size)
+        if not data:
+            break
+        yield data
+
+
+def read_file(rel_path, paths=None, raw=False, as_list=False, as_iter=False,
+              *args, **kwargs):
     '''
         find a file that lives somewhere within a set of paths and
         return its contents. Default paths include 'static_dir'
@@ -995,11 +1020,16 @@ def read_file(rel_path, paths=None, raw=False, as_list=False, *args, **kwargs):
             break
     else:
         raise IOError("path %s does not exist!" % rel_path)
+    args = args if args else ['rU']
     fd = open(path, *args, **kwargs)
     if raw:
         return fd
 
-    fd_lines = fd.readlines()
+    if as_iter:
+        return read_in_chunks(fd)
+    else:
+        fd_lines = fd.readlines()
+
     if as_list:
         return fd_lines
     else:
