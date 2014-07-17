@@ -343,6 +343,20 @@ def cube_pkg_mod_cls(cube):
     return pkg, mod, _cls
 
 
+def _data_export(data, as_df=False):
+    is_true(HAS_PANDAS, "`pip install pandas` required")
+    if as_df:
+        if isinstance(data, pd.DataFrame):
+            return data
+        else:
+            return pd.DataFrame(data)
+    else:
+        if isinstance(data, pd.DataFrame):
+            return data.T.to_dict().values()
+        else:
+            return data
+
+
 def _debug_set_level(logger, level):
     # NOTE: int(0) == bool(False) is True
     if level in [-1, 0, False]:
@@ -725,89 +739,6 @@ def list2str(items, delim=','):
     return item
 
 
-def load_file(path, filetype=None, as_df=False, **kwargs):
-    if not os.path.exists(path):
-        raise IOError("%s does not exist" % path)
-    if not filetype:
-        # try to get file extension
-        filetype = path.split('.')[-1]
-    if filetype in ['csv', 'txt']:
-        result = load_csv(path, **kwargs)
-    elif filetype in ['json']:
-        result = load_json(path, **kwargs)
-    elif filetype in ['pickle']:
-        result = load_pickle(path, **kwargs)
-    else:
-        raise TypeError("Invalid filetype: %s" % filetype)
-    return _data_export(result, as_df=as_df)
-
-
-def load_pickle(path, **kwargs):
-    result = []
-    with open(path) as f:
-        while 1:
-            # in case we have multiple pickles dumped
-            try:
-                result.append(cPickle.load(f))
-            except EOFError:
-                break
-    return result
-
-
-def load_csv(path, use_pandas=False, **kwargs):
-    if use_pandas:
-        is_true(HAS_PANDAS, "`pip install pandas` required")
-        kwargs.setdefault('skipinitialspace', True)
-        # load the file according to filetype
-        return pd.read_csv(path, **kwargs)
-    else:
-        _csv = open(path, 'rU')
-        has_header = csv.Sniffer().has_header(_csv.read(1024))
-        _csv.seek(0)
-        is_true(has_header, "csv doesn't have a header defining field names!")
-        fields = csv.reader(_csv).next()
-        return csv.DictReader(_csv, fieldnames=fields, **kwargs)
-
-
-def load_json(path, **kwargs):
-    is_true(HAS_PANDAS, "`pip install pandas` required")
-    return pd.read_json(path, **kwargs)
-
-
-def local_tz():
-    if time.daylight:
-        offsetHour = time.altzone / 3600
-    else:
-        offsetHour = time.timezone / 3600
-    return 'Etc/GMT%+d' % offsetHour
-
-
-def local_tz_to_utc(dt):
-    dt = ts2dt(dt)
-    convert = get_timezone_converter(_local_tz)
-    return convert(dt)
-
-
-def set_oid_func(_oid_func):
-    k = itertools.count(1)
-
-    def __oid_func(o):
-        ''' default __oid generator '''
-        o['_oid'] = o['_oid'] if '_oid' in o else k.next()
-        return o
-
-    if _oid_func:
-        if _oid_func is True:
-            _oid_func = __oid_func
-        elif isfunction(_oid_func):
-            pass
-        else:
-            raise TypeError("_oid must be a function!")
-    else:
-        _oid_func = None
-    return _oid_func
-
-
 def load(path, filetype=None, as_df=False, retries=None,
          _oid=None, quiet=False, **kwargs):
     '''Load multiple files from various file types automatically.
@@ -874,18 +805,20 @@ def load(path, filetype=None, as_df=False, retries=None,
         return objects
 
 
-def _data_export(data, as_df=False):
-    is_true(HAS_PANDAS, "`pip install pandas` required")
-    if as_df:
-        if isinstance(data, pd.DataFrame):
-            return data
+def load_config(path):
+    if not path:
+        return {}
+
+    config_file = os.path.expanduser(path)
+    if HAS_ANYCONFIG:
+        conf = anyconfig.load(config_file) or {}
+        if conf:
+            # convert mergeabledict (anyconfig) to dict of dicts
+            return conf.convert_to(conf)
         else:
-            return pd.DataFrame(data)
+            raise IOError("Invalid config file: %s" % config_file)
     else:
-        if isinstance(data, pd.DataFrame):
-            return data.T.to_dict().values()
-        else:
-            return data
+        raise RuntimeError("`pip install anyconfig` required!")
 
 
 def _load_cube_pkg(pkg, cube):
@@ -909,20 +842,68 @@ def _load_cube_pkg(pkg, cube):
         return getattr(mcubes, _cls)
 
 
-def load_config(path):
-    if not path:
-        return {}
-
-    config_file = os.path.expanduser(path)
-    if HAS_ANYCONFIG:
-        conf = anyconfig.load(config_file) or {}
-        if conf:
-            # convert mergeabledict (anyconfig) to dict of dicts
-            return conf.convert_to(conf)
-        else:
-            raise IOError("Invalid config file: %s" % config_file)
+def load_csv(path, use_pandas=False, **kwargs):
+    if use_pandas:
+        is_true(HAS_PANDAS, "`pip install pandas` required")
+        kwargs.setdefault('skipinitialspace', True)
+        # load the file according to filetype
+        return pd.read_csv(path, **kwargs)
     else:
-        raise RuntimeError("`pip install anyconfig` required!")
+        _csv = open(path, 'rU')
+        sample = _csv.read(1024)
+        has_header = csv.Sniffer().has_header(sample) if sample else False
+        _csv.seek(0)
+        is_true(has_header, "csv doesn't have a header defining field names!")
+        fields = csv.reader(_csv).next()
+        return csv.DictReader(_csv, fieldnames=fields, **kwargs)
+
+
+def load_file(path, filetype=None, as_df=False, **kwargs):
+    if not os.path.exists(path):
+        raise IOError("%s does not exist" % path)
+    if not filetype:
+        # try to get file extension
+        filetype = path.split('.')[-1]
+    if filetype in ['csv', 'txt']:
+        result = load_csv(path, **kwargs)
+    elif filetype in ['json']:
+        result = load_json(path, **kwargs)
+    elif filetype in ['pickle']:
+        result = load_pickle(path, **kwargs)
+    else:
+        raise TypeError("Invalid filetype: %s" % filetype)
+    return _data_export(result, as_df=as_df)
+
+
+def load_json(path, **kwargs):
+    is_true(HAS_PANDAS, "`pip install pandas` required")
+    return pd.read_json(path, **kwargs)
+
+
+def load_pickle(path, **kwargs):
+    result = []
+    with open(path) as f:
+        while 1:
+            # in case we have multiple pickles dumped
+            try:
+                result.append(cPickle.load(f))
+            except EOFError:
+                break
+    return result
+
+
+def local_tz():
+    if time.daylight:
+        offsetHour = time.altzone / 3600
+    else:
+        offsetHour = time.timezone / 3600
+    return 'Etc/GMT%+d' % offsetHour
+
+
+def local_tz_to_utc(dt):
+    dt = ts2dt(dt)
+    convert = get_timezone_converter(_local_tz)
+    return convert(dt)
 
 
 def make_dirs(path, mode=0700, quiet=True):
@@ -1107,6 +1088,26 @@ def safestr(str_):
     ''' get back an alphanumeric only version of source '''
     str_ = str_ or ""
     return "".join(x for x in str_ if x.isalnum())
+
+
+def set_oid_func(_oid_func):
+    k = itertools.count(1)
+
+    def __oid_func(o):
+        ''' default __oid generator '''
+        o['_oid'] = o['_oid'] if '_oid' in o else k.next()
+        return o
+
+    if _oid_func:
+        if _oid_func is True:
+            _oid_func = __oid_func
+        elif isfunction(_oid_func):
+            pass
+        else:
+            raise TypeError("_oid must be a function!")
+    else:
+        _oid_func = None
+    return _oid_func
 
 
 def sha1_hexdigest(o):

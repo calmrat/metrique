@@ -35,7 +35,7 @@ def test_csvdata():
     m.objects.drop()
 
     uri = os.path.join(fixtures, 'us-idx-eod.csv')
-    m.get_objects(uri=uri)
+    m.get_objects(uri=uri, load_kwargs=dict(use_pandas=True))
 
     assert m.objects
     assert len(m.objects) == 14

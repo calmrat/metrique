@@ -703,7 +703,7 @@ def test_load_file():
     for f in files:
         print 'Loading %s' % f
         path = os.path.join(fixtures, f)
-        objects = load_file(path)
+        objects = list(load_file(path))
         print '... got %s' % objects
         assert len(objects) == 1
         assert map(unicode, sorted(objects[0].keys())) == ['col_1', 'col_2']
@@ -727,7 +727,7 @@ def test_load():
     from metrique.utils import load
     path_glob = os.path.join(fixtures, 'test*.csv')
 
-    x = load(path_glob)
+    x = load(path_glob, use_pandas=True)
     assert len(x) == 2
     assert 'col_1' in x[0].keys()
     assert 1 in x[0].values()
@@ -768,8 +768,15 @@ def test_load():
 
     empty = os.path.join(fixtures, 'empty.csv')
     try:
-        load(empty, header=None)
+        load(empty, header=None, use_pandas=True)
     except ValueError:
+        pass
+    else:
+        assert False
+
+    try:
+        load(empty, header=None, use_pandas=False)
+    except RuntimeError:
         pass
     else:
         assert False
@@ -789,7 +796,7 @@ def test_load():
 
     # check that we can grab data from the web
     uri = 'https://mysafeinfo.com/api/data?list=days&format=csv'
-    x = load(uri, filetype='csv')
+    x = list(load(uri, filetype='csv'))
     assert len(x) == 7
     x = load(path_glob)
 
