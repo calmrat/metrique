@@ -144,12 +144,11 @@ except ImportError as e:
     TYPE_MAP = {}
     CoerceUTF8 = None
 
-from time import time
 import warnings
 
 from metrique._version import __version__
 from metrique import parse
-from metrique.utils import batch_gen, configure, to_encoding, autoschema
+from metrique.utils import configure, to_encoding, autoschema
 from metrique.utils import debug_setup, str2list, list2str
 from metrique.utils import validate_roles, validate_password, validate_username
 from metrique.utils import json_encode_default, is_true, is_array, is_defined
@@ -796,9 +795,15 @@ class SQLAlchemyProxy(object):
         logger.debug("last %s.%s: %s" % (table, list2str(field), last))
         return last
 
-    def get_delta_ts(self):
-        fname = 'delta_ts__' + self.config.get('table')
+    def _get_delta_ts_file_path(self):
+        fname = 'delta_ts__' + '_'.join(
+            [self.config.get('host'), self.config.get('db'),
+             self.config.get('table')])
         path = os.path.join(self.config.get('cache_dir'), fname)
+        return path
+
+    def get_delta_ts(self):
+        path = self._get_delta_ts_file_path()
         try:
             with open(path) as f:
                 ts = int(f.readline())
@@ -807,8 +812,7 @@ class SQLAlchemyProxy(object):
             return None
 
     def update_delta_ts(self, value):
-        fname = 'delta_ts__' + self.config.get('table')
-        path = os.path.join(self.config.get('cache_dir'), fname)
+        path = self._get_delta_ts_file_path()
         with open(path, 'w') as f:
             f.write(str(int(value)))
 
@@ -904,68 +908,55 @@ class SQLAlchemyProxy(object):
             autosnap = all(o['_end'] is None for o in objects)
             logger.warn('AUTOSNAP auto-set to: %s' % autosnap)
 
-        batch_size = batch_size or self.config.get('batch_size')
-        _ids = [o['_id'] for o in objects]
-        dups = {}
-        query = '_id in %s'
-        t1 = time()
-        # FIXME: fields should accept {'id': -1'} to include all but 'id'
-        for batch in batch_gen(_ids, batch_size):
-            q = query % batch
-            dups.update({o._id: dict(o) for o in self.find(
-                table=table, query=q, fields='~', date='~', as_cursor=True)})
-
-        diff = int(time() - t1)
-        logger.debug(
-            'dup query completed in %s seconds (%s dups skipped)' % (
-                diff, len(dups)))
-
+        # TODO remove the use of _id and _hash
+        _ids = sorted(set([o['_id'] for o in objects]))
+        oids = sorted(set([o['_oid'] for o in objects]))
         session = self.session_new()
-        dup_k, snap_k = 0, 0
-        inserts = []
-        u = update(table)
-        for i, o in enumerate(objects):
-            dup = dups.get(o['_id'])
-            if dup:
-                # remove dup primary key, it will get a new one
-                # FIXME: see FIXME above; should use find(fields={'id': -1})
-                # so we don't have to pull then delete 'id'
-                del dup['id']
-                if o['_hash'] == dup['_hash']:
-                    dup_k += 1
-                elif o['_end'] is None and autosnap:
-                    # set existing objects _end to new objects _start
-                    dup['_end'] = o['_start']
-                    # update _id, _hash, etc
-                    dup = self._object_cls(**dup)
-                    _ids.append(dup['_id'])
-                    # insert the new object
-                    inserts.append(dup)
-                    # replace the existing _end:None object with new values
-                    _id = o['_id']
-                    session.execute(
-                        u.where(table.c._id == _id).values(**o))
-                    snap_k += 1
-
-                else:
-                    o = dict(self._object_cls(**o))
-                    # don't try to set _id
-                    _id = o.pop('_id')
-                    assert _id == dup['_id']
-                    session.execute(
-                        u.where(table.c._id == _id).values(**o))
+        try:
+            if autosnap:
+                # Snapshot
+                existing = session.query(table).\
+                    filter(table.c._oid.in_(oids)).\
+                    filter(table.c._end.is_(None)).all()
+                existing = {o._oid: o for o in existing}
+                inserts = [o for o in objects if o['_oid'] not in existing]
+                snap_k = len(inserts)
+                dup_k = 0
+                objects = [o for o in objects if o['_oid'] in existing]
+                for o in objects:
+                    oe = existing[o['_oid']]
+                    logger.debug('*' * 100)
+                    logger.debug(oe._hash)
+                    logger.debug(o['_hash'])
+                    if oe._hash != o['_hash']:
+                        new_id = '%s:%s' % (oe._oid, oe._start)
+                        session.execute(
+                            update(table).where(table.c.id == oe.id).
+                            values(_end=o['_start'], _id=new_id))
+                        _ids.append(new_id)
+                        inserts.append(o)
+                        snap_k += 1
+                    else:
+                        dup_k += 1
+                logger.debug('%s existing objects snapshotted' % snap_k)
+                logger.debug('%s duplicates not re-saved' % dup_k)
+                objects = inserts
             else:
-                inserts.append(o)
+                # History import
+                # delete existing versions:
+                session.query(table).filter(table.c._oid.in_(oids)).\
+                    delete(synchronize_session=False)
 
-        if inserts:
-            t1 = time()
-            self.insert(objects=inserts, session=session, table=table)
-            diff = int(time() - t1)
-            logger.debug('%s inserts in %s seconds' % (len(inserts), diff))
-        logger.debug('%s existing objects snapshotted' % snap_k)
-        logger.debug('%s duplicates not re-saved' % dup_k)
-        session.flush()
-        session.commit()
+            # insert new versions:
+            session.flush()
+            if objects:
+                session.execute(table.insert(), objects)
+            session.commit()
+        except Exception as e:
+            logger.error('Session Error: %s' % e)
+            session.rollback()
+            raise
+
         return sorted(map(unicode, _ids))
 
     def user_exists(self, username):

@@ -264,7 +264,7 @@ class Generic(pyclient):
 
     def _fetch_mtime(self, last_update=None, parse_timestamp=None):
         if not last_update:
-            last_update = self.container.get_delta_ts() or \
+            last_update = self.container.proxy.get_delta_ts() or \
                 self.container.get_last_field(field='_start')
         # We need the timezone, to readjust relative to the server's tz
         mtime = ts2dt(last_update, tz_aware=True)
@@ -442,7 +442,7 @@ class Generic(pyclient):
 
         # save new delta_ts:
         if flush and save_delta_ts:
-            self.container.update_delta_ts(new_delta_ts)
+            self.container.proxy.update_delta_ts(new_delta_ts)
 
         if flush:
             return result
