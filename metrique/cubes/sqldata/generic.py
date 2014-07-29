@@ -16,8 +16,9 @@ from __future__ import unicode_literals, absolute_import
 import logging
 logger = logging.getLogger('metrique')
 
-from copy import copy, deepcopy
 from collections import defaultdict
+from copy import copy, deepcopy
+from time import time
 import os
 import re
 
@@ -203,9 +204,11 @@ class Generic(pyclient):
         force = force or self.lconfig.get('force') or False
         oids = []
         _c = self.container
+        save_delta_ts = False
         if is_array(force):
             oids = list(force)
         elif not force:
+            save_delta_ts = True
             if self.lconfig.get('delta_new_ids', True):
                 # get all new (unknown) oids
                 new_oids = self.get_new_oids()
@@ -216,13 +219,14 @@ class Generic(pyclient):
                 oids.extend(self.get_changed_oids(last_update,
                                                   parse_timestamp))
         elif force is True or not _c.exists():
+            save_delta_ts = True
             # if force or if the container doesn't exist
             # get a list of all known object ids
             oids = self.sql_get_oids()
         else:
             oids = [force]
         logger.debug("Delta Size: %s" % len(oids))
-        return sorted(set(oids))
+        return sorted(set(oids)), save_delta_ts
 
     def get_changed_oids(self, last_update=None, parse_timestamp=None):
         '''
@@ -253,13 +257,15 @@ class Generic(pyclient):
             # ie, 30 seconds PRIOR to the last_update to raise likelihood we
             # don't miss some data which changed between start
             # of processing and time when _start was generated, etc?
+            # This should be already fixed by saving the delta_ts
             _sql = "%s >= %s" % (_column, last_update)
             where.append(_sql)
         return self.sql_get_oids(where)
 
     def _fetch_mtime(self, last_update=None, parse_timestamp=None):
         if not last_update:
-            last_update = self.container.get_last_field(field='_start')
+            last_update = self.container.get_delta_ts() or \
+                self.container.get_last_field(field='_start')
         # We need the timezone, to readjust relative to the server's tz
         mtime = ts2dt(last_update, tz_aware=True)
         mtime = mtime.strftime('%Y-%m-%d %H:%M:%S %z') if mtime else mtime
@@ -395,8 +401,11 @@ class Generic(pyclient):
         w_batch_size = self.lconfig.get('worker_batch_size')
         s_batch_size = self.lconfig.get('batch_size')
 
+        # remember delta_ts
+        new_delta_ts = time()
         # get list of oids which we plan to update
-        oids = self._delta_force(force, last_update, parse_timestamp)
+        oids, save_delta_ts = self._delta_force(force, last_update,
+                                                parse_timestamp)
 
         msg = 'Getting Full History' if full_history else \
             'Getting Objects - Current Values'
@@ -424,9 +433,16 @@ class Generic(pyclient):
             for i, batch in enumerate(batch_gen(oids, s_batch_size)):
                 _e = _s + s_batch_size
                 logger.debug('batch %s: %s-%s or %s' % (i, _s, _e, len(oids)))
-                _ = self._activity_get_objects(oids=batch, flush=flush)
+                if full_history:
+                    _ = self._activity_get_objects(oids=batch, flush=flush)
+                else:
+                    _ = self._get_objects(oids=batch, flush=flush)
                 result.extend(_)
                 _s = _e
+
+        # save new delta_ts:
+        if flush and save_delta_ts:
+            self.container.update_delta_ts(new_delta_ts)
 
         if flush:
             return result

@@ -796,6 +796,22 @@ class SQLAlchemyProxy(object):
         logger.debug("last %s.%s: %s" % (table, list2str(field), last))
         return last
 
+    def get_delta_ts(self):
+        fname = 'delta_ts__' + self.config.get('table')
+        path = os.path.join(self.config.get('cache_dir'), fname)
+        try:
+            with open(path) as f:
+                ts = int(f.readline())
+            return ts
+        except:
+            return None
+
+    def update_delta_ts(self, value):
+        fname = 'delta_ts__' + self.config.get('table')
+        path = os.path.join(self.config.get('cache_dir'), fname)
+        with open(path, 'w') as f:
+            f.write(str(int(value)))
+
     def index(self, fields, name=None, table=None, **kwargs):
         '''
         Build a new index on a cube.
