@@ -33,25 +33,7 @@ from metrique.utils import batch_gen, configure, debug_setup, ts2dt
 from metrique.utils import dt2ts, is_array, str2list
 
 
-def get_full_history(cube, oids, flush=False, cube_name=None,
-                     config=None, config_file=None, config_key=None,
-                     container=None, container_config=None,
-                     proxy=None, proxy_config=None, **kwargs):
-    # force a single worker to avoid 'nested' (invalid) joblib runs.
-    kwargs['workers'] = 1
-    m = pyclient(cube=cube, name=cube_name, config=config,
-                 config_file=config_file, config_key=config_key,
-                 container=container, container_config=container_config,
-                 proxy=proxy, proxy_config=proxy_config, **kwargs)
-    results = []
-    batch_size = m.lconfig.get('batch_size')
-    for batch in batch_gen(oids, batch_size):
-        _ = m._activity_get_objects(oids=batch, flush=flush)
-        results.extend(_)
-    return results
-
-
-def get_objects(cube, oids, flush=False, cube_name=None,
+def get_objects(cube, oids, full_history, flush=False, cube_name=None,
                 config=None, config_file=None, config_key=None,
                 container=None, container_config=None,
                 proxy=None, proxy_config=None, **kwargs):
@@ -64,7 +46,10 @@ def get_objects(cube, oids, flush=False, cube_name=None,
     results = []
     batch_size = m.lconfig.get('batch_size')
     for batch in batch_gen(oids, batch_size):
-        _ = m._get_objects(oids=batch, flush=flush)
+        if full_history:
+            _ = m._activity_get_objects(oids=batch, flush=flush)
+        else:
+            _ = m._get_objects(oids=batch, flush=flush)
         results.extend(_)
     return results
 
@@ -350,52 +335,9 @@ class Generic(pyclient):
         :param last_update: manual override for 'changed since date'
         :param parse_timestamp: flag to convert timestamp timezones in-line
         '''
-        workers = self.lconfig.get('workers')
-        # if we're using multiple workers, break the oids
-        # according to worker batchsize, then each worker will
-        # break the batch into smaller sql batch size batches
-        # otherwise, single threaded, use sql batch size
-        w_batch_size = self.lconfig.get('worker_batch_size')
-        s_batch_size = self.lconfig.get('batch_size')
-
-        # get list of oids which we plan to update
-        oids = self._delta_force(force, last_update, parse_timestamp)
-
-        if HAS_JOBLIB and workers > 1:
-            logger.debug(
-                'Getting Objects [parallel]- Current Values (%s@%s)' % (
-                    workers, w_batch_size))
-            runner = Parallel(n_jobs=workers)
-            func = delayed(get_objects)
-            result = runner(func(
-                cube=self._cube, oids=batch, flush=flush,
-                cube_name=self.name, config=self.config,
-                config_file=self.config_file,
-                config_key=self.config_key,
-                container=type(self.objects),
-                container_config=self.container_config,
-                proxy=type(self.proxy),
-                proxy_config=self.proxy_config)
-                for batch in batch_gen(oids, w_batch_size))
-            # merge list of lists (batched) into single list
-            result = [i for l in result for i in l]
-        else:
-            logger.debug(
-                'Getting Objects - Current Values (%s@%s)' % (
-                    workers, s_batch_size))
-            result = []
-            _s = 0
-            for i, batch in enumerate(batch_gen(oids, s_batch_size)):
-                _e = _s + s_batch_size
-                logger.debug('batch %s: %s-%s or %s' % (i, _s, _e, len(oids)))
-                _ = self._get_objects(oids=batch, flush=flush)
-                result.extend(_)
-                _s = _e
-
-        if flush:
-            return result
-        else:
-            return self
+        return self._run_object_import(force=force, last_update=last_update,
+                                       parse_timestamp=parse_timestamp,
+                                       flush=flush, full_history=False)
 
     def _get_objects(self, oids, flush=False):
         sql = self._generate_sql(oids)
@@ -439,19 +381,32 @@ class Generic(pyclient):
         hash values, so we need to always remove all existing object
         states and import fresh
         '''
+        return self._run_object_import(force=force, last_update=last_update,
+                                       parse_timestamp=parse_timestamp,
+                                       flush=flush, full_history=True)
+
+    def _run_object_import(self, force, last_update, parse_timestamp, flush,
+                           full_history=False):
         workers = self.lconfig.get('workers')
+        # if we're using multiple workers, break the oids
+        # according to worker batchsize, then each worker will
+        # break the batch into smaller sql batch size batches
+        # otherwise, single threaded, use sql batch size
         w_batch_size = self.lconfig.get('worker_batch_size')
         s_batch_size = self.lconfig.get('batch_size')
-        # determine which oids will we query
+
+        # get list of oids which we plan to update
         oids = self._delta_force(force, last_update, parse_timestamp)
+
+        msg = 'Getting Full History' if full_history else \
+            'Getting Objects - Current Values'
         if HAS_JOBLIB and workers > 1:
-            logger.debug(
-                'Getting Full History (%s@%s)' % (
-                    workers, w_batch_size))
+            logger.debug('%s (%s@%s)' % (msg, workers, w_batch_size))
             runner = Parallel(n_jobs=workers)
-            func = delayed(get_full_history)
+            func = delayed(get_objects)
             result = runner(func(
-                cube=self._cube, oids=batch, flush=flush,
+                cube=self._cube, oids=batch,
+                full_history=full_history, flush=flush,
                 cube_name=self.name, config=self.config,
                 config_file=self.config_file,
                 config_key=self.config_key,
@@ -463,9 +418,7 @@ class Generic(pyclient):
             # merge list of lists (batched) into single list
             result = [i for l in result for i in l]
         else:
-            logger.debug(
-                'Getting Full History (%s@%s)' % (
-                    workers, s_batch_size))
+            logger.debug('%s (%s@%s)' % (msg, workers, w_batch_size))
             result = []
             _s = 0
             for i, batch in enumerate(batch_gen(oids, s_batch_size)):
