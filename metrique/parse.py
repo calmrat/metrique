@@ -24,7 +24,7 @@ import ast
 import re
 
 try:
-    from sqlalchemy.sql import and_, or_, not_, operators
+    from sqlalchemy.sql import and_, or_, not_, operators, compiler
     from sqlalchemy import select, Table
 except ImportError as e:
     logger.warn('sqlalchemy not installed! (%s)' % e)
@@ -212,19 +212,34 @@ class MQLInterpreter(object):
         right = self.p(node.comparators[0])
         op = node.ops[0].__class__.__name__
         # Eq, NotEq, Gt, GtE, Lt, LtE, In, NotIn
-        if node.left.id in self.arrays:
+        if isinstance(right, tuple) and right[0] in ['regex', 'iregex']:
+            return self._handle_regex(left, op, right,
+                                      node.left.id in self.arrays)
+        elif node.left.id in self.arrays:
             return self.arr_op_dict[op]((left, right))
-        elif isinstance(right, tuple) and right[0] in ['regex', 'iregex']:
-            oper = "~" if right[0] == 'regex' else "~*"
-            regex = right[1]
+        else:
+            return self.op_dict[op]((left, right))
+        raise ValueError('Unsupported operation: %s' % op)
+
+    def _handle_regex(self, left, op, right, is_array):
+        oper = "~" if right[0] == 'regex' else "~*"
+        regex = right[1]
+        if is_array:
+            oper += '@'
+            cop = operators.custom_op(oper)
+            # this is a hack
+            compiler.OPERATORS[cop] = ' %s ' % oper
+            expr = left.any(regex, operator=cop)
+            if op == 'Eq':
+                return expr
+            if op == 'NotEq':
+                return not_(expr)
+        else:
             if op == 'Eq':
                 return left.op(oper)(regex)
             if op == 'NotEq':
                 return left.op("!" + oper)(regex)
-            raise ValueError('Unsupported operation for regex: %s' % op)
-        else:
-            return self.op_dict[op]((left, right))
-        raise ValueError('Unsupported operation: %s' % op)
+        raise ValueError('Unsupported operation for regex: %s' % op)
 
     def p_Num(self, node):
         return node.n

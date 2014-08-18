@@ -1001,6 +1001,21 @@ class SQLAlchemyProxy(object):
         sql = 'SELECT CURRENT_USER'
         return self.session_auto.execute(sql).scalar()
 
+    def create_regex_array_operators(self):
+        # http://bit.ly/1qjnPNk
+        # TODO run this on database creation
+        sql = """
+        create function commuted_regexp_match(text,text) returns bool as
+        'select $2 ~ $1;' language sql;
+        create function commuted_iregexp_match(text,text) returns bool as
+        'select $2 ~* $1;' language sql;
+        create operator ~@ (procedure=commuted_regexp_match,
+          leftarg=text, rightarg=text);
+        create operator ~*@ (procedure=commuted_iregexp_match,
+          leftarg=text, rightarg=text);
+        """
+        self.session_auto.execute(sql)
+
 
 def get_engine_uri(db, host='127.0.0.1', port=5432, dialect='sqlite',
                    driver=None, username=None, password=None,
