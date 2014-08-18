@@ -16,12 +16,6 @@ quickly generating plots with pandas and matplotlib
 from __future__ import unicode_literals, absolute_import
 
 try:
-    import pandas as pd
-    HAS_PANDAS = True
-except ImportError:
-    HAS_PANDAS = False
-
-try:
     from matplotlib import pyplot as plt
     HAS_MATPLOTLIB = True
 except ImportError:
@@ -58,25 +52,26 @@ def timestamp_figure(figure, stamp=True):
 class Plotter(object):
     ''' Convenince plotting wrapper '''
 
-    def __init__(self, figsize=(10, 6), fill=True, title='', stamp=True,
+    def __init__(self, figsize=(10, 6), stacked=True, title='', stamp=True,
                  **kwargs):
         '''
         :param (int, int) figsize:
             The size of the figure.
-        :param boolean fill:
-            Indicates whether the area under individual plots should be filled.
+        :param bool stacked:
+            If true then the resulting graph will be stacked
+        :param string title:
+            Title of the graph
         :param boolean/string stamp:
             Put a timestamp in the bottom right corner.
             If True the current time will be stamped.
             If string then the string concatenated with the current time
             will be stamped.
         '''
-        if not HAS_PANDAS:
-            raise RuntimeError("`pip install pandas` required")
         if not HAS_MATPLOTLIB:
             raise RuntimeError("`pip install matplotlib` required")
         self.counter = 0
-        self.fill = fill
+        self.stacked = stacked
+        self.running_sum = 0
         self.fig = plt.figure(figsize=figsize)
         if title:
             plt.title(title)
@@ -99,54 +94,44 @@ class Plotter(object):
         color %= len(COLORS)
         return color
 
-    def plot(self, series, label='', color=None, index=None, style=None):
+    def plot(self, series, label='', color=None, style=None):
         '''
         Wrapper around plot.
 
-        :param pandas.Series/list series:
-            The series to be plotted. If passed in as a list, the parameter
-            `index` must be also passed in.
+        :param pandas.Series series:
+            The series to be plotted, all values must be positive if stacked
+            is True.
         :param string label:
-            The label of for the plot.
+            The label for the series.
         :param integer/string color:
             Color for the plot. Can be an index for the color from COLORS
             or a key(string) from CNAMES.
-        :param list index:
-            Must be specified if `series` is a list. Otherwise not used.
         :param string style:
             Style forwarded to the plt.plot.
         '''
         color = self.get_color(color)
-        if not isinstance(series, pd.Series):
-            series = pd.Series(series, index=index)
+        if self.stacked:
+            series += self.running_sum
+            plt.fill_between(series.index, self.running_sum, series,
+                             facecolor=ALPHAS[color])
+            self.running_sum = series
+            plt.gca().set_ylim(bottom=0, top=int(series.max() * 1.05))
         series.plot(label=label, c=COLORS[color], linewidth=2, style=style)
-        if self.fill:
-            plt.fill_between(series.index, 0, series, facecolor=ALPHAS[color])
-            plt.gca().set_ylim(bottom=0)
 
-    def plots(self, list_of_label_series, stacked=False, colors=None):
+    def plots(self, series_list, label_list, colors=None):
         '''
         Plots all the series from the list.
         The assumption is that all of the series share the same index.
 
-        :param list list_of_label_series:
-            A list of (label, series) pairs which should be plotted
-        :param bool stacked:
-            If true then the resulting graph will be stacked
+        :param list series_list:
+            A list of series which should be plotted
+        :param list label_list:
+            A list of labels corresponding to the series
         :params list list_of_colors:
             A list of colors to use.
         '''
-        self.fill = stacked
-        colors = range(len(list_of_label_series)) if colors is None else colors
-        if stacked:
-            ssum = 0
-            lst = []
-            for label, series in list_of_label_series:
-                ssum += series
-                lst.append((label, ssum))
-            list_of_label_series = lst
-        for color, label, series in zip(colors,
-                                        *zip(*list_of_label_series))[::-1]:
+        colors = colors or range(len(series_list))
+        for series, label, color in zip(series_list, label_list, colors):
             self.plot(series=series, label=label, color=color)
 
     def line(self, x, label=None, y='bottom', color='grey', ax=None, **kwargs):
@@ -200,57 +185,60 @@ class Plotter(object):
 
 
 class DiffPlotter(Plotter):
-    def __init__(self, figsize=(10, 7), fill=False, title='', autodiffs=True,
-                 **kwargs):
+    def __init__(self, figsize=(10, 7), stacked=True, title='', stamp=True,
+                 autodiffs=True, **kwargs):
         '''
         :param (int, int) figsize:
             The size of the figure.
-        :param boolean fill:
-            Indicates whether the area under individual plots should be filled.
+        :param bool stacked:
+            If true then the resulting graph will be stacked
         :param string title:
-            Title for the plot.
+            Title of the graph
+        :param boolean/string stamp:
+            Put a timestamp in the bottom right corner.
+            If True the current time will be stamped.
+            If string then the string concatenated with the current time
+            will be stamped.
         :param boolean autodiffs:
             Indicates whether the diffs should be computed automatically if
             they are not specified.
         '''
-        super(DiffPlotter, self).__init__(figsize=figsize, fill=fill,
-                                          **kwargs)
+        super(DiffPlotter, self).__init__(figsize=figsize, stacked=stacked,
+                                          title=title, stamp=stamp, **kwargs)
         self.autodiffs = autodiffs
         self.ax1 = plt.subplot2grid((4, 1), (0, 0), rowspan=3)
-        plt.title(title)
+        #plt.title(title)
         plt.setp(self.ax1.get_xticklabels(), visible=False)
         self.ax2 = plt.subplot2grid((4, 1), (3, 0), sharex=self.ax1)
         plt.subplots_adjust(hspace=.15)
 
-    def plot(self, series, series_diff=None, label='', color=None, index=None,
-             style=None):
+    def plot(self, series, series_diff=None, label='', color=None, style=None):
         '''
-        Wrapper around plot.
-
-        :param pandas.Series/list series:
-            The series to be plotted. If passed in as a list, the parameter
-            `index` must be also passed in.
+        :param pandas.Series series:
+            The series to be plotted, all values must be positive if stacked
+            is True.
+        :param pandas.Series series_diff:
+            The series representing the diff that will be plotted in the
+            bottom part.
         :param string label:
-            The label of for the plot.
+            The label for the series.
         :param integer/string color:
             Color for the plot. Can be an index for the color from COLORS
             or a key(string) from CNAMES.
-        :param list index:
-            Must be specified if `series` is a list. Otherwise not used.
         :param string style:
             Style forwarded to the plt.plot.
         '''
         color = self.get_color(color)
-        if not isinstance(series, pd.Series):
-            series = pd.Series(series, index=index)
-        series.plot(label=label, c=COLORS[color], linewidth=2, style=style,
-                    ax=self.ax1)
-        if self.fill:
-            self.ax1.fill_between(series.index, 0, series,
-                                  facecolor=ALPHAS[color])
-            self.ax1.set_ylim(bottom=0)
         if series_diff is None and self.autodiffs:
             series_diff = series.diff()
+        if self.stacked:
+            series += self.running_sum
+            self.ax1.fill_between(series.index, self.running_sum, series,
+                                  facecolor=ALPHAS[color])
+            self.running_sum = series
+            self.ax1.set_ylim(bottom=0, top=int(series.max() * 1.05))
+        series.plot(label=label, c=COLORS[color], linewidth=2, style=style,
+                    ax=self.ax1)
         if series_diff is not None:
             series_diff.plot(label=label, c=COLORS[color], linewidth=2,
                              style=style, ax=self.ax2)
