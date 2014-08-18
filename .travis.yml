@@ -5,6 +5,7 @@ install:
   - "sudo apt-get install pigz"
   - "pip install coveralls virtualenv"
   - "pip install decorator"
+  - "pip install anyconfig"  # temporary hack, easy_install anyconfig not working
   - "./metrique.py deploy --all"
   - "./metrique.py firstboot metrique postgresql mongodb"
 services: 
