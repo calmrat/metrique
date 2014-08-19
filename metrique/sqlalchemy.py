@@ -59,6 +59,7 @@ try:
 except ImportError:
     import json
 
+# FIXME: use http://sqlalchemy-utils.readthedocs.org/
 try:
     from sqlalchemy import create_engine, MetaData, Table
     from sqlalchemy import Index, Column, Integer
@@ -96,8 +97,11 @@ try:
         impl = pg.JSON
 
         def process_bind_param(self, value, dialect):
+            # override default json encoding
             return None if value is None else json.dumps(
                 value, default=json_encode_default, ensure_ascii=False)
+
+        # don't override decoding though
 
         def python_type(self):
             return dict
@@ -386,6 +390,8 @@ class SQLAlchemyProxy(object):
         '''
         isolation_level = isolation_level or "READ COMMITTED"
         kwargs = dict(isolation_level=isolation_level)
+        # FIXME: version of postgresql < 9.2 don't have pg.JSON!
+        # check and use JSONTypedLite instead
         # override default dict and list column types
         types = {list: pg.ARRAY, tuple: pg.ARRAY, set: pg.ARRAY,
                  dict: JSONDict, datetime: UTCEpoch}
@@ -425,6 +431,7 @@ class SQLAlchemyProxy(object):
             if except_:
                 raise
             else:
+                logger.error('Failed to create table %s: %s' % (name, e))
                 # return back None, since we failed to load a Table
                 table = None
         else:

@@ -264,7 +264,7 @@ def postgresql_start():
         return False
 
     try:
-        cmd = 'pg_ctl -D %s -l %s -o \\"-k %s\\" start' % (
+        cmd = 'pg_ctl -D %s -l %s -o "-k %s" start' % (
             POSTGRESQL_PGDATA_PATH, POSTGRESQL_LOGFILE, PIDS_DIR)
         utils.sys_call(cmd, sig=signal.SIGTERM, sig_func=postgresql_terminate)
     except Exception as e:
@@ -371,38 +371,41 @@ def _deploy_virtenv_init(args):
 
 
 def _deploy_extras(args):
-    pip = 'pip'
+    # make sure we have the installer basics and their up2date
+    # pip-accel caches compiled binaries
+    utils.sys_call('pip install -U pip setuptools virtualenv')
+
     _all = args.all
     _ = _all or args.ipython
-    utils.sys_call('%s install -U ipython pyzmq jinja2' % pip) if _ else None
+    utils.sys_call('pip install -U ipython pyzmq jinja2') if _ else None
     _ = _all or args.test or args.pytest
-    utils.sys_call('%s install -U pytest coveralls' % pip) if _ else None
+    utils.sys_call('pip install -U pytest coveralls') if _ else None
     _ = args.all or args.docs
-    utils.sys_call('%s install -U sphinx' % pip) if _ else None
+    utils.sys_call('pip install -U sphinx') if _ else None
     # pip-accel fails to install this package...
     utils.sys_call('pip install -U sphinx_bootstrap_theme') if _ else None
     _ = _all or args.supervisord
-    utils.sys_call('%s install -U supervisor' % pip) if _ else None
+    utils.sys_call('pip install -U supervisor') if _ else None
     _ = _all or args.joblib
-    utils.sys_call('%s install -U joblib' % pip) if _ else None
+    utils.sys_call('pip install -U joblib') if _ else None
     _ = _all or args.postgres
-    utils.sys_call('%s install -U psycopg2' % pip) if _ else None
+    utils.sys_call('pip install -U psycopg2') if _ else None
     _ = _all or args.celery
-    utils.sys_call('%s install -U celery' % pip) if _ else None
+    utils.sys_call('pip install -U celery') if _ else None
     _ = _all or args.sqlalchemy
-    utils.sys_call('%s install -U sqlalchemy' % pip) if _ else None
+    utils.sys_call('pip install -U sqlalchemy') if _ else None
     _ = _all or args.pymongo
-    utils.sys_call('%s install -U pymongo pql' % pip) if _ else None
+    utils.sys_call('pip install -U pymongo pql') if _ else None
     _ = _all or args.pandas
-    utils.sys_call('%s install -U pandas' % pip) if _ else None
+    utils.sys_call('pip install -U pandas') if _ else None
     _ = _all or args.matplotlib
-    utils.sys_call('%s install -U matplotlib' % pip) if _ else None
+    utils.sys_call('pip install -U matplotlib') if _ else None
     _ = _all or args.dulwich
-    utils.sys_call('%s install -U dulwich' % pip) if _ else None
+    utils.sys_call('pip install -U dulwich') if _ else None
     _ = _all or args.paramiko
-    utils.sys_call('%s install -U paramiko' % pip) if _ else None
+    utils.sys_call('pip install -U paramiko') if _ else None
     _ = _all or args.cython
-    utils.sys_call('%s install -U cython' % pip) if _ else None
+    utils.sys_call('pip install -U cython') if _ else None
 
 
 def deploy(args):
@@ -411,14 +414,11 @@ def deploy(args):
     # make sure we have some basic defaults configured in the environment
     firstboot()
 
-    # make sure we have the installer basics and their up2date
-    # pip-accel caches compiled binaries
-    utils.sys_call('pip install -U pip setuptools virtualenv')
+    # install all dependencies first, before installing metrique
+    _deploy_extras(args)
 
     cmd = 'install'
     setup(args, cmd, pip=False)
-
-    _deploy_extras(args)
 
     if args.develop:
         path = pjoin(virtenv, 'lib/python2.7/site-packages/metrique*')
@@ -504,13 +504,13 @@ def postgresql_firstboot(force=False):
         time.sleep(1)
         cmd = 'createdb -h 127.0.0.1'
         utils.sys_call(cmd)
-        cmd = 'psql -h 127.0.0.1 -c \\"%s\\"'
+        cmd = 'psql -h 127.0.0.1 -c "%s"'
         P = PASSWORD
         tz = "set timezone TO 'GMT';"
         encoding = "set client_encoding TO 'utf8';"
-        admin_user = "CREATE USER admin WITH PASSWORD \\'%s\\' SUPERUSER;" % P
+        admin_user = "CREATE USER admin WITH PASSWORD '%s' SUPERUSER;" % P
         admin_db = "CREATE DATABASE admin WITH OWNER admin;"
-        test_user = "CREATE USER test WITH PASSWORD \\'%s\\' SUPERUSER;" % P
+        test_user = "CREATE USER test WITH PASSWORD '%s' SUPERUSER;" % P
         test_db = "CREATE DATABASE test WITH OWNER test;"
         [utils.sys_call(cmd % sql) for sql in (tz, encoding, admin_user,
                                                admin_db, test_user, test_db)]

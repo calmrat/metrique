@@ -7,17 +7,10 @@ install:
   - "pip install decorator"
   - "pip install anyconfig"  # temporary fix, easy_install anyconfig not working
   - "./metrique.py deploy --all"
-  - "./metrique.py firstboot metrique postgresql mongodb"
-services: 
-  - mongodb
+  - "./metrique.py firstboot metrique postgresql"
 addons:
     postgresql: "9.3"
 script: 
-  - "coverage run --source=metrique -m py.test tests -m 'not perf'"
-#before_script:
-#  - psql -c 'CREATE USER admin;' -U postgres
-#  - psql -c 'create database admin WITH OWNER admin;' -U postgres
+  - "coverage run --source=metrique -m py.test tests"
 after_success:
   - coveralls
-after_failure:
-  - "cat ~/.metrique/*"

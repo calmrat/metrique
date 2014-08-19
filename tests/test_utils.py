@@ -1044,11 +1044,11 @@ def test_sys_call():
     assert sys_call('ls FILE_THAT_DOES_NOT_EXIST', ignore_errors=True) is None
 
     csv_path = os.path.join(fixtures, 'test.csv')
-    out = sys_call('ls %s' % csv_path)
+    out = sys_call('ls %s' % csv_path).strip()
     assert out == csv_path
 
     # should work if passed in as a list of args too
-    out = sys_call(['ls', csv_path])
+    out = sys_call(['ls', csv_path]).strip()
     assert out == csv_path
 
 

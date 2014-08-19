@@ -102,8 +102,8 @@ default_setup = dict(
     cmdclass={'build_ext': build_ext},
     ext_modules=[Extension("metrique.core_api", ['metrique/core_api.py']),
                  Extension("metrique.metrique", ['metrique/metrique.py']),
-                 Extension("metrique.parse", ['metrique/parse.py']),
                  # FIXME: these fail to compile
+                 #Extension("metrique.parse", ['metrique/parse.py']),
                  #Extension("metrique.plotting", ['metrique/plotting.py']),
                  #Extension("metrique.result", ['metrique/result.py']),
                  Extension("metrique._version", ['metrique/_version.py']),

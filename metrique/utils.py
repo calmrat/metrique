@@ -1149,7 +1149,7 @@ def str2list(item, delim=',', map_=None):
     return items
 
 
-def _sys_call(cmd, shell=True, quiet=False, bg=False):
+def _sys_call(cmd, shell=False, quiet=False, bg=False):
     if not quiet:
         logger.warn('Running: `%s`' % cmd)
 
@@ -1166,22 +1166,30 @@ def _sys_call(cmd, shell=True, quiet=False, bg=False):
             raise RuntimeError("Failed to start '%s'" % cmd)
         return p
     try:
-        cmd = ' '.join(s for s in cmd)
-        output = subprocess.check_output(cmd, stderr=subprocess.STDOUT,
-                                         shell=shell)
+        # from http://stackoverflow.com/a/6414278/1289080
+        output = ''
+        logger.debug('Running: %s' % cmd)
+        p = subprocess.Popen(cmd, stdout=subprocess.PIPE,
+                             stderr=subprocess.STDOUT, shell=shell)
+        for line in iter(p.stdout.readline, ''):
+            line = to_encoding(line)
+            output += line
+            if not quiet:
+                logger.warn(line.strip())
+        p.stdout.close()
+        p.wait()
+        if p.returncode not in [0, None]:
+            raise RuntimeError(
+                "Command: %s\n\tExit status: %s" % (
+                    cmd, p.returncode))
     except subprocess.CalledProcessError as e:
-        output = to_encoding(e.output)
         raise RuntimeError(
-            "Command: %s\n\tExit status: %s.\n\tOutput:\n%s" % (
-                e.cmd, e.returncode, output))
-
-    output = output.strip()
-    if not quiet:
-        logger.warn('Output: %s' % output)
+            "Command: %s\n\tExit status: %s." % (
+                e.cmd, e.returncode))
     return output
 
 
-def sys_call(cmd, sig=None, sig_func=None, shell=True, cwd=None, quiet=False,
+def sys_call(cmd, sig=None, sig_func=None, shell=False, cwd=None, quiet=False,
              fork=False, pid_file=None, ignore_errors=False, bg=False):
     _path = os.getcwd()
     cwd = cwd or _path
