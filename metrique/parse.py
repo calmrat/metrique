@@ -296,7 +296,9 @@ def parse(table, query=None, date=None, fields=None,
         query = None
 
     fields = parse_fields(fields=fields) or None
-    fields = fields if fields else [t for t in dict(table.columns)]
+    # we must pass in the table column objects themselves to ensure
+    # our bind / result processors are mapped properly
+    fields = fields if fields else table.columns
 
     msg = 'parse(query=%s, fields=%s)' % (query, fields)
     #msg = re.sub(' in \[[^\]]+\]', ' in [...]', msg)

@@ -8,7 +8,7 @@
 # and enable future 'delta' syncs.
 
 '''
-metrique.core_api
+metrique.metrique
 ~~~~~~~~~~~~~~~~~
 **Python data warehouse and information platform**
 
@@ -346,7 +346,7 @@ class Metrique(object):
         name = name or cube
         config = copy(self.config) if copy_config else {}
         config_file = self.config_file
-        container = type(self.objects)
+        container = type(self.container)
         container_config = copy(self.container_config)
         proxy = str(type(self.proxy))
         return get_cube(cube=cube, init=init, name=name, config=config,

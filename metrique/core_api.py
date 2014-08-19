@@ -60,13 +60,14 @@ import warnings
 from metrique._version import __version__
 from metrique.utils import utcnow, jsonhash, load, autoschema
 from metrique.utils import batch_gen, dt2ts, configure, to_encoding
-from metrique.utils import is_empty, is_null, is_array, is_defined
+from metrique.utils import is_null, is_array, is_defined
 from metrique.result import Result
 
 ETC_DIR = os.environ.get('METRIQUE_ETC')
 CACHE_DIR = os.environ.get('METRIQUE_CACHE') or '/tmp'
 DEFAULT_CONFIG = os.path.join(ETC_DIR, 'metrique.json')
 HASH_EXCLUDE_KEYS = ('_hash', '_id', '_start', '_end', '__v__', 'id')
+IMMUTABLE_OBJ_KEYS = set(['_oid', '_hash', '_id', 'id'])
 
 
 def gen_id(_oid, _start, _end=None):
@@ -228,6 +229,7 @@ class MetriqueContainer(MutableMapping):
             }
         }
     '''
+    _key_map = None
     _object_cls = None
     _proxy_cls = None
     _proxy = None
@@ -363,12 +365,12 @@ class MetriqueContainer(MutableMapping):
                                        distinct=distinct, limit=limit)
 
     def _normalize_container(self, value, schema):
-        container = schema.get('container') or is_array(value)
-        _is_array = is_array(value, except_=False)
-        if container and not _is_array:
+        container = bool(schema.get('container'))
+        _is_list = isinstance(value, list)
+        if container and not _is_list:
             # NORMALIZE to empty list []
-            return [value] if value else []
-        elif not container and _is_array:
+            return list(value) if value else []
+        elif not container and _is_list:
             raise ValueError(
                 "expected single value, got list (%s)" % value)
         else:
@@ -423,23 +425,31 @@ class MetriqueContainer(MutableMapping):
         obj = self._normalize_keys(obj)
         schema = self.schema
         if not schema:
+            # build schema off normalized key version
+            _obj = self._normalize_keys(obj)
+            # cache a key map from old key->normalized keys
+            self._key_map = {k: self._normalize_key(k) for k in obj.iterkeys()}
             # in the case we don't have a schema already defined, we need to
             # build on now; all objects are assumed to have the SAME SCHEMA!
-            schema = autoschema([obj], exclude_keys=self.RESTRICTED_KEYS)
+            schema = autoschema([_obj], exclude_keys=self.RESTRICTED_KEYS)
             self.config['schema'] = schema
 
+        # optimization; lookup in local scope
+        kmap = self._key_map or {}
         for key, value in obj.items():
-            _schema = schema.get(key) or {}
+            # map original key to normalized key, if normal map exists
+            _key = kmap.get(key) or key
+            _schema = schema.get(_key) or {}
             try:
                 value = self._prep_value(value, schema=_schema)
             except Exception as e:
                 # make sure the value contents are loggable
                 _value = to_encoding(value)
                 obj.setdefault('_e', {})
-                msg = 'prep(key=%s, value=%s) failed: %s' % (key, _value, e)
+                msg = 'prep(key=%s, value=%s) failed: %s' % (_key, _value, e)
                 logger.error(msg)
                 # set error field with original values
-                obj['_e'].update({key: value})
+                obj['_e'].update({_key: value})
 
                 # FIXME: should we leave original as-is? if not of correct
                 # type, etc, this might cause problems
@@ -447,7 +457,7 @@ class MetriqueContainer(MutableMapping):
                 # normalize invalid value to None
                 value = None
             obj[key] = value
-            variants = self._add_variants(key, value, _schema)
+            variants = self._add_variants(_key, value, _schema)
             obj.update(variants)
         obj['_v'] = self.version
         obj = self._object_cls(**obj)
@@ -456,10 +466,16 @@ class MetriqueContainer(MutableMapping):
     def _prep_value(self, value, schema):
         # NOTE: if we fail anywhere in here, no changes made here will
         # be 'saved'; buffer's for example will remain buffers, etc.
+        # PERFORMANCE NOTES
+        # 26 seconds for 450k values, baseline; none of the folling are run
         value = self._unwrap(value)
+        # +2 seconds (28s)
         value = self._normalize_container(value, schema)
+        # +12 seconds (40s)
         value = self._convert(value, schema)
+        # +6 seconds (46s)
         value = self._typecast(value, schema)
+        # +10 seconds (56s)
         return value
 
     def _typecast(self, value, schema):
@@ -476,30 +492,25 @@ class MetriqueContainer(MutableMapping):
         if value is None:
             # normalize null containers to empty list
             return []
-        elif not is_array(value, except_=False):
+        elif not isinstance(value, list):
             raise ValueError("expected list type, got: %s" % type(value))
         else:
             return sorted(self._type_single(item, _type) for item in value)
 
     def _type_single(self, value, _type):
         ' apply type to the single value '
-        if is_null(value, except_=False):
-            value = None
-        elif _type in [None, NoneType]:
+        if not value or _type in (None, NoneType):
             # don't convert null values
             # default type is the original type if none set
             pass
-        elif is_empty(value, except_=False):
-            # fixme, rather leave as "empty" type? eg, list(), int(), etc.
-            value = None
         elif isinstance(value, _type):  # or values already of correct type
             # normalize all dates to epochs
             value = dt2ts(value) if _type in [datetime, date] else value
         else:
-            if _type in [datetime, date]:
+            if _type in (datetime, date):
                 # normalize all dates to epochs
                 value = dt2ts(value)
-            elif _type in [unicode, str]:
+            elif _type in (unicode, str):
                 # make sure all string types are properly unicoded
                 value = to_encoding(value)
             else:
@@ -518,7 +529,7 @@ class MetriqueContainer(MutableMapping):
         elif is_array(objects, except_=False):
             [self.add(x) for x in tuple(objects)]
         elif isinstance(objects, MetriqueContainer):
-            [self.add(o) for o in objects.values()]
+            [self.add(o) for o in objects.itervalues()]
         else:
             raise ValueError(
                 "objs must be None, a list, tuple, dict or MetriqueContainer")
