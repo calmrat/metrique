@@ -30,7 +30,6 @@ remote storage of MetriqueObjects, which also comes equipped with:
  * full support for multiple object storage backends, including:
   * SQLite (default)
   * PostgreSQL
-  * MongoDB
  * local and remote querying, using a very simple and consistent query syntax
 
 
@@ -678,7 +677,7 @@ class MetriqueContainer(MutableMapping):
 
     def count(self, query=None, date=None):
         '''
-        Run a pql mongodb based query on the given cube and return only
+        Run a query on the given cube and return only
         the count of resulting matches.
 
         :param query: The query in pql
@@ -724,7 +723,6 @@ class MetriqueContainer(MutableMapping):
 
         :param fields: A single field or a list of (key, direction) pairs
         :param name: (optional) Custom name to use for this index
-        :param background: MongoDB should create in the background
         :param collection: cube name
         :param owner: username of cube owner
         '''

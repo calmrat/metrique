@@ -87,7 +87,7 @@ default_setup = dict(
         'Topic :: Scientific/Engineering :: Visualization',
         'Topic :: Utilities',
     ],
-    keywords=['data', 'mining', 'information', 'mongo',
+    keywords=['data', 'mining', 'information', 'postgresql'
               'etl', 'analysis', 'search', 'query'],
     dependency_links=__deplinks__,
     description=__desc__,

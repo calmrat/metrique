@@ -636,7 +636,7 @@ class SQLAlchemyProxy(object):
 
     def count(self, query=None, date=None, table=None):
         '''
-        Run a pql mongodb based query on the given cube and return only
+        Run a query on the given cube and return only
         the count of resulting matches.
 
         :param query: The query in pql
@@ -828,7 +828,6 @@ class SQLAlchemyProxy(object):
 
         :param fields: A single field or a list of (key, direction) pairs
         :param name: (optional) Custom name to use for this index
-        :param background: MongoDB should create in the background
         :param collection: cube name
         :param owner: username of cube owner
         '''
@@ -921,7 +920,7 @@ class SQLAlchemyProxy(object):
                 # stored always are pushed with _end:None ('current value')
                 # If we already have an object with same _oid, but different
                 # _hash, we know we have a NEW object state for the given _oid
-                # In this case, we update the existing object by adding 
+                # In this case, we update the existing object by adding
                 # current object's _start -> existing _end and then add
                 # the current object as=is; IOW rotate out the previous
                 # version by giving it a _end and insert the new version

@@ -39,8 +39,6 @@ os.environ['METRIQUE_TEMPLATES'] = os.environ.get(
     'METRIQUE_TEMPLATES', os.path.join(prefix, 'static/templates'))
 os.environ['METRIQUE_PIDS'] = os.environ.get(
     'METRIQUE_PIDS', os.path.join(prefix, 'pids'))
-os.environ['METRIQUE_MONGODB'] = os.environ.get(
-    'METRIQUE_MONGODB', os.path.join(prefix, 'mongodb'))
 os.environ['METRIQUE_TRASH'] = os.environ.get(
     'METRIQUE_TRASH', os.path.join(prefix, 'trash'))
 os.environ['METRIQUE_BACKUP'] = os.environ.get(
