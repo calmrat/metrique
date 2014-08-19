@@ -69,175 +69,65 @@ DEFAULT_CONFIG = os.path.join(ETC_DIR, 'metrique.json')
 HASH_EXCLUDE_KEYS = ('_hash', '_id', '_start', '_end', '__v__', 'id')
 
 
-# FIXME: turn on 'strict' mode where IMMUTABLE OBJ KEYS
-# changed would raise exception is strict=True
-class MetriqueObject(MutableMapping):
+def gen_id(_oid, _start, _end=None):
+    # if the object is 'current value' without _end,
+    # use just str of _oid (DEFAULT)
+    if _oid is None:
+        raise ValueError("_oid must be defined!")
+    elif _end:
+        _oid = '%s:%s' % (_oid, _start)
+    else:
+        _oid = to_encoding(_oid)
+    return _oid
+
+
+def metrique_object(_oid, _id=None, _hash=None, _start=None, _end=None,
+                    _e=None, _v=None, id=None, __v__=None, **kwargs):
     '''
-    MetriqueObject's must be initiated with an "object ID". This object
-    id can be any standard 'hashable' python object, including int()'s
-    and str()'s, for example.
+    Function which takes a dictionary (Mapping) object as input
+    and returns return back a metrique object.
 
-    Additionaly, and _start and _end value can be specified, which
-    indicate from when the current object values being passed in
-    were set were known to be "True". _start references the first
-    moment in time when the values were true and is set to utcnow()
-    if not otherwise explicitly set. _end references the moment when
-    the object values no longer were known to be "True" or otherwise
-    set to None (default), indicating the values are considered to be
-    considered know True, indefinitely.
-
-    Logically, _start must be less than or equal to _end, assuming
-    _end is set at all.
-
-    Both _start and _end can be passed in as either python datetime,
-    python date, epoch (seconds since 1970-01-01) or any string
-    form parsable by dateutil.parse. They are both converted to epoch
-    form and stored internally as float.
-
-    Furthermore, the following values can be set, optionally:
-
-        * _e (dict): a key:value dict of fields which are known to have
-                    invalid values
-        * _v: a local object version
-
-    id field can be passed in, but it is ignored. This field is
-    the name used by many data storage backends to identify objects
-    (eg, SQL id autoincrement) and conflicts with MetriqueContainers
-    own implementation. Objects with this fields should rename the
-    field to _oid, instead.
-
-    Finally, each object will also be given the following fields,
-    upon initialization.
-
-        * __v__: the version of Metrique that was used to generate the object
-        *_hash: unique identifier of the relevant object field values, not
-                including id, _id, _start, _end, _e, or __v__.
-        * _id: a historical id which is generated based on the values of
-        _start, _end and _oid.
+    Special meta property are added to each object::
+        _oid: ...
+        _start: ...
+        ...
+        FIXME
     '''
-    IMMUTABLE_OBJ_KEYS = set(['_oid', '_hash', '_id', 'id'])
-    _VERSION = 0
-    HASH_EXCLUDE_KEYS = tuple(HASH_EXCLUDE_KEYS)
+    # NOTE: we completely ignore incoming 'id' keys!
+    # id is RESERVED and ALWAYS expected to be 'autoincrement'
+    # upon insertion into DB (though, its optional, depending
+    # on backend storage behaivor).
+    if id:
+        warnings.warn('non-null "id" keys detected, ignoring them!')
 
-    def __init__(self, _oid, _id=None, _hash=None, _start=None, _end=None,
-                 _e=None, _v=None, id=None, **kwargs):
-        is_defined(_oid, "_oid must be defined!")
-        # NOTE: we completely ignore incoming 'id' keys!
-        # id is RESERVED and ALWAYS expected to be 'autoincrement'
-        # upon insertion into DB (though, its optional, depending
-        # on backend storage behaivor).
-        if is_defined(id, except_=False):
-            warnings.warn('non-null "id" keys detected, ignoring them!')
-        _start = dt2ts(_start) or utcnow(as_datetime=False)
-        _end = dt2ts(_end)
-        # FIXME: _end and _start should be dt or ts depending on as_datetime
-        self.store = {
-            '_oid': _oid,
-            '_id': None,  # ignore passed in _id
-            '_hash': None,  # ignore passed in _hash
-            '_start': _start,
-            '_end': _end,
-            '_v': _v or self._VERSION,
-            '__v__': __version__,
-            '_e': _e or {},
-        }
-        self.update(kwargs)
+    _e = dict(_e or {})  # expecting a dict with copy() atr
+    _v = int(_v or 0)
 
-    def __getitem__(self, key):
-        return self.store[key]
+    if not isinstance(_start, float):
+        _start = dt2ts(_start) if _start else utcnow(as_datetime=False)
+    assert _start is not None, "_start (%s) must be set!" % _start
 
-    def __setitem__(self, key, value):
-        self._setitem_no_rehash(key, value)
-        self._re_hash()
+    if not isinstance(_end, float):
+        _end = dt2ts(_end) if _end else None
 
-    def _setitem_no_rehash(self, key, value):
-        if key in self.IMMUTABLE_OBJ_KEYS:
-            warnings.warn(
-                'attempted update of immutable key detected: %s' % key)
-            return
-        elif key in ('_end', '_start'):
-            value = dt2ts(value)
-        elif key == '_e':  # _e is expected to be dict
-            value = dict(value) if is_defined(value) else {}
-        else:
-            pass
-        # FIXME: do we want to normalize here to None?
-        # or leave empty lists/dicts as-is?
-        #self.store[key] = None if is_empty(value) else value
-        self.store[key] = value
+    _err_msg = "_end(%s) must be >= _start(%s) or None!" % (_end, _start)
+    assert _end is None or bool(_end >= _start), _err_msg
 
-    def __delitem__(self, key):
-        if key in self.IMMUTABLE_OBJ_KEYS:
-            warnings.warn(
-                'attempted update of immutable key detected: %s' % key)
-            return
-        elif key == '_start':
-            # _start and _end are simply 'reset' to default
-            # values if pop/deleted
-            self.store[key] = utcnow()
-        elif key == '_end':
-            self.store[key] = None
-        else:
-            del self.store[key]
-        self._re_hash()
+    # these meta fields are used to generate unique object _hash
+    kwargs['_oid'] = _oid
+    kwargs['_v'] = _v
+    kwargs['_id'] = gen_id(_oid, _start, _end)  # ignore passed in _id
+    # generate unique, consistent object _hash based on 'frozen' obj contents
+    # FIXME: make _hash == None valid
+    #kwargs['_hash'] = jsonhash(kwargs) if _hash else None
+    kwargs['_hash'] = jsonhash(kwargs)
 
-    def __iter__(self):
-        return iter(self.store)
-
-    def __len__(self):
-        return len(self.store)
-
-    def __repr__(self):
-        return repr(self.store)
-
-    def __hash__(self):
-        return hash(self['_id'])
-
-    def _gen_id(self):
-        _oid = self.store.get('_oid')
-        assert _oid is not None
-        if self.store.get('_end'):
-            _start = self.store.get('_start')
-            # if the object at the exact start/oid is later
-            # updated, it's possible to just save(upsert=True)
-            _id = ':'.join(map(str, (_oid, _start)))
-        else:
-            # if the object is 'current value' without _end,
-            # use just str of _oid
-            _id = _oid
-        self.store['_id'] = to_encoding(_id)
-
-    def _gen_hash(self):
-        o = copy(self.store)
-        keys = set(o.keys())
-        [o.pop(k) for k in self.HASH_EXCLUDE_KEYS if k in keys]
-        self.store['_hash'] = jsonhash(o)
-
-    def _re_hash(self):
-        self._validate_start_end()
-        self._gen_hash()
-        self._gen_id()
-
-    def _validate_start_end(self):
-        _start = self.get('_start')
-        if _start is None:
-            raise ValueError("_start (%s) must be set!" % _start)
-        _end = self.get('_end')
-        if _end and _end < _start:
-            raise ValueError(
-                "_end (%s) is before _start (%s)!" % (_end, _start))
-
-    def as_dict(self, pop=None):
-        store = copy(self.store)
-        if pop:
-            [store.pop(key, None) for key in pop]
-        return store
-
-    def update(self, obj, re_hash=True):
-        for key, value in obj.iteritems():
-            self._setitem_no_rehash(key, value)
-        if re_hash:
-            self._re_hash()
+    # add some additional non-hashable meta data
+    kwargs['_start'] = _start
+    kwargs['_end'] = _end
+    kwargs['__v__'] = __v__ or __version__
+    kwargs['_e'] = _e
+    return kwargs
 
 
 # FIXME: all objects should have the SAME keys;
@@ -399,7 +289,7 @@ class MetriqueContainer(MutableMapping):
         self.config.setdefault(self.proxy_config_key, {}).update(proxy_config)
 
         if self._object_cls is None:
-            self._object_cls = MetriqueObject
+            self._object_cls = metrique_object
 
         if self._proxy_cls is None:
             from metrique.sqlalchemy import SQLAlchemyProxy

@@ -49,15 +49,15 @@ def test_datatypes():
 
 
 def test_api():
-    from metrique import MetriqueContainer, MetriqueObject
+    from metrique import MetriqueContainer, metrique_object
     from metrique.utils import utcnow, remove_file, dt2ts, ts2dt
 
     _start = ts2dt('2001-01-01')
     _end = ts2dt('2001-01-02')
     a = {'_oid': 1, 'col_1': 1, 'col_2': utcnow(), '_start': _start}
     b = {'_oid': 2, 'col_1': 2, 'col_2': utcnow(), '_start': _start}
-    ma = MetriqueObject(**a)
-    mb = MetriqueObject(**b)
+    ma = metrique_object(**a)
+    mb = metrique_object(**b)
     objs_list = [a, b]
     r_objs_dict = {u'1': ma, u'2': mb}
 
@@ -77,7 +77,7 @@ def test_api():
     assert MetriqueContainer(objects=mc) == r_objs_dict
 
     # setting version should result in all objects added having that version
-    # note: version -> _v in MetriqueObject
+    # note: version -> _v in metrique_object
     assert mc.version == 0
     assert mc['1']['_v'] == 0
     mc = MetriqueContainer(objects=objs_list, version=3)
@@ -85,7 +85,7 @@ def test_api():
     assert mc['1']['_v'] == 3
 
     # setting converts key to _id of value after being passed
-    # through MetriqueObject(); notice key int(5) -> str('5')
+    # through metrique_object(); notice key int(5) -> str('5')
     mc[5] = {'_oid': 5}
     assert mc['5']['_oid'] == 5
     # also note, that it doesn't actually matter what key we use

@@ -71,6 +71,6 @@ os.environ['METRIQUE_SRC'] = os.environ.get(
 
 # ATTENTION: this is the main interface for clients!
 from metrique.metrique import Metrique as pyclient
-from metrique.core_api import MetriqueContainer, MetriqueObject
+from metrique.core_api import MetriqueContainer, metrique_object
 # avoid lint 'defined by not used' error
-pyclient, MetriqueContainer, MetriqueObject
+pyclient, MetriqueContainer, metrique_object

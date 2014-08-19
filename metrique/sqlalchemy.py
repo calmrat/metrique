@@ -257,8 +257,8 @@ class SQLAlchemyProxy(object):
         self._debug_setup_sqlalchemy_logging()
 
         if not self._object_cls:
-            from metrique.core_api import MetriqueObject
-            self._object_cls = MetriqueObject
+            from metrique.core_api import metrique_object
+            self._object_cls = metrique_object
 
     def _apply_default_fields(self, fields):
         fields = parse.parse_fields(fields)

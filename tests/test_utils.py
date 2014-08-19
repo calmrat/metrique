@@ -648,9 +648,9 @@ def test_jsonhash():
     dct_diff = copy(dct)
     del dct_diff['z']
 
-    DCT = '6951abb765573ee052402c53dd7c0a5a09fc870b'
-    DCT_SORTED_Z = 'ab3bd17ed90c5051205b2b1df9741f52c6a6755b'
-    DCT_DIFF = 'ac12039e077bd03879d7481f299678b73b6216e5'
+    DCT = 'a619c43718a76d3e1c745bedbc4fb59f9e6f2309'
+    DCT_SORTED_Z = 'dd0657ca2433a71362ade81a5981ffb5b5afa0bd'
+    DCT_DIFF = 'eb95eb5a1689e50180a8de242f01285b1cd90668'
 
     assert dct != dct_sorted_z
 
@@ -670,7 +670,7 @@ def test_jsonhash():
               'verified': [1],
               'version': '2.1r'}
 
-    EX = 'c6d26b63a50ce402ca15eb79383b5dbe91e304e9'
+    EX = 'f786b0d3a6fb1cbd147d69c6d446484a1a243600'
     # jsonhashing ex_dct (without product) should be
     # equal to jsonhashing dct with exclude 'product'
     assert jsonhash(ex_dct) == EX

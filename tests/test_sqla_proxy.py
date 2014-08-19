@@ -24,7 +24,7 @@ cache_dir = env['METRIQUE_CACHE']
 
 def db_tester(proxy):
     from metrique.utils import ts2dt
-    from metrique import MetriqueObject as O
+    from metrique import metrique_object as O
 
     _start = ts2dt("2001-01-01 00:00:00")
     _end = ts2dt("2001-01-02 00:00:00")
@@ -52,7 +52,7 @@ def db_tester(proxy):
     obj = {'_oid': None, 'col_1': 1, 'col_3': _date}
     try:
         O(**obj)
-    except RuntimeError:
+    except ValueError:
         pass
     else:
         assert False
@@ -114,9 +114,12 @@ def db_tester(proxy):
     print 'Inserting %s' % obj_3
     p.insert([obj_3])
     assert p.count('_oid == 3', date='~') == 1
+
     obj_3['col_1'] = 42
     print '... Update 1: %s' % obj_3
+    obj_3 = O(**obj_3)
     p.upsert([obj_3])
+
     # should be two versions of _oid:3
     assert p.count('_oid == 3', date='~') == 2
     # should be three objects with col_1 == 1 (_oids: 1, 2, 3)
