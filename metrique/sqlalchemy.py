@@ -424,6 +424,9 @@ class SQLAlchemyProxy(object):
             logger.error('Create Table %s: FAIL (%s)' % (name, e))
             if except_:
                 raise
+            else:
+                # return back None, since we failed to load a Table
+                table = None
         else:
             logger.error('Create Table %s: OK' % name)
             table = self.get_table(name, except_=except_)
@@ -914,7 +917,15 @@ class SQLAlchemyProxy(object):
         session = self.session_new()
         try:
             if autosnap:
-                # Snapshot
+                # Snapshot - relevant only for cubes which objects
+                # stored always are pushed with _end:None ('current value')
+                # If we already have an object with same _oid, but different
+                # _hash, we know we have a NEW object state for the given _oid
+                # In this case, we update the existing object by adding 
+                # current object's _start -> existing _end and then add
+                # the current object as=is; IOW rotate out the previous
+                # version by giving it a _end and insert the new version
+                # as current with _end:None
                 existing = session.query(table).\
                     filter(table.c._oid.in_(oids)).\
                     filter(table.c._end.is_(None)).all()
@@ -925,9 +936,6 @@ class SQLAlchemyProxy(object):
                 objects = [o for o in objects if o['_oid'] in existing]
                 for o in objects:
                     oe = existing[o['_oid']]
-                    logger.debug('*' * 100)
-                    logger.debug(oe._hash)
-                    logger.debug(o['_hash'])
                     if oe._hash != o['_hash']:
                         new_id = '%s:%s' % (oe._oid, oe._start)
                         session.execute(
@@ -943,11 +951,15 @@ class SQLAlchemyProxy(object):
                 objects = inserts
             else:
                 # History import
-                # delete existing versions:
+                # delete all existing versions for given _oids,
+                # then we'll insert all the new historical versions
+                # below
+                # NOTE: THIS EXPECTS THAT THE CURRENT BATCH CONTAINS
+                # ALL HISTORICAL VERSIONS OF A GIVEN _oid!
                 session.query(table).filter(table.c._oid.in_(oids)).\
                     delete(synchronize_session=False)
 
-            # insert new versions:
+            # insert new versions
             session.flush()
             if objects:
                 session.execute(table.insert(), objects)

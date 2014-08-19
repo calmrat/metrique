@@ -251,13 +251,6 @@ class Generic(pyclient):
         mtime_columns = str2list(mtime_columns)
         where = []
         for _column in mtime_columns:
-            # >= so we include anything that changed exactly
-            # at the same time as our last update
-            # FIXME: should we also include a 'resolution margin',
-            # ie, 30 seconds PRIOR to the last_update to raise likelihood we
-            # don't miss some data which changed between start
-            # of processing and time when _start was generated, etc?
-            # This should be already fixed by saving the delta_ts
             _sql = "%s >= %s" % (_column, last_update)
             where.append(_sql)
         return self.sql_get_oids(where)
@@ -401,7 +394,9 @@ class Generic(pyclient):
         w_batch_size = self.lconfig.get('worker_batch_size')
         s_batch_size = self.lconfig.get('batch_size')
 
-        # remember delta_ts
+        # store the time right before the ETL job starts,
+        # so next run, we can catch delta changes b/w
+        # next ETL start and previous (this)
         new_delta_ts = time()
         # get list of oids which we plan to update
         oids, save_delta_ts = self._delta_force(force, last_update,
