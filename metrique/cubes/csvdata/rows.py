@@ -67,22 +67,20 @@ class Rows(pyclient):
         k = itertools.count(1)
         now = utcnow()
         __oid = lambda o: k.next()
-        __start = lambda o: now
-        __end = lambda o: None
 
         _oid = _oid or __oid
-        _start = _start or __start
-        _end = _end or __end
+        _start = _start or now
+        _end = _end or None
 
-        for v in (_oid, _start, _end):
-            if v is None or not (type(v) is type or hasattr(v, '__call__')):
-                raise ValueError(
-                    "(_oid, _start, _end) must be a callables!" % v)
+        def is_callable(v):
+            _v = type(v)
+            _ = True if _v is type or hasattr(v, '__call__') else False
+            return _
 
         for obj in objects:
-            obj['_oid'] = _oid(obj)
-            obj['_end'] = _end(obj)
-            obj['_start'] = _start(obj)
-            self.objects.add(obj)
+            obj['_oid'] = _oid(obj) if is_callable(_oid) else _oid
+            obj['_start'] = _start(obj) if is_callable(_start) else _start
+            obj['_end'] = _end(obj) if is_callable(_end) else _end
+            self.container.add(obj)
 
         return super(Rows, self).get_objects(**kwargs)
