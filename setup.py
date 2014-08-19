@@ -29,6 +29,7 @@ __desc__ = 'Metrique - Client Libraries'
 __scripts__ = []
 __requires__ = [
     'anyconfig',
+    'cython',
     'decorator',
     'lockfile',
     # bug when installing numpy as dep;
@@ -43,6 +44,7 @@ __requires__ = [
 ]
 __irequires__ = [
     'anyconfig',
+    'cython',
     'decorator',
     'lockfile',
     #'pandas>=0.13.0',

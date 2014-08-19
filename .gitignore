@@ -1,9 +1,13 @@
+# notebook cache
+.ipynb_checkpoints
+
 # vim swap files
 *.sw*
 
 *.py[cod]
 
 # C extensions
+*.c
 *.so
 
 # Packages

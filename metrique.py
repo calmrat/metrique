@@ -134,6 +134,15 @@ DEFAULT_SUPERVISORD_CONF = utils.read_file('templates/etc/supervisord.conf')
 
 ###############################################################################
 
+def cython(args=None, cmd=''):
+    cmd = getattr(args, 'command', cmd)
+    if cmd == 'compile':
+        utils.sys_call('./setup.py build_ext --inplace')
+    elif cmd == 'clean':
+        # FIXME: add *.c too?
+        utils.remove_file('metrique/*.so')
+
+
 def backup_clean(args, path, prefix):
     keep = args.keep if args.keep != 0 else 3
     path = pjoin(path, prefix) + '*'
@@ -462,7 +471,8 @@ def _deploy_virtenv_init(args):
         # scratch the existing virtenv directory, if requested
         if args.trash:
             utils.remove_file(virtenv, force=True)
-            trash()
+            if args.trash_home:
+                trash()
 
         # virtualenv.main; pass in only the virtenv path
         sys.argv = sys.argv[0:1] + [virtenv]
@@ -505,6 +515,8 @@ def _deploy_extras(args):
     utils.sys_call('%s install -U dulwich' % pip) if _ else None
     _ = _all or args.paramiko
     utils.sys_call('%s install -U paramiko' % pip) if _ else None
+    _ = _all or args.cython
+    utils.sys_call('%s install -U cython' % pip) if _ else None
 
 
 def deploy(args):
@@ -526,6 +538,9 @@ def deploy(args):
         path = pjoin(virtenv, 'lib/python2.7/site-packages/metrique*')
         utils.remove_file(path, force=True)
         develop(args)
+
+    if (args.all or args.cython) and args.develop:
+        cython(cmd='compile')
 
     # run py.test after install
     if args.test:
@@ -788,7 +803,12 @@ def main():
     _deploy.add_argument(
         '--paramiko', action='store_true', help='install paramiko')
     _deploy.add_argument(
+        '--cython', action='store_true', help='install cython')
+    _deploy.add_argument(
         '--trash', action='store_true', help='fresh install (rm old virtenv)')
+    _deploy.add_argument(
+        '--trash-home', action='store_true',
+        help='fresh install (rm old virtenv)')
     _deploy.set_defaults(func=deploy)
 
     # PIP standard build
@@ -814,7 +834,7 @@ def main():
     _trash.add_argument('named', nargs='*')
     _trash.set_defaults(func=trash)
 
-    # Clean-up routines
+    # Firstboot routines
     _firstboot = _sub.add_parser('firstboot')
     _firstboot.add_argument('command',
                             nargs='+',
@@ -823,6 +843,12 @@ def main():
     _firstboot.add_argument('-f', '--force', action='store_true')
     #_firstboot.add_argument('-A', '--no-auth', action='store_true')
     _firstboot.set_defaults(func=firstboot)
+
+    # Cython commands
+    _cython = _sub.add_parser('cython')
+    _cython.add_argument('command',
+                         choices=['compile', 'clean'])
+    _cython.set_defaults(func=cython)
 
     # rsync
     _rsync = _sub.add_parser('rsync')
