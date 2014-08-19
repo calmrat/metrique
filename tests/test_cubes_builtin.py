@@ -46,10 +46,10 @@ def test_csvdata():
     # {u'symbol': u'$AJT', u'date': u'09/08/2008', u'close': 18.15, u'_start':
     # datetime.datetime(2014, 5, 28, 14, 9, 22, 999145), u'open': 17.84,
     # u'_oid': 11, u'_v': 0, u'_end': None, u'_hash':
-    # u'32b2650a8e6f3d8dd5f91536ca81840b9a4a4197', u'__v__': u'0.3.1-1a',
+    # u'76e81838bdde51f693f8a09a2308557a7962aa78', u'__v__': u'0.3.1-1a',
     # u'_e': {}, u'_id': u'11'}
     _ids = m.objects._ids
-    _hash = '32b2650a8e6f3d8dd5f91536ca81840b9a4a4197'
+    _hash = '76e81838bdde51f693f8a09a2308557a7962aa78'
     _oid = 11
     _filtered = m.objects.filter(where={'_oid': _oid})
     print 'Object: %s' % _filtered
@@ -112,10 +112,10 @@ def test_load_json():
     # u'_oid': 28615, u'name': u'Roberts Z\u012aLE', u'url':
     # u'http://www.europarl.euro...rs/expert/committees/view.do?id=28615',
     # u'_v': 0, u'phone_bxl': u'+32 (0)2 28 45224', u'_end': None, u'_hash':
-    # u'823c4c5b9f7f7750f3d20a247d2d23540e7936b3', u'__v__': u'0.3.1-1a',
+    # u'e8d2a6943734a80f268d112514040b4707915181', u'__v__': u'0.3.1-1a',
     # u'party': u'European Conservatives and Reformists', u'_e': {}, u'_id':
     # u'28615', u'email': None}
-    _hash = '823c4c5b9f7f7750f3d20a247d2d23540e7936b3'
+    _hash = 'e8d2a6943734a80f268d112514040b4707915181'
     _filtered = m.objects.filter(where={'_oid': 28615})
     assert len(_filtered) == 1
     print 'Object: %s' % _filtered
@@ -162,9 +162,9 @@ def test_gitdata_commit():
     # u'tree': u'66406ded27ba129ad1639928b079b821ab416fed', u'_end': None,
     # u'signed_off_by': None, u'parents':
     # ['78b311d90e35eb36016a7f41e75657754dbe0784'], u'_hash':
-    # u'3f2c75a327315e29929b6dbdcc9be1c1390d27cd', u'__v__': u'0.3.1-1a',
+    # u'79a11c24ac814f001abcd27963de761ccb37a908', u'__v__': u'0.3.1-1a',
     # u'_e': {}, u'_id': u'99dc1e5c4e3ab2c8ab5510e50a3edf64f9fcc705'}
-    _hash = '3f2c75a327315e29929b6dbdcc9be1c1390d27cd'
+    _hash = '79a11c24ac814f001abcd27963de761ccb37a908'
     _oid = '99dc1e5c4e3ab2c8ab5510e50a3edf64f9fcc705'
     _filtered = m.objects.filter(where={'_oid': _oid})
     assert len(_filtered) == 1

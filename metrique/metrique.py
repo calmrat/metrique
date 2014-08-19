@@ -8,15 +8,13 @@
 # and enable future 'delta' syncs.
 
 '''
-metrique.core_api
+metrique.metrique
 ~~~~~~~~~~~~~~~~~
 **Python data warehouse and information platform**
 
 metrique is used to bring data from any number of arbitrary
 sources into unified data collections that supports
-transparent historical version snapshotting, advanced
-ad-hoc server-side querying, including (mongodb)
-aggregations and (mongodb) mapreduce, along with client
+transparent historical version snapshotting, client
 side querying and analysis with the support of an array
 of scientific computing python libraries, such as ipython,
 pandas, numpy, matplotlib, and more.
@@ -52,7 +50,7 @@ And finishing with some querying and simple charting of the data.
          'summary': 'UNO Runtime Environment',
          'version': '4.1.4.2'
     }
-    >>> _ids = osinfo_rpm.get_objects(flush=True)  # persist to mongodb
+    >>> _ids = osinfo_rpm.get_objects(flush=True)  # persist to storage
     >>> df = osinfo_rpm.find(fields='license')
     >>> threshold = 5
     >>> license_k = df.groupby('license').apply(len)
@@ -346,7 +344,7 @@ class Metrique(object):
         name = name or cube
         config = copy(self.config) if copy_config else {}
         config_file = self.config_file
-        container = type(self.objects)
+        container = type(self.container)
         container_config = copy(self.container_config)
         proxy = str(type(self.proxy))
         return get_cube(cube=cube, init=init, name=name, config=config,

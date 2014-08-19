@@ -12,7 +12,7 @@ for consistently generating date range query syntax
 and field inclusion/exclusion mappers, along with a custom
 Metrique Query Parser which supports consisten querying
 against mulitple datastorage backends (eg, postgresql,
-sqlite, mongodb) using a single syntax.
+sqlite) using a single syntax.
 '''
 
 from __future__ import unicode_literals, absolute_import
@@ -40,7 +40,7 @@ def parse_fields(fields, as_dict=False):
     return back a consistent, normalized form of the same.
 
     To forms are currently supported:
-        dictionary form (mongodb): dict 'key' is the field name
+        dictionary form: dict 'key' is the field name
                                    and dict 'value' is either 1 (include)
                                    or 0 (exclude).
         list form (other): list values are field names to be included
@@ -311,7 +311,9 @@ def parse(table, query=None, date=None, fields=None,
         query = None
 
     fields = parse_fields(fields=fields) or None
-    fields = fields if fields else [t for t in dict(table.columns)]
+    # we must pass in the table column objects themselves to ensure
+    # our bind / result processors are mapped properly
+    fields = fields if fields else table.columns
 
     msg = 'parse(query=%s, fields=%s)' % (query, fields)
     #msg = re.sub(' in \[[^\]]+\]', ' in [...]', msg)

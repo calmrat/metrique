@@ -15,9 +15,7 @@ import glob
 import importlib
 import logging
 import os
-import re
 import signal
-import shutil
 import socket
 import sys
 import time
@@ -74,7 +72,6 @@ PIDS_DIR = env.get('METRIQUE_PIDS')
 BACKUP_DIR = env.get('METRIQUE_BACKUP')
 TMP_DIR = env.get('METRIQUE_TMP')
 CACHE_DIR = env.get('METRIQUE_CACHE')
-MONGODB_DIR = env.get('METRIQUE_MONGODB')
 STATIC_DIR = env.get('METRIQUE_STATIC')
 TEMPLATES_DIR = env.get('METRIQUE_TEMPLATES')
 
@@ -88,15 +85,6 @@ SYS_FIRSTBOOT_PATH = pjoin(PREFIX_DIR, '.firstboot_sys')
 SSL_CERT = pjoin(ETC_DIR, 'metrique.crt')
 SSL_KEY = pjoin(ETC_DIR, 'metrique.key')
 SSL_PEM = pjoin(ETC_DIR, 'metrique.pem')
-
-MONGODB_FIRSTBOOT_PATH = pjoin(PREFIX_DIR, '.firstboot_mongodb')
-MONGODB_CONF = pjoin(ETC_DIR, 'mongodb.conf')
-MONGODB_PIDFILE = pjoin(PIDS_DIR, 'mongodb.pid')
-MONGODB_LOCKFILE = pjoin(MONGODB_DIR, 'mongod.lock')
-MONGODB_LOG = pjoin(LOGS_DIR, 'mongodb.log')
-MONGODB_JSON = pjoin(ETC_DIR, 'mongodb.json')
-MONGODB_JS = pjoin(ETC_DIR, 'mongodb_firstboot.js')
-MONGODB_KEYFILE = pjoin(ETC_DIR, 'mongodb.key')
 
 CELERYD_PIDFILE = pjoin(PIDS_DIR, 'celeryd.pid')
 CELERYBEAT_PIDFILE = pjoin(PIDS_DIR, 'celerybeat.pid')
@@ -126,13 +114,20 @@ POSTGRESQL_LOGFILE = pjoin(LOGS_DIR, 'postgresql-server.log')
 
 # ############################# DEFAULT CONFS ############################### #
 DEFAULT_METRIQUE_JSON = utils.read_file('templates/etc/metrique.json')
-DEFAULT_MONGODB_CONF = utils.read_file('templates/etc/mongodb.conf')
-DEFAULT_MONGODB_JS = utils.read_file('templates/etc/mongodb_firstboot.js')
 DEFAULT_NGINX_CONF = utils.read_file('templates/etc/nginx.conf')
 DEFAULT_SUPERVISORD_CONF = utils.read_file('templates/etc/supervisord.conf')
 
 
 ###############################################################################
+
+def cython(args=None, cmd=''):
+    cmd = getattr(args, 'command', cmd)
+    if cmd == 'compile':
+        utils.sys_call('./setup.py build_ext --inplace')
+    elif cmd == 'clean':
+        # FIXME: add *.c too?
+        utils.remove_file('metrique/*.so')
+
 
 def backup_clean(args, path, prefix):
     keep = args.keep if args.keep != 0 else 3
@@ -246,105 +241,6 @@ def nginx(args):
         raise ValueError("unknown command %s" % args.command)
 
 
-def mongodb_terminate(sig=None, frame=None):
-    utils.terminate(MONGODB_PIDFILE)
-
-
-def mongodb_start(fork=False, fast=True):
-    fork = '--fork' if fork else ''
-    if os.path.exists(MONGODB_PIDFILE):
-        logger.info('MongoDB pid found not starting...')
-        return False
-    cmd = 'mongod -f %s %s' % (MONGODB_CONF, fork)
-    cmd += ' --noprealloc --nojournal' if fast else ''
-    utils.sys_call(cmd, fork=fork, pid_file=MONGODB_PIDFILE)
-    return True
-
-
-def mongodb_stop():
-    utils.terminate(MONGODB_PIDFILE)
-    mongodb_clean()
-
-
-def mongodb_clean():
-    utils.remove_file(MONGODB_LOCKFILE)
-    utils.remove_file(MONGODB_PIDFILE)
-
-
-def mongodb_trash():
-    mongodb_stop()
-    dest = pjoin(TRASH_DIR, 'mongodb-%s' % NOW)
-    utils.move(MONGODB_DIR, dest)
-    utils.move(MONGODB_CONF, dest)
-    utils.move(MONGODB_JSON, dest)
-    utils.move(MONGODB_JS, dest)
-    utils.move(MONGODB_KEYFILE, dest)
-    utils.remove_file(MONGODB_FIRSTBOOT_PATH)
-    utils.make_dirs(MONGODB_DIR)
-
-
-def mongodb_gen_keyfile():
-    utils.sys_call('openssl rand -base64 741 -out %s' % MONGODB_KEYFILE)
-    os.chmod(MONGODB_KEYFILE, 0600)
-
-
-def mongodb_backup(args):
-    from metrique.mongodb_api import MongoDBConfig
-    config = MongoDBConfig()
-
-    prefix = 'mongodb'
-    saveas = '__'.join((prefix, HOSTNAME, NOW))
-    out = pjoin(BACKUP_DIR, saveas)
-
-    host = config.host.split(',')[0]  # get the first host (expected primary)
-    port = config.port
-    p = config.password
-    password = '--password %s' % p if p else ''
-    username = '--username %s' % config.username if password else ''
-    authdb = '--authenticationDatabase admin' if password else ''
-    ssl = '--ssl' if config.ssl else ''
-    db = '--db %s' if args.db else ''
-    collection = '--collection %s' if args.collection else ''
-
-    cmd = ('mongodump', '--host %s' % host, '--port %s' % port,
-           ssl, username, password, '--out %s' % out, authdb,
-           db, collection)
-    cmd = re.sub('\s+', ' ', ' '.join(cmd))
-    utils.sys_call(cmd)
-
-    saveas = out + '.tar.gz'
-    utils.backup(saveas, out)
-    shutil.rmtree(out)
-
-    backup_clean(args, BACKUP_DIR, 'mongodb')
-
-    if args.scp_export:
-        user = args.scp_user
-        host = args.scp_host
-        out_dir = args.scp_out_dir
-        cmd = 'scp %s %s@%s:%s' % (saveas, user, host, out_dir)
-        utils.sys_call(cmd)
-
-
-def mongodb(args):
-    fork = not args.nofork
-    fast = args.fast
-
-    if args.command == 'start':
-        mongodb_start(fork, fast)
-    elif args.command == 'stop':
-        mongodb_stop()
-    elif args.command == 'restart':
-        mongodb_stop()
-        mongodb_start(fork, fast)
-    elif args.command == 'clean':
-        mongodb_clean()
-    elif args.command == 'trash':
-        mongodb_trash()
-    else:
-        raise ValueError("unknown command %s" % args.command)
-
-
 def postgresql(args):
     # FIXME: disabling fork not possible at this time
     if args.command == 'start':
@@ -368,7 +264,7 @@ def postgresql_start():
         return False
 
     try:
-        cmd = 'pg_ctl -D %s -l %s -o \\"-k %s\\" start' % (
+        cmd = 'pg_ctl -D %s -l %s -o "-k %s" start' % (
             POSTGRESQL_PGDATA_PATH, POSTGRESQL_LOGFILE, PIDS_DIR)
         utils.sys_call(cmd, sig=signal.SIGTERM, sig_func=postgresql_terminate)
     except Exception as e:
@@ -419,13 +315,12 @@ def trash(args=None):
     celerybeat_terminate()
     celeryd_terminate()
     nginx_terminate()
-    mongodb_terminate()
     postgresql_stop()
 
     dest = pjoin(TRASH_DIR, 'metrique-%s' % named)
     logger.warn('Trashing existing .metrique -> %s' % dest)
     for f in [ETC_DIR, PIDS_DIR, LOGS_DIR, CACHE_DIR,
-              TMP_DIR, MONGODB_DIR, POSTGRESQL_PGDATA_PATH]:
+              TMP_DIR, POSTGRESQL_PGDATA_PATH]:
         _dest = os.path.join(dest, os.path.basename(f))
         try:
             utils.move(f, _dest)
@@ -462,7 +357,8 @@ def _deploy_virtenv_init(args):
         # scratch the existing virtenv directory, if requested
         if args.trash:
             utils.remove_file(virtenv, force=True)
-            trash()
+            if args.trash_home:
+                trash()
 
         # virtualenv.main; pass in only the virtenv path
         sys.argv = sys.argv[0:1] + [virtenv]
@@ -475,36 +371,41 @@ def _deploy_virtenv_init(args):
 
 
 def _deploy_extras(args):
-    pip = 'pip'
+    # make sure we have the installer basics and their up2date
+    # pip-accel caches compiled binaries
+    utils.sys_call('pip install -U pip setuptools virtualenv')
+
     _all = args.all
     _ = _all or args.ipython
-    utils.sys_call('%s install -U ipython pyzmq jinja2' % pip) if _ else None
+    utils.sys_call('pip install -U ipython pyzmq jinja2') if _ else None
     _ = _all or args.test or args.pytest
-    utils.sys_call('%s install -U pytest coveralls' % pip) if _ else None
+    utils.sys_call('pip install -U pytest coveralls') if _ else None
     _ = args.all or args.docs
-    utils.sys_call('%s install -U sphinx' % pip) if _ else None
+    utils.sys_call('pip install -U sphinx') if _ else None
     # pip-accel fails to install this package...
     utils.sys_call('pip install -U sphinx_bootstrap_theme') if _ else None
     _ = _all or args.supervisord
-    utils.sys_call('%s install -U supervisor' % pip) if _ else None
+    utils.sys_call('pip install -U supervisor') if _ else None
     _ = _all or args.joblib
-    utils.sys_call('%s install -U joblib' % pip) if _ else None
+    utils.sys_call('pip install -U joblib') if _ else None
     _ = _all or args.postgres
-    utils.sys_call('%s install -U psycopg2' % pip) if _ else None
+    utils.sys_call('pip install -U psycopg2') if _ else None
     _ = _all or args.celery
-    utils.sys_call('%s install -U celery' % pip) if _ else None
+    utils.sys_call('pip install -U celery') if _ else None
     _ = _all or args.sqlalchemy
-    utils.sys_call('%s install -U sqlalchemy' % pip) if _ else None
+    utils.sys_call('pip install -U sqlalchemy') if _ else None
     _ = _all or args.pymongo
-    utils.sys_call('%s install -U pymongo pql' % pip) if _ else None
+    utils.sys_call('pip install -U pymongo pql') if _ else None
     _ = _all or args.pandas
-    utils.sys_call('%s install -U pandas' % pip) if _ else None
+    utils.sys_call('pip install -U pandas') if _ else None
     _ = _all or args.matplotlib
-    utils.sys_call('%s install -U matplotlib' % pip) if _ else None
+    utils.sys_call('pip install -U matplotlib') if _ else None
     _ = _all or args.dulwich
-    utils.sys_call('%s install -U dulwich' % pip) if _ else None
+    utils.sys_call('pip install -U dulwich') if _ else None
     _ = _all or args.paramiko
-    utils.sys_call('%s install -U paramiko' % pip) if _ else None
+    utils.sys_call('pip install -U paramiko') if _ else None
+    _ = _all or args.cython
+    utils.sys_call('pip install -U cython') if _ else None
 
 
 def deploy(args):
@@ -513,28 +414,22 @@ def deploy(args):
     # make sure we have some basic defaults configured in the environment
     firstboot()
 
-    # make sure we have the installer basics and their up2date
-    # pip-accel caches compiled binaries
-    utils.sys_call('pip install -U pip setuptools virtualenv')
+    # install all dependencies first, before installing metrique
+    _deploy_extras(args)
 
     cmd = 'install'
     setup(args, cmd, pip=False)
-
-    _deploy_extras(args)
 
     if args.develop:
         path = pjoin(virtenv, 'lib/python2.7/site-packages/metrique*')
         utils.remove_file(path, force=True)
         develop(args)
 
+    if (args.all or args.cython) and args.develop:
+        cython(cmd='compile')
+
     # run py.test after install
     if args.test:
-        # FIXME: testing mongodb components should be optional
-        # and starting up mongodb etc should happen as a byproduct
-        # of running the tests!
-        #running = utils.get_pid(MONGODB_PIDFILE) != 0
-        #if not running:
-        #    utils.sys_call('metrique mongodb start --fast')
         utils.sys_call('coverage run --source=metrique -m py.test tests')
 
 
@@ -583,8 +478,6 @@ def firstboot(args=None, force=False):
     if 'metrique' in cmd:
         sys_firstboot(force)
         pyclient_firstboot(force)
-    if 'mongodb' in cmd:
-        mongodb_firstboot(force)
     if 'postgresql' in cmd:
         postgresql_firstboot(force)
     if 'supervisord' in cmd:
@@ -611,13 +504,13 @@ def postgresql_firstboot(force=False):
         time.sleep(1)
         cmd = 'createdb -h 127.0.0.1'
         utils.sys_call(cmd)
-        cmd = 'psql -h 127.0.0.1 -c \\"%s\\"'
+        cmd = 'psql -h 127.0.0.1 -c "%s"'
         P = PASSWORD
         tz = "set timezone TO 'GMT';"
         encoding = "set client_encoding TO 'utf8';"
-        admin_user = "CREATE USER admin WITH PASSWORD \\'%s\\' SUPERUSER;" % P
+        admin_user = "CREATE USER admin WITH PASSWORD '%s' SUPERUSER;" % P
         admin_db = "CREATE DATABASE admin WITH OWNER admin;"
-        test_user = "CREATE USER test WITH PASSWORD \\'%s\\' SUPERUSER;" % P
+        test_user = "CREATE USER test WITH PASSWORD '%s' SUPERUSER;" % P
         test_db = "CREATE DATABASE test WITH OWNER test;"
         [utils.sys_call(cmd % sql) for sql in (tz, encoding, admin_user,
                                                admin_db, test_user, test_db)]
@@ -627,38 +520,6 @@ def postgresql_firstboot(force=False):
 
     utils.write_file(POSTGRESQL_FIRSTBOOT_PATH, '')
     return True
-
-
-def mongodb_firstboot(force=False):
-    exists = os.path.exists(MONGODB_FIRSTBOOT_PATH)
-    if exists and not force:
-        # skip if we have already run this before
-        return
-    utils.make_dirs(MONGODB_DIR)
-    mongodb_gen_keyfile()
-
-    global DEFAULT_MONGODB_CONF, DEFAULT_MONGODB_JS
-    DEFAULT_MONGODB_CONF = DEFAULT_MONGODB_CONF % (
-        MONGODB_DIR, MONGODB_LOG, MONGODB_PIDFILE, LOCAL_IP, SSL_PEM,
-        MONGODB_KEYFILE)
-    DEFAULT_MONGODB_JS = DEFAULT_MONGODB_JS % (PASSWORD)
-
-    utils.write_file(MONGODB_CONF, DEFAULT_MONGODB_CONF)
-    utils.write_file(MONGODB_FIRSTBOOT_PATH, '')
-
-
-def mongodb_install_admin():
-    # by installing 'admin' user in Travis-ci we enable
-    # authentication; flag here is to disable that
-    # for testing
-    utils.write_file(MONGODB_JS, DEFAULT_MONGODB_JS)
-    mongodb_start(fork=True, fast=True)
-    logger.debug('MongoDB forking, sleeping for a moment...')
-    time.sleep(1)
-    try:
-        utils.sys_call('mongo 127.0.0.1/admin %s' % (MONGODB_JS))
-    finally:
-        mongodb_stop()
 
 
 def pyclient_firstboot(force=False):
@@ -671,7 +532,6 @@ def pyclient_firstboot(force=False):
 
     DEFAULT_METRIQUE_JSON = DEFAULT_METRIQUE_JSON % (
         LOCAL_IP, PASSWORD, LOCAL_IP, PASSWORD,
-        LOCAL_IP, PASSWORD, SSL_PEM,
         CELERYD_BROKER_DB,
         PASSWORD, PASSWORD, LOCAL_IP)
 
@@ -788,7 +648,12 @@ def main():
     _deploy.add_argument(
         '--paramiko', action='store_true', help='install paramiko')
     _deploy.add_argument(
+        '--cython', action='store_true', help='install cython')
+    _deploy.add_argument(
         '--trash', action='store_true', help='fresh install (rm old virtenv)')
+    _deploy.add_argument(
+        '--trash-home', action='store_true',
+        help='fresh install (rm old virtenv)')
     _deploy.set_defaults(func=deploy)
 
     # PIP standard build
@@ -814,49 +679,29 @@ def main():
     _trash.add_argument('named', nargs='*')
     _trash.set_defaults(func=trash)
 
-    # Clean-up routines
+    # Firstboot routines
     _firstboot = _sub.add_parser('firstboot')
     _firstboot.add_argument('command',
                             nargs='+',
-                            choices=['metrique', 'mongodb', 'postgresql',
+                            choices=['metrique', 'postgresql',
                                      'supervisord', 'nginx'])
     _firstboot.add_argument('-f', '--force', action='store_true')
     #_firstboot.add_argument('-A', '--no-auth', action='store_true')
     _firstboot.set_defaults(func=firstboot)
 
+    # Cython commands
+    _cython = _sub.add_parser('cython')
+    _cython.add_argument('command',
+                         choices=['compile', 'clean'])
+    _cython.set_defaults(func=cython)
+
     # rsync
     _rsync = _sub.add_parser('rsync')
     _rsync.add_argument('targets', nargs='*')
-    _rsync.add_argument('-m', '--mongodb-host')
     _rsync.add_argument('-Z', '--nocompress', action='store_true')
     _rsync.add_argument('-H', '--ssh-host')
     _rsync.add_argument('-u', '--ssh-user', default='backup')
     _rsync.set_defaults(func=rsync)
-
-    # MongoDB Server
-    _mongodb = _sub.add_parser('mongodb')
-    _mongodb.add_argument('command',
-                          choices=['start', 'stop', 'restart',
-                                   'clean', 'trash', 'status'])
-    _mongodb.add_argument('-H', '--host', default='127.0.0.1')
-    _mongodb.add_argument('-f', '--fast', action='store_true')
-    _mongodb.add_argument('-s', '--ssl', action='store_true')
-    _mongodb.add_argument('-u', '--user')
-    _mongodb.add_argument('-p', '--password')
-    _mongodb.add_argument('-F', '--nofork', action='store_true')
-    _mongodb.set_defaults(func=mongodb)
-
-    # MongoDB Backup
-    _mongodb_backup = _sub.add_parser('mongodb_backup')
-    _mongodb_backup.add_argument('-c', '--config-file')
-    _mongodb_backup.add_argument('-D', '--db')
-    _mongodb_backup.add_argument('-C', '--collection')
-    _mongodb_backup.add_argument('-k', '--keep', type=int, default=3)
-    _mongodb_backup.add_argument('-x', '--scp-export', action='store_true')
-    _mongodb_backup.add_argument('-H', '--scp-host')
-    _mongodb_backup.add_argument('-u', '--scp-user', default='backup')
-    _mongodb_backup.add_argument('-O', '--scp-out-dir')
-    _mongodb_backup.set_defaults(func=mongodb_backup)
 
     # nginx Server
     _nginx = _sub.add_parser('nginx')

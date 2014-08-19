@@ -33,7 +33,6 @@ and reports, large and small.
 Backends currently supported are as follows:
  * PostgreSQL (sqlalchemy)
  * SQLite (sqlalchemy)
- * MongoDB (pymongo)
 
 **Author:** "Chris Ward" <cward@redhat.com>
 **Sources:** https://github.com/kejbaly2/metrique
@@ -49,10 +48,8 @@ The instructions given below assume fedora rpm package names::
     sudo yum install openssl git gcc gcc-c++ gcc-gfortran
     sudo yum install freetype-devel libpng-devel # matplotlib deps
 
-    # optional MongoDB
-    sudo yum install postgresql postgresql-devel postgresql-server
     # optional PostgreSQL
-    sudo yum install mongodb mongodb-server
+    sudo yum install postgresql postgresql-devel postgresql-server
 
     # make sure our core package managers are up2date
     sudo pip install -U distribute setuptools
@@ -78,9 +75,5 @@ The instructions given below assume fedora rpm package names::
     ./metrique.py firstboot postgresql
     # optional: edit ~/.metrique/postgresql_db/*.conf
     ./metrique.py postgresql start
-
-    # optional: setup default mongodb environment and start
-    ./metrique.py firstboot mongodb
-    ./metrique.py mongodb start
 
     # launch ipython and start mining!
