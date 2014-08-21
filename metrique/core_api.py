@@ -663,7 +663,7 @@ class MetriqueContainer(MutableMapping):
         self.store = {}
 
     def columns(self):
-        return self.proxy.db_columns()
+        return self.proxy.db_columns
 
     def df(self):
         '''Return a pandas dataframe (metrique.result.Result) from objects'''
