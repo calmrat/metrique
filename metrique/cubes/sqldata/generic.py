@@ -427,7 +427,7 @@ class Generic(pyclient):
             _s = 0
             for i, batch in enumerate(batch_gen(oids, s_batch_size)):
                 _e = _s + s_batch_size
-                logger.debug('batch %s: %s-%s or %s' % (i, _s, _e, len(oids)))
+                logger.debug('batch %s: %s-%s of %s' % (i, _s, _e, len(oids)))
                 if full_history:
                     _ = self._activity_get_objects(oids=batch, flush=flush)
                 else:

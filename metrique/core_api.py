@@ -49,6 +49,7 @@ from collections import Mapping, MutableMapping
 from copy import copy
 from datetime import datetime, date
 from inspect import isclass
+from itertools import groupby
 import os
 from operator import add
 import re
@@ -58,7 +59,7 @@ import warnings
 
 from metrique._version import __version__
 from metrique.utils import utcnow, jsonhash, load, autoschema
-from metrique.utils import batch_gen, dt2ts, configure, to_encoding
+from metrique.utils import dt2ts, configure, to_encoding
 from metrique.utils import is_null, is_array, is_defined
 from metrique.result import Result
 
@@ -578,11 +579,24 @@ class MetriqueContainer(MutableMapping):
             len(objs), int(diff), len(objs) / diff))
 
     def flush(self, objects=None, batch_size=None, **kwargs):
-        objects = objects or self.values()
         batch_size = batch_size or self.config.get('batch_size')
-        _ids = []
-        # get store converted as table instances
-        for batch in batch_gen(objects, batch_size):
+        objects = objects or self.values()
+        # sort by _oid for grouping by _oid below
+        objects = sorted(objects, key=lambda x: x['_oid'])
+        _ids, batch = [], []
+        # batch in groups with _oid, since upsert's delete
+        # all _oid rows when not autosnap!
+        for key, group in groupby(objects, lambda x: x['_oid']):
+            _grouped = list(group)
+            if len(batch) + len(_grouped) >= batch_size:
+                logger.debug("Upserting %s objects" % len(batch))
+                _ = self.persist(objects=batch, **kwargs)
+                batch = []
+                _ids.extend(_)
+            batch.extend(_grouped)
+        else:
+            # get the last batch too
+            logger.debug("Upserting last batch of %s objects" % len(batch))
             _ = self.persist(objects=batch, **kwargs)
             _ids.extend(_)
         keys = self._ids
@@ -635,6 +649,7 @@ class MetriqueContainer(MutableMapping):
         '''
         kwargs accepted, but ignored.
         '''
+        # FIXME: drop .persist, call .upsert directly?
         objects = objects or self
         return self.upsert(objects=objects, autosnap=autosnap)
 
