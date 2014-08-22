@@ -106,7 +106,10 @@ def date_range(date, func='date'):
     if date == '~':
         return ''
 
-    before = lambda d: '_start <= %s("%s")' % (func, ts2dt(d) if d else None)
+    # don't include objects which have start EXACTLY on the
+    # date in question, since we're looking for objects
+    # which were true BEFORE the given date, not before or on.
+    before = lambda d: '_start < %s("%s")' % (func, ts2dt(d) if d else None)
     after = lambda d: '(_end >= %s("%s") or _end == None)' % \
         (func, ts2dt(d) if d else None)
     split = date.split('~')
