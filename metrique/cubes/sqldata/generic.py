@@ -18,7 +18,6 @@ logger = logging.getLogger('metrique')
 
 from collections import defaultdict
 from copy import copy, deepcopy
-from time import time
 import os
 import re
 
@@ -31,7 +30,7 @@ except ImportError:
 
 from metrique import pyclient
 from metrique.utils import batch_gen, configure, debug_setup, ts2dt
-from metrique.utils import dt2ts, is_array, str2list
+from metrique.utils import dt2ts, is_array, str2list, utcnow
 
 
 def get_objects(cube, oids, full_history, flush=False, cube_name=None,
@@ -397,7 +396,7 @@ class Generic(pyclient):
         # store the time right before the ETL job starts,
         # so next run, we can catch delta changes b/w
         # next ETL start and previous (this)
-        new_delta_ts = time()
+        new_delta_ts = utcnow()
         # get list of oids which we plan to update
         oids, save_delta_ts = self._delta_force(force, last_update,
                                                 parse_timestamp)
@@ -427,7 +426,7 @@ class Generic(pyclient):
             _s = 0
             for i, batch in enumerate(batch_gen(oids, s_batch_size)):
                 _e = _s + s_batch_size
-                logger.debug('batch %s: %s-%s or %s' % (i, _s, _e, len(oids)))
+                logger.debug('batch %s: %s-%s of %s' % (i, _s, _e, len(oids)))
                 if full_history:
                     _ = self._activity_get_objects(oids=batch, flush=flush)
                 else:
