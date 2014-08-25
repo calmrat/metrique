@@ -27,6 +27,7 @@ def db_tester(proxy):
     from metrique import metrique_object as O
 
     _start = ts2dt("2001-01-01 00:00:00")
+    _start_plus = ts2dt("2001-01-01 00:00:01")
     _end = ts2dt("2001-01-02 00:00:00")
     _before = ts2dt("2000-12-31 00:00:00")
     _after = ts2dt("2001-01-03 00:00:00")
@@ -96,7 +97,9 @@ def db_tester(proxy):
     assert p.count('_oid == 2') == 0
     assert p.count('_oid == 2', date=None) == 0
     assert p.count('_oid == 2', date='%s~' % _start) == 1
-    assert p.count('_oid == 2', date='~%s' % _start) == 1
+    # ~DATE does NOT include objects existing on DATE, but only UP TO/BEFORE
+    assert p.count('_oid == 2', date='~%s' % _start) == 0
+    assert p.count('_oid == 2', date='~%s' % _start_plus) == 1
     assert p.count('_oid == 2', date='~') == 1
     assert p.count('_oid == 2', date='~%s' % _before) == 0
     assert p.count('_oid == 2', date='%s~' % _after) == 0
