@@ -1,5 +1,10 @@
 Release Notes
 =============
+0.3.2
+-----
+* refactored MetriqueObject class -> simplier metrique_object function
+* removed mongodb support
+
 0.3.1
 -----
 * data typecasting and normalization happens now at the container level

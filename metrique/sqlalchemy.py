@@ -59,6 +59,7 @@ try:
 except ImportError:
     import json
 
+# FIXME: use http://sqlalchemy-utils.readthedocs.org/
 try:
     from sqlalchemy import create_engine, MetaData, Table
     from sqlalchemy import Index, Column, Integer
@@ -96,8 +97,11 @@ try:
         impl = pg.JSON
 
         def process_bind_param(self, value, dialect):
+            # override default json encoding
             return None if value is None else json.dumps(
                 value, default=json_encode_default, ensure_ascii=False)
+
+        # don't override decoding though
 
         def python_type(self):
             return dict
@@ -144,12 +148,11 @@ except ImportError as e:
     TYPE_MAP = {}
     CoerceUTF8 = None
 
-from time import time
 import warnings
 
 from metrique._version import __version__
 from metrique import parse
-from metrique.utils import batch_gen, configure, to_encoding, autoschema
+from metrique.utils import configure, to_encoding, autoschema
 from metrique.utils import debug_setup, str2list, list2str
 from metrique.utils import validate_roles, validate_password, validate_username
 from metrique.utils import json_encode_default, is_true, is_array, is_defined
@@ -258,8 +261,8 @@ class SQLAlchemyProxy(object):
         self._debug_setup_sqlalchemy_logging()
 
         if not self._object_cls:
-            from metrique.core_api import MetriqueObject
-            self._object_cls = MetriqueObject
+            from metrique.core_api import metrique_object
+            self._object_cls = metrique_object
 
     def _apply_default_fields(self, fields):
         fields = parse.parse_fields(fields)
@@ -387,6 +390,8 @@ class SQLAlchemyProxy(object):
         '''
         isolation_level = isolation_level or "READ COMMITTED"
         kwargs = dict(isolation_level=isolation_level)
+        # FIXME: version of postgresql < 9.2 don't have pg.JSON!
+        # check and use JSONTypedLite instead
         # override default dict and list column types
         types = {list: pg.ARRAY, tuple: pg.ARRAY, set: pg.ARRAY,
                  dict: JSONDict, datetime: UTCEpoch}
@@ -425,6 +430,10 @@ class SQLAlchemyProxy(object):
             logger.error('Create Table %s: FAIL (%s)' % (name, e))
             if except_:
                 raise
+            else:
+                logger.error('Failed to create table %s: %s' % (name, e))
+                # return back None, since we failed to load a Table
+                table = None
         else:
             logger.error('Create Table %s: OK' % name)
             table = self.get_table(name, except_=except_)
@@ -634,7 +643,7 @@ class SQLAlchemyProxy(object):
 
     def count(self, query=None, date=None, table=None):
         '''
-        Run a pql mongodb based query on the given cube and return only
+        Run a query on the given cube and return only
         the count of resulting matches.
 
         :param query: The query in pql
@@ -796,6 +805,27 @@ class SQLAlchemyProxy(object):
         logger.debug("last %s.%s: %s" % (table, list2str(field), last))
         return last
 
+    def _get_delta_ts_file_path(self):
+        fname = 'delta_ts__' + '_'.join(
+            [self.config.get('host'), self.config.get('db'),
+             self.config.get('table')])
+        path = os.path.join(self.config.get('cache_dir'), fname)
+        return path
+
+    def get_delta_ts(self):
+        path = self._get_delta_ts_file_path()
+        try:
+            with open(path) as f:
+                ts = int(f.readline())
+            return ts
+        except:
+            return None
+
+    def update_delta_ts(self, value):
+        path = self._get_delta_ts_file_path()
+        with open(path, 'w') as f:
+            f.write(str(int(value)))
+
     def index(self, fields, name=None, table=None, **kwargs):
         '''
         Build a new index on a cube.
@@ -805,7 +835,6 @@ class SQLAlchemyProxy(object):
 
         :param fields: A single field or a list of (key, direction) pairs
         :param name: (optional) Custom name to use for this index
-        :param background: MongoDB should create in the background
         :param collection: cube name
         :param owner: username of cube owner
         '''
@@ -888,68 +917,64 @@ class SQLAlchemyProxy(object):
             autosnap = all(o['_end'] is None for o in objects)
             logger.warn('AUTOSNAP auto-set to: %s' % autosnap)
 
-        batch_size = batch_size or self.config.get('batch_size')
-        _ids = [o['_id'] for o in objects]
-        dups = {}
-        query = '_id in %s'
-        t1 = time()
-        # FIXME: fields should accept {'id': -1'} to include all but 'id'
-        for batch in batch_gen(_ids, batch_size):
-            q = query % batch
-            dups.update({o._id: dict(o) for o in self.find(
-                table=table, query=q, fields='~', date='~', as_cursor=True)})
-
-        diff = int(time() - t1)
-        logger.debug(
-            'dup query completed in %s seconds (%s dups skipped)' % (
-                diff, len(dups)))
-
+        # TODO remove the use of _id and _hash
+        _ids = sorted(set([o['_id'] for o in objects]))
+        oids = sorted(set([o['_oid'] for o in objects]))
         session = self.session_new()
-        dup_k, snap_k = 0, 0
-        inserts = []
-        u = update(table)
-        for i, o in enumerate(objects):
-            dup = dups.get(o['_id'])
-            if dup:
-                # remove dup primary key, it will get a new one
-                # FIXME: see FIXME above; should use find(fields={'id': -1})
-                # so we don't have to pull then delete 'id'
-                del dup['id']
-                if o['_hash'] == dup['_hash']:
-                    dup_k += 1
-                elif o['_end'] is None and autosnap:
-                    # set existing objects _end to new objects _start
-                    dup['_end'] = o['_start']
-                    # update _id, _hash, etc
-                    dup = self._object_cls(**dup)
-                    _ids.append(dup['_id'])
-                    # insert the new object
-                    inserts.append(dup)
-                    # replace the existing _end:None object with new values
-                    _id = o['_id']
-                    session.execute(
-                        u.where(table.c._id == _id).values(**o))
-                    snap_k += 1
-
-                else:
-                    o = dict(self._object_cls(**o))
-                    # don't try to set _id
-                    _id = o.pop('_id')
-                    assert _id == dup['_id']
-                    session.execute(
-                        u.where(table.c._id == _id).values(**o))
+        try:
+            if autosnap:
+                # Snapshot - relevant only for cubes which objects
+                # stored always are pushed with _end:None ('current value')
+                # If we already have an object with same _oid, but different
+                # _hash, we know we have a NEW object state for the given _oid
+                # In this case, we update the existing object by adding
+                # current object's _start -> existing _end and then add
+                # the current object as=is; IOW rotate out the previous
+                # version by giving it a _end and insert the new version
+                # as current with _end:None
+                existing = session.query(table).\
+                    filter(table.c._oid.in_(oids)).\
+                    filter(table.c._end.is_(None)).all()
+                existing = {o._oid: o for o in existing}
+                inserts = [o for o in objects if o['_oid'] not in existing]
+                snap_k = len(inserts)
+                dup_k = 0
+                objects = [o for o in objects if o['_oid'] in existing]
+                for o in objects:
+                    oe = existing[o['_oid']]
+                    if oe._hash != o['_hash']:
+                        new_id = '%s:%s' % (oe._oid, oe._start)
+                        session.execute(
+                            update(table).where(table.c.id == oe.id).
+                            values(_end=o['_start'], _id=new_id))
+                        _ids.append(new_id)
+                        inserts.append(o)
+                        snap_k += 1
+                    else:
+                        dup_k += 1
+                logger.debug('%s existing objects snapshotted' % snap_k)
+                logger.debug('%s duplicates not re-saved' % dup_k)
+                objects = inserts
             else:
-                inserts.append(o)
+                # History import
+                # delete all existing versions for given _oids,
+                # then we'll insert all the new historical versions
+                # below
+                # NOTE: THIS EXPECTS THAT THE CURRENT BATCH CONTAINS
+                # ALL HISTORICAL VERSIONS OF A GIVEN _oid!
+                session.query(table).filter(table.c._oid.in_(oids)).\
+                    delete(synchronize_session=False)
 
-        if inserts:
-            t1 = time()
-            self.insert(objects=inserts, session=session, table=table)
-            diff = int(time() - t1)
-            logger.debug('%s inserts in %s seconds' % (len(inserts), diff))
-        logger.debug('%s existing objects snapshotted' % snap_k)
-        logger.debug('%s duplicates not re-saved' % dup_k)
-        session.flush()
-        session.commit()
+            # insert new versions
+            session.flush()
+            if objects:
+                session.execute(table.insert(), objects)
+            session.commit()
+        except Exception as e:
+            logger.error('Session Error: %s' % e)
+            session.rollback()
+            raise
+
         return sorted(map(unicode, _ids))
 
     def user_exists(self, username):
@@ -1000,6 +1025,21 @@ class SQLAlchemyProxy(object):
         # FIXME: not compatible with all SQL backends...
         sql = 'SELECT CURRENT_USER'
         return self.session_auto.execute(sql).scalar()
+
+    def create_regex_array_operators(self):
+        # http://bit.ly/1qjnPNk
+        # TODO run this on database creation
+        sql = """
+        create function commuted_regexp_match(text,text) returns bool as
+        'select $2 ~ $1;' language sql;
+        create function commuted_iregexp_match(text,text) returns bool as
+        'select $2 ~* $1;' language sql;
+        create operator ~@ (procedure=commuted_regexp_match,
+          leftarg=text, rightarg=text);
+        create operator ~*@ (procedure=commuted_iregexp_match,
+          leftarg=text, rightarg=text);
+        """
+        self.session_auto.execute(sql)
 
 
 def get_engine_uri(db, host='127.0.0.1', port=5432, dialect='sqlite',

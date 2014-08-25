@@ -483,7 +483,7 @@ class Result(DataFrame):
         return pd.concat([function(df) for _, df in self.groupby(self._oid)])
 
     def has(self, field, val):
-        return self[field].apply(lambda vals: val in (vals or []))
+        return self[field].apply(lambda vals: val in (vals or [])).astype(bool)
 
     @filtered
     def fhas(self, field, val):
@@ -493,7 +493,7 @@ class Result(DataFrame):
         return self[field].apply(lambda x:
                                  any([e in vals for e in x])
                                  if isinstance(x, list)
-                                 else x in vals)
+                                 else x in vals).astype(bool)
 
     @filtered
     def fisin(self, field, vals):

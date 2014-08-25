@@ -4,8 +4,6 @@
 # Author: "Chris Ward" <cward@redhat.com>
 
 import os
-import pytest
-from time import time
 
 from utils import set_env
 
@@ -21,23 +19,25 @@ cache_dir = env['METRIQUE_CACHE']
 # see https://docs.python.org/2/library/warnings.html
 
 
-def test_api():
-    from metrique import MetriqueObject
-    from metrique.utils import utcnow, dt2ts
+def test_func():
+    from metrique.core_api import metrique_object
+    from metrique.utils import utcnow
     from metrique._version import __version__
 
     now = utcnow()
     a = {'col_1': 1, 'col_2': now}
 
-    # _oid expected to be defined
+    # _oid must be passed in (as arg or kwarg, doesn't matter)
     try:
-        MetriqueObject()
+        metrique_object()
     except TypeError:
         pass
     else:
         assert False
+
+    # same here; _oid still not being passed in
     try:
-        MetriqueObject(**a)
+        metrique_object(**a)
     except TypeError:
         pass
     else:
@@ -46,14 +46,14 @@ def test_api():
     # _oid can't be null either
     a['_oid'] = None
     try:
-        MetriqueObject(**a)
-    except RuntimeError:
+        metrique_object(**a)
+    except ValueError:
         pass
     else:
         assert False
 
     a['_oid'] = 1
-    o = MetriqueObject(**a)
+    o = metrique_object(**a)
     assert o
     assert o['_start'] < utcnow()
 
@@ -69,108 +69,49 @@ def test_api():
 
     # hash should be constant if values don't change
     _hash = o['_hash']
-    assert _hash == MetriqueObject(**a).get('_hash')
+    assert _hash == metrique_object(**a).get('_hash')
 
     a['col_1'] = 2
-    assert _hash != MetriqueObject(**a).get('_hash')
+    assert _hash != metrique_object(**a).get('_hash')
     a['col_1'] = 3
-    assert _hash != MetriqueObject(**a).get('_hash')
-
-    # _start should not get updated if passed in
-    a['_start'] = now
-    assert MetriqueObject(**a).get('_start') == now
+    # _hash should be different, since we have different col_1 value
+    assert _hash != metrique_object(**a).get('_hash')
 
     # _id should be ignored if passed in; a unique _id will be generated
     # based on obj content (in this case, string of _oid
     a['_id'] = 'blabla'
-    assert MetriqueObject(**a).get('_id') != 'blabla'
-    assert MetriqueObject(**a).get('_id') == '1'
+    assert metrique_object(**a).get('_id') != 'blabla'
+    assert metrique_object(**a).get('_id') == '1'
 
+    a['_start'] = now
     a['_end'] = now
-    o = MetriqueObject(**a)
+    o = metrique_object(**a)
     assert o['_start'] == o['_end']
 
     # _end must come on/after _start
     try:
-        a['_end'] = now
-        a['_start'] = utcnow()
-        o = MetriqueObject(**a)
-    except ValueError:
+        a['_end'] = now - 1
+        a['_start'] = now
+        o = metrique_object(**a)
+    except AssertionError:
         pass
+    else:
+        assert False, '_end was able to be smaller than _start!'
 
-    # _start, if null, will be set to utcnow()
+    # _start, if null, will be set to utcnow(); _end if null, stays null
     a['_start'] = None
     a['_end'] = None
-    assert MetriqueObject(**a).get('_start') is not None
 
-    # setting items will update the _hash
-    # setting _end will update _id
-    o = MetriqueObject(**a)
-    _hash = o['_hash']
-    _id = o['_id']
-    o['col_1'] = 'yipee'
-    new_hash = o['_hash']
-    assert new_hash != _hash
-    assert o['_id'] == _id
-    _now = utcnow()
-    o['_end'] = _now
-    assert o['_id'] != _id
-    assert o['_id'] == '%s:%s' % (o['_oid'], dt2ts(o['_start']))
-    o['_end'] = None
-    assert o['_id'] == _id
+    assert metrique_object(**a).get('_start') is not None
+    assert metrique_object(**a).get('_end') is None
 
-    # popping objects updates _hash too
-    assert o['_hash'] == new_hash
-    assert o.pop('col_1') == 'yipee'
-    assert o['_hash'] != new_hash
-
-    o['_end'] = utcnow()
-    o.pop('_end')
-    assert o
-
-    assert 'col_3' not in o
-    _hash = o['_hash']
-    o.update(dict(col_3=5))
-    assert o['_hash'] != _hash
-    assert o['col_3']
-
-    # make dates (_start/_end) as epoch
-    o = MetriqueObject(_as_datetime=False, **a)
+    # dates (_start/_end) are epoch
+    a['_end'] = int(utcnow() + 100)  # +100 to ensure _end >= _start
+    o = metrique_object(**a)
     assert isinstance(o['_start'], float)
+    assert isinstance(o['_end'], float)
 
-    # object version can be set at the module level
-    # which then gets applied to all future objects
-    # created, which does affect the _hash result
-    o = MetriqueObject(**a)
-    assert o._VERSION == 0
-    _hash = o['_hash']
-    MetriqueObject._VERSION = 1
-    o = MetriqueObject(**a)
-    assert o._VERSION == 1
-    assert _hash != o['_hash']
-    # put things back how we found them...
-    MetriqueObject._VERSION = 0
-
-
-@pytest.mark.perf
-def test_performance():
-    from metrique import MetriqueObject
-    _o = dict(_oid=1, COL_1=1, col_2=2, _id='bla')
-    expected = 0.001
-    s = time()
-    MetriqueObject(**_o)
-    e = time()
-    diff = e - s
-    print 'Creating 1 objects vs expected: %s:%s' % (diff, expected)
-    assert diff <= expected
-
-    k = 10000
-    expected = 4.0
-    s = time()
-    [MetriqueObject(**_o) for i in xrange(1, k)]
-    e = time()
-    diff = e - s
-    print 'Creating %s objects vs expected: %s:%s' % (k, diff, expected)
-    psec = diff / k
-    print '... %s per second' % psec
-    assert diff <= 4.0
+    a['_end'] = None
+    # check default object version is set to 0
+    o = metrique_object(**a)
+    o['_v'] = 0

@@ -619,12 +619,18 @@ def git_clone(uri, pull=True, reflect=False, cache_dir=None, chdir=True):
 def is_array(value, msg=None, except_=None, inc_set=False):
     check = (list, tuple, set) if inc_set else (list, tuple)
     result = isinstance(value, check)
-    return is_true(result, msg=msg, except_=except_)
+    if except_:
+        return is_true(result, msg=msg, except_=except_)
+    else:
+        return bool(result)
 
 
 def is_defined(value, msg=None, except_=None):
     result = not is_empty(value, except_=False)
-    return is_true(result, msg=msg, except_=except_)
+    if except_:
+        return is_true(result, msg=msg, except_=except_)
+    else:
+        return bool(result)
 
 
 def is_empty(value, msg=None, except_=None, inc_zeros=True):
@@ -645,12 +651,18 @@ def is_empty(value, msg=None, except_=None, inc_zeros=True):
         pass
     _is_null = is_null(value, except_=False)
     result = bool(_is_null or not value)
-    return is_true(result, msg=msg, except_=except_)
+    if except_:
+        return is_true(result, msg=msg, except_=except_)
+    else:
+        return bool(result)
 
 
 def is_false(value, msg=None, except_=None):
-    result = is_true(value, msg=msg, except_=False) is False
-    return result
+    result = value is False
+    if except_:
+        return is_true(result, msg=msg, except_=False)
+    else:
+        return bool(result)
 
 
 def is_null(value, msg=None, except_=None):
@@ -663,12 +675,18 @@ def is_null(value, msg=None, except_=None):
         value is None or
         value != value or
         repr(value) == 'NaT')
-    return is_true(result, msg=msg, except_=except_)
+    if except_:
+        return is_true(result, msg=msg, except_=except_)
+    else:
+        return bool(result)
 
 
 def is_string(value, msg=None, except_=None):
     result = isinstance(value, basestring)
-    return is_true(result, msg=msg, except_=except_)
+    if except_:
+        return is_true(result, msg=msg, except_=except_)
+    else:
+        return bool(result)
 
 
 def is_true(value, msg=None, except_=None):
@@ -697,31 +715,32 @@ def json_encode_default(obj):
     return to_encoding(result)
 
 
-def jsonhash(obj, root=True, exclude=None, hash_func=None):
+def _jsonhash_sha1(o):
+    return sha1(repr(o)).hexdigest()
+
+
+def jsonhash(obj, root=True, exclude=None, hash_func=_jsonhash_sha1):
     '''
     calculate the objects hash based on all field values
     '''
-    if not hash_func:
-        hash_func = sha1_hexdigest
     if isinstance(obj, Mapping):
-        obj = obj.copy()  # don't affect the ref'd obj passed in
-        keys = set(obj.iterkeys())
+        # assumption: using in against set() is faster than in against list()
         if root and exclude:
-            [obj.__delitem__(f) for f in exclude if f in keys]
+            obj = {k: v for k, v in obj.iteritems() if k not in exclude}
         # frozenset's don't guarantee order; use sorted tuples
         # which means different python interpreters can return
         # back frozensets with different hash values even when
         # the content of the object is exactly the same
         result = sorted(
-            (k, jsonhash(v, False)) for k, v in obj.items())
+            (k, jsonhash(v, False)) for k, v in obj.iteritems())
     elif isinstance(obj, list):
-        # FIXME: should obj be sorted for consistent hashes?
+        # FIXME: should lists be sorted for consistent hashes?
         # when the object is the same, just different list order?
         result = tuple(jsonhash(e, False) for e in obj)
     else:
         result = obj
     if root:
-        result = unicode(hash_func(repr(result)))
+        result = unicode(hash_func(result))
     return result
 
 
@@ -1031,8 +1050,8 @@ def remove_file(path, force=False):
     assert bool(path) is True
     assert isinstance(path, basestring)
     cwd = os.getcwd()
-    is_true(os.path.isabs(path),
-            'paths to remove must be absolute; got %s' % path)
+    path = os.path.join(cwd, path) if os.path.isabs(path) else path
+    assert os.path.isabs(path)
     if os.path.exists(path):
         if os.path.isdir(path):
             if cwd == path:
@@ -1110,10 +1129,6 @@ def set_oid_func(_oid_func):
     return _oid_func
 
 
-def sha1_hexdigest(o):
-    return sha1(repr(o)).hexdigest()
-
-
 def ssl_gen(cert_path, key_path):
     logger.debug("Generating self-signed SSL certificate + key + combined pem")
     sys_call('openssl req -new -x509 -days 365 -nodes '
@@ -1134,9 +1149,9 @@ def str2list(item, delim=',', map_=None):
     return items
 
 
-def _sys_call(cmd, shell=True, quiet=False, bg=False):
+def _sys_call(cmd, shell=False, quiet=False, bg=False):
     if not quiet:
-        logger.info('Running: `%s`' % cmd)
+        logger.warn('Running: `%s`' % cmd)
 
     if isinstance(cmd, basestring):
         cmd = re.sub('\s+', ' ', cmd)
@@ -1151,21 +1166,30 @@ def _sys_call(cmd, shell=True, quiet=False, bg=False):
             raise RuntimeError("Failed to start '%s'" % cmd)
         return p
     try:
-        cmd = ' '.join(s for s in cmd)
-        output = subprocess.check_output(cmd, stderr=subprocess.STDOUT,
-                                         shell=shell)
+        # from http://stackoverflow.com/a/6414278/1289080
+        output = ''
+        logger.debug('Running: %s' % cmd)
+        p = subprocess.Popen(cmd, stdout=subprocess.PIPE,
+                             stderr=subprocess.STDOUT, shell=shell)
+        for line in iter(p.stdout.readline, ''):
+            line = to_encoding(line)
+            output += line
+            if not quiet:
+                logger.warn(line.strip())
+        p.stdout.close()
+        p.wait()
+        if p.returncode not in [0, None]:
+            raise RuntimeError(
+                "Command: %s\n\tExit status: %s" % (
+                    cmd, p.returncode))
     except subprocess.CalledProcessError as e:
-        output = to_encoding(e.output)
         raise RuntimeError(
-            "Command: %s\n\tExit status: %s.\n\tOutput:\n%s" % (
-                e.cmd, e.returncode, output))
-    else:
-        if not quiet:
-            logger.debug(output)
-    return output.strip()
+            "Command: %s\n\tExit status: %s." % (
+                e.cmd, e.returncode))
+    return output
 
 
-def sys_call(cmd, sig=None, sig_func=None, shell=True, cwd=None, quiet=False,
+def sys_call(cmd, sig=None, sig_func=None, shell=False, cwd=None, quiet=False,
              fork=False, pid_file=None, ignore_errors=False, bg=False):
     _path = os.getcwd()
     cwd = cwd or _path

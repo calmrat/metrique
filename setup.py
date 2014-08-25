@@ -6,7 +6,8 @@
 # FIXME: make metrique cmd
 # http://pythonhosted.org/setuptools/pkg_resources.html#entry-points
 
-from setuptools import setup
+from setuptools import setup, Extension
+from Cython.Distutils import build_ext
 
 VERSION_FILE = "metrique/_version.py"
 VERSION_EXEC = ''.join(open(VERSION_FILE).readlines())
@@ -29,6 +30,7 @@ __desc__ = 'Metrique - Client Libraries'
 __scripts__ = []
 __requires__ = [
     'anyconfig',
+    'cython',
     'decorator',
     'lockfile',
     # bug when installing numpy as dep;
@@ -43,6 +45,7 @@ __requires__ = [
 ]
 __irequires__ = [
     'anyconfig',
+    'cython',
     'decorator',
     'lockfile',
     #'pandas>=0.13.0',
@@ -84,7 +87,7 @@ default_setup = dict(
         'Topic :: Scientific/Engineering :: Visualization',
         'Topic :: Utilities',
     ],
-    keywords=['data', 'mining', 'information', 'mongo',
+    keywords=['data', 'mining', 'information', 'postgresql'
               'etl', 'analysis', 'search', 'query'],
     dependency_links=__deplinks__,
     description=__desc__,
@@ -96,6 +99,16 @@ default_setup = dict(
     scripts=__scripts__,
     version=__version__,
     zip_safe=False,  # we reference __file__; see [1]
+    cmdclass={'build_ext': build_ext},
+    ext_modules=[Extension("metrique.core_api", ['metrique/core_api.py']),
+                 Extension("metrique.metrique", ['metrique/metrique.py']),
+                 # FIXME: these fail to compile
+                 #Extension("metrique.parse", ['metrique/parse.py']),
+                 #Extension("metrique.plotting", ['metrique/plotting.py']),
+                 #Extension("metrique.result", ['metrique/result.py']),
+                 Extension("metrique._version", ['metrique/_version.py']),
+                 Extension("metrique.utils", ['metrique/utils.py'])
+                 ],
 )
 # http://stackoverflow.com/questions/8362510
 
