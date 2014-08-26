@@ -181,7 +181,6 @@ class Generic(pyclient):
                     pass  # leave as-is
         except Exception as e:
             logger.error('Error updating creation time; %s' % e)
-        batch_updates = self._prep_objects(batch_updates)
         return batch_updates
 
     def _activity_backwards(self, val, removed, added):
