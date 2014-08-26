@@ -499,7 +499,7 @@ class MetriqueContainer(MutableMapping):
 
     def _type_single(self, value, _type):
         ' apply type to the single value '
-        if not value or _type in (None, NoneType):
+        if value is None or _type in (None, NoneType):
             # don't convert null values
             # default type is the original type if none set
             pass
