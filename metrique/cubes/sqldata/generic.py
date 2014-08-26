@@ -199,7 +199,7 @@ class Generic(pyclient):
             val = removed
         return val, inconsistent
 
-    def _delta_force(self, force=None, last_update=None, parse_timestamp=None):
+    def _delta_force(self, force=None, last_update=None):
         force = force or self.lconfig.get('force') or False
         oids = []
         _c = self.container
@@ -213,10 +213,9 @@ class Generic(pyclient):
                 new_oids = self.get_new_oids()
                 oids.extend(new_oids)
             if self.lconfig.get('delta_mtime', False):
-                last_update = self._fetch_mtime(last_update, parse_timestamp)
+                last_update = self._fetch_mtime(last_update)
                 # get only those oids that have changed since last update
-                oids.extend(self.get_changed_oids(last_update,
-                                                  parse_timestamp))
+                oids.extend(self.get_changed_oids(last_update))
         elif force is True or not _c.exists():
             save_delta_ts = True
             # if force or if the container doesn't exist
@@ -227,7 +226,7 @@ class Generic(pyclient):
         logger.debug("Delta Size: %s" % len(oids))
         return sorted(set(oids)), save_delta_ts
 
-    def get_changed_oids(self, last_update=None, parse_timestamp=None):
+    def get_changed_oids(self, last_update=None):
         '''
         Returns a list of object ids of those objects that have changed since
         `mtime`. This method expects that the changed objects can be
@@ -254,7 +253,7 @@ class Generic(pyclient):
             where.append(_sql)
         return self.sql_get_oids(where)
 
-    def _fetch_mtime(self, last_update=None, parse_timestamp=None):
+    def _fetch_mtime(self, last_update=None):
         if not last_update:
             last_update = self.container.proxy.get_delta_ts() or \
                 self.container.get_last_field(field='_start')
@@ -263,9 +262,7 @@ class Generic(pyclient):
         mtime = mtime.strftime('%Y-%m-%d %H:%M:%S %z') if mtime else mtime
         logger.debug("Last update mtime: %s" % mtime)
         if mtime:
-            if parse_timestamp is None:
-                parse_timestamp = self.lconfig.get('parse_timestamp', True)
-            if parse_timestamp:
+            if self.lconfig.get('parse_timestamp', True):
                 dt_format = "yyyy-MM-dd HH:mm:ss z"
                 mtime = "parseTimestamp('%s', '%s')" % (mtime, dt_format)
             else:
@@ -323,18 +320,15 @@ class Generic(pyclient):
         sql = re.sub('\s+', ' ', sql)
         return sql
 
-    def get_objects(self, force=None, last_update=None, parse_timestamp=None,
-                    flush=False):
+    def get_objects(self, force=None, last_update=None, flush=False):
         '''
         Extract routine for SQL based cubes.
 
         :param force:
             for querying for all objects (True) or only those passed in as list
         :param last_update: manual override for 'changed since date'
-        :param parse_timestamp: flag to convert timestamp timezones in-line
         '''
         return self._run_object_import(force=force, last_update=last_update,
-                                       parse_timestamp=parse_timestamp,
                                        flush=flush, full_history=False)
 
     def _get_objects(self, oids, flush=False):
@@ -370,8 +364,7 @@ class Generic(pyclient):
             ids = self.sql_get_oids(where)
         return ids
 
-    def get_full_history(self, force=None, last_update=None,
-                         parse_timestamp=None, flush=False):
+    def get_full_history(self, force=None, last_update=None, flush=False):
         '''
         Fields change depending on when you run activity_import,
         such as "last_updated" type fields which don't have activity
@@ -380,11 +373,9 @@ class Generic(pyclient):
         states and import fresh
         '''
         return self._run_object_import(force=force, last_update=last_update,
-                                       parse_timestamp=parse_timestamp,
                                        flush=flush, full_history=True)
 
-    def _run_object_import(self, force, last_update, parse_timestamp, flush,
-                           full_history=False):
+    def _run_object_import(self, force, last_update, flush, full_history):
         workers = self.lconfig.get('workers')
         # if we're using multiple workers, break the oids
         # according to worker batchsize, then each worker will
@@ -398,8 +389,7 @@ class Generic(pyclient):
         # next ETL start and previous (this)
         new_delta_ts = utcnow()
         # get list of oids which we plan to update
-        oids, save_delta_ts = self._delta_force(force, last_update,
-                                                parse_timestamp)
+        oids, save_delta_ts = self._delta_force(force, last_update)
 
         msg = 'Getting Full History' if full_history else \
             'Getting Objects - Current Values'
