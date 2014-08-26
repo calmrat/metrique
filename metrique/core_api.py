@@ -578,29 +578,34 @@ class MetriqueContainer(MutableMapping):
         logger.debug('... extended container by %s objs in %ss at %.2f/s' % (
             len(objs), int(diff), len(objs) / diff))
 
-    def flush(self, objects=None, batch_size=None, **kwargs):
+    def flush(self, batch_size=None, **kwargs):
+        ''' flush objects stored in self.container '''
         batch_size = batch_size or self.config.get('batch_size')
-        objects = objects or self.values()
         # sort by _oid for grouping by _oid below
-        objects = sorted(objects, key=lambda x: x['_oid'])
-        _ids, batch = [], []
+        objects = sorted(self.itervalues(), key=lambda x: x['_oid'])
+        batch, _ids = [], []
         # batch in groups with _oid, since upsert's delete
-        # all _oid rows when not autosnap!
+        # all _oid rows when autosnap=False!
         for key, group in groupby(objects, lambda x: x['_oid']):
             _grouped = list(group)
             if len(batch) + len(_grouped) >= batch_size:
                 logger.debug("Upserting %s objects" % len(batch))
-                _ = self.persist(objects=batch, **kwargs)
-                batch = []
+                _ = self.upsert(objects=batch, **kwargs)
                 _ids.extend(_)
-            batch.extend(_grouped)
+                # clear out the objects from self.container that
+                # we already flushed
+                [self.store.pop(_id) for _id in _]
+                # start a new batch
+                batch = _grouped
+            else:
+                # extend existing batch, since still will be < batch_size
+                batch.extend(_grouped)
         else:
             # get the last batch too
             logger.debug("Upserting last batch of %s objects" % len(batch))
-            _ = self.persist(objects=batch, **kwargs)
+            _ = self.upsert(objects=batch, **kwargs)
             _ids.extend(_)
-        keys = self._ids
-        [self.store.pop(_id) for _id in _ids if _id in keys]
+            [self.store.pop(_id) for _id in _]
         return sorted(_ids)
 
     def find(self, query=None, fields=None, date=None, sort=None,
@@ -644,14 +649,6 @@ class MetriqueContainer(MutableMapping):
 
     def ls(self):
         raise NotImplementedError
-
-    def persist(self, objects=None, autosnap=None, **kwargs):
-        '''
-        kwargs accepted, but ignored.
-        '''
-        # FIXME: drop .persist, call .upsert directly?
-        objects = objects or self
-        return self.upsert(objects=objects, autosnap=autosnap)
 
     def pop(self, key):
         key = to_encoding(key)
