@@ -400,7 +400,6 @@ class Generic(pyclient):
         # get list of oids which we plan to update
         oids, save_delta_ts = self._delta_force(force, last_update,
                                                 parse_timestamp)
-        last_update = self.container.proxy.get_delta_ts()
 
         msg = 'Getting Full History' if full_history else \
             'Getting Objects - Current Values'

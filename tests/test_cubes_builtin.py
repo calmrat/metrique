@@ -56,7 +56,7 @@ def test_csvdata():
     assert len(_filtered) == 1
     assert m.objects['11']['_hash'] == _hash  # check _hash is as expected
     assert m.objects['11']['symbol'] == '$AJT'
-    assert m.objects.persist() == _ids
+    assert m.objects.upsert() == _ids
     # still there...
     assert m.objects['11']['symbol'] == '$AJT'
 

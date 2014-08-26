@@ -42,7 +42,7 @@ def test_datatypes():
     remove_file(c._proxy._sqlite_path)
 
     c.add(o)
-    c.persist()
+    c.upsert()
 
     c.drop()
     remove_file(c._proxy._sqlite_path)
@@ -147,14 +147,14 @@ def test_api():
     assert mc.df().empty is False
 
     # local persistence; filter method queries .objects buffer
-    # .persist dumps data to proxy db; but leaves the data in the buffer
+    # .upsert dumps data to proxy db; but leaves the data in the buffer
     # .flush dumps data and removes all objects dumped
     # count queries proxy db
     mc = MetriqueContainer(name=name, db=db, objects=objs_list)
     _store = deepcopy(mc.store)
 
     assert len(mc.filter({'col_1': 1})) == 1
-    _ids = mc.persist()
+    _ids = mc.upsert()
     assert _ids == ['1', '2']
     assert mc.store == _store
     assert len(mc.filter({'col_1': 1})) == 1
@@ -162,7 +162,7 @@ def test_api():
     assert mc.count() == 2
 
     # persisting again shouldn't result in new rows
-    _ids = mc.persist()
+    _ids = mc.upsert()
     assert _ids == ['1', '2']
     assert mc.store == _store
     assert len(mc.filter({'col_1': 1})) == 1

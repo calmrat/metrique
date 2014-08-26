@@ -578,11 +578,13 @@ class MetriqueContainer(MutableMapping):
         logger.debug('... extended container by %s objs in %ss at %.2f/s' % (
             len(objs), int(diff), len(objs) / diff))
 
-    def flush(self, batch_size=None, **kwargs):
-        ''' flush objects stored in self.container '''
+    def flush(self, objects=None, batch_size=None, **kwargs):
+        ''' flush objects stored in self.container or those passed in'''
         batch_size = batch_size or self.config.get('batch_size')
+        objects = objects or self.itervalues()
+        store_ids = self._ids
         # sort by _oid for grouping by _oid below
-        objects = sorted(self.itervalues(), key=lambda x: x['_oid'])
+        objects = sorted(objects, key=lambda x: x['_oid'])
         batch, _ids = [], []
         # batch in groups with _oid, since upsert's delete
         # all _oid rows when autosnap=False!
@@ -594,7 +596,7 @@ class MetriqueContainer(MutableMapping):
                 _ids.extend(_)
                 # clear out the objects from self.container that
                 # we already flushed
-                [self.store.pop(_id) for _id in _]
+                [self.store.pop(_id) for _id in _ if _id in store_ids]
                 # start a new batch
                 batch = _grouped
             else:
@@ -605,7 +607,7 @@ class MetriqueContainer(MutableMapping):
             logger.debug("Upserting last batch of %s objects" % len(batch))
             _ = self.upsert(objects=batch, **kwargs)
             _ids.extend(_)
-            [self.store.pop(_id) for _id in _]
+            [self.store.pop(_id) for _id in _ if _id in store_ids]
         return sorted(_ids)
 
     def find(self, query=None, fields=None, date=None, sort=None,
@@ -760,7 +762,8 @@ class MetriqueContainer(MutableMapping):
         return self.proxy.share(table=self.name, with_user=with_user,
                                 roles=roles)
 
-    def upsert(self, objects, autosnap=None):
+    def upsert(self, objects=None, autosnap=None):
+        objects = objects or self
         return self.proxy.upsert(table=self.name, objects=objects,
                                  autosnap=autosnap)
 
