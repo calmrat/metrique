@@ -65,6 +65,7 @@ class Commit(pyclient):
             * resolves
             * related
         '''
+        self.clear()
         self.repo = repo = git_clone(uri, pull=pull, reflect=True)
         # get a full list of all commit SHAs in the repo (all branches)
         cmd = 'git rev-list --all'
@@ -127,4 +128,4 @@ class Commit(pyclient):
             objs.append(obj)
         self.objects.extend(objs)
 
-        return super(Commit, self).get_objects(**kwargs)
+        return super(Commit, self).get_objects(clear=False, **kwargs)

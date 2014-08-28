@@ -88,7 +88,6 @@ CACHE_DIR = os.environ.get('METRIQUE_CACHE')
 LOG_DIR = os.environ.get('METRIQUE_LOGS')
 TMP_DIR = os.environ.get('METRIQUE_TMP')
 DEFAULT_CONFIG = os.path.join(ETC_DIR, 'metrique.json')
-HASH_EXCLUDE_KEYS = ('_hash', '_id', '_start', '_end', '__v__', 'id')
 
 
 class MetriqueFactory(type):
@@ -312,12 +311,18 @@ class Metrique(object):
         return self.container.flush(objects=objects, autosnap=autosnap,
                                     **kwargs)
 
-    def get_objects(self, flush=False, autosnap=True, **kwargs):
+    def clear(self):
+        self.container.clear()
+
+    def get_objects(self, flush=False, autosnap=True, clear=True, **kwargs):
         '''
         Main API method for sub-classed cubes to override for the
         generation of the objects which are to (potentially) be added
         to the cube (assuming no duplicates)
         '''
+        if clear:
+            logger.debug('Clearing the container before running get_objects')
+            self.clear()
         logger.debug('Running get_objects(flush=%s, autosnap=%s, %s)' % (
                      flush, autosnap, kwargs))
         if flush:

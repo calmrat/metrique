@@ -57,31 +57,10 @@ def test_func():
     assert o
     assert o['_start'] < utcnow()
 
-    # all objects get the metrique version used to
-    # build them applied
-    assert o['__v__'] == __version__
-
     expected_keys = sorted(
-        ['_hash', '_v', '__v__', '_e', '_oid', '_id',
-         '_start', '_end', 'col_1', 'col_2'])
+        ['_e', '_oid', '_start', '_end', 'col_1', 'col_2'])
 
     assert sorted(o.keys()) == expected_keys
-
-    # hash should be constant if values don't change
-    _hash = o['_hash']
-    assert _hash == metrique_object(**a).get('_hash')
-
-    a['col_1'] = 2
-    assert _hash != metrique_object(**a).get('_hash')
-    a['col_1'] = 3
-    # _hash should be different, since we have different col_1 value
-    assert _hash != metrique_object(**a).get('_hash')
-
-    # _id should be ignored if passed in; a unique _id will be generated
-    # based on obj content (in this case, string of _oid
-    a['_id'] = 'blabla'
-    assert metrique_object(**a).get('_id') != 'blabla'
-    assert metrique_object(**a).get('_id') == '1'
 
     a['_start'] = now
     a['_end'] = now
@@ -112,6 +91,4 @@ def test_func():
     assert isinstance(o['_end'], float)
 
     a['_end'] = None
-    # check default object version is set to 0
     o = metrique_object(**a)
-    o['_v'] = 0

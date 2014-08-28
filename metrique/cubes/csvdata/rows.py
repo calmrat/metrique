@@ -61,6 +61,7 @@ class Rows(pyclient):
         and the result of the function will be assigned to the _start
         or _oid, respectively.
         '''
+        self.clear()
         load_kwargs = load_kwargs or {}
         objects = load(path=uri, filetype='csv', **load_kwargs)
 
@@ -83,4 +84,4 @@ class Rows(pyclient):
             obj['_end'] = _end(obj) if is_callable(_end) else _end
             self.container.add(obj)
 
-        return super(Rows, self).get_objects(**kwargs)
+        return super(Rows, self).get_objects(clear=False, **kwargs)

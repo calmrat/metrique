@@ -150,13 +150,12 @@ except ImportError as e:
 
 import warnings
 
-from metrique._version import __version__
 from metrique import parse
 from metrique.utils import configure, to_encoding, autoschema
 from metrique.utils import debug_setup, str2list, list2str
 from metrique.utils import validate_roles, validate_password, validate_username
 from metrique.utils import json_encode_default, is_true, is_array, is_defined
-from metrique.utils import DictDiffer
+from metrique.utils import DictDiffer, jsonrepr
 from metrique.result import Result
 
 ETC_DIR = os.environ.get('METRIQUE_ETC')
@@ -172,8 +171,7 @@ class SQLAlchemyProxy(object):
     config_file = DEFAULT_CONFIG
     RESERVED_USERNAMES = {'admin', 'test', 'metrique'}
     # these keys are already set, no overrides!
-    RESTRICTED_KEYS = ('id', '_id', '_hash', '_start', '_end',
-                       '_v', '__v__', '_e')
+    RESTRICTED_KEYS = ('id', '_start', '_end', '_e')
     type_map = TYPE_MAP
     VALID_SHARE_ROLES = ['SELECT', 'INSERT', 'UPDATE', 'DELETE']
     _Base = None
@@ -907,7 +905,6 @@ class SQLAlchemyProxy(object):
         return self.session_auto.execute(sql)
 
     def upsert(self, objects, autosnap=None, batch_size=None, table=None):
-        objects = objects.values() if isinstance(objects, Mapping) else objects
         is_array(objects, 'objects must be a list')
         table = self.get_table(table)
         if autosnap is None:
@@ -917,8 +914,6 @@ class SQLAlchemyProxy(object):
             autosnap = all(o['_end'] is None for o in objects)
             logger.warn('AUTOSNAP auto-set to: %s' % autosnap)
 
-        # TODO remove the use of _id and _hash
-        _ids = sorted(set([o['_id'] for o in objects]))
         oids = sorted(set([o['_oid'] for o in objects]))
         session = self.session_new()
         try:
@@ -937,17 +932,16 @@ class SQLAlchemyProxy(object):
                     filter(table.c._end.is_(None)).all()
                 existing = {o._oid: o for o in existing}
                 inserts = [o for o in objects if o['_oid'] not in existing]
-                snap_k = len(inserts)
+                snap_k = 0
                 dup_k = 0
                 objects = [o for o in objects if o['_oid'] in existing]
                 for o in objects:
                     oe = existing[o['_oid']]
-                    if oe._hash != o['_hash']:
-                        new_id = '%s:%s' % (oe._oid, oe._start)
+                    oed = dict(zip(oe.keys(), oe))
+                    if jsonrepr(oed) != jsonrepr(o):
                         session.execute(
                             update(table).where(table.c.id == oe.id).
-                            values(_end=o['_start'], _id=new_id))
-                        _ids.append(new_id)
+                            values(_end=o['_start']))
                         inserts.append(o)
                         snap_k += 1
                     else:
@@ -969,13 +963,12 @@ class SQLAlchemyProxy(object):
             session.flush()
             if objects:
                 session.execute(table.insert(), objects)
+                logger.debug('%s new versions saved' % len(objects))
             session.commit()
         except Exception as e:
             logger.error('Session Error: %s' % e)
             session.rollback()
             raise
-
-        return sorted(map(unicode, _ids))
 
     def user_exists(self, username):
         # FIXME:  this isn't supported in SQLite, for example
@@ -1100,23 +1093,18 @@ def schema2table(name, schema, Base=None, type_map=None, exclude_keys=None):
     # always exclude the following 'system' keys, as they are
     # hard coded and should remain consistent across containers
     exclude_keys = list(exclude_keys or [])
-    exclude_keys.extend(['id', '_id', '_hash', '_start',
-                        '_end', '_v', '__v__', '_e'])
+    exclude_keys.extend(['id', '_start', '_end', '_e'])
     exclude_keys = sorted(set(exclude_keys))
 
     defaults = {
         '__tablename__': name,
         '__table_args__': ({'extend_existing': True}),
         'id': Column('id', Integer, primary_key=True),
-        '_id': Column(CoerceUTF8, nullable=False, unique=True, index=True),
         '_oid': Column(BigInteger, nullable=False, index=True,
                        unique=False),
-        '_hash': Column(CoerceUTF8, nullable=False, index=True),
         '_start': Column(type_map[datetime], index=True,
                          nullable=False),
         '_end': Column(type_map[datetime], index=True),
-        '_v': Column(Integer, default=0, nullable=False),
-        '__v__': Column(CoerceUTF8, default=__version__, nullable=False),
         '_e': Column(type_map[dict]),
         '__repr__': __repr__,
     }

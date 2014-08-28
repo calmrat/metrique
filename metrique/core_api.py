@@ -14,14 +14,7 @@ metrique.core_api
 This module containes metrique's core data objects and data
 object containers.
 
-MetriqueObject is python Mapping object which comes equipped with:
-
- * a simple architecture-neautral hashing alorithm that automatically
-   produces consistent object identifiers (_hash) for the object's
-   current value state.
- * an automatic, historical versioning id (_id) generator which
-   provides for a convenient mechanism for transparently storing
-   historical object states over time for easy querying, later.
+MetriqueObject is python Mapping object.
 
 MetriqueContainer is a indexed python Mapping container for local and
 remote storage of MetriqueObjects, which also comes equipped with:
@@ -45,7 +38,6 @@ from __future__ import unicode_literals, absolute_import
 import logging
 logger = logging.getLogger('metrique')
 
-from collections import Mapping, MutableMapping
 from copy import copy
 from datetime import datetime, date
 from inspect import isclass
@@ -57,8 +49,7 @@ from time import time
 from types import NoneType
 import warnings
 
-from metrique._version import __version__
-from metrique.utils import utcnow, jsonhash, load, autoschema
+from metrique.utils import utcnow, load, autoschema
 from metrique.utils import dt2ts, configure, to_encoding
 from metrique.utils import is_null, is_array, is_defined
 from metrique.result import Result
@@ -66,24 +57,10 @@ from metrique.result import Result
 ETC_DIR = os.environ.get('METRIQUE_ETC')
 CACHE_DIR = os.environ.get('METRIQUE_CACHE') or '/tmp'
 DEFAULT_CONFIG = os.path.join(ETC_DIR, 'metrique.json')
-HASH_EXCLUDE_KEYS = ('_hash', '_id', '_start', '_end', '__v__', 'id')
-IMMUTABLE_OBJ_KEYS = set(['_oid', '_hash', '_id', 'id'])
+IMMUTABLE_OBJ_KEYS = set(['_oid', 'id'])
 
 
-def gen_id(_oid, _start, _end=None):
-    # if the object is 'current value' without _end,
-    # use just str of _oid (DEFAULT)
-    if _oid is None:
-        raise ValueError("_oid must be defined!")
-    elif _end:
-        _oid = '%s:%s' % (_oid, _start)
-    else:
-        _oid = to_encoding(_oid)
-    return _oid
-
-
-def metrique_object(_oid, _id=None, _hash=None, _start=None, _end=None,
-                    _e=None, _v=None, id=None, __v__=None, **kwargs):
+def metrique_object(_oid, _start=None, _end=None, _e=None, id=None, **kwargs):
     '''
     Function which takes a dictionary (Mapping) object as input
     and returns return back a metrique object.
@@ -101,8 +78,10 @@ def metrique_object(_oid, _id=None, _hash=None, _start=None, _end=None,
     if id:
         warnings.warn('non-null "id" keys detected, ignoring them!')
 
+    if not _oid:
+        raise ValueError('_oid must be set!')
+
     _e = dict(_e or {})  # expecting a dict with copy() atr
-    _v = int(_v or 0)
 
     if not isinstance(_start, float):
         _start = dt2ts(_start) if _start else utcnow(as_datetime=False)
@@ -114,19 +93,9 @@ def metrique_object(_oid, _id=None, _hash=None, _start=None, _end=None,
     _err_msg = "_end(%s) must be >= _start(%s) or None!" % (_end, _start)
     assert _end is None or bool(_end >= _start), _err_msg
 
-    # these meta fields are used to generate unique object _hash
     kwargs['_oid'] = _oid
-    kwargs['_v'] = _v
-    kwargs['_id'] = gen_id(_oid, _start, _end)  # ignore passed in _id
-    # generate unique, consistent object _hash based on 'frozen' obj contents
-    # FIXME: make _hash == None valid
-    #kwargs['_hash'] = jsonhash(kwargs) if _hash else None
-    kwargs['_hash'] = jsonhash(kwargs)
-
-    # add some additional non-hashable meta data
     kwargs['_start'] = _start
     kwargs['_end'] = _end
-    kwargs['__v__'] = __v__ or __version__
     kwargs['_e'] = _e
     return kwargs
 
@@ -134,7 +103,7 @@ def metrique_object(_oid, _id=None, _hash=None, _start=None, _end=None,
 # FIXME: all objects should have the SAME keys;
 # if an object is added with fewer keys, it should
 # have the missing keys added with null values
-class MetriqueContainer(MutableMapping):
+class MetriqueContainer(object):
     '''
     :param name: name of container
     :param db: db to map container to
@@ -241,12 +210,7 @@ class MetriqueContainer(MutableMapping):
     proxy_config_key = 'proxy'
     store = None
     version = 0
-    HASH_EXCLUDE_KEYS = tuple(HASH_EXCLUDE_KEYS)
-    RESTRICTED_KEYS = ('id', '_id', '_hash', '_start', '_end',
-                       '_v', '__v__', '_e')
-    FIELDS_RE = re.compile('[\W]+')
-    SPACE_RE = re.compile('\s+')
-    UNDA_RE = re.compile('_+')
+    RESTRICTED_KEYS = ('id', '_start', '_end', '_e')
 
     def __init__(self, name=None, db=None, schema=None, version=None,
                  objects=None, proxy=None, proxy_config=None,
@@ -281,8 +245,6 @@ class MetriqueContainer(MutableMapping):
                                 update=self.config)
 
         self.name = self.config.get('name') or MetriqueContainer.name
-        self.version = (self.config.get('version') or
-                        MetriqueContainer.version)
 
         proxy_config = dict(proxy_config or {})
         proxy_config.setdefault('db', db)
@@ -299,41 +261,14 @@ class MetriqueContainer(MutableMapping):
         self._proxy = proxy
 
         # init and update internal store with passed in objects, if any
-        self.store = copy(MetriqueContainer.store or {})
+        self.store = copy(MetriqueContainer.store or [])
         self._update(objects)
-
-    def __getitem__(self, key):
-        '''
-        Support getting index slices or individiual objects. Expected
-        _id index values.
-        '''
-        if isinstance(key, slice):
-            keys = sorted(self.store.keys())[key]
-            return [dict(self.store[i]) for i in keys]
-        else:
-            key = to_encoding(key)
-            return dict(self.store[key])
-
-    def __setitem__(self, key, value):
-        '''
-        Add (set) object value. key being used to set is irrelevant
-        and ignored!
-        '''
-        self.add(value)
-
-    def __delitem__(self, key):
-        key = to_encoding(key)
-        del self.store[key]
 
     def __iter__(self):
         return iter(self.store)
 
     def __len__(self):
         return len(self.store)
-
-    def __contains__(self, key):
-        key = to_encoding(key)
-        return key in self.store.keys()
 
     def __repr__(self):
         return repr(self.store)
@@ -351,12 +286,8 @@ class MetriqueContainer(MutableMapping):
         return obj
 
     @property
-    def _ids(self):
-        return sorted(self.store.keys())
-
-    @property
     def _oids(self):
-        return sorted({o['_oid'] for o in self.store.itervalues()})
+        return sorted({o['_oid'] for o in self.itervalues()})
 
     def _parse_query(self, query=None, fields=None, date=None,
                      alias=None, distinct=None, limit=None):
@@ -364,92 +295,26 @@ class MetriqueContainer(MutableMapping):
                                        fields=fields, date=date, alias=alias,
                                        distinct=distinct, limit=limit)
 
-    def _normalize_container(self, value, schema):
-        container = bool(schema.get('container'))
-        _is_list = isinstance(value, list)
-        if container and not _is_list:
-            # NORMALIZE to empty list []
-            return list(value) if value else []
-        elif not container and _is_list:
-            raise ValueError(
-                "expected single value, got list (%s)" % value)
-        else:
-            return value
-
-    def _unwrap(self, value):
-        if type(value) is buffer:
-            # unwrap/convert the aggregated string 'buffer'
-            # objects to string
-            value = to_encoding(value)
-            # FIXME: this might cause issues if the buffered
-            # text has " quotes...
-            value = value.replace('"', '').strip()
-            if not value:
-                value = None
-            else:
-                value = value.split('\n')
-        return value
-
-    def _convert(self, value, schema=None):
-        schema = schema or {}
-        convert = schema.get('convert')
-        container = schema.get('container')
-        try:
-            if value is None:
-                return None
-            elif convert and container:
-                value = map(convert, value)
-            elif convert:
-                value = convert(value)
-            else:
-                pass
-        except Exception:
-            logger.error("convert Failed: %s(value=%s, container=%s)" % (
-                convert.__name__, value, container))
-            raise
-        return value
-
-    def _normalize_key(self, key):
-        key = to_encoding(key).lower()
-        if key != '__v__':
-            # skip internal metrique version field
-            key = self.SPACE_RE.sub('_', key)
-            key = self.FIELDS_RE.sub('',  key)
-            key = self.UNDA_RE.sub('_',  key)
-        return key
-
-    def _normalize_keys(self, obj):
-        return {self._normalize_key(k): v for k, v in obj.iteritems()}
-
     def _prep_object(self, obj):
-        obj = self._normalize_keys(obj)
+        obj = normalize_keys(obj)
         schema = self.schema
         if not schema:
-            # build schema off normalized key version
-            _obj = self._normalize_keys(obj)
-            # cache a key map from old key->normalized keys
-            self._key_map = {k: self._normalize_key(k) for k in obj.iterkeys()}
-            # in the case we don't have a schema already defined, we need to
-            # build on now; all objects are assumed to have the SAME SCHEMA!
-            schema = autoschema([_obj], exclude_keys=self.RESTRICTED_KEYS)
+            schema = autoschema([obj], exclude_keys=self.RESTRICTED_KEYS)
             self.config['schema'] = schema
 
         # optimization; lookup in local scope
-        kmap = self._key_map or {}
         for key, value in obj.items():
-            # map original key to normalized key, if normal map exists
-            _key = kmap.get(key) or key
-            _schema = schema.get(_key) or {}
+            _schema = schema.get(key) or {}
             try:
-                value = self._prep_value(value, schema=_schema)
+                value = prep_value(value, schema=_schema)
             except Exception as e:
                 # make sure the value contents are loggable
                 _value = to_encoding(value)
                 obj.setdefault('_e', {})
-                msg = 'prep(key=%s, value=%s) failed: %s' % (_key, _value, e)
+                msg = 'prep(key=%s, value=%s) failed: %s' % (key, _value, e)
                 logger.error(msg)
                 # set error field with original values
-                obj['_e'].update({_key: value})
+                obj['_e'].update({key: value})
 
                 # FIXME: should we leave original as-is? if not of correct
                 # type, etc, this might cause problems
@@ -457,71 +322,10 @@ class MetriqueContainer(MutableMapping):
                 # normalize invalid value to None
                 value = None
             obj[key] = value
-            variants = self._add_variants(_key, value, _schema)
+            variants = self._add_variants(key, value, _schema)
             obj.update(variants)
-        obj['_v'] = self.version
         obj = self._object_cls(**obj)
         return obj
-
-    def _prep_value(self, value, schema):
-        # NOTE: if we fail anywhere in here, no changes made here will
-        # be 'saved'; buffer's for example will remain buffers, etc.
-        # PERFORMANCE NOTES
-        # 26 seconds for 450k values, baseline; none of the folling are run
-        value = self._unwrap(value)
-        # +2 seconds (28s)
-        value = self._normalize_container(value, schema)
-        # +12 seconds (40s)
-        value = self._convert(value, schema)
-        # +6 seconds (46s)
-        value = self._typecast(value, schema)
-        # +10 seconds (56s)
-        return value
-
-    def _typecast(self, value, schema):
-        _type = schema.get('type')
-        container = schema.get('container')
-        if container:
-            value = self._type_container(value, _type)
-        else:
-            value = self._type_single(value, _type)
-        return value
-
-    def _type_container(self, value, _type):
-        ' apply type to all values in the list '
-        if value is None:
-            # normalize null containers to empty list
-            return []
-        elif not isinstance(value, list):
-            raise ValueError("expected list type, got: %s" % type(value))
-        else:
-            return sorted(self._type_single(item, _type) for item in value)
-
-    def _type_single(self, value, _type):
-        ' apply type to the single value '
-        if value is None or _type in (None, NoneType):
-            # don't convert null values
-            # default type is the original type if none set
-            pass
-        elif isinstance(value, _type):  # or values already of correct type
-            # normalize all dates to epochs
-            value = dt2ts(value) if _type in [datetime, date] else value
-        else:
-            if _type in (datetime, date):
-                # normalize all dates to epochs
-                value = dt2ts(value)
-            elif _type in (unicode, str):
-                # make sure all string types are properly unicoded
-                value = to_encoding(value)
-            else:
-                try:
-                    value = _type(value)
-                except Exception:
-                    value = to_encoding(value)
-                    logger.error("typecast failed: %s(value=%s)" % (
-                        _type.__name__, value))
-                    raise
-        return value
 
     def _update(self, objects):
         if is_null(objects):
@@ -536,8 +340,7 @@ class MetriqueContainer(MutableMapping):
 
     def add(self, obj):
         obj = self._prep_object(obj)
-        # objects are stored indexed by _id
-        self.store[obj['_id']] = obj
+        self.store.append(obj)
 
     def autotable(self):
         name = self.config.get('name')
@@ -561,22 +364,21 @@ class MetriqueContainer(MutableMapping):
         return result
 
     def clear(self):
-        self.store = {}
+        self.store = []
 
     def columns(self):
         return self.proxy.db_columns
 
     def df(self):
         '''Return a pandas dataframe (metrique.result.Result) from objects'''
-        return Result(self.store.values())
+        return Result(self.store)
 
     def extend(self, objs):
         logger.debug('extending container by %s objs...' % len(objs))
         s = time()
         [self.add(i) for i in objs]
         diff = time() - s
-        k = len(objs)
-        rate = (k / diff) if k > 0 else 0
+        rate = (len(objs) / diff) if diff > 0 else float('inf')
         logger.debug('... extended container by %s objs in %ss at %.2f/s' % (
             len(objs), int(diff), rate))
 
@@ -592,39 +394,26 @@ class MetriqueContainer(MutableMapping):
             objects = self.itervalues()
         # sort by _oid for grouping by _oid below
         objects = sorted(objects, key=lambda x: x['_oid'])
-        batch, _ids = [], []
+        batch = []
         # batch in groups with _oid, since upsert's delete
         # all _oid rows when autosnap=False!
         for key, group in groupby(objects, lambda x: x['_oid']):
             _grouped = list(group)
             if len(batch) + len(_grouped) > batch_size:
                 logger.debug("Upserting %s objects" % len(batch))
-                _ = self.upsert(objects=batch, **kwargs)
+                self.upsert(objects=batch, **kwargs)
                 logger.debug("... done upserting %s objects" % len(batch))
-                _ids.extend(_)
                 # start a new batch
-                batch = _grouped
-            else:
-                # extend existing batch, since still will be < batch_size
-                batch.extend(_grouped)
+                batch = []
+            batch.extend(_grouped)
         else:
             if batch:
                 # get the last batch too
                 logger.debug("Upserting last batch of %s objects" % len(batch))
-                _ = self.upsert(objects=batch, **kwargs)
-                _ids.extend(_)
+                self.upsert(objects=batch, **kwargs)
             logger.debug("... Finished upserting all objects!")
-
-        if from_store:
-            for _id in _ids:
-                # try to pop the _id's flushed from store; warn / ignore
-                # the KeyError if they're not there
-                try:
-                    self.store.pop(_id)
-                except KeyError:
-                    logger.warn(
-                        "failed to pop {} from self.store!".format(_id))
-        return sorted(_ids)
+            if from_store:
+                self.clear()
 
     def find(self, query=None, fields=None, date=None, sort=None,
              descending=False, one=False, raw=False, limit=None,
@@ -635,26 +424,9 @@ class MetriqueContainer(MutableMapping):
                                as_cursor=as_cursor, scalar=scalar,
                                default_fields=default_fields)
 
-    def filter(self, where):
-        if not isinstance(where, Mapping):
-            raise ValueError("where must be a dict")
-        else:
-            result = []
-            for obj in self.store.itervalues():
-                found = False
-                for k, v in where.iteritems():
-                    if obj.get(k, '') == v:
-                        found = True
-                    else:
-                        found = False
-                if found:
-                    result.append(obj)
-        return result
-
     @property
     def fields(self):
-        return sorted({k for o in self.store.itervalues()
-                       for k in o.iterkeys()})
+        return sorted({k for o in self.store for k in o.iterkeys()})
 
     @staticmethod
     def load(*args, **kwargs):
@@ -662,15 +434,11 @@ class MetriqueContainer(MutableMapping):
         return load(*args, **kwargs)
 
     def itervalues(self):
-        for v in self.store.itervalues():
+        for v in self.store:
             yield dict(v)
 
     def ls(self):
         raise NotImplementedError
-
-    def pop(self, key):
-        key = to_encoding(key)
-        return self.store.pop(key)
 
     @property
     def proxy(self):
@@ -696,10 +464,10 @@ class MetriqueContainer(MutableMapping):
         self._proxy = self._proxy(**config)
 
     def objects(self):
-        return self.store.values()
+        return self.store
 
     def values(self):
-        return [dict(v) for v in self.store.itervalues()]
+        return list(self.itervalues())
 
     @property
     def schema(self):
@@ -779,7 +547,7 @@ class MetriqueContainer(MutableMapping):
                                 roles=roles)
 
     def upsert(self, objects=None, autosnap=None):
-        objects = objects or self
+        objects = objects or self.values()
         return self.proxy.upsert(table=self.name, objects=objects,
                                  autosnap=autosnap)
 
@@ -791,3 +559,133 @@ class MetriqueContainer(MutableMapping):
 
     def user_disable(self, username):
         return self.proxy.user_disable(table=self.name, username=username)
+
+
+FIELDS_RE = re.compile('[\W]+')
+SPACE_RE = re.compile('\s+')
+UNDA_RE = re.compile('_+')
+
+
+def normalize_key(key):
+    #TODO memoize this fn
+    key = to_encoding(key).lower()
+    key = SPACE_RE.sub('_', key)
+    key = FIELDS_RE.sub('',  key)
+    key = UNDA_RE.sub('_',  key)
+    return key
+
+
+def normalize_keys(obj):
+    return {normalize_key(k): v for k, v in obj.iteritems()}
+
+
+def prep_value(value, schema):
+    # NOTE: if we fail anywhere in here, no changes made here will
+    # be 'saved'; buffer's for example will remain buffers, etc.
+    # PERFORMANCE NOTES
+    # 26 seconds for 450k values, baseline; none of the folling are run
+    value = unwrap_buffer(value)
+    # +2 seconds (28s)
+    value = normalize_container(value, schema)
+    # +12 seconds (40s)
+    value = convert(value, schema)
+    # +6 seconds (46s)
+    value = typecast(value, schema)
+    # +10 seconds (56s)
+    return value
+
+
+def unwrap_buffer(value):
+    if type(value) is buffer:
+        # unwrap/convert the aggregated string 'buffer'
+        # objects to string
+        value = to_encoding(value)
+        # FIXME: this might cause issues if the buffered
+        # text has " quotes...
+        value = value.replace('"', '').strip()
+        if not value:
+            value = None
+        else:
+            value = value.split('\n')
+    return value
+
+
+def normalize_container(value, schema):
+    container = bool(schema.get('container'))
+    _is_list = isinstance(value, list)
+    if container and not _is_list:
+        # NORMALIZE to empty list []
+        return list(value) if value else []
+    elif not container and _is_list:
+        raise ValueError(
+            "expected single value, got list (%s)" % value)
+    else:
+        return value
+
+
+def convert(value, schema=None):
+    schema = schema or {}
+    convert = schema.get('convert')
+    container = schema.get('container')
+    try:
+        if value is None:
+            return None
+        elif convert and container:
+            value = map(convert, value)
+        elif convert:
+            value = convert(value)
+        else:
+            pass
+    except Exception:
+        logger.error("convert Failed: %s(value=%s, container=%s)" % (
+            convert.__name__, value, container))
+        raise
+    return value
+
+
+def typecast(value, schema):
+    _type = schema.get('type')
+    container = schema.get('container')
+    if container:
+        value = type_container(value, _type)
+    else:
+        value = type_single(value, _type)
+    return value
+
+
+def type_container(value, _type):
+    ' apply type to all values in the list '
+    if value is None:
+        # normalize null containers to empty list
+        return []
+    elif not isinstance(value, list):
+        raise ValueError("expected list type, got: %s" % type(value))
+    else:
+        return sorted(type_single(item, _type) for item in value)
+
+
+def type_single(value, _type):
+    ' apply type to the single value '
+    if value is None or _type in (None, NoneType):
+        # don't convert null values
+        # default type is the original type if none set
+        pass
+    elif isinstance(value, _type):  # or values already of correct type
+        # normalize all dates to epochs
+        value = dt2ts(value) if _type in [datetime, date] else value
+    else:
+        if _type in (datetime, date):
+            # normalize all dates to epochs
+            value = dt2ts(value)
+        elif _type in (unicode, str):
+            # make sure all string types are properly unicoded
+            value = to_encoding(value)
+        else:
+            try:
+                value = _type(value)
+            except Exception:
+                value = to_encoding(value)
+                logger.error("typecast failed: %s(value=%s)" % (
+                    _type.__name__, value))
+                raise
+    return value

@@ -630,8 +630,8 @@ def test_json_encode_default():
         assert False
 
 
-def test_jsonhash():
-    from metrique.utils import jsonhash
+def test_jsonrepr():
+    from metrique.utils import jsonrepr
 
     dct = {'a': [3, 2, 1],
            'z': ['a', 'c', 'b', 1],
@@ -648,18 +648,10 @@ def test_jsonhash():
     dct_diff = copy(dct)
     del dct_diff['z']
 
-    DCT = 'a619c43718a76d3e1c745bedbc4fb59f9e6f2309'
-    DCT_SORTED_Z = 'dd0657ca2433a71362ade81a5981ffb5b5afa0bd'
-    DCT_DIFF = 'eb95eb5a1689e50180a8de242f01285b1cd90668'
-
     assert dct != dct_sorted_z
 
-    assert jsonhash(dct) == DCT
-    assert jsonhash(dct_sorted_z) == DCT_SORTED_Z
-    assert jsonhash(dct_diff) == DCT_DIFF
-
     ' list sort order is an identifier of a unique object '
-    assert jsonhash(dct) != jsonhash(dct_sorted_z)
+    assert jsonrepr(dct) != jsonrepr(dct_sorted_z)
 
     # pop off 'product'
     ex_dct = {'a': [3, 2, 1],
@@ -670,11 +662,9 @@ def test_jsonhash():
               'verified': [1],
               'version': '2.1r'}
 
-    EX = 'f786b0d3a6fb1cbd147d69c6d446484a1a243600'
-    # jsonhashing ex_dct (without product) should be
-    # equal to jsonhashing dct with exclude 'product'
-    assert jsonhash(ex_dct) == EX
-    assert jsonhash(dct, exclude=['product']) == EX
+    # jsonrepring ex_dct (without product) should be
+    # equal to jsonrepring dct with exclude 'product'
+    assert jsonrepr(ex_dct) == jsonrepr(dct, exclude=['product'])
 
 
 def test_list2str():

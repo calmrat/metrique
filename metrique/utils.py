@@ -715,11 +715,7 @@ def json_encode_default(obj):
     return to_encoding(result)
 
 
-def _jsonhash_sha1(o):
-    return sha1(repr(o)).hexdigest()
-
-
-def jsonhash(obj, root=True, exclude=None, hash_func=_jsonhash_sha1):
+def jsonrepr(obj, root=True, exclude=('id', '_start', '_end', '_e')):
     '''
     calculate the objects hash based on all field values
     '''
@@ -732,15 +728,17 @@ def jsonhash(obj, root=True, exclude=None, hash_func=_jsonhash_sha1):
         # back frozensets with different hash values even when
         # the content of the object is exactly the same
         result = sorted(
-            (k, jsonhash(v, False)) for k, v in obj.iteritems())
+            (unicode(k), jsonrepr(v, False)) for k, v in obj.iteritems())
     elif isinstance(obj, list):
         # FIXME: should lists be sorted for consistent hashes?
         # when the object is the same, just different list order?
-        result = tuple(jsonhash(e, False) for e in obj)
+        result = tuple(jsonrepr(e, False) for e in obj)
+    elif isinstance(obj, float):
+        result = '%e' % obj
     else:
         result = obj
     if root:
-        result = unicode(hash_func(result))
+        result = unicode(repr(result))
     return result
 
 

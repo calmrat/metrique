@@ -75,8 +75,7 @@ def db_tester(proxy):
 
     assert p.count() == 0
 
-    expected_fields = ['__v__', '_e', '_end', '_hash', '_id',
-                       '_start', '_v', 'id']
+    expected_fields = ['_e', '_end', '_start', 'id']
 
     _exp = expected_fields + _obj_1.keys()
     assert sorted(p.columns()) == sorted(_exp)
@@ -131,15 +130,6 @@ def db_tester(proxy):
 
     # should be four object versions in total at this point
     assert p.count(date='~') == 4
-
-    # last _oid should be 3
-    assert p.get_last_field('_oid') == 3
-    try:
-        p.insert([obj_3])
-    except Exception:
-        pass
-    else:
-        assert False, "shouldn't be able to insert same object twice"
 
     _obj_4 = {'_oid': -1}
     obj_4 = O(**_obj_4)

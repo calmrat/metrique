@@ -32,39 +32,28 @@ def test_csvdata():
     db_file = os.path.join(cache_dir, '%s.sqlite' % name)
     remove_file(db_file)
     m = pyclient(cube='csvdata_rows', name=name)
-    m.objects.drop()
+    m.container.drop()
 
     uri = os.path.join(fixtures, 'us-idx-eod.csv')
     m.get_objects(uri=uri, load_kwargs=dict(use_pandas=True))
 
-    assert m.objects
-    assert len(m.objects) == 14
-    assert m.objects.fields == ['__v__', '_e', '_end', '_hash', '_id',
-                                '_oid', '_start', '_v', 'close', 'date',
-                                'open', 'symbol']
+    c = m.container
 
-    # {u'symbol': u'$AJT', u'date': u'09/08/2008', u'close': 18.15, u'_start':
-    # datetime.datetime(2014, 5, 28, 14, 9, 22, 999145), u'open': 17.84,
-    # u'_oid': 11, u'_v': 0, u'_end': None, u'_hash':
-    # u'76e81838bdde51f693f8a09a2308557a7962aa78', u'__v__': u'0.3.1-1a',
-    # u'_e': {}, u'_id': u'11'}
-    _ids = m.objects._ids
-    _hash = '76e81838bdde51f693f8a09a2308557a7962aa78'
+    assert c.objects()
+    assert len(c) == 14
+    assert c.fields == ['_e', '_end', '_oid', '_start', 'close', 'date',
+                        'open', 'symbol']
+
     _oid = 11
-    _filtered = m.objects.filter(where={'_oid': _oid})
+    _filtered = [o for o in c.objects() if o['_oid'] == _oid]
     print 'Object: %s' % _filtered
     assert len(_filtered) == 1
-    assert m.objects['11']['_hash'] == _hash  # check _hash is as expected
-    assert m.objects['11']['symbol'] == '$AJT'
-    assert m.objects.upsert() == _ids
-    # still there...
-    assert m.objects['11']['symbol'] == '$AJT'
 
     # persist and remove from container
-    assert m.objects.flush() == _ids
-    assert m.objects == {}
+    c.flush()
+    assert c.objects() == []
 
-    objs = m.objects.find('_oid == %s' % _oid, one=True, raw=True, fields='~')
+    objs = c.find('_oid == %s' % _oid, one=True, raw=True, fields='~')
     o = {k: v for k, v in objs.items() if k != 'id'}
     _o = dict(_filtered[0])
     # we can't assure float precision is exact as it goes in/out
@@ -96,35 +85,24 @@ def test_load_json():
         return o
 
     m = pyclient(name=name)
-    m.objects.drop()
+    c = m.container
+    c.drop()
 
     path = os.path.join(fixtures, 'meps.json')
     objects = load(path, _oid=_oid_func, orient='index')
 
     assert len(objects) == 736
 
-    m.objects.extend(objects)
+    c.extend(objects)
 
-    assert len(m.objects)
+    assert len(c)
 
-    # {u'phone_stb': u'+33 (0)3 88 1 75224', u'comms': None, u'country':
-    # u'Latvia', u'_start': ...
-    # u'_oid': 28615, u'name': u'Roberts Z\u012aLE', u'url':
-    # u'http://www.europarl.euro...rs/expert/committees/view.do?id=28615',
-    # u'_v': 0, u'phone_bxl': u'+32 (0)2 28 45224', u'_end': None, u'_hash':
-    # u'e8d2a6943734a80f268d112514040b4707915181', u'__v__': u'0.3.1-1a',
-    # u'party': u'European Conservatives and Reformists', u'_e': {}, u'_id':
-    # u'28615', u'email': None}
-    _hash = 'e8d2a6943734a80f268d112514040b4707915181'
-    _filtered = m.objects.filter(where={'_oid': 28615})
+    _filtered = [o for o in c.objects() if o['_oid'] == 28615]
     assert len(_filtered) == 1
     print 'Object: %s' % _filtered
-    assert _filtered[0]['_hash'] == _hash
 
-    _ids = m.objects.flush()
-
-    assert sorted(_ids) == sorted(map(unicode, [o['_oid'] for o in objects]))
-    assert m.objects == {}
+    c.flush()
+    assert c.objects() == []
 
     remove_file(db_file)
 
@@ -140,13 +118,14 @@ def test_gitdata_commit():
     uri_1 = 'https://github.com/kejbaly2/tornadohttp.git'
     uri_2 = 'https://github.com/kejbaly2/metrique.git'
     m = pyclient(cube=name)
-    m.objects.drop()
+    c = m.container
+    c.drop()
 
     m.get_objects(uri=uri_1)
-    k = len(m.objects)
+    k = len(c)
     assert k > 0
     m.get_objects(uri=uri_1, pull=True)
-    assert k == len(m.objects)
+    assert k == len(c)
 
     # {u'files': {u'setup.py': {u'removed': 0, u'added': 3},
     # u'tornadohttp/tornadohttp.py': {u'removed': 7, u'added': 10},
@@ -164,15 +143,12 @@ def test_gitdata_commit():
     # ['78b311d90e35eb36016a7f41e75657754dbe0784'], u'_hash':
     # u'79a11c24ac814f001abcd27963de761ccb37a908', u'__v__': u'0.3.1-1a',
     # u'_e': {}, u'_id': u'99dc1e5c4e3ab2c8ab5510e50a3edf64f9fcc705'}
-    _hash = '79a11c24ac814f001abcd27963de761ccb37a908'
     _oid = '99dc1e5c4e3ab2c8ab5510e50a3edf64f9fcc705'
-    _filtered = m.objects.filter(where={'_oid': _oid})
+    _filtered = [o for o in c.objects() if o['_oid'] == _oid]
     assert len(_filtered) == 1
     print 'Object: %s' % _filtered
-    assert _filtered[0]['_hash'] == _hash
 
-    _ids = m.objects.flush()
-    assert len(_ids) == k
+    c.flush()
 
     # load a second repo
     # make sure our sessions are working as expected and
@@ -208,11 +184,10 @@ def test_osinfo_rpm():
     assert k > 0
 
     name = 'bash'
-    _filtered = m.objects.filter(where={'name': name})
+    _filtered = [o for o in m.container.objects() if o['name'] == name]
     assert len(_filtered) == 1
     print 'Object: %s' % _filtered
 
-    _ids = m.objects.flush()
-    assert len(_ids) == k
+    m.objects.flush()
 
     remove_file(db_file)
