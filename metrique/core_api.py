@@ -575,8 +575,10 @@ class MetriqueContainer(MutableMapping):
         s = time()
         [self.add(i) for i in objs]
         diff = time() - s
+        k = len(objs)
+        rate = (k / diff) if k > 0 else 0
         logger.debug('... extended container by %s objs in %ss at %.2f/s' % (
-            len(objs), int(diff), len(objs) / diff))
+            len(objs), int(diff), rate))
 
     def flush(self, objects=None, batch_size=None, **kwargs):
         ''' flush objects stored in self.container or those passed in'''
