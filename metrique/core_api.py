@@ -565,14 +565,17 @@ FIELDS_RE = re.compile('[\W]+')
 SPACE_RE = re.compile('\s+')
 UNDA_RE = re.compile('_+')
 
+key_cache = {}
+
 
 def normalize_key(key):
-    #TODO memoize this fn
-    key = to_encoding(key).lower()
-    key = SPACE_RE.sub('_', key)
-    key = FIELDS_RE.sub('',  key)
-    key = UNDA_RE.sub('_',  key)
-    return key
+    if key not in key_cache:
+        nkey = to_encoding(key).lower()
+        nkey = SPACE_RE.sub('_', nkey)
+        nkey = FIELDS_RE.sub('',  nkey)
+        nkey = UNDA_RE.sub('_',  nkey)
+        key_cache[key] = nkey
+    return key_cache[key]
 
 
 def normalize_keys(obj):
@@ -670,22 +673,20 @@ def type_single(value, _type):
         # don't convert null values
         # default type is the original type if none set
         pass
-    elif isinstance(value, _type):  # or values already of correct type
+    elif _type in (datetime, date):
         # normalize all dates to epochs
-        value = dt2ts(value) if _type in [datetime, date] else value
+        value = dt2ts(value)
+    elif isinstance(value, _type):  # or values already of correct type
+        pass
+    elif _type in (unicode, str):
+        # make sure all string types are properly unicoded
+        value = to_encoding(value)
     else:
-        if _type in (datetime, date):
-            # normalize all dates to epochs
-            value = dt2ts(value)
-        elif _type in (unicode, str):
-            # make sure all string types are properly unicoded
+        try:
+            value = _type(value)
+        except Exception:
             value = to_encoding(value)
-        else:
-            try:
-                value = _type(value)
-            except Exception:
-                value = to_encoding(value)
-                logger.error("typecast failed: %s(value=%s)" % (
-                    _type.__name__, value))
-                raise
+            logger.error("typecast failed: %s(value=%s)" % (
+                _type.__name__, value))
+            raise
     return value

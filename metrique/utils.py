@@ -49,7 +49,6 @@ from functools import partial
 import gc
 from getpass import getuser
 import glob
-from hashlib import sha1
 from inspect import isfunction
 import itertools
 import os
