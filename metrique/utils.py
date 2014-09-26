@@ -31,6 +31,7 @@ import cPickle
 import cProfile as profiler
 import csv
 from datetime import datetime, date
+
 try:
     from dateutil.parser import parse as dt_parse
     HAS_DATEUTIL = True
@@ -1270,7 +1271,7 @@ def ts2dt(ts, milli=False, tz_aware=False):
     # anything already a datetime will still be returned
     # tz_aware, if set to true
     is_true(HAS_DATEUTIL, "`pip install python_dateutil` required")
-    if isinstance(ts, datetime):
+    if isinstance(ts, (datetime, date)):
         pass
     elif is_empty(ts, except_=False):
         return None  # its not a timestamp
@@ -1295,6 +1296,10 @@ def ts2dt(ts, milli=False, tz_aware=False):
 
 def _get_datetime(value, tz_aware=None):
     is_true(HAS_PYTZ, "`pip install pytz` required")
+    if type(value) is date:
+        # convert datetime.date (ONLY!) -> datetime.datetime
+        value = datetime.combine(value, datetime.min.time())
+
     if tz_aware:
         if isinstance(value, datetime):
             return value.replace(tzinfo=pytz.UTC)
