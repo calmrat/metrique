@@ -50,7 +50,8 @@ def get_objects(cube, oids, full_history, flush=False, cube_name=None,
             _ = m._activity_get_objects(oids=batch, flush=flush)
         else:
             _ = m._get_objects(oids=batch, flush=flush)
-        results.extend(_)
+        if not flush:
+            results.extend(_)
     return results
 
 
@@ -407,9 +408,9 @@ class Generic(pyclient):
                 proxy=type(self.proxy),
                 proxy_config=self.proxy_config)
                 for batch in batch_gen(oids, w_batch_size))
-            # merge list of lists (batched) into single list
-            result = [i for l in result for i in l]
             if not flush:
+                # merge list of lists (batched) into single list
+                result = [i for l in result for i in l]
                 self.objects.extend(result)
         else:
             logger.debug('%s (%s@%s)' % (msg, workers, w_batch_size))
@@ -430,8 +431,6 @@ class Generic(pyclient):
             self.container.proxy.update_delta_ts(new_delta_ts)
 
         if flush:
-            return result
-        else:
             return self
 
     def _left_join(self, select_as, select_prop, join_prop, join_table,
