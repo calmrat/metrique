@@ -423,7 +423,8 @@ class Generic(pyclient):
                     _ = self._activity_get_objects(oids=batch, flush=flush)
                 else:
                     _ = self._get_objects(oids=batch, flush=flush)
-                result.extend(_)
+                if not flush:
+                    result.extend(_)
                 _s = _e
 
         # save new delta_ts:
