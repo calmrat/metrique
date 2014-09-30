@@ -409,6 +409,8 @@ class Generic(pyclient):
                 for batch in batch_gen(oids, w_batch_size))
             # merge list of lists (batched) into single list
             result = [i for l in result for i in l]
+            if not flush:
+                self.objects.extend(result)
         else:
             logger.debug('%s (%s@%s)' % (msg, workers, w_batch_size))
             result = []
