@@ -260,10 +260,10 @@ class Metrique(object):
 
         if self._container_cls is None:
             from metrique.core_api import MetriqueContainer
-            self._container_cls = MetriqueContainer
+            self._container_cls = copy(MetriqueContainer)
         if self._proxy_cls is None:
             from metrique.sqlalchemy import SQLAlchemyProxy
-            self._proxy_cls = SQLAlchemyProxy
+            self._proxy_cls = copy(SQLAlchemyProxy)
 
     def __len__(self):
         return len(self.container)

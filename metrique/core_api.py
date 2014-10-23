@@ -295,7 +295,7 @@ class MetriqueContainer(MutableMapping):
 
         if self._proxy_cls is None:
             from metrique.sqlalchemy import SQLAlchemyProxy
-            self._proxy_cls = SQLAlchemyProxy
+            self._proxy_cls = copy(SQLAlchemyProxy)
         self._proxy = proxy
 
         # init and update internal store with passed in objects, if any

@@ -159,17 +159,13 @@ from metrique.utils import json_encode_default, is_true, is_array, is_defined
 from metrique.utils import DictDiffer
 from metrique.result import Result
 
-ETC_DIR = os.environ.get('METRIQUE_ETC')
 CACHE_DIR = os.environ.get('METRIQUE_CACHE')
 LOG_DIR = os.environ.get('METRIQUE_LOGS')
-DEFAULT_CONFIG = os.path.join(ETC_DIR, 'metrique.json')
 
 
 class SQLAlchemyProxy(object):
     _object_cls = None
     config = None
-    config_key = 'proxy'
-    config_file = DEFAULT_CONFIG
     RESERVED_USERNAMES = {'admin', 'test', 'metrique'}
     # these keys are already set, no overrides!
     RESTRICTED_KEYS = ('id', '_id', '_hash', '_start', '_end',
@@ -185,7 +181,6 @@ class SQLAlchemyProxy(object):
     _sessionmaker = None
 
     def __init__(self, db=None, table=None, debug=None, config=None,
-                 config_key=None, config_file=None,
                  dialect=None, driver=None, host=None,
                  port=None, username=None, password=None,
                  connect_args=None, batch_size=None,
@@ -247,11 +242,13 @@ class SQLAlchemyProxy(object):
             table=None,
             username=getuser())
         self.config = copy(config or self.config or {})
-        self.config_file = config_file or SQLAlchemyProxy.config_file
-        self.config_key = config_key or SQLAlchemyProxy.config_key
+        # FIXME: config expected to come from caller as kwarg or defaults
+        # will be used. This is because loading from file causes problems
+        # at the moment such as when container is loaded, it tries to
+        # load top-level 'proxy' key from config_file, which is incorrect,
+        # since that config key is meant for the data source proxy rather
+        # than container proxy. 
         self.config = configure(options, defaults,
-                                config_file=self.config_file,
-                                section_key=self.config_key,
                                 section_only=True,
                                 update=self.config)
         # db is required; default db is db username else local username
