@@ -20,6 +20,9 @@ testroot = os.path.dirname(os.path.abspath(__file__))
 cubes = os.path.join(testroot, 'cubes')
 fixtures = os.path.join(testroot, 'fixtures')
 cache_dir = env['METRIQUE_CACHE']
+etc_dir = os.environ.get('METRIQUE_ETC')
+
+default_config = os.path.join(etc_dir, 'metrique.json')
 
 
 def db_tester(proxy):
@@ -206,15 +209,18 @@ def test_sqlite3():
 
 def test_postgresql():
     from metrique.sqlalchemy import SQLAlchemyProxy
-    from metrique.utils import rand_chars
+    from metrique.utils import rand_chars, configure
 
-    DB = 'test'
-    TABLE = 'bla'
-    p = SQLAlchemyProxy(dialect='postgresql', db=DB, table=TABLE)
+    config = configure(config_file=default_config, section_key='proxy', 
+                       section_only=True)
+    _db = config['db'] = 'test'
+    config['table'] = 'bla'
+    config['dialect'] = 'postgresql'
+    p = SQLAlchemyProxy(**config) 
     _u = p.config.get('username')
     _p = p.config.get('password')
     _po = p.config.get('port')
-    _expected_engine = 'postgresql://%s:%s@127.0.0.1:%s/%s' % (_u, _p, _po, DB)
+    _expected_engine = 'postgresql://%s:%s@127.0.0.1:%s/%s' % (_u, _p, _po, _db)
     p.initialize()
     assert p._engine_uri == _expected_engine
 
