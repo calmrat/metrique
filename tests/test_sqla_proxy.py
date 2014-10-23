@@ -20,6 +20,9 @@ testroot = os.path.dirname(os.path.abspath(__file__))
 cubes = os.path.join(testroot, 'cubes')
 fixtures = os.path.join(testroot, 'fixtures')
 cache_dir = env['METRIQUE_CACHE']
+etc_dir = os.environ.get('METRIQUE_ETC')
+
+default_config = os.path.join(etc_dir, 'metrique.json')
 
 
 def db_tester(proxy):
@@ -206,15 +209,19 @@ def test_sqlite3():
 
 def test_postgresql():
     from metrique.sqlalchemy import SQLAlchemyProxy
-    from metrique.utils import rand_chars
+    from metrique.utils import rand_chars, configure
 
-    DB = 'test'
-    TABLE = 'bla'
-    p = SQLAlchemyProxy(dialect='postgresql', db=DB, table=TABLE)
+    config = configure(config_file=default_config, section_key='proxy',
+                       section_only=True)
+    _db = config['db'] = 'test'
+    _table = config['table'] = 'bla'
+    config['dialect'] = 'postgresql'
+    p = SQLAlchemyProxy(**config)
     _u = p.config.get('username')
     _p = p.config.get('password')
     _po = p.config.get('port')
-    _expected_engine = 'postgresql://%s:%s@127.0.0.1:%s/%s' % (_u, _p, _po, DB)
+    _expected_engine = 'postgresql://%s:%s@127.0.0.1:%s/%s' % (_u, _p,
+                                                               _po, _db)
     p.initialize()
     assert p._engine_uri == _expected_engine
 
@@ -239,29 +246,29 @@ def test_postgresql():
     # Sharing
     p.share(new_u)
 
-    NEW_TABLE = 'blabla'
+    _new_table = 'blabla'
     # switch to the new users db
     p.config['username'] = new_u
     p.config['password'] = new_p
     p.config['db'] = new_u
-    p.config['table'] = NEW_TABLE
+    p.config['table'] = _new_table
     p.initialize()
     assert p.ls() == []
 
     q = 'SELECT current_user;'
     assert p.execute(q)[0] == {'current_user': new_u}
 
-    p.autotable(name=NEW_TABLE, schema=schema, create=True)
-    assert p.ls() == [NEW_TABLE]
+    p.autotable(name=_new_table, schema=schema, create=True)
+    assert p.ls() == [_new_table]
 
     # switch to admin's db
     p.config['username'] = _u
     p.config['password'] = _p
     p.config['db'] = _u
-    p.config['table'] = TABLE
+    p.config['table'] = _table
     p.initialize()
     p.autotable(schema=schema)
-    assert p.ls() == [TABLE]
+    assert p.ls() == [_table]
 
     p.drop()
     try:
