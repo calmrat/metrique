@@ -41,7 +41,8 @@ class Commit(pyclient):
 
     @property
     def fields(self):
-        return dict(parents=dict(container=True),
+        return dict(_oid=dict(type=unicode),
+                    parents=dict(container=True),
                     author_time=dict(type=datetime),
                     mergetag=dict(container=True),
                     extra=dict(container=True),
