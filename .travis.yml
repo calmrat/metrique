@@ -6,6 +6,8 @@ install:
   - "pip install coveralls virtualenv"
   - "pip install decorator"
   - "pip install anyconfig"  # temporary fix, easy_install anyconfig not working
+#  - "git clone https://github.com/kejbaly2/travis_wheels.git"
+#  pip install -e . --find-links=file:///home/metrique/travis_wheels/wheelhouse --trusted-host None
   - "./metrique.py deploy --all"
   - "./metrique.py firstboot metrique postgresql"
 addons:
