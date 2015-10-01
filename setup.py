@@ -29,34 +29,18 @@ __pkgs__ = [
 __provides__ = ['metrique']
 __desc__ = 'Metrique - Client Libraries'
 __scripts__ = []
-__requires__ = [
-    'anyconfig',
-    #'cython',
-    'decorator',
-    'lockfile',
-    'joblib',
-    # bug when installing numpy as dep;
-    # https://github.com/numpy/numpy/issues/2434
-    # install manually with metrique.py deploy or `pip install pandas`
-    'pandas (>=0.13.0)',
-    'python_dateutil',
-    'pytz',
-    'psycopg2',
-    'simplejson',
-    'sqlalchemy (>=0.9.4)',
-    'virtualenv (>=1.11)',
-]
 __irequires__ = [
     'anyconfig',
     #'cython',
     'decorator',
+    'joblib',
     'lockfile',
-    'pandas',
+    'pandas (>=0.13.0)',
     'python_dateutil',
+    'psycopg2',
     'pytz',
     'simplejson',
     'sqlalchemy>=0.9.4',
-    #'virtualenv>=1.11',
 ]
 
 pip_src = 'https://pypi.python.org/packages/source'
@@ -99,7 +83,6 @@ default_setup = dict(
     name=__pkg__,
     packages=__pkgs__,
     provides=__provides__,
-    requires=__requires__,
     scripts=__scripts__,
     version=__version__,
     zip_safe=False,  # we reference __file__; see [1]
@@ -110,13 +93,13 @@ if CYTHON:
     default_setup['cmdclass'] = {'build_ext': build_ext}
     default_setup['ext_modules'] = [
         Extension("metrique.core_api", ['metrique/core_api.py']),
-         Extension("metrique.metrique", ['metrique/metrique.py']),
-         Extension("metrique._version", ['metrique/_version.py']),
-         Extension("metrique.utils", ['metrique/utils.py'])
-         # FIXME: these fail to compile
-         #Extension("metrique.parse", ['metrique/parse.py']),
-         #Extension("metrique.plotting", ['metrique/plotting.py']),
-         #Extension("metrique.result", ['metrique/result.py']),
-     ]
+        Extension("metrique.metrique", ['metrique/metrique.py']),
+        Extension("metrique._version", ['metrique/_version.py']),
+        Extension("metrique.utils", ['metrique/utils.py'])
+        # FIXME: these fail to compile
+        #Extension("metrique.parse", ['metrique/parse.py']),
+        #Extension("metrique.plotting", ['metrique/plotting.py']),
+        #Extension("metrique.result", ['metrique/result.py']),
+    ]
 
 setup(**default_setup)
