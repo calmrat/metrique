@@ -35,7 +35,7 @@ __irequires__ = [
     'decorator',
     'joblib',
     'lockfile',
-    'pandas (>=0.13.0)',
+    'pandas>=0.13.0',
     'python_dateutil',
     'psycopg2',
     'pytz',
